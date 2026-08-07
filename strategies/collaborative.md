@@ -1,0 +1,300 @@
+---
+
+title: Collaborative Workflow Strategy
+version: 0.1
+status: Pilot
+owner: Engineering
+last_updated: 2026-07-24
+depends_on:
+
+  - ../frameworks/investigation.md
+  - ../contracts/workflow_execution.md
+
+---
+
+# Collaborative Workflow Strategy
+
+> Execute engineering work by decomposing it into specialized workers that collaborate toward a shared outcome.
+
+This strategy is intended for medium and large engineering efforts where the work benefits from multiple perspectives.
+
+The roles may be executed:
+
+* Sequentially
+* In parallel
+* As AI subagents
+* As separate engineering tasks
+* By different human engineers
+
+The workflow contract remains the same regardless of the execution model.
+
+---
+
+# Purpose
+
+Large engineering work often requires answering different kinds of questions:
+
+* What exists today?
+* How does it work?
+* Why was it designed this way?
+* What should change, if anything?
+* What risks exist?
+* How should implementation proceed?
+
+Rather than asking one investigator to answer everything at once, this strategy assigns responsibilities to specialized roles.
+
+---
+
+# Guiding Principles
+
+A role is **not** an implementation detail.
+
+A role defines:
+
+* Responsibilities
+* Questions to answer
+* Inputs
+* Deliverables
+
+How those responsibilities are fulfilled depends on the available tooling.
+
+---
+
+# Effort Levels
+
+Select an effort level before beginning the workflow.
+
+## Quick
+
+Recommended for:
+
+* Small bugs
+* Minor enhancements
+* Documentation
+* Simple upgrades
+
+Roles:
+
+* Orchestrator
+* Current-State Investigator
+* Implementer
+* Reviewer
+* Documenter
+
+---
+
+## Standard
+
+Recommended for:
+
+* Medium-sized features
+* Typical sprint stories
+* Moderate refactoring
+
+Roles:
+
+* Orchestrator
+* Current-State Investigator
+* Solution Architect
+* Implementer
+* Reviewer
+* Tester
+* Documenter
+
+---
+
+## Deep
+
+Recommended for:
+
+* Service extraction
+* Major refactoring
+* Architectural redesign
+* Complex incidents
+* Multi-repository work
+
+Roles:
+
+* Orchestrator
+* Current-State Investigator
+* Dependency Analyst
+* Solution Architect
+* Repository Integrator
+* Implementer
+* Reviewer
+* Tester
+* Documenter
+
+---
+
+# Workflow Modes
+
+Mode and effort are separate selections. Discovery is a mode, not an effort level.
+
+| Mode | Use |
+| --- | --- |
+| Discovery | Establish feasibility, scope, options, and risks without expecting implementation. |
+| Investigation | Establish an evidence-backed understanding and recommendation. |
+| Delivery | Implement and validate an approved change. |
+| Stabilization | Reduce operational risk after extraction, migration, upgrade, or release. |
+| Review | Independently assess correctness, risk, and readiness. |
+
+---
+
+# Role Lifecycle
+
+Every role follows the same pattern.
+
+## Inputs
+
+What information does the role need?
+
+Examples:
+
+* Normalized work item
+* Repository
+* Existing documentation
+* Work record
+
+---
+
+## Responsibilities
+
+What questions must the role answer?
+
+---
+
+## Deliverables
+
+What artifacts should the role produce?
+
+Deliverables become inputs for later roles.
+
+---
+
+## Exit Criteria
+
+When is the role finished?
+
+---
+
+# Default Delivery Flow
+
+```text
+Orchestrator
+      │
+      ▼
+Current-State Investigator
+      │
+      ▼
+Dependency Analyst
+      │
+      ▼
+Solution Architect
+      │
+      ▼
+Repository Integrator
+      │
+      ▼
+Implementer
+      │
+      ▼
+Reviewer
+      │
+      ▼
+Tester
+      │
+      ▼
+Handoff
+```
+
+The Documenter runs continuously after initialization and records the artifacts produced by the other workers. It is not a terminal step in the graph.
+
+Not every workflow requires every role.
+
+Choose the smallest set of roles that provides sufficient confidence.
+
+---
+
+# Communication Between Roles
+
+Roles should communicate through documented artifacts rather than implicit context.
+
+Examples include:
+
+* Work records
+* Architecture summaries
+* Dependency maps
+* Design proposals
+* Risk assessments
+* Validation plans
+
+This allows workflows to be resumed or reviewed at any point.
+
+---
+
+# Skill and Worker Selection
+
+Selection precedence is:
+
+1. Role metadata provides default skills and required documents.
+2. The playbook selects the roles and skills required for the scenario.
+3. Each stage may add or restrict skills for its workers.
+4. The worker profile defines tools, model profile, effort, inputs, outputs, dependencies, approvals, and exit criteria.
+
+The playbook owns the execution graph. Role documents do not define worker ordering.
+
+See `../contracts/workflow_execution.md` for the worker contract and parallelism semantics.
+
+---
+
+# Role Selection
+
+Choose roles based on the work rather than following a fixed sequence.
+
+Examples:
+
+| Work Type | Suggested Roles |
+| --- | --- |
+| Triage | Orchestrator, Current-State Investigator, Documenter |
+| Bug | Current-State Investigator, Implementer, Reviewer, Tester, Documenter |
+| Vulnerability | Current-State Investigator, Dependency Analyst, Reviewer, Documenter |
+| Service Extraction | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
+| Incident or TechOps | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Reviewer, Tester, Documenter |
+| Feature | Orchestrator, Current-State Investigator, Solution Architect, Implementer, Reviewer, Tester, Documenter |
+| Migration | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
+| New Project | Orchestrator, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
+| Architecture | Current-State Investigator, Solution Architect, Reviewer, Documenter |
+
+---
+
+# AI Execution
+
+When using AI assistants, each selected role is executed through one or more workers defined by the Workflow Execution Contract.
+
+The worker may be:
+
+* A dedicated subagent
+* A specialized prompt
+* A separate conversation
+* A human engineer
+* A step within one session
+
+---
+
+The workflow must not depend on one AI provider. Provider-specific mappings belong in `../providers/`; concrete tool selection belongs in the worker profile.
+
+---
+
+# Success Criteria
+
+The strategy has succeeded when:
+
+* Each selected worker has completed its responsibilities or recorded a non-complete outcome.
+* Deliverables are documented.
+* The work record reflects the current understanding.
+* The selected outcome is supported by evidence.
+* Required gates and approvals are recorded.
+* Validation activities are complete or explicitly not applicable.
+
+Implementation should begin only after the workflow reaches `ready_for_implementation` or an equivalent approved state.

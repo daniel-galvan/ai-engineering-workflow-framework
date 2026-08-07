@@ -1,0 +1,522 @@
+---
+title: Sentry Issue Remediation Playbook
+version: 0.1
+status: Pilot
+maturity: planning_validated
+validation_scope: standard + planning; deep + planning
+known_unvalidated_scope: standard + remediation; deep + remediation
+owner: Engineering
+last_updated: 2026-08-04
+depends_on:
+  - ../frameworks/investigation.md
+  - ../strategies/collaborative.md
+  - ../contracts/workflow_execution.md
+  - ../templates/work_record.md
+  - ../templates/implementation_plan.md
+  - ../templates/sentry_issue_run_prompt.md
+  - ../skills/failure_diagnosis.md
+  - ../integrations/sentry.md
+---
+
+# Sentry Issue Remediation
+
+> Turn a Sentry issue into an evidence-backed diagnosis, minimal code fix,
+> regression test, validation result, and controlled handoff.
+
+## Purpose
+
+Diagnose and remediate production failures reported by Sentry while preserving
+the distinction between observed runtime evidence, repository behavior,
+hypotheses, implementation, and validation.
+
+## When To Use
+
+Use this playbook when a Sentry issue may require:
+
+- root-cause investigation;
+- repository and code-path analysis;
+- a bug fix or defensive correction;
+- a regression test;
+- production-risk assessment; or
+- rollout, monitoring, and handoff decisions.
+
+## When Not To Use
+
+Use another workflow when:
+
+- the issue is only noise and requires no code investigation;
+- the work is a normal planned feature;
+- the issue is only a performance or capacity investigation with no fix scope;
+- no repository or fault boundary can be established after Sentry and
+  repository evidence is collected; or
+- the work is a broad incident requiring incident-command procedures.
+
+## Required Inputs
+
+- Sentry issue URL or issue identifier
+- MCP access to the relevant Sentry organization and project
+- One or more relevant repository checkouts or working directories
+
+## Recommended Inputs
+
+- Sentry organization and project, when not derivable from the issue URL
+- Related Sentry events and occurrence history
+- Logs, traces, dashboards, and deployment information
+- Jira or equivalent work item
+- Recent pull requests and releases
+- Existing tests and reproduction steps
+- Reporter context and investigation hints, clearly labeled as unverified input
+
+The workflow derives the repository and deployed revision from Sentry issue,
+event, release, tag, deployment, and local repository evidence. A release name
+is not treated as an exact commit until it is reconciled with repository
+history. Missing or conflicting evidence becomes an explicit unknown. Before
+asking the user for a decision, use bounded repository and contract discovery
+to frame feasible options when it can reduce the uncertainty. Reserve `blocked`
+for unavailable evidence, access, or environment; otherwise use
+`awaiting_input` with a clarification brief and the smallest decision request.
+
+## Repository and Event Topology
+
+The reporting repository is not necessarily the fault repository. Record these
+roles explicitly when they differ:
+
+| Topology field               | Meaning                                           |
+| ---------------------------- | ------------------------------------------------- |
+| `event_origin_repository`    | Repository that emitted or reported the event     |
+| `candidate_fault_repository` | Repository that may contain the cause             |
+| `candidate_fault_component`  | Package, service, or subsystem suspected          |
+| `downstream_or_return_path`  | Later systems or callbacks affected by the result |
+
+The initial topology is a hypothesis. Verify it with Sentry evidence, release
+metadata, repository history, event payloads, queues, callbacks, and tests.
+Do not inspect or modify an unrelated project merely because it exists in the
+same monorepo. Code changes are limited to the verified fault boundary unless
+an expanded scope is approved.
+
+Reporter context may identify symptoms, expected behavior, suspected flows,
+likely owners or files, reproduction clues, known exclusions, and related
+links. Treat it as an investigation lead, not as evidence. Reconcile it with
+Sentry, repository, runtime, and test evidence before using it as a fact.
+
+## Optional Supporting Artifacts
+
+The workflow may consume exported event or payload JSON, request and response
+examples, screenshots, logs, trace excerpts, deployment metadata, source-map
+artifacts, and reproduction fixtures.
+
+Treat every artifact as evidence with a source, timestamp, owner, and redaction
+status. Do not trust an attachment over current repository or runtime evidence
+without reconciliation.
+
+## Default Execution
+
+The default run uses:
+
+- Execution profile: `standard`
+- Lifecycle: `planning`
+
+It performs evidence collection, failure analysis, diagnosis, fix design, and
+work-record maintenance, then stops at `ready_for_implementation`.
+
+The `remediation` lifecycle continues through implementation, review,
+validation, and stabilization after explicit approval.
+
+The playbook remains provider-independent. Provider adapters select the
+concrete model, effort, tools, and worker runtime. A run prompt selects the
+profile and lifecycle; it does not redefine the workflow.
+
+Use [`templates/sentry_issue_run_prompt.md`](../templates/sentry_issue_run_prompt.md)
+as the canonical session-prompt format. Add scenario data to that template;
+change the template or this playbook when the format or process changes.
+
+## Execution Profiles and Lifecycle
+
+The execution profile and lifecycle are independent selections. The profile
+controls investigation depth and worker activation. The lifecycle controls how
+far the run may proceed.
+
+| Execution profile | Use when                                                                                                                | Planning behavior                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `standard`        | Default for Sentry issue remediation                                                                                    | Runs Orchestrator, Sentry evidence, bounded diagnosis and solution design, and continuous documentation; Repository Integrator remains conditional. |
+| `deep`            | Cross-repository uncertainty, unclear causality, concurrency, data or security risk, high impact, or disputed ownership | Adds independent failure-topology analysis, requires Repository Integrator, and produces stronger competing-hypothesis and validation planning. |
+
+`standard` is the default and covers normal triage as well as remediation
+planning. There is no separate `triage` profile. The Orchestrator may escalate
+from `standard` to `deep` when evidence meets the escalation criteria and must
+record that decision.
+
+| Lifecycle     | Behavior                                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `planning`    | Run investigation and fix design, then stop at `ready_for_implementation`; no source or external-system changes. |
+| `remediation` | Continue through implementation, review, validation, and stabilization after the explicit approval gate.         |
+
+The valid combinations are `standard + planning`, `deep + planning`,
+`standard + remediation`, and `deep + remediation`. A remediation lifecycle
+never bypasses approval, validation, fan-in, or external-write gates.
+
+## Continuation and Lifecycle Re-entry
+
+The selected lifecycle is immutable for one run. Follow-up questions do not
+convert a planning run into remediation, and a planning conversation must not
+invoke a generic implementation workflow.
+
+When implementation is requested after a planning handoff, the Orchestrator
+must perform an explicit remediation re-entry:
+
+1. preserve the existing work record and implementation plan;
+2. record explicit implementation approval;
+3. start or record a new run with the same profile and `lifecycle: remediation`;
+4. re-read this playbook, the work record, and the implementation plan;
+5. record `profile_status: requested` for the remediation run;
+6. reuse completed planning artifacts and activate `implement`, `review`,
+   `validate`, and `handoff` before source changes;
+7. wait for every required result envelope and complete fan-in before closing
+   the remediation stage; and
+8. complete the shared worker-runtime closure barrier before closing the prior
+   run or starting another lifecycle run; and
+9. report the remediation run's lifecycle, worker activation, fan-in, and
+   runtime-closure status.
+
+If new evidence contradicts or expands the approved plan, reactivate the
+profile's required planning workers before implementation. If approval is
+missing, stop with state `awaiting_input` and reason `approval_required`. If
+remediation lifecycle or required worker activation is missing, stop with state
+`blocked` and reason `remediation_not_activated`.
+
+## Interrupted Profile and Fan-In Recovery
+
+If a required worker stops, is unavailable, or its result envelope is missing,
+the run is incomplete. Continue with the canonical run prompt using
+`Interrupted profile recovery`:
+
+1. preserve the same work record, profile, lifecycle, and completed artifacts;
+2. record the completed and missing workers plus the recovery reason;
+3. reuse completed Sentry evidence unless a specific discrepancy requires a
+   new query;
+4. activate every incomplete required worker for the selected profile;
+5. wait for all result envelopes and complete fan-in; and
+6. report the recovered profile status and next gate.
+
+The missing implementation approval blocks delivery workers only. It must not
+block the remaining planning workers required to complete deep diagnosis and
+fix design. If delegation remains unavailable, stop as `blocked` or
+`not_executed`; do not use a generic workflow or claim successful deep
+execution.
+
+Required worker sets are explicit:
+
+- `standard + planning`: `initialize`, `evidence-topology`, `fix-design`, and
+  continuous `handoff`. The `fix-design` worker performs bounded failure
+  analysis before designing the fix.
+- `deep + planning`: all standard planning workers plus `failure-topology` and
+  mandatory `repository-integration`.
+- `standard + remediation`: reuse completed standard planning artifacts, then
+  activate `implement`, `review`, `validate`, and `handoff` after approval.
+- `deep + remediation`: reuse completed deep planning artifacts, then activate
+  `implement`, `review`, `validate`, and `handoff` after approval.
+
+## Profile Execution
+
+The shared execution contract defines profile execution, fan-in, and
+no-downgrade semantics. For this playbook:
+
+- `standard` activates the standard planning worker set.
+- `deep` activates the standard planning worker set plus `failure-topology` and
+  mandatory `repository-integration`.
+- The Orchestrator waits for every required worker before completing diagnosis
+  or fix design.
+- The final handoff reports requested profile, executed profile, profile
+  status, worker activation, fan-in status, and runtime-closure status.
+
+## Worker Profiles
+
+The standard planning profile has two active analytical roles plus continuous
+documentation. The Solution Architect performs bounded failure analysis and
+fix design in that profile. Deep adds an independent Failure Topology Analyst
+and mandatory Repository Integrator. Repository Integrator remains conditional
+for standard.
+
+| Worker                   | Role                         | Mode          | Default effort | Skills                                                                                                                | Tools                                                                                                         | Activation / depends on                                                    |
+| ------------------------ | ---------------------------- | ------------- | -------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `initialize`             | `orchestrator`               | investigation | standard       | `work_item_context`, `workflow_planning`, `work_record_maintenance`                                                   | `work_item_read`, `work_record_read`, `work_record_write`                                                     | First; none                                                                |
+| `evidence-topology`      | `current_state_investigator` | investigation | standard       | `work_item_context`, `repository_exploration`, `architecture_mapping`, `failure_diagnosis`, `work_record_maintenance` | `work_item_read`, `runtime_observe`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; `initialize`                                                     |
+| `failure-topology`       | `dependency_analyst`         | investigation | standard       | `dependency_mapping`, `destination_integration`, `architecture_mapping`, `failure_diagnosis`                          | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write`                | Deep only; after `evidence-topology`                                       |
+| `repository-integration` | `repository_integrator`      | investigation | standard       | `destination_integration`, `architecture_mapping`, `operational_readiness`                                            | `repository_read`, `repository_search`, `history_read`, `artifact_write`                                      | Required for `deep`; conditional for `standard`; after `evidence-topology` |
+| `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `artifact_write`, `work_record_write`                                                                         | Required after evidence in standard; after `failure-topology` and integrator in deep |
+| `implement`              | `implementer`                | delivery      | standard       | `failure_diagnosis`, `build_and_test`                                                                                 | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write`                           | Approval plus `fix-design`                                                 |
+| `review`                 | `reviewer`                   | review        | standard       | `architecture_mapping`, `build_and_test`, `operational_readiness`                                                     | `repository_read`, `diff_review`, `test_run`, `artifact_write`                                                | `implement`                                                                |
+| `validate`               | `tester`                     | review        | standard       | `build_and_test`, `operational_readiness`                                                                             | `build_run`, `test_run`, `runtime_observe`, `artifact_write`                                                  | `review`                                                                   |
+| `handoff`                | `documenter`                 | stabilization | quick          | `work_record_maintenance`                                                                                             | `work_record_read`, `work_record_write`, `artifact_write`                                                     | Continuous; initialized first                                              |
+
+The delivery profile is `implement` ↔ `review` → `validate`. No additional
+discovery workers are started after approval unless new evidence contradicts
+the diagnosis or expands the approved scope.
+
+This delivery sequence is valid only inside an explicitly activated
+`remediation` run. The presence of an existing `implementation_plan.md` is not
+evidence that remediation workers ran in the current run.
+
+The Documenter runs continuously and records provider-reported model, effort,
+usage, and credits when available.
+
+When workers run in parallel, the Orchestrator follows the shared contract's
+fan-in semantics: it waits for all required workers, collects their result
+envelopes, and summarizes them before the stage or workflow can finish. Active
+worker threads keep the workflow `in_progress`.
+
+## Worker Results
+
+Workers use the shared result envelope defined in the execution contract.
+Sentry-specific requirements are:
+
+- `evidence-topology` owns raw Sentry queries for the run.
+- Downstream workers consume normalized evidence artifacts.
+- Workers repeat Sentry or repository analysis only when they identify and
+  record a specific discrepancy.
+- The Documenter records every worker result, blocker, synchronization state,
+  model, effort, usage, and credits when available.
+
+Provider-specific model, effort, and agent mappings are supplied by the
+selected provider adapter.
+
+## Effort Escalation
+
+Use the provider adapter's deep-effort setting for a worker when evidence
+shows:
+
+- multiple repositories or services are involved;
+- the failure is intermittent or concurrency-related;
+- data loss, corruption, security, or financial impact is possible;
+- the stack trace does not identify a credible code path;
+- the fix changes a public contract or persistence behavior; or
+- rollback and operational validation are non-trivial.
+
+Do not choose high effort merely because the task involves code. Model
+capability and uncertainty determine the appropriate setting.
+
+## Implementation Plan
+
+The planning lifecycle must produce an implementation plan before reaching
+`ready_for_implementation`. Create it from
+[`templates/implementation_plan.md`](../templates/implementation_plan.md) at:
+
+```text
+<execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/implementation_plan.md
+```
+
+The plan is a design artifact, not authorization to change source code. It is
+the execution source for the remediation lifecycle and must contain the
+template's scope, root cause and contract, source changes, test and validation
+plan, ordered execution steps, risks and operations, and completion criteria.
+The `work_record.md` must link to the plan before the workflow reaches
+`ready_for_implementation`. The plan must state when a step is skipped,
+unavailable, or inconclusive; no worker may silently replace a failed or
+unavailable step with an unsupported claim of success.
+
+## Execution Flow
+
+### Stage 0 — Initialize
+
+The active Orchestrator runs first. It may be the current main session or a
+provider-specific coordinator agent with worker-delegation capability. A
+provider coordinator child must not be used when the runtime does not support
+nested delegation; in that case, the current main session owns the worker
+fan-out directly.
+
+The Orchestrator creates the work record, selects the execution profile and
+lifecycle, declares worker dependencies, and starts the continuous Documenter.
+It records `profile_status: requested` before spawning the first investigation
+worker.
+
+Use the prompt's declared `Execution repository` as the durable-artifact root.
+Repositories listed for Sentry investigation are target repositories and must
+not receive the work record or worker artifacts.
+
+Recover or create:
+
+```text
+<execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/work_record.md
+```
+
+Do not create `implementation_plan.md` during initialization. Create it only
+after all required planning workers have returned terminal result envelopes,
+fan-in is complete, and the workflow is ready for implementation. Until then,
+the work record may link no implementation plan and must state that it has not
+been created.
+
+Record the issue, repository, revision, scope, owner, acceptance criteria,
+unknowns, and safety constraints.
+
+Record the repository/event topology and any optional supporting artifacts.
+
+### Stage 1 — Collect Sentry Evidence
+
+The `evidence-topology` worker owns raw Sentry queries for the run. Use MCP to
+inspect the issue and selected events. Capture:
+
+- issue title, status, priority, and occurrence history;
+- culprit, stack context, environment, release, and timestamp;
+- affected users and frequency, when available;
+- tags, breadcrumbs, request context, and related events; and
+- uncertainty, missing data, and possible PII.
+
+Publish one normalized evidence artifact containing the Sentry facts, initial
+repository/revision mapping, initial topology, code-path entry point, source
+references, and unresolved boundary questions. Downstream workers consume this
+artifact instead of repeating the same Sentry queries.
+
+Do not print or persist secrets or unnecessary personal data.
+
+### Stage 2 — Analyze Failure Topology
+
+In `deep`, the `failure-topology` worker consumes the normalized evidence
+artifact. Trace the path from entry point to failure outcome across
+repositories, queues, callbacks, dependencies, ownership, and return paths.
+Challenge the initial root-cause hypothesis and record competing explanations.
+
+In `standard`, there is no standalone failure-topology worker. The
+`solution_architect` performs bounded failure analysis after the evidence stage
+and records only the topology needed to design the approved-scope fix.
+
+For `deep`, activate `repository-integration` after Stage 1 regardless of
+whether the initial evidence appears sufficient. For `standard`, activate it
+only if repository ownership, release or revision mapping, monorepo boundaries,
+deployment responsibility, or the approved change boundary remains uncertain.
+Its result is an additional input to fix design, not a second copy of the
+entire investigation.
+
+Do not require the user to repeat repository or revision information already
+present in the Sentry context.
+
+### Stage 3 — Diagnose and Reproduce
+
+In `deep`, the `failure-topology` worker owns independent diagnosis and
+reproduction planning. In `standard`, the `solution_architect` owns bounded
+diagnosis and reproduction planning after consuming the normalized Sentry
+evidence. Form competing hypotheses appropriate to the selected profile and
+reproduce or verify the failure with the smallest safe test or local scenario.
+The `tester` owns executable validation during the remediation lifecycle. Use
+Seer only as optional supporting evidence.
+
+The stage must conclude with:
+
+- confirmed root cause;
+- best-supported hypothesis with residual uncertainty; or
+- a clarification brief with feasible next paths, recommendation, and the
+  smallest decision owner when a product or design decision remains; or
+- blocked diagnosis only when required evidence or an environment is
+  unavailable, with the missing evidence and owner.
+
+### Stage 4 — Design the Fix
+
+The `solution_architect` consumes the evidence artifact and any
+`repository-integration` result. For `deep`, it also consumes the independent
+topology result. Produce the complete implementation plan content, including
+the smallest safe correction, regression-test strategy, compatibility impact,
+rollout, rollback, monitoring plan, execution steps, and completion criteria.
+The Documenter persists it as `implementation_plan.md` and updates the
+work_record.md Durable Artifacts section with a relative link to the plan. Do
+not implement until the workflow reaches
+`ready_for_implementation` and approval is recorded.
+
+If the evidence supports more than one credible fix or a non-technical decision
+is still required, do not stop at an unexplained blocker. Produce the shared
+Clarification Brief from bounded repository and contract research, record
+feasible options and their validation impact, recommend an option when
+evidence permits, and hand off `awaiting_input` with the smallest decision
+request. Do not create an implementation plan until that decision is resolved.
+
+### Stage 5 — Re-enter Remediation and Implement
+
+Enter this stage only after the lifecycle re-entry rules and approval gate
+pass. Execute only the approved `implementation_plan.md`. Add a regression
+test that demonstrates the failure where practical. Avoid unrelated
+refactoring and preserve existing behavior outside the confirmed cause.
+
+### Stage 6 — Review and Validate
+
+Follow the plan's review and validation steps. Review the diff independently,
+then run targeted tests, the relevant broader suite, static checks, and smoke
+or operational checks appropriate to the risk.
+
+In-scope review findings return to `implement` and are re-reviewed before
+validation. Reopen planning only when evidence invalidates the confirmed cause
+or approved fix boundary.
+
+Use the lowest validation level that can prove the claim, then escalate when
+risk or the repository requires it:
+
+1. Focused unit or pure-function test.
+2. Local project integration test using the repository's native test harness.
+3. Repository CI, broader suite, or contract test.
+4. Post-release Sentry and operational verification.
+
+Record each level as `pass`, `fail`, `skipped`, `unavailable`, or
+`inconclusive`. `unavailable` and `inconclusive` are not passes. A container or
+external service is introduced only when a selected validation level actually
+requires it.
+
+The regression test should fail against the pre-fix behavior when practical and
+pass after the fix. Unavailable or inconclusive validation is not a pass.
+
+### Stage 7 — Stabilize and Hand Off
+
+Complete the plan's rollout, rollback, monitoring, ownership, and follow-up
+requirements. Updating the Sentry issue status is a separate human-approved
+action through the MCP integration.
+
+## Gates
+
+| Gate                 | Required condition                                                     |
+| -------------------- | ---------------------------------------------------------------------- |
+| Investigation ready  | Sentry evidence and repository revision are identified                 |
+| Diagnosis ready      | Root cause is supported by direct evidence or explicitly blocked       |
+| Implementation ready | Fix scope, tests, risks, and rollback are approved                     |
+| Validation ready     | Review findings are resolved or accepted                               |
+| Handoff ready        | Validation, rollout, monitoring, ownership, and follow-up are explicit |
+
+## Success Criteria
+
+The workflow succeeds when:
+
+- the Sentry evidence is recorded and redacted;
+- the deployed revision and repository path are reconciled;
+- the root cause is evidence-backed;
+- the fix addresses the cause rather than only the symptom;
+- regression coverage exists or its absence is justified;
+- validation results are objective and preserved;
+- every worker has a summarized terminal result and synchronization status;
+- requested and executed profiles, including profile status, are explicit;
+- residual and operational risks are explicit; and
+- the work record identifies the next owner and action.
+
+## Required Handoff Output
+
+The final handoff is ordered as follows:
+
+1. Shared outcome summary: status, verified scope, root cause, fix, validation,
+   implementation-plan path and status, and next action.
+2. Worker result ledger: one compact row per worker with outcome, unique
+   contribution, evidence, uncertainties, model/effort, and usage.
+3. Profile, gate, and synchronization status: distinguish requested versus
+   executed profile, then confirm that all required workers are terminal and
+   all required fan-in barriers passed and the prior run's worker handles are
+   released.
+4. Remaining risks, blockers, clarification brief when input is required, and
+   ownership.
+
+The handoff must not imply that implementation or validation completed when the
+workflow stopped at an approval or unavailable-environment gate.
+
+## Terminal Outcomes
+
+In addition to the common contract outcomes, this playbook may close as:
+
+- `fixed_pending_release`;
+- `not_reproducible`;
+- `expected_behavior_noise`;
+- `insufficient_evidence`; or
+- `deferred_to_incident_workflow`.
+
+Each outcome requires evidence and a reason.
