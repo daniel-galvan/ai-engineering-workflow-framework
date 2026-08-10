@@ -4,7 +4,7 @@ title: AI Engineering Workflow Library Operating Guide
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 ---
 
 # AI Engineering Workflow Library Operating Guide
@@ -134,26 +134,30 @@ started. Active handles mean the workflow runtime is still occupied.
 
 ## Model and effort
 
-Mode and effort are separate:
+Mode, execution profile, worker depth, and provider reasoning effort are
+separate:
 
 * Mode describes the work: discovery, investigation, delivery, stabilization,
   or review.
-* Effort describes the required depth: quick, standard, or deep.
+* Execution profile selects the playbook's worker graph: `standard` or `deep`.
+* Worker depth is the provider-neutral effort requested for an individual
+  worker: `quick`, `standard`, or `deep`.
 * Model profile describes provider-neutral capacity: `standard_reasoning` or
   `deep_reasoning`.
-* Provider adapters map the profile to a concrete model and reasoning setting.
+* Provider adapters map each role to its concrete model and reasoning setting.
 
 For the current Codex pilot, Feature Delivery, Service Extraction, and Sentry
 use the same role-quality policy. Most roles use `gpt-5.6-luna`; Solution
 Architect uses `gpt-5.6-terra` with Light effort. Profiles choose which roles
-run; they do not change a role's model or effort. The canonical mapping is in
+run; they do not change a role's model or provider reasoning effort. The
+canonical mapping is in
 [providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md).
 
 ## Current playbooks
 
 Playbook maturity is explicit: `not_exercised`, `planning_exercised`, or
 `planning_validated`. Remediation is not validated until a compliant delivery
-run activates the required delivery workers, completes review and validation,
+run activates the required delivery workers, completes Code Review and validation,
 and records fan-in.
 
 Implemented or piloted playbooks include:

@@ -101,11 +101,26 @@ Work item
 Choose the specialized playbook first; add a new playbook only when existing
 stages, gates, and artifacts cannot express the scenario cleanly.
 
+## Guides and examples
+
+Use this reading path:
+
+1. [Operating Guide](OPERATING_GUIDE.md) — architecture, responsibilities,
+   lifecycle, and usage rules.
+2. [Playbook Catalog](PLAYBOOK_CATALOG.md) — choose a scenario and see its
+   worker graph.
+3. [Templates](templates/) — start a run with the canonical prompt and create
+   the durable work record.
+4. [Examples](examples/) — follow a safe, generic scenario guide for each
+   current playbook.
+5. [Contributing](CONTRIBUTING.md) — extend the library without duplicating
+   contracts, roles, skills, or provider behavior.
+
 ## Repository map
 
 ```text
 contracts/       shared execution semantics
-examples/        complete, safe usage examples
+examples/        safe, generic scenario guides
 frameworks/      reusable engineering method
 integrations/    external evidence and work-item sources
 playbooks/       scenario workflows

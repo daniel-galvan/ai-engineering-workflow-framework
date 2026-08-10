@@ -51,7 +51,7 @@ v0.1 pilot baseline
 ### Pilot artifacts awaiting exercise
 
 - Service Extraction and Stabilization planning and remediation lifecycle
-- Feature Delivery planning and remediation lifecycle
+- Feature Delivery remediation lifecycle
 
 ---
 
@@ -67,7 +67,6 @@ Complete the Phase 0 foundation and exercise the Service Extraction and Stabiliz
 
 Then begin Phase 1 scenario coverage
 
-- Triage
 - Bug fix
 - TechOps and incident
 - Feature delivery pilot validation

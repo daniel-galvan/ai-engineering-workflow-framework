@@ -41,14 +41,15 @@ Real Jira Story pilot
 Sentry issue remediation playbook — Standard and Deep planning validated;
 remediation lifecycle validation remains pending
 
-Feature Delivery playbook — Pilot; real Jira planning and remediation
-validation remain pending
+Feature Delivery playbook — planning exercised; remediation validation remains
+pending
 
 ## Planned scenario coverage
 
 Main Jira-driven scenario playbooks
 
-Triage playbook
+Triage is currently covered by the standard workflow; add a dedicated playbook
+only if a distinct worker graph or gate is later proven necessary
 
 Bug-fix playbook
 

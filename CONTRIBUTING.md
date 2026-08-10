@@ -9,6 +9,10 @@ owner: Engineering
 
 Keep the library provider-neutral, composable, evidence-driven, and small.
 
+For the architecture and building-block map, see the [README](README.md) and
+the detailed [Operating Guide](OPERATING_GUIDE.md). This file focuses only on
+how to extend the library.
+
 ## Change rules
 
 1. Reuse an existing role or skill before adding one.

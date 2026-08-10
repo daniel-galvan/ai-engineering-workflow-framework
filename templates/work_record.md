@@ -4,7 +4,7 @@ title: Engineering Work Record
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -64,7 +64,7 @@ Record explicit non-goals when the work could expand into adjacent work.
 | Profile status | Requested / In progress / Executed / Not executed / Blocked |
 | Lifecycle | Planning / Remediation |
 | Mode | Discovery / Investigation / Delivery / Stabilization / Review |
-| Effort | Quick / Standard / Deep |
+| Effort | Worker depth: Quick / Standard / Deep; separate from provider reasoning effort |
 | State | Intake / Classified / In Progress / Awaiting Input / Blocked / Ready for Implementation / Implementation / Validation / Completed |
 | Outcome | In progress / Completed / No action / Duplicate / Not a bug / Deferred |
 | Current stage | |

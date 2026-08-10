@@ -3,7 +3,7 @@ title: Service Extraction and Stabilization Example
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-07-31
+last_updated: 2026-08-10
 depends_on:
   - ../frameworks/investigation.md
   - ../playbooks/service_extraction.md
@@ -52,7 +52,7 @@ Initialize
       → Design service
         → Integrate destination
           → Extract and adapt
-            → Review and validate
+            → Code Review and validate
               → Stabilize and hand off
 ```
 

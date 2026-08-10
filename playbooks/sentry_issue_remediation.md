@@ -6,7 +6,7 @@ maturity: planning_validated
 validation_scope: standard + planning; deep + planning
 known_unvalidated_scope: standard + remediation; deep + remediation
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -434,7 +434,7 @@ pass. Execute only the approved `implementation_plan.md`. Add a regression
 test that demonstrates the failure where practical. Avoid unrelated
 refactoring and preserve existing behavior outside the confirmed cause.
 
-### Stage 6 — Review and Validate
+### Stage 6 — Code Review and Validate
 
 Follow the plan's review and validation steps. Review the diff independently,
 then run targeted tests, the relevant broader suite, static checks, and smoke
@@ -508,6 +508,13 @@ The final handoff is ordered as follows:
 
 The handoff must not imply that implementation or validation completed when the
 workflow stopped at an approval or unavailable-environment gate.
+
+## Related Documents
+
+- [`../templates/sentry_issue_run_prompt.md`](../templates/sentry_issue_run_prompt.md)
+- [`../templates/work_record.md`](../templates/work_record.md)
+- [`../templates/implementation_plan.md`](../templates/implementation_plan.md)
+- [`../examples/sentry_issue_remediation.md`](../examples/sentry_issue_remediation.md)
 
 ## Terminal Outcomes
 

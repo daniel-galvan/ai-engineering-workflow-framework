@@ -3,7 +3,7 @@ title: Playbook Architecture Catalog
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 ---
 
 # Playbook Architecture Catalog
@@ -27,7 +27,7 @@ flowchart LR
     I --> J[".thoughts/WORK-ITEM-ID/work_record.md"]
     J --> K["Implementation plan after planning fan-in"]
     K --> L["Approval and remediation"]
-    L --> M["Review, validation, stabilization, handoff"]
+    L --> M["Code Review, validation, stabilization, handoff"]
 ```
 
 Every playbook has `standard` and `deep` execution profiles plus `planning`
@@ -56,7 +56,7 @@ flowchart LR
     E --> G["Plan and handoff"]
     F --> G
     G --> H["Approved remediation"]
-    H --> I["Implement → Review → Validate"]
+    H --> I["Implement → Code Review → Validate"]
 ```
 
 `standard` requires context, impact, design, and documentation; integration is
@@ -81,7 +81,7 @@ flowchart LR
     D --> E
     E --> F["Plan and handoff"]
     F --> G["Approved remediation"]
-    G --> H["Implement → Review → Validate"]
+    G --> H["Implement → Code Review → Validate"]
 ```
 
 The Current-State Investigator owns raw Sentry evidence. Downstream workers
@@ -106,7 +106,7 @@ flowchart LR
     E --> G["Plan and handoff"]
     F --> G["Plan and handoff"]
     G --> H["Approved remediation"]
-    H --> I["Implement → Review → Validate"]
+    H --> I["Implement → Code Review → Validate"]
 ```
 
 The playbook separates scanner severity from actual reachability and risk.
@@ -129,7 +129,7 @@ flowchart LR
     E --> G["Plan and handoff"]
     F --> G["Plan and handoff"]
     G --> H["Approved extraction"]
-    H --> I["Implement → Review → Validate → Stabilize"]
+    H --> I["Implement → Code Review → Validate → Stabilize"]
 ```
 
 Its distinguishing concern is the source-to-destination seam: contracts,

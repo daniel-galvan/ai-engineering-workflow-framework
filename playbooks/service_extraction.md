@@ -4,7 +4,7 @@ version: 0.1
 status: Pilot
 maturity: not_exercised
 owner: Engineering
-last_updated: 2026-07-31
+last_updated: 2026-08-10
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -214,7 +214,7 @@ pass. `implement` executes the approved plan in small vertical slices:
 Preserve migrated business behavior. New features require explicit scope and
 approval.
 
-### Stage 7 — Review and Validate
+### Stage 7 — Code Review and Validate
 
 `review` verifies the approved seam, scope, compatibility, destination
 conventions, coexistence, rollback, and coverage. `validate` records the lowest

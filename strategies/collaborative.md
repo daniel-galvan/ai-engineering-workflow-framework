@@ -4,7 +4,7 @@ title: Collaborative Workflow Strategy
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-08-10
 depends_on:
 
   - ../frameworks/investigation.md
@@ -60,76 +60,26 @@ How those responsibilities are fulfilled depends on the available tooling.
 
 ---
 
-# Effort Levels
+# Workflow Depth
 
-Select an effort level before beginning the workflow.
+Current playbooks select the worker graph through the execution profile. Use
+the playbook as the source of truth; this strategy does not define a second
+worker graph or override a role's provider model and reasoning effort.
 
-## Quick
+When an individual worker needs a provider-neutral depth, use:
 
-Recommended for:
-
-* Small bugs
-* Minor enhancements
-* Documentation
-* Simple upgrades
-
-Roles:
-
-* Orchestrator
-* Current-State Investigator
-* Implementer
-* Reviewer
-* Documenter
-
----
-
-## Standard
-
-Recommended for:
-
-* Medium-sized features
-* Typical sprint stories
-* Moderate refactoring
-
-Roles:
-
-* Orchestrator
-* Current-State Investigator
-* Solution Architect
-* Implementer
-* Reviewer
-* Tester
-* Documenter
-
----
-
-## Deep
-
-Recommended for:
-
-* Service extraction
-* Major refactoring
-* Architectural redesign
-* Complex incidents
-* Multi-repository work
-
-Roles:
-
-* Orchestrator
-* Current-State Investigator
-* Dependency Analyst
-* Solution Architect
-* Repository Integrator
-* Implementer
-* Reviewer
-* Tester
-* Documenter
+| Worker depth | Use for |
+|---|---|
+| `quick` | Small scope, few dependencies, and narrow validation |
+| `standard` | Normal bounded engineering work |
+| `deep` | Cross-repository, architectural, operational, or high-risk work |
 
 ---
 
 # Workflow Modes
 
-Mode and effort are separate selections. Discovery is a mode, not an effort level.
+Mode and worker depth are separate selections. Discovery is a mode, not a
+worker depth. Execution profiles are selected by the playbook.
 
 | Mode | Use |
 | --- | --- |
@@ -252,11 +202,13 @@ See `../contracts/workflow_execution.md` for the worker contract and parallelism
 
 Choose roles based on the work rather than following a fixed sequence.
 
+The following is planning guidance for future scenarios, not an implemented
+playbook contract. Current worker graphs are defined in `playbooks/`.
+
 Examples:
 
 | Work Type | Suggested Roles |
 | --- | --- |
-| Triage | Orchestrator, Current-State Investigator, Documenter |
 | Bug | Current-State Investigator, Implementer, Reviewer, Tester, Documenter |
 | Vulnerability | Current-State Investigator, Dependency Analyst, Reviewer, Documenter |
 | Service Extraction | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |

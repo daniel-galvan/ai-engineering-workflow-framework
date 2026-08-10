@@ -4,7 +4,7 @@ version: 0.1
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 ---
 
 # Workflow Execution Contract
@@ -139,7 +139,7 @@ Each worker must have a stable identifier and an explicit execution profile.
 | `id`               | Yes                | Unique worker identifier within the workflow run.                                                                    |
 | `role`             | Yes                | Canonical role identifier.                                                                                           |
 | `mode`             | Yes                | Mode in which this worker operates.                                                                                  |
-| `effort`           | Yes                | Quick, standard, or deep.                                                                                            |
+| `effort`           | Yes                | Provider-neutral worker depth: quick, standard, or deep. It does not select the provider model or reasoning setting. |
 | `skills`           | Yes                | Canonical skill identifiers selected for this worker.                                                                |
 | `tools`            | Yes                | Allowed concrete tool identifiers. An empty list means no tools are available.                                       |
 | `model_profile`    | Yes for AI workers | Provider-neutral model and reasoning profile.                                                                        |
@@ -230,7 +230,7 @@ Modes and effort are separate dimensions.
 | `stabilization` | Reduce operational risk after extraction, migration, upgrade, or release.         |
 | `review`        | Independently assess correctness, risk, and readiness.                            |
 
-## Effort
+## Worker Effort
 
 | Effort     | Meaning                                                          |
 | ---------- | ---------------------------------------------------------------- |
@@ -239,6 +239,11 @@ Modes and effort are separate dimensions.
 | `deep`     | Cross-repository, architectural, operational, or high-risk work. |
 
 `discovery` is a mode, not an effort level. A discovery run may be quick, standard, or deep.
+
+Worker effort is separate from the execution profile and from provider
+reasoning effort. The playbook selects the execution profile; the provider
+adapter applies the role's model and reasoning policy. A profile must not
+silently lower the quality policy of a role.
 
 ## Execution Profiles and Lifecycle
 

@@ -3,7 +3,7 @@ title: Feature Delivery Example
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 depends_on:
   - ../playbooks/feature_delivery.md
   - ../templates/feature_delivery_run_prompt.md
@@ -75,7 +75,7 @@ profile, work record, and implementation plan. Reuse planning artifacts, then
 activate the delivery graph:
 
 ```text
-Implement → Review → Validate → Handoff
+Implement → Code Review → Validate → Handoff
 ```
 
 The Coordinator does not perform those roles. One approval covers the entire

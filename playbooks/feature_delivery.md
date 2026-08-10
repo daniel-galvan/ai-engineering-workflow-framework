@@ -5,12 +5,16 @@ status: Pilot
 maturity: planning_exercised
 validation_scope: planning exercised; remediation not yet validated
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 depends_on:
   - ../contracts/workflow_execution.md
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../skills/work_item_context.md
+  - ../templates/work_record.md
+  - ../templates/implementation_plan.md
+  - ../templates/feature_delivery_run_prompt.md
+  - ../examples/feature_delivery.md
 ---
 
 # Feature Delivery Playbook
@@ -285,3 +289,10 @@ The final handoff reports:
 Do not imply that implementation, validation, or release completed when the
 workflow stopped at a planning, clarification, approval, environment, or
 worker gate.
+
+## Related Documents
+
+- [`../templates/feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md)
+- [`../templates/work_record.md`](../templates/work_record.md)
+- [`../templates/implementation_plan.md`](../templates/implementation_plan.md)
+- [`../examples/feature_delivery.md`](../examples/feature_delivery.md)
