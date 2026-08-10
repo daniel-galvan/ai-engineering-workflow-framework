@@ -9,13 +9,13 @@ last_updated: 2026-08-10
 # Playbook Architecture Catalog
 
 This catalog preserves the architecture, use cases, evidence sources, worker
-graphs, and maturity of the workflow playbooks. It is a design reference; the
-playbook files remain the execution source of truth.
+graphs, and current exercise state of the workflow playbooks. It is a design
+reference; the playbook files remain the execution source of truth.
 
 ## Shared Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Engineering work item"] --> B["Canonical run template"]
     B --> C["Scenario playbook"]
     C --> D["Shared execution contract"]
@@ -38,7 +38,8 @@ plan only after fan-in, and requires explicit approval before remediation.
 ## Feature Delivery
 
 **Use for:** planned Jira features and improvements within an active
-initiative. **Maturity:** planning exercised; remediation not yet validated.
+initiative. **State:** Exercising; planning exercised; remediation not yet
+validated.
 
 The distinguishing seam is Jira Context Recovery: the ticket, its immediate
 parent and ancestor hierarchy, selected related siblings, linked decisions, and
@@ -46,7 +47,7 @@ repository evidence establish scope. Parent and sibling context informs the
 ticket but does not silently become a requirement.
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Initialize"] --> B["Feature context"]
     B --> C["Impact analysis"]
     B --> D["Repository integration"]
@@ -68,11 +69,11 @@ before the workflow requests clarification; it does not invent a plan.
 ## Sentry Issue Remediation
 
 **Use for:** a Sentry issue that needs evidence-led diagnosis and a minimal
-fix. **Maturity:** Standard and Deep planning validated; remediation lifecycle
-remains under validation.
+fix. **State:** Exercising; Standard and Deep planning validated; remediation
+not yet validated.
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Initialize"] --> B["Sentry evidence and topology"]
     B --> C["Failure topology: deep only"]
     B --> D["Repository integration"]
@@ -93,10 +94,10 @@ the workflow frames supported fix paths before asking the owner to choose.
 ## Vulnerability Investigation
 
 **Use for:** scanner findings, advisories, CVEs, secrets, or supply-chain risk.
-**Maturity:** planning exercised; remediation not yet validated.
+**State:** Exercising; planning exercised; remediation not yet validated.
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Initialize"] --> B["Scanner and finding evidence"]
     B --> C["Reachability analysis"]
     B --> D["Repository and artifact integration"]
@@ -116,11 +117,11 @@ must be explicit before a remediation plan is accepted.
 ## Service Extraction and Stabilization
 
 **Use for:** decoupling an existing capability into an independently buildable,
-runnable, deployable, and maintainable service. **Maturity:** not exercised;
-real Jira planning and remediation validation remain pending.
+runnable, deployable, and maintainable service. **State:** Not exercised; real
+Jira planning and remediation validation remain pending.
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Initialize"] --> B["Source understanding"]
     B --> C["Dependency and seam analysis"]
     C --> D["Service design"]

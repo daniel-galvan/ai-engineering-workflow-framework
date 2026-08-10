@@ -6,7 +6,7 @@ v0.1 pilot baseline
 
 ---
 
-## Completed
+## Implemented library components
 
 ### Frameworks
 
@@ -43,10 +43,10 @@ v0.1 pilot baseline
 
 ### Playbooks
 
-- Vulnerability Investigation (pilot)
-- Service Extraction and Stabilization (pilot)
-- Feature Delivery (pilot)
-- Sentry Issue Remediation (planning validated)
+- Vulnerability Investigation (exercising)
+- Service Extraction and Stabilization (not exercised)
+- Feature Delivery (exercising)
+- Sentry Issue Remediation (exercising; planning validated)
 
 ### Pilot artifacts awaiting exercise
 

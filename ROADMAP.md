@@ -36,13 +36,13 @@ Provider adapters
 
 Real Jira Story pilot
 
-## Released scenario baseline
+## Current scenario baseline
 
-Sentry issue remediation playbook — Standard and Deep planning validated;
-remediation lifecycle validation remains pending
+Sentry issue remediation playbook — exercising; Standard and Deep planning
+validated; remediation lifecycle validation remains pending
 
-Feature Delivery playbook — planning exercised; remediation validation remains
-pending
+Feature Delivery playbook — exercising; planning exercised; remediation
+validation remains pending
 
 ## Planned scenario coverage
 
@@ -73,4 +73,4 @@ Automatic capability-based role selection
 
 ## Long-term Vision
 
-A provider-agnostic engineering operating system for AI-assisted software development.
+A provider-agnostic AI-assisted engineering workflow framework.

@@ -3,8 +3,8 @@
 Provider-neutral, evidence-driven playbooks, roles, skills, and execution
 contracts for AI-assisted software engineering.
 
-The library is designed to act as an engineering operating system: it turns a
-work item into a traceable workflow with investigation, design, implementation,
+The library is an AI-assisted engineering workflow framework: it turns a work
+item into a traceable workflow with investigation, design, implementation,
 independent review, validation, durable context, and an honest handoff.
 
 ## Introduction
@@ -65,6 +65,22 @@ The shared rules are in
 [contracts/workflow_execution.md](contracts/workflow_execution.md). The
 practical explanation is [OPERATING_GUIDE.md](OPERATING_GUIDE.md).
 
+### Ask an AI agent to prepare a run prompt
+
+If you are unsure which fields to provide, ask an AI agent to prepare the
+prompt from the repository's canonical files:
+
+```text
+Read README.md, OPERATING_GUIDE.md, PLAYBOOK_CATALOG.md, the selected playbook,
+and its canonical run-template file. For [WORK ITEM], prepare a first-use run
+prompt by filling the existing template. Do not invent a new format, execute
+the workflow, modify files, or commit changes. Mark missing information as
+Unknown and identify anything I must review before running it.
+```
+
+Review the generated prompt before using it. The user remains responsible for
+the selected playbook, scope, lifecycle, profile, permissions, and approvals.
+
 ## Architecture
 
 ```text
@@ -91,12 +107,12 @@ Work item
 
 ## Current playbooks
 
-| Playbook | Use for | Current maturity |
+| Playbook | Use for | State |
 |---|---|---|
-| [Feature Delivery](playbooks/feature_delivery.md) | Jira features and improvements | Planning exercised |
-| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | Production issues backed by Sentry evidence | Planning validated; remediation pending |
-| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk | Planning exercised |
-| [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability | Not exercised |
+| [Feature Delivery](playbooks/feature_delivery.md) | Jira features and improvements | Exercising — planning exercised; remediation not yet validated |
+| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | Production issues backed by Sentry evidence | Exercising — Standard and Deep planning validated; remediation not yet validated |
+| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk | Exercising — planning exercised; remediation not yet validated |
+| [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability | Not exercised — real Jira pilot pending |
 
 Choose the specialized playbook first; add a new playbook only when existing
 stages, gates, and artifacts cannot express the scenario cleanly.

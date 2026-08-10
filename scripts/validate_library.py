@@ -15,7 +15,7 @@ SKILLS = {
 }
 TEMPLATES = list((ROOT / "templates").glob("*_run_prompt.md"))
 INVARIANT = "The shared contract and selected playbook own lifecycle, worker activation,"
-MATURITY = {"not_exercised", "planning_exercised", "planning_validated"}
+MATURITY = {"not_exercised", "exercising"}
 
 
 def fail(message: str) -> None:

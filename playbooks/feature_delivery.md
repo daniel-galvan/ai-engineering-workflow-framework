@@ -2,7 +2,7 @@
 title: Feature Delivery Playbook
 version: 0.1
 status: Pilot
-maturity: planning_exercised
+maturity: exercising
 validation_scope: planning exercised; remediation not yet validated
 owner: Engineering
 last_updated: 2026-08-10

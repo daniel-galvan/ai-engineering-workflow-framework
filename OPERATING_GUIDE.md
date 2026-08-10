@@ -9,9 +9,9 @@ last_updated: 2026-08-10
 
 # AI Engineering Workflow Library Operating Guide
 
-This is the practical overview of the complete library. The library is an
-engineering operating system for AI-assisted software development, not a
-collection of isolated prompts.
+This is the practical overview of the complete library. It describes an
+AI-assisted engineering workflow framework, not a collection of isolated
+prompts.
 
 ## Introduction and responsibility
 
@@ -155,17 +155,19 @@ canonical mapping is in
 
 ## Current playbooks
 
-Playbook maturity is explicit: `not_exercised`, `planning_exercised`, or
-`planning_validated`. Remediation is not validated until a compliant delivery
-run activates the required delivery workers, completes Code Review and validation,
+Document status remains `Pilot` while the library is in progress. Playbook
+maturity is explicit: `not_exercised` or `exercising`. `exercising` means that
+real work is being used to test the playbook; the validated scope is recorded
+separately. Remediation is not validated until a compliant delivery run
+activates the required delivery workers, completes Code Review and validation,
 and records fan-in.
 
-Implemented or piloted playbooks include:
+Current playbooks include:
 
-* Vulnerability Investigation
-* Service Extraction and Stabilization
-* Feature Delivery
-* Sentry Issue Remediation (Standard and Deep planning validated)
+* Vulnerability Investigation — exercising; planning exercised
+* Service Extraction and Stabilization — not exercised
+* Feature Delivery — exercising; planning exercised
+* Sentry Issue Remediation — exercising; Standard and Deep planning validated
 
 The Service Extraction playbook is for establishing an independently buildable,
 runnable, deployable, and maintainable service from an existing capability.

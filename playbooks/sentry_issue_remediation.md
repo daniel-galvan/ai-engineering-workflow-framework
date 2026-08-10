@@ -2,7 +2,7 @@
 title: Sentry Issue Remediation Playbook
 version: 0.1
 status: Pilot
-maturity: planning_validated
+maturity: exercising
 validation_scope: standard + planning; deep + planning
 known_unvalidated_scope: standard + remediation; deep + remediation
 owner: Engineering
