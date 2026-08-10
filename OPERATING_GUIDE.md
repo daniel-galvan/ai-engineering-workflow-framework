@@ -13,6 +13,25 @@ This is the practical overview of the complete library. The library is an
 engineering operating system for AI-assisted software development, not a
 collection of isolated prompts.
 
+## Introduction and responsibility
+
+The library assists engineering work; it does not replace the engineer. The
+user defines the goal and scope, supplies or approves context, interprets
+worker results, adjusts the workflow, makes decisions, grants approvals, and
+is solely responsible for use of the tool and resulting changes.
+
+This is an evolving pilot. Its workflows, roles, profiles, and provider
+adapters have known limitations and must be improved through real exercises.
+Quality is more important than quantity: a larger worker graph, higher token
+usage, or greater effort does not guarantee a better outcome. Role quality is
+profile-independent; profiles change execution depth and coordination, not the
+quality contract of an individual role.
+
+The library also requires three safeguards: treat AI output as evidence rather
+than authority, keep uncertainty visible, and use explicit scope, approval,
+independent review, validation, privacy, and security controls before changes
+are accepted.
+
 ## Purpose
 
 Turn an engineering work item into an evidence-backed outcome through reusable

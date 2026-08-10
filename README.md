@@ -7,6 +7,28 @@ The library is designed to act as an engineering operating system: it turns a
 work item into a traceable workflow with investigation, design, implementation,
 independent review, validation, durable context, and an honest handoff.
 
+## Introduction
+
+This library is a tool for engineers, not a replacement for them. The user
+sets the goal and scope, provides context, interprets results, adjusts the
+workflow, makes decisions, grants approval, and remains solely responsible for
+how the tool is used and for the resulting changes.
+
+The project is an evolving pilot with known gaps and many opportunities for
+improvement. It favors quality over quantity: more workers, tokens, or effort
+do not automatically produce a better result. Role quality should remain
+consistent across execution profiles; profiles change the evidence and
+coordination depth, not the standard expected from a role.
+
+Three further principles are essential:
+
+- AI output is evidence to assess, not authority to trust; uncertainty and
+  unknowns must remain visible.
+- Human approval, independent review, and executable validation are control
+  points, not optional ceremony.
+- Scope, permissions, privacy, and security remain explicit; the workflow must
+  not expose sensitive data or make irreversible changes without authorization.
+
 ## What it covers
 
 Use it for work with meaningful uncertainty, dependencies, risk, or coordination
