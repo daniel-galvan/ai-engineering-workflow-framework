@@ -11,7 +11,7 @@ last_updated: 2026-08-04
 
 # Codex Model and Effort Policy
 
-This policy maps the library's provider-neutral model profiles to Codex custom
+This policy maps the framework's provider-neutral model profiles to Codex custom
 agents for the Feature Delivery and Service Extraction pilots and Sentry Issue
 Remediation.
 

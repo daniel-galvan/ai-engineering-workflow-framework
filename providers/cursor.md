@@ -10,7 +10,7 @@ last_updated: 2026-07-24
 
 # Cursor Provider Adapter
 
-Reference mapping from library skills to Cursor capability classes.
+Reference mapping from framework skills to Cursor capability classes.
 
 | Skill ID | Cursor capability examples |
 |---|---|

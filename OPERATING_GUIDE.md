@@ -1,21 +1,20 @@
 ---
 
-title: AI Engineering Workflow Library Operating Guide
+title: AI-assisted Software Engineering Workflow Framework Operating Guide
 version: 0.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-10
 ---
 
-# AI Engineering Workflow Library Operating Guide
+# AI-assisted Software Engineering Workflow Framework Operating Guide
 
-This is the practical overview of the complete library. It describes an
-AI-assisted engineering workflow framework, not a collection of isolated
-prompts.
+This is the practical overview of the complete framework. It describes an
+AI-assisted engineering workflow framework, not a collection of isolated prompts.
 
 ## Introduction and responsibility
 
-The library assists engineering work; it does not replace the engineer. The
+The framework assists engineering work; it does not replace the engineer. The
 user defines the goal and scope, supplies or approves context, interprets
 worker results, adjusts the workflow, makes decisions, grants approvals, and
 is solely responsible for use of the tool and resulting changes.
@@ -27,7 +26,7 @@ usage, or greater effort does not guarantee a better outcome. Role quality is
 profile-independent; profiles change execution depth and coordination, not the
 quality contract of an individual role.
 
-The library also requires three safeguards: treat AI output as evidence rather
+The framework also requires three safeguards: treat AI output as evidence rather
 than authority, keep uncertainty visible, and use explicit scope, approval,
 independent review, validation, privacy, and security controls before changes
 are accepted.
@@ -50,7 +49,7 @@ migrations, new projects, vulnerabilities, and special workflows.
 * Preserve context in a durable work record.
 * Use incremental changes, gates, validation, and explicit handoffs.
 * Keep provider-specific behavior behind adapters.
-* Evolve the library through exercised pilots rather than speculative design.
+* Evolve the framework through exercised pilots rather than speculative design.
 
 ## Architecture
 
@@ -70,7 +69,7 @@ Work item
 | Building block | Responsibility |
 |---|---|
 | Framework | Shared investigation-first engineering method |
-| Contract | Common vocabulary, lifecycle, evidence, workers, gates, and outcomes |
+| Contract | Common vocabulary, lifecycle, claims, evidence, workers, gates, and outcomes |
 | Strategy | Coordination and parallelization approach |
 | Role | Reusable responsibility and reasoning boundary |
 | Skill | Reusable provider-neutral capability |
@@ -155,7 +154,7 @@ canonical mapping is in
 
 ## Current playbooks
 
-Document status remains `Pilot` while the library is in progress. Playbook
+Document status remains `Pilot` while the framework is in progress. Playbook
 maturity is explicit: `not_exercised` or `exercising`. `exercising` means that
 real work is being used to test the playbook; the validated scope is recorded
 separately. Remediation is not validated until a compliant delivery run
@@ -241,7 +240,7 @@ Provider-reported usage should be recorded per worker when available:
 
 Credits must not be estimated.
 
-## When to use the library
+## When to use the framework
 
 Use it when work has meaningful uncertainty, dependencies, risk, multiple
 stages, cross-repository impact, operational concerns, or a need for durable
@@ -295,7 +294,7 @@ When adding capability:
 
 ## Current status
 
-The library is a working pilot foundation. The Service Extraction and
+The framework is a working pilot foundation. The Service Extraction and
 Stabilization workflow, Codex agent mapping, model/effort policy, and work
 record are implemented and ready for full-pilot execution. Stability claims
 remain provisional until the implementation and validation phases are exercised

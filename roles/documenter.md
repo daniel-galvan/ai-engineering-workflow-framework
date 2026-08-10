@@ -6,7 +6,7 @@ status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-07-31
+last_updated: 2026-08-10
 required_documents:
 
   - ../frameworks/investigation.md
@@ -55,6 +55,8 @@ Produce a complete, accurate, and up-to-date work record that enables knowledge 
   fan-in passes and the selected playbook reaches its planning-completion gate.
 * Record findings from every role.
 * Record evidence and references.
+* Preserve evidence, claim, decision, and action IDs across artifacts.
+* Record confidence with its supporting evidence and uncertainties.
 * Capture architectural decisions.
 * Maintain the decision log.
 * Record open questions and follow-up work.

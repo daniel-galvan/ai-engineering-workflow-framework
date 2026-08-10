@@ -34,6 +34,9 @@ live work-item connector.
 | Worker            | One execution instance combining a role, skills, tools, model profile, and inputs. A worker may be a human, AI subagent, or step in a single session. |
 | Artifact          | A durable output such as a map, decision, code change, test result, or handoff.                                                                       |
 | Evidence          | A source-backed observation used to support or challenge a claim.                                                                                     |
+| Claim             | A material statement derived from one or more evidence items, with an explicit confidence and uncertainty assessment.                                  |
+| Decision          | A selected option, scope boundary, or disposition based on claims.                                                                                      |
+| Action            | A concrete implementation, validation, documentation, or follow-up step derived from a decision.                                                       |
 | Gate              | A condition that must be satisfied before a stage or transition can proceed.                                                                          |
 | Adapter           | A provider-specific implementation at a defined seam, such as Jira, Git, or an AI platform.                                                           |
 | Execution profile | A named selection of worker graph, investigation depth, and validation scope.                                                                         |
@@ -202,7 +205,9 @@ artifacts. The envelope is the unit consumed by the Orchestrator at fan-in.
 | `summary`          | Yes         | The worker's unique contribution in a few sentences.            |
 | `inputs_consumed`  | Yes         | Artifacts or facts actually used.                               |
 | `outputs_produced` | Yes         | Artifacts, decisions, or validation results produced.           |
-| `evidence_refs`    | Recommended | Sources supporting the result.                                  |
+| `evidence_refs`    | Recommended | Evidence IDs or sources supporting or challenging the result.   |
+| `claim_refs`       | Recommended | Claim IDs produced or materially used by the result.            |
+| `confidence`       | Yes         | `high`, `medium`, `low`, or `unknown`; confidence in the result's material claims. |
 | `uncertainties`    | Yes         | Remaining unknowns, conflicts, or confidence limits.            |
 | `next_consumer`    | Recommended | Worker, gate, or human decision that should consume the result. |
 | `model_effort`     | Recommended | Actual model and reasoning effort, when exposed.                |
@@ -213,6 +218,12 @@ The summary must describe the worker's unique contribution, not repeat the
 entire input artifact. A downstream worker must consume the envelope and
 referenced artifacts rather than independently repeating the same investigation
 unless it is checking a stated discrepancy.
+
+`confidence` must be explainable through the referenced evidence and recorded
+uncertainties. A `complete` outcome does not imply high confidence. Use
+`unknown` when the worker cannot make a defensible confidence assessment.
+Material conclusions should use the IDs from the
+[`Claims, Evidence, Decisions, and Actions Contract`](claims.md).
 
 ---
 
@@ -487,45 +498,68 @@ Partial findings are preserved for every non-complete outcome.
 
 ---
 
-# Workflow Lifecycle
+# Workflow State Machine
 
-The shared lifecycle supports both implementation and non-implementation work:
+These are the canonical workflow states. They describe where a run is now;
+`planning` and `remediation` remain lifecycle values that limit how far the run
+may proceed.
 
-```text
-intake
-  → classified
-  → in_progress
-  → awaiting_input | blocked | ready_for_implementation
-  → implementation
-  → validation
-  → completed
+```mermaid
+flowchart TB
+    intake["intake"] --> classified["classified"]
+    classified --> in_progress["in_progress"]
+    in_progress --> awaiting_input["awaiting_input"]
+    in_progress --> blocked["blocked"]
+    in_progress --> ready["ready_for_implementation"]
+    awaiting_input --> in_progress
+    awaiting_input --> blocked
+    ready -->|approval| implementation["implementation"]
+    implementation --> code_review["code_review"]
+    code_review -->|changes_required| implementation
+    code_review -->|accepted| validation["validation"]
+    code_review -->|replanning_required| awaiting_input
+    code_review --> blocked
+    validation -->|in_scope_failure| implementation
+    validation --> handoff["handoff"]
+    validation --> blocked
+    handoff --> completed["completed"]
+    blocked -->|recovery| in_progress
 ```
 
-Valid terminal alternatives include:
+| State | Meaning | Allowed continuation |
+| --- | --- | --- |
+| `intake` | A run was created and its execution repository and work item are being established. | `classified` |
+| `classified` | Playbook, profile, lifecycle, mode, and initial constraints are selected. | `in_progress` |
+| `in_progress` | A required stage or worker graph is active and has not reached its gate. | `awaiting_input`, `blocked`, or `ready_for_implementation` |
+| `awaiting_input` | A human decision or missing requirement remains after bounded discovery. | `in_progress`, or `blocked` if the input cannot be obtained |
+| `blocked` | An environment, permission, runtime, or indispensable-evidence problem prevents safe progress. | `in_progress` after recovery, or terminal `blocked` |
+| `ready_for_implementation` | Planning fan-in passed and the implementation plan is ready; source changes are still prohibited. | `implementation` only after explicit approval, or `awaiting_input` / `blocked` |
+| `implementation` | Approved source or configuration changes are being made by the Implementer. | `code_review` or `blocked` |
+| `code_review` | The Reviewer is assessing the approved change. | `implementation` for in-scope findings, `validation` when accepted, `awaiting_input` for replanning, or `blocked` |
+| `validation` | Tests, build, security, runtime, or other declared validation are being run. | `implementation` for an in-scope failure, `handoff` when the gate passes, or `blocked` |
+| `handoff` | Results, artifacts, ownership, and next steps are being finalized. | `completed` |
+| `completed` | Required gates passed or a documented terminal outcome was recorded. | None; start a new run for new scope. |
 
-```text
-closed_no_action
-closed_duplicate
-closed_not_a_bug
-deferred
-```
+Planning normally ends at `ready_for_implementation`, `awaiting_input`, or
+`blocked` and must not modify source. Remediation enters `implementation` only
+through explicit approval and a recorded re-entry. A failed required worker
+keeps the run `in_progress` or moves it to `blocked`; it cannot be treated as
+successful fan-in.
 
-The selected playbook may add states, but it must preserve the common meanings and record the reason for every terminal outcome.
+`closed_no_action`, `closed_duplicate`, `closed_not_a_bug`, and `deferred` are
+terminal outcomes recorded with `completed`; they are not additional normal
+delivery states. A playbook may add domain-specific states only when it
+preserves these meanings and records every transition reason.
 
 ---
 
 # Evidence and Artifact Minimums
 
-Every material claim should identify:
-
-| Field         | Description                                                                 |
-| ------------- | --------------------------------------------------------------------------- |
-| `claim`       | The statement being made.                                                   |
-| `source`      | Repository path, ticket, log, dashboard, document, command, or observation. |
-| `observed_at` | When the evidence was collected.                                            |
-| `worker`      | Worker that collected or asserted it.                                       |
-| `status`      | Verified, inferred, hypothesized, contradicted, or unknown.                 |
-| `notes`       | Context, limitations, or conflicting evidence.                              |
+Use the [`Claims, Evidence, Decisions, and Actions Contract`](claims.md) for
+the durable reasoning chain. Every material claim must identify its supporting
+evidence, confidence, uncertainties, and status. Every decision must identify
+the claims, options, owner, and approval status. Every action must identify its
+authorizing decision and required gate.
 
 Every stage must declare the artifacts it produces and the gate those artifacts satisfy.
 

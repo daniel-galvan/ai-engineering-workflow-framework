@@ -6,7 +6,7 @@ status: Pilot
 category: Design
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-08-10
 required_documents:
 
   - ../frameworks/investigation.md
@@ -54,6 +54,8 @@ Produce a clear, evidence-based target architecture that satisfies the business 
 * Evaluate architectural alternatives.
 * Identify tradeoffs.
 * Minimize technical debt.
+* Express material recommendations as claims linked to evidence and decisions
+  linked to claims, with confidence and uncertainties.
 * Produce an implementation-ready design.
 
 ---

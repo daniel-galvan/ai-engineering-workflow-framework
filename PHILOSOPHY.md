@@ -1,6 +1,6 @@
 # Philosophy
 
-The library is built around reusable engineering practices instead of AI-specific prompts.
+The framework is built around reusable engineering practices instead of AI-specific prompts.
 
 Core principles:
 

@@ -6,6 +6,7 @@ owner: Engineering
 last_updated: YYYY-MM-DD
 depends_on:
   - ../contracts/workflow_execution.md
+  - ../contracts/claims.md
   - ./work_record.md
 ---
 
@@ -50,6 +51,7 @@ exclusions.
 
 Record the confirmed cause or best-supported hypothesis, evidence references,
 current behavior, expected behavior, residual uncertainty, and confidence.
+Preserve the evidence, claim, and decision IDs that support the plan.
 
 # 3. Source Change Plan
 

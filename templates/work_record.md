@@ -8,6 +8,7 @@ last_updated: 2026-08-10
 depends_on:
 
   - ../contracts/workflow_execution.md
+  - ../contracts/claims.md
 ---
 
 # Engineering Work Record
@@ -65,7 +66,7 @@ Record explicit non-goals when the work could expand into adjacent work.
 | Lifecycle | Planning / Remediation |
 | Mode | Discovery / Investigation / Delivery / Stabilization / Review |
 | Effort | Worker depth: Quick / Standard / Deep; separate from provider reasoning effort |
-| State | Intake / Classified / In Progress / Awaiting Input / Blocked / Ready for Implementation / Implementation / Validation / Completed |
+| State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |
 | Outcome | In progress / Completed / No action / Duplicate / Not a bug / Deferred |
 | Current stage | |
 | Current owner | |
@@ -90,9 +91,9 @@ evidence, decision, and worker ledger.
 
 Record every worker or subagent that materially contributes to the work.
 
-| Worker | Role | Mode | Effort | Skills | Tools | Model profile | Actual model/effort | Usage/credits | Depends on | Outcome |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | | | | |
+| Worker | Role | Mode | Effort | Skills | Tools | Model profile | Actual model/effort | Usage/credits | Depends on | Outcome | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | | | | | |
 
 Record provider-reported usage or credits when available. Use `Unknown` when
 the execution surface does not expose them; never estimate credit consumption.
@@ -128,9 +129,9 @@ Reuse its durable artifacts after closure; do not reuse live worker handles.
 Record one compact result for every worker that reached a terminal outcome.
 Summarize each worker's unique contribution; do not copy full reports here.
 
-| Worker | Outcome | Unique contribution | Evidence or artifact | Uncertainties / blockers | Actual model/effort | Usage/credits |
-| --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | |
+| Worker | Outcome | Confidence | Unique contribution | Evidence / claim refs | Uncertainties / blockers | Actual model/effort | Usage/credits |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | |
 
 The final handoff should present the shared outcome first and this worker
 summary second. Use `Unknown` for unavailable model, token, or credit data.
@@ -188,9 +189,9 @@ Examples:
 
 # Evidence
 
-| Claim or observation | Source | Observed at | Worker | Status | Notes |
-| --- | --- | --- | --- | --- | --- |
-| | | | | Verified / Inferred / Hypothesized / Contradicted / Unknown | |
+| Evidence ID | Observation | Source | Observed at | Worker | Status | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | | | Verified / Inferred / Hypothesized / Contradicted / Unknown | |
 
 Include links to:
 
@@ -200,6 +201,20 @@ Include links to:
 * Logs
 * Screenshots
 * Scanner reports
+
+Use the IDs and relationships from [`../contracts/claims.md`](../contracts/claims.md).
+
+# Claims
+
+| Claim ID | Statement | Evidence refs | Confidence | Uncertainties | Status |
+| --- | --- | --- | --- | --- | --- |
+| | | | High / Medium / Low / Unknown | | Supported / Inferred / Hypothesized / Contradicted / Unknown |
+
+# Action Log
+
+| Action ID | Decision ref | Action | Owner | Required gate | Status |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | Proposed / Approved / In Progress / Completed / Blocked / Cancelled |
 
 ---
 
@@ -242,9 +257,9 @@ implementation plan.
 
 # Decision Log
 
-| Date | Decision | Evidence | Reason |
-| ---- | -------- | -------- | ------ |
-|      |          |          |        |
+| Decision ID | Date | Question or scope | Claim refs | Options considered | Selected option | Rationale | Decision owner | Approval |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | | Not required / Pending / Approved / Rejected |
 
 This section should explain **why** decisions were made.
 

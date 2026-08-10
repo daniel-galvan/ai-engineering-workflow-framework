@@ -17,7 +17,7 @@ For `standard`, consume a `repository-integration` result when the
 Orchestrator activates that conditional worker.
 
 Produce the complete implementation plan content from verified evidence for
-the Documenter to persist using the library template. Provide alternatives,
+the Documenter to persist using the framework template. Provide alternatives,
 exact files and symbols, regression-test design, validation levels, rollout,
 rollback, monitoring requirements, execution steps, and completion criteria.
 

@@ -8,7 +8,7 @@ They do not redefine role responsibilities or playbook stages. If a provider can
 
 Adapters are reference mappings, not claims that every named capability is available in every runtime. A missing mapping must be recorded as a limitation before the worker runs.
 
-The Codex pilot is explained in the library's
+The Codex pilot is explained in the framework's
 [`../OPERATING_GUIDE.md`](../OPERATING_GUIDE.md), with a formal adapter at
 [`codex.md`](codex.md) and model/effort settings at
 [`codex/model_effort_policy.md`](codex/model_effort_policy.md).

@@ -23,7 +23,7 @@ Lifecycle: planning
 The selected execution profile is mandatory; do not silently downgrade it.
 
 Playbook:
-<PATH-TO>/ai/engineering-workflow-library/playbooks/sentry_issue_remediation.md
+<PATH-TO>/ai-assisted-software-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
 
 Execution repository (durable artifact root):
 <ABSOLUTE-PATH-TO-REPOSITORY-WHERE-THIS-PROMPT-IS-EXECUTED>

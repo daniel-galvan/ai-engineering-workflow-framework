@@ -30,7 +30,7 @@ Custom agent definitions are stored in [`codex/agents/`](codex/agents/):
 * `documenter`: `gpt-5.6-luna`, light (`low`) effort
 
 For a target repository, expose these files under `.codex/agents/` using
-symlinks or another provider-specific installation mechanism. The library is
+symlinks or another provider-specific installation mechanism. The framework is
 the source of truth; the target repository contains only the runtime view.
 
 Sentry uses specialized agents only where its investigation differs from the
@@ -50,7 +50,7 @@ record. Also record provider-reported usage or credits when available. If the
 enterprise workspace does not expose a recommended model or usage value,
 record the limitation and do not estimate it.
 
-Reference mapping from library skills to Codex capabilities.
+Reference mapping from framework skills to Codex capabilities.
 
 | Skill ID | Codex capability examples |
 |---|---|

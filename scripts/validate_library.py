@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static consistency checks for the workflow-library pilot."""
+"""Static consistency checks for the workflow-framework pilot."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ SKILLS = {
 TEMPLATES = list((ROOT / "templates").glob("*_run_prompt.md"))
 INVARIANT = "The shared contract and selected playbook own lifecycle, worker activation,"
 MATURITY = {"not_exercised", "exercising"}
+WORKFLOW_CONTRACT = ROOT / "contracts" / "workflow_execution.md"
+CLAIMS_CONTRACT = ROOT / "contracts" / "claims.md"
 
 
 def fail(message: str) -> None:
@@ -51,8 +53,17 @@ for path in (ROOT / "playbooks").glob("*.md"):
     if "In-scope review findings return" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the delivery review loop")
 
-if "## Delivery Code Review Loop" not in (ROOT / "contracts/workflow_execution.md").read_text():
+workflow_contract = WORKFLOW_CONTRACT.read_text()
+if "## Delivery Code Review Loop" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the delivery review loop")
+if not CLAIMS_CONTRACT.exists():
+    fail("contracts/claims.md is missing")
+if "Claims, Evidence, Decisions, and Actions Contract" not in workflow_contract:
+    fail("contracts/workflow_execution.md is missing the claims contract reference")
+if "| `confidence`       | Yes" not in workflow_contract:
+    fail("contracts/workflow_execution.md is missing required worker confidence")
+if "# Workflow State Machine" not in workflow_contract:
+    fail("contracts/workflow_execution.md is missing the canonical state machine")
 
 for name in ("generic.md", "claude.md", "cursor.md", "codex.md"):
     text = (ROOT / "providers" / name).read_text()
@@ -60,4 +71,4 @@ for name in ("generic.md", "claude.md", "cursor.md", "codex.md"):
     if missing:
         fail(f"providers/{name} is missing skill mappings: {', '.join(missing)}")
 
-print("Workflow-library validation: passed")
+print("Workflow-framework validation: passed")

@@ -1,4 +1,4 @@
-# AI Engineering Workflow Library
+# AI-assisted Software Engineering Workflow Framework
 
 Version
 
@@ -6,7 +6,7 @@ v0.1 pilot baseline
 
 ---
 
-## Implemented library components
+## Implemented framework components
 
 ### Frameworks
 

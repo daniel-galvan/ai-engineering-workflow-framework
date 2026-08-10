@@ -1,15 +1,15 @@
-# AI Engineering Workflow Library
+# AI-assisted Software Engineering Workflow Framework
 
 Provider-neutral, evidence-driven playbooks, roles, skills, and execution
 contracts for AI-assisted software engineering.
 
-The library is an AI-assisted engineering workflow framework: it turns a work
+The framework turns a work
 item into a traceable workflow with investigation, design, implementation,
 independent review, validation, durable context, and an honest handoff.
 
 ## Introduction
 
-This library is a tool for engineers, not a replacement for them. The user
+This framework is a tool for engineers, not a replacement for them. The user
 sets the goal and scope, provides context, interprets results, adjusts the
 workflow, makes decisions, grants approval, and remains solely responsible for
 how the tool is used and for the resulting changes.
@@ -63,7 +63,9 @@ smallest role and skill set that provides enough evidence and validation.
 
 The shared rules are in
 [contracts/workflow_execution.md](contracts/workflow_execution.md). The
-practical explanation is [OPERATING_GUIDE.md](OPERATING_GUIDE.md).
+evidence-to-action reasoning model is
+[contracts/claims.md](contracts/claims.md). The practical explanation is
+[OPERATING_GUIDE.md](OPERATING_GUIDE.md).
 
 ### Ask an AI agent to prepare a run prompt
 
@@ -97,7 +99,7 @@ Work item
 | Building block | Purpose |
 |---|---|
 | Framework | Shared investigation-first engineering method |
-| Contract | Common lifecycle, worker, evidence, gate, and handoff semantics |
+| Contract | Common lifecycle, worker, claims, evidence, decisions, gates, and handoff semantics |
 | Strategy | Coordination and parallelization approach |
 | Role | Reusable responsibility and reasoning boundary |
 | Skill | Reusable provider-neutral capability |
@@ -129,20 +131,20 @@ Use this reading path:
    the durable work record.
 4. [Examples](examples/) — follow a safe, generic scenario guide for each
    current playbook.
-5. [Contributing](CONTRIBUTING.md) — extend the library without duplicating
+5. [Contributing](CONTRIBUTING.md) — extend the framework without duplicating
    contracts, roles, skills, or provider behavior.
 
 ## Repository map
 
 ```text
-contracts/       shared execution semantics
+contracts/       shared execution and reasoning semantics
 examples/        safe, generic scenario guides
 frameworks/      reusable engineering method
 integrations/    external evidence and work-item sources
 playbooks/       scenario workflows
 providers/       platform adapters and agent definitions
 roles/           reusable responsibilities
-scripts/         deterministic library validation
+scripts/         deterministic framework validation
 skills/          provider-neutral capabilities
 strategies/      coordination approaches
 templates/       canonical prompts and durable work artifacts
@@ -155,7 +157,7 @@ selection; prompt text does not override a pinned agent configuration.
 
 ## Quality and evolution
 
-Run the library validator after changes:
+Run the framework validator after changes:
 
 ```bash
 python3 scripts/validate_library.py
@@ -168,7 +170,7 @@ pilot. See [CONTRIBUTING.md](CONTRIBUTING.md) for extension rules and
 
 ## Versioning
 
-All versioned library documents are currently `0.1`. Ordinary pilot edits do
+All versioned framework documents are currently `0.1`. Ordinary pilot edits do
 not change a document version. A version changes only when an explicit named
 release or version update is requested.
 

@@ -10,7 +10,7 @@ last_updated: 2026-07-24
 
 # Claude Provider Adapter
 
-Reference mapping from library skills to Claude Code capability classes.
+Reference mapping from framework skills to Claude Code capability classes.
 
 | Skill ID | Claude capability examples |
 |---|---|

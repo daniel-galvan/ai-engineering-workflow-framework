@@ -1,5 +1,5 @@
 ---
-title: Contributing to the AI Engineering Workflow Library
+title: Contributing to the AI-assisted Software Engineering Workflow Framework
 version: 0.1
 status: Pilot
 owner: Engineering
@@ -7,11 +7,11 @@ owner: Engineering
 
 # Contributing
 
-Keep the library provider-neutral, composable, evidence-driven, and small.
+Keep the framework provider-neutral, composable, evidence-driven, and small.
 
 For the architecture and building-block map, see the [README](README.md) and
 the detailed [Operating Guide](OPERATING_GUIDE.md). This file focuses only on
-how to extend the library.
+how to extend the framework.
 
 ## Change rules
 
@@ -21,8 +21,8 @@ how to extend the library.
    gates, or artifacts.
 4. Keep provider-specific model, effort, and tool behavior in
    `providers/`; do not put it in a provider-neutral playbook.
-5. Keep lifecycle, worker activation, fan-in, recovery, approval, and handoff
-   rules in `contracts/workflow_execution.md`.
+5. Keep lifecycle, worker activation, fan-in, recovery, approval, handoff, and
+   claims/evidence/decision/action rules in the shared contracts.
 6. Use the canonical run-template format. Update the template when the shared
    prompt contract changes; do not create one-off prompt formats.
 7. Keep work records in the execution repository under

@@ -23,7 +23,7 @@ Execution profile: deep
 Lifecycle: planning
 
 Playbook:
-<PATH-TO>/ai/engineering-workflow-library/playbooks/service_extraction.md
+<PATH-TO>/ai-assisted-software-engineering-workflow-framework/playbooks/service_extraction.md
 
 Execution repository (durable artifact root):
 <ABSOLUTE-PATH-TO-REPOSITORY-WHERE-THIS-PROMPT-IS-EXECUTED>

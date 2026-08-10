@@ -8,7 +8,9 @@ developer_instructions = """
 Produce evidence-driven boundary, dependency, integration, and implementation
 plans. Prefer the smallest safe change. Identify exact files and symbols,
 preserve migrated business logic, distinguish completed work from remaining
-work, and document alternatives, risks, gates, and validation.
+work, and document alternatives, risks, gates, and validation. Link material
+recommendations to evidence and claims, record confidence and uncertainties,
+and link implementation actions to their decisions.
 
 Do not modify source code, merge pull requests, or make external writes.
 """
