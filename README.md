@@ -55,22 +55,17 @@ and validation, see [SETUP.md](SETUP.md).
 
 ## Quick start
 
-1. Choose the playbook that matches the primary evidence and goal in
+1. Complete [SETUP.md](SETUP.md) for the framework, target repository, and
+   provider runtime.
+2. Choose the playbook that matches the primary evidence and goal in
    [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md).
-2. Copy the matching canonical run template from [templates/](templates/) into
-   the Codex session prompt. For a first run, fill in the work-item ID,
-   execution repository, lifecycle, profile, and run-specific context. Omit
-   continuation data; worker coordination is derived by the playbook. Do not
-   invent a second prompt format.
-3. Run from the repository being investigated or provide its absolute path.
-   The durable record belongs in that repository:
-   `.thoughts/<WORK-ITEM-ID>/work_record.md`.
+3. Copy the matching canonical run template from [templates/](templates/) into
+   a session started in the target repository. Fill only the required
+   first-run and scenario fields; do not invent a second prompt format.
 4. Start with `planning` for read-only discovery, diagnosis, design, and an
-   implementation plan. Create `implementation_plan.md` only after required
-   worker fan-in and the planning gate pass.
-5. After explicit approval, run `remediation`. The approved plan covers the
-   complete delivery sequence: implement, Code Review, fix in-scope findings,
-   re-review, validate, and hand off.
+   implementation plan. Create the plan only after required fan-in passes.
+5. After explicit approval, run `remediation` through implementation, Code
+   Review, validation, and handoff.
 
 The shared rules are in
 [contracts/workflow_execution.md](contracts/workflow_execution.md). The
@@ -80,16 +75,11 @@ evidence-to-action reasoning model is
 
 ### Ask an AI agent to prepare a run prompt
 
-If you are unsure which fields to provide, ask an AI agent to prepare the
-prompt from the repository's canonical files:
-
-```text
-Read README.md, OPERATING_GUIDE.md, PLAYBOOK_CATALOG.md, the selected playbook,
-and its canonical run-template file. For [WORK ITEM], prepare a first-use run
-prompt by filling the existing template. Do not invent a new format, execute
-the workflow, modify files, or commit changes. Mark missing information as
-Unknown and identify anything I must review before running it.
-```
+If you are unsure which fields to provide, use the request in
+[SETUP.md](SETUP.md#ask-codex-to-prepare-the-prompt) from a session started in
+the target repository. It instructs the agent to fill the existing canonical
+template, mark missing information as `Unknown`, and avoid executing or
+modifying the workflow.
 
 Review the generated prompt before using it. The user remains responsible for
 the selected playbook, scope, lifecycle, profile, permissions, and approvals.
@@ -123,7 +113,7 @@ Work item
 | Playbook | Use for | State |
 |---|---|---|
 | [Feature Delivery](playbooks/feature_delivery.md) | Jira features and improvements | Exercising — planning exercised; remediation not yet validated |
-| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | Support- and operations-reported Jira issues | Exercising — not yet exercised |
+| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | Support- and operations-reported Jira issues | Exercising — first planning attempt incomplete; not validated |
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | Production issues backed by Sentry evidence | Exercising — Standard and Deep planning validated; remediation not yet validated |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk | Exercising — planning exercised; remediation not yet validated |
 | [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability | Not exercised — real Jira pilot pending |

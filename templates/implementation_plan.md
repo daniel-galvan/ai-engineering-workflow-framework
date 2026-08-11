@@ -3,7 +3,7 @@ title: Engineering Implementation Plan
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: YYYY-MM-DD
+last_updated: <DATE-OF-CREATION>
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md

@@ -5,7 +5,7 @@ version: 0.1
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-07-30
+last_updated: 2026-08-11
 ---
 
 # Codex Provider Adapter
@@ -40,12 +40,13 @@ generic role: orchestration, Sentry evidence, failure topology, repository
 integration, and fix design. It reuses the generic Implementer, Reviewer,
 Tester, and Documenter so delivery policy has one source of truth.
 
-The active Codex session is the Orchestrator unless the runtime explicitly
-supports nested delegation for a coordinator agent. Agent TOML files configure
-workers; they do not create delegation capability. If nested delegation is not
-available, the active session must invoke the required workers directly and
-complete fan-in and release completed worker handles before reporting profile
-success or starting a new lifecycle run.
+The active Codex session is the Coordinator and performs the Orchestrator role
+unless the runtime explicitly supports nested delegation for a coordinator
+agent. Agent TOML files configure workers; they do not create delegation
+capability. If nested delegation is not available, the active session must
+invoke the required workers directly and complete fan-in and release completed
+worker handles before reporting profile success or starting a new lifecycle
+run.
 
 Record the actual model and reasoning effort used by each worker in the work
 record. Also record provider-reported usage or credits when available. If the

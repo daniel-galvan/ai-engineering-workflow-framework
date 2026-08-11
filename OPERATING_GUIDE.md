@@ -146,7 +146,7 @@ separate:
 * Provider adapters map each role to its concrete model and reasoning setting.
 
 For the current Codex pilot, Feature Delivery, TechOps Issue Remediation,
-Service Extraction, and Sentry
+Vulnerability Investigation, Service Extraction, and Sentry
 use the same role-quality policy. Most roles use `gpt-5.6-luna`; Solution
 Architect uses `gpt-5.6-terra` with Light effort. Profiles choose which roles
 run; they do not change a role's model or provider reasoning effort. The
@@ -167,7 +167,8 @@ Current playbooks include:
 * Vulnerability Investigation — exercising; planning exercised
 * Service Extraction and Stabilization — not exercised
 * Feature Delivery — exercising; planning exercised
-* TechOps Issue Remediation — exercising; not yet exercised
+* TechOps Issue Remediation — exercising; first planning attempt incomplete;
+  not validated
 * Sentry Issue Remediation — exercising; Standard and Deep planning validated
 
 The Service Extraction playbook is for establishing an independently buildable,

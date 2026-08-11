@@ -6,17 +6,17 @@ status: Pilot
 provider: codex
 provider_independent_profiles: true
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-11
 ---
 
 # Codex Model and Effort Policy
 
 This policy maps the framework's provider-neutral model profiles to Codex custom
-agents for the Feature Delivery, TechOps Issue Remediation, and Service
-Extraction pilots and Sentry Issue Remediation.
+agents for Feature Delivery, TechOps Issue Remediation, Vulnerability
+Investigation, Service Extraction, and Sentry Issue Remediation.
 
 The pilot uses one role-quality policy across Feature Delivery, Service
-Extraction, Sentry, and TechOps Issue Remediation.
+Extraction, Sentry, TechOps Issue Remediation, and Vulnerability Investigation.
 Profiles select which roles run; they do not change a role's model or
 reasoning effort. Record the requested and resolved values in the work record.
 
@@ -47,9 +47,9 @@ User-facing effort labels map to Codex configuration values as follows:
 
 ## Generic Agent Usage
 
-Feature Delivery, TechOps Issue Remediation, and Service Extraction use the
-generic agent definitions. The selected execution profile changes the required
-worker graph, not a role's pinned model or effort.
+Feature Delivery, TechOps Issue Remediation, Vulnerability Investigation, and
+Service Extraction use the generic agent definitions. The selected execution
+profile changes the required worker graph, not a role's pinned model or effort.
 
 ### Service Extraction
 
@@ -74,6 +74,16 @@ owns fan-out directly when a coordinator subagent cannot delegate.
 TechOps uses Orchestrator, Current-State Investigator, Dependency Analyst,
 Solution Architect, and Documenter for `standard`; Repository Integrator is
 conditional. `deep` makes Repository Integrator and Reviewer mandatory.
+
+After explicit approval and remediation re-entry, both profiles add
+Implementer, Reviewer, Tester, and continuous Documenter.
+
+### Vulnerability Investigation
+
+Vulnerability Investigation uses Orchestrator, Current-State Investigator,
+Dependency Analyst, Solution Architect, and Documenter for `standard`;
+Repository Integrator and Planning Reviewer are conditional. `deep` makes
+both conditional workers mandatory.
 
 After explicit approval and remediation re-entry, both profiles add
 Implementer, Reviewer, Tester, and continuous Documenter.

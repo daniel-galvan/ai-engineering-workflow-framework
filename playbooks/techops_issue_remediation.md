@@ -3,9 +3,9 @@ title: TechOps Issue Remediation Playbook
 version: 0.1
 status: Pilot
 maturity: exercising
-validation_scope: not yet exercised
+validation_scope: planning attempted; first run incomplete; not validated
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-11
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md

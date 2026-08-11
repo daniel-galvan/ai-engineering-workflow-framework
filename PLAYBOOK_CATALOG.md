@@ -70,7 +70,7 @@ before the workflow requests clarification; it does not invent a plan.
 
 **Use for:** support- and operations-reported Jira issues, including Zendesk or
 Help Desk reports with attachments, logs, payloads, screenshots, or recordings.
-**State:** Exercising; not yet exercised.
+**State:** Exercising; first planning attempt incomplete; not validated.
 
 ```mermaid
 flowchart TB

@@ -4,7 +4,7 @@ version: 0.1
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-11
 ---
 
 # Workflow Execution Contract
@@ -24,6 +24,7 @@ live work-item connector.
 | Term              | Meaning                                                                                                                                               |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Work item         | The normalized request being handled, such as a Jira Story, bug, incident, or upgrade.                                                                |
+| Coordinator       | The active session or runtime responsible for activating workers, collecting results, completing fan-in, and closing the run.                          |
 | Workflow run      | One execution of a playbook for one work item.                                                                                                        |
 | Playbook          | A scenario-specific workflow made of stages, roles, skills, gates, and outputs.                                                                       |
 | Stage             | A meaningful unit of work inside a playbook.                                                                                                          |
@@ -43,6 +44,11 @@ live work-item connector.
 | Lifecycle         | How far a workflow run may proceed, such as planning or remediation.                                                                                  |
 
 Skills describe what capability is needed. Tools describe how that capability is performed. Model profiles describe how much reasoning and execution capacity is assigned. These concepts must not be merged.
+
+The `orchestrator` is the reusable role that owns workflow coordination. The
+Coordinator is the active runtime performing that role. A provider may run the
+role in a dedicated worker, or the main session may act as both Coordinator and
+Orchestrator when nested delegation is unavailable.
 
 The canonical role ID is the role filename without `.md`, such as `current_state_investigator` or `repository_integrator`.
 

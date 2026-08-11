@@ -44,7 +44,11 @@ validated; remediation lifecycle validation remains pending
 Feature Delivery playbook — exercising; planning exercised; remediation
 validation remains pending
 
-TechOps Issue Remediation playbook — exercising; not yet exercised
+TechOps Issue Remediation playbook — exercising; first planning attempt
+incomplete; validation remains pending
+
+Vulnerability Investigation playbook — exercising; planning exercised;
+remediation validation remains pending
 
 ## Planned scenario coverage
 
