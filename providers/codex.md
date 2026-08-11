@@ -11,6 +11,8 @@ last_updated: 2026-07-30
 # Codex Provider Adapter
 
 The complete operating guide is [`../OPERATING_GUIDE.md`](../OPERATING_GUIDE.md).
+For local clone, target-repository, symlink, and prompt setup, see
+[`../SETUP.md`](../SETUP.md).
 
 ## Pilot Agent Mappings
 

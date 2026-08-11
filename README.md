@@ -1,5 +1,10 @@
 # AI-assisted Software Engineering Workflow Framework
 
+> [!WARNING]
+> **Work in progress — pilot, not fully validated.** Use with care, verify all
+> outputs, and protect sensitive data. You are responsible for its use and
+> resulting decisions or changes.
+
 Provider-neutral, evidence-driven playbooks, roles, skills, and execution
 contracts for AI-assisted software engineering.
 
@@ -42,6 +47,11 @@ needs, including:
 
 Do not use the full worker graph for a trivial, well-bounded change. Use the
 smallest role and skill set that provides enough evidence and validation.
+
+## Setup
+
+For cloning, target-repository selection, Codex agent links, prompt creation,
+and validation, see [SETUP.md](SETUP.md).
 
 ## Quick start
 
@@ -125,15 +135,16 @@ stages, gates, and artifacts cannot express the scenario cleanly.
 
 Use this reading path:
 
-1. [Operating Guide](OPERATING_GUIDE.md) — architecture, responsibilities,
+1. [Setup](SETUP.md) — clone, configure, and start a run.
+2. [Operating Guide](OPERATING_GUIDE.md) — architecture, responsibilities,
    lifecycle, and usage rules.
-2. [Playbook Catalog](PLAYBOOK_CATALOG.md) — choose a scenario and see its
+3. [Playbook Catalog](PLAYBOOK_CATALOG.md) — choose a scenario and see its
    worker graph.
-3. [Templates](templates/) — start a run with the canonical prompt and create
+4. [Templates](templates/) — start a run with the canonical prompt and create
    the durable work record.
-4. [Examples](examples/) — follow a safe, generic scenario guide for each
+5. [Examples](examples/) — follow a safe, generic scenario guide for each
    current playbook.
-5. [Contributing](CONTRIBUTING.md) — extend the framework without duplicating
+6. [Contributing](CONTRIBUTING.md) — extend the framework without duplicating
    contracts, roles, skills, or provider behavior.
 
 ## Repository map
