@@ -75,9 +75,11 @@ evidence-to-action reasoning model is
 
 ### Ask an AI agent to prepare a run prompt
 
-If you are unsure which fields to provide, use the request in
+If you are unsure which fields to provide, use the request and example in
 [SETUP.md](SETUP.md#ask-codex-to-prepare-the-prompt) from a session started in
-the target repository. It instructs the agent to fill the existing canonical
+the target repository. The request explicitly supplies the absolute framework
+checkout path, target/execution repository, work-item ID or URL, selected
+playbook, and canonical template. It instructs the agent to fill the existing
 template, mark missing information as `Unknown`, and avoid executing or
 modifying the workflow.
 
