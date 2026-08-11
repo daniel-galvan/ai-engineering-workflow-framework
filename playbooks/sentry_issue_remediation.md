@@ -497,8 +497,9 @@ The final handoff is ordered as follows:
 
 1. Shared outcome summary: status, verified scope, root cause, fix, validation,
    implementation-plan path and status, and next action.
-2. Worker result ledger: one compact row per worker with outcome, unique
-   contribution, evidence, uncertainties, model/effort, and usage.
+2. Worker result ledger: one compact row per activated worker and each required
+   worker without a terminal envelope, using the shared contract's ledger
+   fields.
 3. Profile, gate, and synchronization status: distinguish requested versus
    executed profile, then confirm that all required workers are terminal and
    all required fan-in barriers passed and the prior run's worker handles are

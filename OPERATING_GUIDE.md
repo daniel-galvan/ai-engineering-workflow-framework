@@ -145,7 +145,8 @@ separate:
   `deep_reasoning`.
 * Provider adapters map each role to its concrete model and reasoning setting.
 
-For the current Codex pilot, Feature Delivery, Service Extraction, and Sentry
+For the current Codex pilot, Feature Delivery, TechOps Issue Remediation,
+Service Extraction, and Sentry
 use the same role-quality policy. Most roles use `gpt-5.6-luna`; Solution
 Architect uses `gpt-5.6-terra` with Light effort. Profiles choose which roles
 run; they do not change a role's model or provider reasoning effort. The
@@ -166,6 +167,7 @@ Current playbooks include:
 * Vulnerability Investigation — exercising; planning exercised
 * Service Extraction and Stabilization — not exercised
 * Feature Delivery — exercising; planning exercised
+* TechOps Issue Remediation — exercising; not yet exercised
 * Sentry Issue Remediation — exercising; Standard and Deep planning validated
 
 The Service Extraction playbook is for establishing an independently buildable,
@@ -179,6 +181,12 @@ approved delivery workflow. It recovers thin-ticket context from the immediate
 parent and ancestor hierarchy, selected siblings, linked decisions, and
 repository evidence without treating that context as automatically inherited
 scope.
+
+The TechOps Issue Remediation playbook turns a support- or operations-reported
+Jira issue into normalized report evidence, a reproduction and failure-path
+analysis, repository ownership, a minimal remediation plan, and an approved
+delivery workflow. Attachments are first-class evidence but must be reconciled
+with current repository and runtime evidence.
 
 The Sentry Issue Remediation playbook turns Sentry evidence into a
 verified diagnosis, minimal fix, implementation plan, regression-test plan,
@@ -217,7 +225,14 @@ For migrated code, the preferred change order is:
 
 ## Work records
 
-Every work item declares an execution repository and uses:
+Every work item declares one execution repository. It is the checkout in which
+the session starts and the durable-artifact root; it is not a claim that the
+root cause is in that repository. For a cross-repository investigation, choose
+the most likely primary checkout, declare the other repositories as additional
+working directories, and preserve the same artifact root for that run.
+
+The work record and implementation plan are derived paths, not additional
+user choices:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
@@ -229,6 +244,34 @@ state. It is the durable source of truth for resuming work.
 
 Create `implementation_plan.md` only after required planning fan-in passes and
 the workflow reaches `ready_for_implementation`.
+
+For a new run, the active session is the Coordinator. A configured provider
+Orchestrator may be used only when the runtime actually supports nested
+delegation; otherwise the active session starts workers, completes fan-in, and
+closes their handles. Codex users may expose the framework's agent definitions
+in `<execution-repository>/.codex/agents/`; omit the provider configuration
+from the prompt when that runtime view is unavailable.
+
+Continuation data is only for follow-up, recovery, or approved remediation
+re-entry. Supply the prior work-record/plan path, new evidence or recovery
+reason, and approval reference when remediation is requested. Worker lists are
+derived from the selected playbook and prior work record; users do not enter
+them manually.
+
+### Run-input guide
+
+| Case | Use when | Fill in | Omit |
+| --- | --- | --- | --- |
+| New planning run | First investigation of a work item | Work item, profile, lifecycle `planning`, one execution repository, evidence, additional repositories, and constraints | Continuation and approval reference |
+| Planning follow-up | New evidence or a resolved product decision changes planning | Prior work record/plan and the new evidence or decision | Approval reference unless also entering remediation |
+| Interrupted recovery | A required worker, fan-in, or runtime step did not finish | Prior work record/plan and the specific recovery reason | Worker lists; the Coordinator derives them |
+| Remediation re-entry | Planning passed and implementation is explicitly approved | Lifecycle `remediation`, prior work record/plan, and approval reference | New planning inputs unless they changed |
+
+For every case, the current session is the Coordinator by default. Use a
+target repository's `.codex/agents/` path only when that runtime view has been
+installed and verified; otherwise omit provider configuration. Never use the
+framework repository or an evidence folder as the execution repository merely
+because it contains a playbook or attachments.
 
 Provider-reported usage should be recorded per worker when available:
 

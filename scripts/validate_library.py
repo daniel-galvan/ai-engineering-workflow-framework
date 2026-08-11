@@ -50,8 +50,10 @@ for path in (ROOT / "playbooks").glob("*.md"):
     text = path.read_text()
     if "standard planning workers, then `implement`" in text:
         fail(f"{path.relative_to(ROOT)} reruns planning workers during remediation")
-    if "In-scope review findings return" not in text:
+    if not re.search(r"In-scope review\s+findings return", text):
         fail(f"{path.relative_to(ROOT)} is missing the delivery review loop")
+    if not re.search(r"Worker result ledger:\s+one compact row per activated worker", text):
+        fail(f"{path.relative_to(ROOT)} is missing the canonical worker-result ledger")
 
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Delivery Code Review Loop" not in workflow_contract:

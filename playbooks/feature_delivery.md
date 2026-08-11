@@ -282,8 +282,10 @@ The final handoff reports:
    clarification questions;
 3. implementation-plan path/status, planned change, acceptance traceability,
    validation, rollout, and rollback;
-4. worker result ledger plus requested/executed profile, activation, fan-in,
-   and runtime-closure status; and
+4. Worker result ledger: one compact row per activated worker and each required
+   worker without a terminal envelope, using the shared contract's ledger
+   fields; plus requested/executed profile, activation, fan-in, and
+   runtime-closure status; and
 5. remaining risks, blockers, owner, and follow-up work.
 
 Do not imply that implementation, validation, or release completed when the

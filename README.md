@@ -48,9 +48,10 @@ smallest role and skill set that provides enough evidence and validation.
 1. Choose the playbook that matches the primary evidence and goal in
    [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md).
 2. Copy the matching canonical run template from [templates/](templates/) into
-   the Codex session prompt. Fill in the work-item ID, execution repository,
-   lifecycle, profile, and run-specific context. Do not invent a second prompt
-   format.
+   the Codex session prompt. For a first run, fill in the work-item ID,
+   execution repository, lifecycle, profile, and run-specific context. Omit
+   continuation data; worker coordination is derived by the playbook. Do not
+   invent a second prompt format.
 3. Run from the repository being investigated or provide its absolute path.
    The durable record belongs in that repository:
    `.thoughts/<WORK-ITEM-ID>/work_record.md`.
@@ -112,6 +113,7 @@ Work item
 | Playbook | Use for | State |
 |---|---|---|
 | [Feature Delivery](playbooks/feature_delivery.md) | Jira features and improvements | Exercising — planning exercised; remediation not yet validated |
+| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | Support- and operations-reported Jira issues | Exercising — not yet exercised |
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | Production issues backed by Sentry evidence | Exercising — Standard and Deep planning validated; remediation not yet validated |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk | Exercising — planning exercised; remediation not yet validated |
 | [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability | Not exercised — real Jira pilot pending |

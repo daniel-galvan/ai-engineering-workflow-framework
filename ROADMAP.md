@@ -44,6 +44,8 @@ validated; remediation lifecycle validation remains pending
 Feature Delivery playbook — exercising; planning exercised; remediation
 validation remains pending
 
+TechOps Issue Remediation playbook — exercising; not yet exercised
+
 ## Planned scenario coverage
 
 Main Jira-driven scenario playbooks
@@ -53,7 +55,7 @@ only if a distinct worker graph or gate is later proven necessary
 
 Bug-fix playbook
 
-TechOps and incident playbook
+Incident playbook
 
 Feature delivery playbook stabilization
 

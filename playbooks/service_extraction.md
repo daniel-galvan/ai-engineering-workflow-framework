@@ -260,8 +260,10 @@ The final handoff reports:
 1. extracted capability, verified source/destination seam, and outcome;
 2. implementation-plan path/status, code changes, validation, coexistence or
    cutover, rollback, and operational evidence;
-3. worker result ledger plus requested/executed profile, activation, and
-   fan-in and runtime-closure status; and
+3. Worker result ledger: one compact row per activated worker and each required
+   worker without a terminal envelope, using the shared contract's ledger
+   fields; plus requested/executed profile, activation, fan-in, and
+   runtime-closure status; and
 4. residual risks, blockers, owner, follow-up work, and next action.
 
 The handoff must not imply implementation, validation, or cutover completed

@@ -454,6 +454,22 @@ worker-result ledger. The shared summary answers what should happen next. The
 worker ledger makes each contribution, outcome, limitation, and usage visible
 without requiring the reader to reconstruct parallel execution from logs.
 
+The ledger contains one compact row per activated worker and each required
+worker that did not reach a terminal envelope:
+
+| Column | Required content |
+| --- | --- |
+| Worker | Worker ID and role. |
+| Activation/state | Required or conditional, and activated, terminal, active, or not started. |
+| Outcome and summary | Terminal outcome and the worker's unique contribution; do not repeat the shared summary. |
+| Confidence and limitations | Confidence plus material uncertainty, blocker, or reason it did not run. |
+| Evidence or artifact | Evidence/claim references or durable artifact path. |
+| Model, effort, and usage | Actual provider values when exposed; otherwise `Unknown`. |
+
+A required worker without a terminal envelope must appear with its reason. It
+keeps fan-in open or the run `blocked`; it cannot be omitted to make a profile
+appear successful.
+
 An active subagent is never evidence that a stage is complete. A workflow may
 finish only after the fan-in barrier passes or a documented terminal outcome
 explains why the remaining worker was not required.

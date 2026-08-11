@@ -66,6 +66,31 @@ minimum implementable outcome, affected surface, or acceptance condition cannot
 be recovered, bounded discovery frames feasible options and a recommendation
 before the workflow requests clarification; it does not invent a plan.
 
+## TechOps Issue Remediation
+
+**Use for:** support- and operations-reported Jira issues, including Zendesk or
+Help Desk reports with attachments, logs, payloads, screenshots, or recordings.
+**State:** Exercising; not yet exercised.
+
+```mermaid
+flowchart TB
+    A["Initialize"] --> B["Issue evidence"]
+    B --> C["Failure path and first divergence"]
+    B --> D["Repository integration"]
+    C --> E["Fix design"]
+    D --> E
+    E --> F["Planning review: deep only"]
+    E --> G["Plan and handoff"]
+    F --> G
+    G --> H["Approved remediation"]
+    H --> I["Implement → Code Review → Validate"]
+```
+
+The report and its attachments are first-class evidence, but not proof of
+current behavior or cause. `standard` requires issue evidence, failure-path
+analysis, fix design, and documentation; integration is conditional. `deep`
+adds mandatory repository integration and independent planning review.
+
 ## Sentry Issue Remediation
 
 **Use for:** a Sentry issue that needs evidence-led diagnosis and a minimal
@@ -142,6 +167,7 @@ It is not the default for a normal feature or improvement.
 | Primary evidence and goal | Playbook |
 | --- | --- |
 | Jira initiative, planned capability, or improvement | Feature Delivery |
+| Support- or operations-reported Jira issue, attachments, logs, or unclear ownership | TechOps Issue Remediation |
 | Sentry issue, event evidence, and production failure | Sentry Issue Remediation |
 | Scanner, CVE, advisory, or security finding | Vulnerability Investigation |
 | Existing capability moved into a new independently operated service | Service Extraction and Stabilization |

@@ -40,18 +40,21 @@ v0.1 pilot baseline
 - Vulnerability Investigation run prompt
 - Service Extraction and Stabilization run prompt
 - Feature Delivery run prompt
+- TechOps Issue Remediation run prompt
 
 ### Playbooks
 
 - Vulnerability Investigation (exercising)
 - Service Extraction and Stabilization (not exercised)
 - Feature Delivery (exercising)
+- TechOps Issue Remediation (exercising; not yet exercised)
 - Sentry Issue Remediation (exercising; planning validated)
 
 ### Pilot artifacts awaiting exercise
 
 - Service Extraction and Stabilization planning and remediation lifecycle
 - Feature Delivery remediation lifecycle
+- TechOps Issue Remediation planning and remediation lifecycle
 
 ---
 

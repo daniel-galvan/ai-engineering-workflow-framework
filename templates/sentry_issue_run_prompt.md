@@ -23,32 +23,30 @@ Lifecycle: planning
 The selected execution profile is mandatory; do not silently downgrade it.
 
 Playbook:
-<PATH-TO>/ai-assisted-software-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
+<PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
 
-Execution repository (durable artifact root):
-<ABSOLUTE-PATH-TO-REPOSITORY-WHERE-THIS-PROMPT-IS-EXECUTED>
+Execution repository (required; durable artifact root):
+<ABSOLUTE-PATH-TO-TARGET-REPOSITORY>
 
-Work record:
-<EXECUTION-REPOSITORY>/.thoughts/<SENTRY-ISSUE-ID>/work_record.md
+Durable artifacts (derived; do not replace these paths):
+- Work record: <execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/work_record.md
+- Implementation plan: create <execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/implementation_plan.md
+  only when the playbook reaches `ready_for_implementation`.
 
-Implementation plan (create only when the playbook reaches
-`ready_for_implementation`):
-<EXECUTION-REPOSITORY>/.thoughts/<SENTRY-ISSUE-ID>/implementation_plan.md
+Provider/runtime configuration (optional; omit if unavailable):
+<PATH-TO-TARGET-REPOSITORY-PROVIDER-CONFIGURATION>
 
-Continuation / re-entry:
-- Run type: New investigation / Planning follow-up / Interrupted profile recovery / Remediation re-entry
-- Previous run or handoff: <NONE-OR-REFERENCE>
-- Existing artifacts to reuse: <NONE-OR-ABSOLUTE-PATHS>
-- Completed workers: <NONE-OR-WORKER-LIST>
-- Required workers for this continuation: <NONE-OR-WORKER-LIST>
-- Recovery reason: <NONE-OR-REASON>
-- Approval reference: <NONE-OR-REFERENCE>
+Coordination:
+- The current session is the Coordinator.
+- Use a configured Orchestrator agent only when the runtime supports nested
+  delegation. Otherwise, the current session activates workers and completes
+  fan-in directly.
 
-Provider/runtime configuration:
-<OPTIONAL-PROVIDER-AGENT-CONFIGURATION-PATH>
-
-Coordinator:
-<PROVIDER-ORCHESTRATOR-AGENT-OR-CURRENT-SESSION>
+Continuation (omit this entire section for a new investigation):
+- Run type: Planning follow-up / Interrupted profile recovery / Remediation re-entry
+- Previous work record, plan, or handoff: <ABSOLUTE-PATH-OR-REFERENCE>
+- New evidence, decision, constraint, or recovery reason: <DESCRIPTION>
+- Approval reference: <REQUIRED-FOR-REMEDIATION-OR-NONE>
 
 Run invariants:
 - The shared contract and selected playbook own lifecycle, worker activation,
@@ -58,9 +56,9 @@ Run invariants:
 - Planning is read-only. Remediation reuses planning artifacts, activates the
   delivery graph before edits, and executes the approved plan end-to-end.
 
-Repositories and working directories:
-- <REPOSITORY-OR-DIRECTORY-1>
-- <REPOSITORY-OR-DIRECTORY-2>
+Additional repositories and working directories (optional; the execution
+repository is already declared):
+- <REPOSITORY-OR-DIRECTORY-OR-NONE>
 
 Initial topology hypothesis:
 - Event-origin repository: <REPOSITORY-OR-UNKNOWN>
