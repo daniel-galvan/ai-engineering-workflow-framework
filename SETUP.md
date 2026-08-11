@@ -142,21 +142,20 @@ Work item:
 TECHOPS-12345 (https://your-company.atlassian.net/browse/TECHOPS-12345)
 
 Selected playbook:
-TechOps Issue Remediation
+playbooks/techops_issue_remediation.md
 
 Canonical run template:
-/absolute/path/to/ai-engineering-workflow-framework/templates/techops_issue_run_prompt.md
+templates/techops_issue_run_prompt.md
 
 Additional repositories or assets:
 NONE
 
-Read these files from the framework checkout using their absolute paths:
-- /absolute/path/to/ai-engineering-workflow-framework/SETUP.md
-- /absolute/path/to/ai-engineering-workflow-framework/README.md
-- /absolute/path/to/ai-engineering-workflow-framework/OPERATING_GUIDE.md
-- /absolute/path/to/ai-engineering-workflow-framework/PLAYBOOK_CATALOG.md
-- /absolute/path/to/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
-- /absolute/path/to/ai-engineering-workflow-framework/templates/techops_issue_run_prompt.md
+Read these files relative to the framework checkout:
+- SETUP.md
+- OPERATING_GUIDE.md
+- PLAYBOOK_CATALOG.md
+- playbooks/techops_issue_remediation.md
+- templates/techops_issue_run_prompt.md
 
 Fill the existing canonical template for this work item. Do not invent a new
 format. For a new run, use lifecycle `planning` and omit the template's entire
