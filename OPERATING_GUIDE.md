@@ -145,12 +145,9 @@ separate:
   `deep_reasoning`.
 * Provider adapters map each role to its concrete model and reasoning setting.
 
-For the current Codex pilot, Feature Delivery, TechOps Issue Remediation,
-Vulnerability Investigation, Service Extraction, and Sentry
-use the same role-quality policy. Most roles use `gpt-5.6-luna`; Solution
-Architect uses `gpt-5.6-terra` with Light effort. Profiles choose which roles
-run; they do not change a role's model or provider reasoning effort. The
-canonical mapping is in
+For the current Codex pilot, all playbooks use the same role-quality policy.
+Profiles choose which roles run; they do not change a role's model or provider
+reasoning effort. The canonical mapping is in
 [providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md).
 
 ## Current playbooks
@@ -162,14 +159,8 @@ separately. Remediation is not validated until a compliant delivery run
 activates the required delivery workers, completes Code Review and validation,
 and records fan-in.
 
-Current playbooks include:
-
-* Vulnerability Investigation — exercising; planning exercised
-* Service Extraction and Stabilization — not exercised
-* Feature Delivery — exercising; planning exercised
-* TechOps Issue Remediation — exercising; first planning attempt incomplete;
-  not validated
-* Sentry Issue Remediation — exercising; Standard and Deep planning validated
+See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for the current playbook list,
+exercise state, worker graphs, and selection guidance.
 
 The Service Extraction playbook is for establishing an independently buildable,
 runnable, deployable, and maintainable service from an existing capability.
@@ -268,8 +259,8 @@ them manually.
 | Interrupted recovery | A required worker, fan-in, or runtime step did not finish | Prior work record/plan and the specific recovery reason | Worker lists; the Coordinator derives them |
 | Remediation re-entry | Planning passed and implementation is explicitly approved | Lifecycle `remediation`, prior work record/plan, and approval reference | New planning inputs unless they changed |
 
-For every case, the current session is the Coordinator by default. Use a
-target repository's `.codex/agents/` path only when that runtime view has been
+For every case, the current session is the Coordinator by default. Use the
+execution repository's `.codex/agents/` path only when that runtime view has been
 installed and verified; otherwise omit provider configuration. Never use the
 framework repository or an evidence folder as the execution repository merely
 because it contains a playbook or attachments.
@@ -338,8 +329,6 @@ When adding capability:
 
 ## Current status
 
-The framework is a working pilot foundation. The Service Extraction and
-Stabilization workflow, Codex agent mapping, model/effort policy, and work
-record are implemented and ready for full-pilot execution. Stability claims
-remain provisional until the implementation and validation phases are exercised
-against the real Jira Story.
+The framework remains an evolving, unvalidated pilot. See
+[PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for per-playbook exercise status and
+[ROADMAP.md](ROADMAP.md) for planned validation.

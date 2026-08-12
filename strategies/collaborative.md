@@ -128,41 +128,12 @@ When is the role finished?
 
 ---
 
-# Default Delivery Flow
+# Worker graph ownership
 
-```text
-Orchestrator
-      │
-      ▼
-Current-State Investigator
-      │
-      ▼
-Dependency Analyst
-      │
-      ▼
-Solution Architect
-      │
-      ▼
-Repository Integrator
-      │
-      ▼
-Implementer
-      │
-      ▼
-Reviewer
-      │
-      ▼
-Tester
-      │
-      ▼
-Handoff
-```
-
-The Documenter runs continuously after initialization and records the artifacts produced by the other workers. It is not a terminal step in the graph.
-
-Not every workflow requires every role.
-
-Choose the smallest set of roles that provides sufficient confidence.
+The selected playbook owns the worker graph, dependencies, and execution
+order. The Documenter commonly runs continuously after initialization, but
+the playbook decides whether and how it is activated. Choose the smallest set
+of roles that provides sufficient confidence.
 
 ---
 
@@ -200,23 +171,9 @@ See `../contracts/workflow_execution.md` for the worker contract and parallelism
 
 # Role Selection
 
-Choose roles based on the work rather than following a fixed sequence.
-
-The following is planning guidance for future scenarios, not an implemented
-playbook contract. Current worker graphs are defined in `playbooks/`.
-
-Examples:
-
-| Work Type | Suggested Roles |
-| --- | --- |
-| Bug | Current-State Investigator, Implementer, Reviewer, Tester, Documenter |
-| Vulnerability | Current-State Investigator, Dependency Analyst, Reviewer, Documenter |
-| Service Extraction | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
-| Incident or TechOps | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Reviewer, Tester, Documenter |
-| Feature | Orchestrator, Current-State Investigator, Solution Architect, Implementer, Reviewer, Tester, Documenter |
-| Migration | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
-| New Project | Orchestrator, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
-| Architecture | Current-State Investigator, Solution Architect, Reviewer, Documenter |
+Select roles from the chosen playbook. This strategy does not define a second
+scenario matrix or fixed role sequence. If no existing playbook expresses the
+required graph, document the special workflow requirements before adding one.
 
 ---
 

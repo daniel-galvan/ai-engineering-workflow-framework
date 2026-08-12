@@ -29,7 +29,7 @@ that context as automatic scope.
 | --- | --- |
 | Work item | `<JIRA-TICKET-ID-OR-URL>` |
 | Execution repository | Local checkout where the run begins |
-| Relevant repositories | Affected repository checkouts |
+| Primary or additional code repositories | Affected repository checkouts |
 | Parent or ancestor context | `<JIRA-URLS-OR-UNKNOWN>` |
 | Related siblings or decisions | `<JIRA-URLS-OR-NONE>` |
 | Desired outcome | `<DESCRIPTION-OR-UNKNOWN>` |

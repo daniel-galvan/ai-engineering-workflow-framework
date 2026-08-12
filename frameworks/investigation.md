@@ -310,12 +310,11 @@ The investigation is implementation-ready.
 
 # Work Record
 
-Each unit of engineering work should maintain a work record.
-
-The recommended location is:
+Each unit of engineering work should maintain a work record. The execution
+repository is the durable-artifact root. The recommended location is:
 
 ```text
-.thoughts/<WORK-ITEM-ID>/work_record.md
+<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
 The record should evolve alongside the workflow.

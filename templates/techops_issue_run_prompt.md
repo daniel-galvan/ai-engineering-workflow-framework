@@ -28,7 +28,7 @@ Playbook:
 <PATH-TO>/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
 
 Execution repository (required; durable artifact root):
-<ABSOLUTE-PATH-TO-TARGET-REPOSITORY>
+<ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
 
 Durable artifacts (derived; do not replace these paths):
 - Work record: <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
@@ -36,7 +36,7 @@ Durable artifacts (derived; do not replace these paths):
   only when the playbook reaches `ready_for_implementation`.
 
 Provider/runtime configuration (optional; omit if unavailable):
-<PATH-TO-TARGET-REPOSITORY-PROVIDER-CONFIGURATION>
+<PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION>
 
 Coordination:
 - The current session is the Coordinator.

@@ -145,17 +145,10 @@ Modes such as Discovery, Investigation, Delivery, Stabilization, and Review are 
 
 # Role Selection Guide
 
-| Work Type | Roles |
-| --- | --- |
-| Triage | Orchestrator, Current-State Investigator, Documenter |
-| Bug | Current-State Investigator, Implementer, Reviewer, Tester, Documenter |
-| Incident or TechOps | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Reviewer, Tester, Documenter |
-| Vulnerability | Current-State Investigator, Dependency Analyst, Reviewer, Documenter |
-| Service Extraction | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
-| Feature | Orchestrator, Current-State Investigator, Solution Architect, Implementer, Reviewer, Tester, Documenter |
-| Migration | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
-| New Project | Orchestrator, Solution Architect, Repository Integrator, Implementer, Reviewer, Tester, Documenter |
-| Architecture | Current-State Investigator, Solution Architect, Reviewer, Documenter |
+The selected playbook owns role selection, worker dependencies, and execution
+order. Use its worker graph rather than a generic work-type matrix. Triage is
+handled within the selected playbook's standard path or as an outcome; it is
+not a separate role graph.
 
 ---
 

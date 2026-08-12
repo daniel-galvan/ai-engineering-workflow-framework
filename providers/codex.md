@@ -11,29 +11,18 @@ last_updated: 2026-08-11
 # Codex Provider Adapter
 
 The complete operating guide is [`../OPERATING_GUIDE.md`](../OPERATING_GUIDE.md).
-For local clone, target-repository, symlink, and prompt setup, see
+For local clone, execution-repository, symlink, and prompt setup, see
 [`../SETUP.md`](../SETUP.md).
 
-## Pilot Agent Mappings
+## Agent Definitions
 
 The canonical Codex model and effort mapping is defined in
 [`codex/model_effort_policy.md`](codex/model_effort_policy.md).
 
-Custom agent definitions are stored in [`codex/agents/`](codex/agents/):
-
-* `current_state_investigator`: `gpt-5.6-luna`, medium effort
-* `orchestrator`: `gpt-5.6-luna`, extra-high (`xhigh`) effort
-* `dependency_analyst`: `gpt-5.6-luna`, high effort
-* `solution_architect`: `gpt-5.6-terra`, light (`low`) effort
-* `repository_integrator`: `gpt-5.6-luna`, high effort
-* `implementer`: `gpt-5.6-luna`, high effort
-* `reviewer`: `gpt-5.6-terra`, light (`low`) effort
-* `tester`: `gpt-5.6-luna`, extra-high (`xhigh`) effort
-* `documenter`: `gpt-5.6-luna`, light (`low`) effort
-
-For a target repository, expose these files under `.codex/agents/` using
+Custom agent definitions are stored in [`codex/agents/`](codex/agents/). For an
+execution repository, expose these files under `.codex/agents/` using
 symlinks or another provider-specific installation mechanism. The framework is
-the source of truth; the target repository contains only the runtime view.
+the source of truth; the execution repository contains only the runtime view.
 
 Sentry uses specialized agents only where its investigation differs from the
 generic role: orchestration, Sentry evidence, failure topology, repository

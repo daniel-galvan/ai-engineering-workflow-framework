@@ -11,6 +11,7 @@ depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../contracts/workflow_execution.md
+  - ../contracts/claims.md
   - ../templates/work_record.md
   - ../templates/implementation_plan.md
   - ../templates/sentry_issue_run_prompt.md
@@ -330,8 +331,8 @@ It records `profile_status: requested` before spawning the first investigation
 worker.
 
 Use the prompt's declared `Execution repository` as the durable-artifact root.
-Repositories listed for Sentry investigation are target repositories and must
-not receive the work record or worker artifacts.
+Code repositories listed for Sentry investigation must not receive the work
+record or worker artifacts.
 
 Recover or create:
 

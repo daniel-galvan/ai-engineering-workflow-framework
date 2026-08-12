@@ -28,7 +28,7 @@ approximate timestamp, but the responsible repository is unknown.
 | --- | --- |
 | Work item | `<TECHOPS-JIRA-ID-OR-URL>` |
 | Execution repository | Local checkout where the workflow is started |
-| Candidate repositories | `<ABSOLUTE-PATHS-OR-UNKNOWN>` |
+| Primary or additional code repositories | `<ABSOLUTE-PATHS-OR-UNKNOWN>` |
 | Reported behavior | `<DESCRIPTION>` |
 | Expected behavior | `<DESCRIPTION>` |
 | Artifacts | `<SCREENSHOT-LOG-JSON-OR-TRANSCRIPT-PATHS>` |

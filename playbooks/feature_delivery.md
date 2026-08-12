@@ -8,6 +8,7 @@ owner: Engineering
 last_updated: 2026-08-10
 depends_on:
   - ../contracts/workflow_execution.md
+  - ../contracts/claims.md
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../skills/work_item_context.md

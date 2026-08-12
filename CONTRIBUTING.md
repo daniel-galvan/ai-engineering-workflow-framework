@@ -54,7 +54,8 @@ python3 scripts/validate_library.py
 ```
 
 The validator checks document versions, TOML syntax, playbook maturity,
-template consistency, and provider-adapter coverage.
+template consistency, provider-adapter coverage, and Codex policy/TOML
+alignment.
 
 ## Version policy
 

@@ -29,6 +29,7 @@ before new feature work begins.
 | Item | Example |
 | --- | --- |
 | Work item | Jira Story: `<JIRA-STORY-URL>` |
+| Execution repository | Local checkout where the workflow starts and stores artifacts |
 | Source repository | `/projects/source-repository` |
 | Destination repository | `/projects/destination-repository` |
 | Capability | `<SERVICE-OR-COMPONENT>` |
@@ -36,7 +37,7 @@ before new feature work begins.
 | Related work | Jira tickets, pull requests, architecture and deployment docs |
 | Constraints | Preserve behavior; limit changes to imports, wiring, adapters, and required configuration |
 
-## Execution Shape
+## Run Format
 
 Use the
 [`Service Extraction and Stabilization`](../playbooks/service_extraction.md)

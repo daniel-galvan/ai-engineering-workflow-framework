@@ -11,9 +11,11 @@ last_updated: 2026-08-11
 
 # Codex Model and Effort Policy
 
-This policy maps the framework's provider-neutral model profiles to Codex custom
-agents for Feature Delivery, TechOps Issue Remediation, Vulnerability
-Investigation, Service Extraction, and Sentry Issue Remediation.
+This policy maps reusable framework roles to Codex custom agents for Feature
+Delivery, TechOps Issue Remediation, Vulnerability Investigation, Service
+Extraction, and Sentry Issue Remediation. It does not assign one provider
+model to the provider-neutral `standard_reasoning` or `deep_reasoning` labels;
+the role policy below is the concrete pilot mapping.
 
 The pilot uses one role-quality policy across Feature Delivery, Service
 Extraction, Sentry, TechOps Issue Remediation, and Vulnerability Investigation.
@@ -29,64 +31,36 @@ User-facing effort labels map to Codex configuration values as follows:
 | High | `high` |
 | Extra High | `xhigh` |
 | Max | `max` |
-| Ultra | `ultra` |
+| Ultra | `ultra` (Codex App/runtime-specific; not portable) |
+
+OpenAI's current GPT-5.6 guidance documents `none`, `low`, `medium`, `high`,
+`xhigh`, and `max` as reasoning-effort values. This pilot uses explicit
+`gpt-5.6-luna` and `gpt-5.6-terra` model IDs; it does not use the `gpt-5.6`
+alias because that alias routes to Sol. Verify any Codex App-only label, such
+as `Ultra`, in the target runtime before pinning it in an agent definition.
+See the [official GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model).
 
 ## Pilot Role Quality Policy
 
 | Role | Codex model | Policy effort | TOML value |
 |---|---|---|---|
-| Orchestrator | `gpt-5.6-luna` | Extra High | `xhigh` |
+| Orchestrator | `gpt-5.6-luna` | High | `high` |
 | Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
 | Dependency Analyst | `gpt-5.6-luna` | High | `high` |
 | Repository Integrator | `gpt-5.6-luna` | High | `high` |
-| Solution Architect | `gpt-5.6-terra` | Light | `low` |
-| Reviewer | `gpt-5.6-terra` | Light | `low` |
+| Solution Architect | `gpt-5.6-terra` | Medium | `medium` |
+| Reviewer | `gpt-5.6-terra` | High | `high` |
 | Implementer | `gpt-5.6-luna` | High | `high` |
-| Tester | `gpt-5.6-luna` | Extra High | `xhigh` |
+| Tester | `gpt-5.6-luna` | High | `high` |
 | Documenter | `gpt-5.6-luna` | Light | `low` |
 
-## Generic Agent Usage
+## Agent selection
 
-Feature Delivery, TechOps Issue Remediation, Vulnerability Investigation, and
-Service Extraction use the generic agent definitions. The selected execution
-profile changes the required worker graph, not a role's pinned model or effort.
-
-### Service Extraction
-
-| Profile | Required planning workers |
-| --- | --- |
-| `standard` | Orchestrator, Current-State Investigator, Dependency Analyst, Solution Architect, Repository Integrator, and Documenter |
-| `deep` | Standard workers plus Reviewer as `planning-review` for independent planning review |
-
-### Feature Delivery
-
-Feature Delivery uses Orchestrator, Current-State Investigator, Dependency
-Analyst, Solution Architect, and Documenter for `standard`; Repository
-Integrator is conditional. `deep` makes Repository Integrator and Reviewer
-mandatory.
-
-After explicit approval and remediation re-entry, both profiles add
-Implementer, Reviewer, Tester, and continuous Documenter. The current session
-owns fan-out directly when a coordinator subagent cannot delegate.
-
-### TechOps Issue Remediation
-
-TechOps uses Orchestrator, Current-State Investigator, Dependency Analyst,
-Solution Architect, and Documenter for `standard`; Repository Integrator is
-conditional. `deep` makes Repository Integrator and Reviewer mandatory.
-
-After explicit approval and remediation re-entry, both profiles add
-Implementer, Reviewer, Tester, and continuous Documenter.
-
-### Vulnerability Investigation
-
-Vulnerability Investigation uses Orchestrator, Current-State Investigator,
-Dependency Analyst, Solution Architect, and Documenter for `standard`;
-Repository Integrator and Planning Reviewer are conditional. `deep` makes
-both conditional workers mandatory.
-
-After explicit approval and remediation re-entry, both profiles add
-Implementer, Reviewer, Tester, and continuous Documenter.
+The playbook is the source of truth for which workers run in each execution
+profile. This policy is the source of truth only for the model and reasoning
+effort assigned to each role. The profile changes the worker graph, not the
+quality policy of a role. The contract's worker depth (`quick`, `standard`, or
+`deep`) is separate from Codex reasoning effort.
 
 ## Sentry Issue Remediation
 
@@ -105,31 +79,28 @@ those agents. Prompt text alone does not override a pinned agent model or
 effort. If a requested model is unavailable, use a separate equivalent agent
 definition with the nearest available model and record the substitution.
 
-### Sentry Agent Mapping
+### Specialized Sentry Agent Mapping
 
-| Worker responsibility | Codex agent | Model | Reasoning effort |
+| Worker responsibility | Codex agent | Reuses role policy |
 |---|---|---|---|
-| Orchestration | `sentry_orchestrator` | `gpt-5.6-luna` | `xhigh` (Extra High) |
-| Sentry evidence and initial topology | `sentry_current_state_investigator` | `gpt-5.6-luna` | `medium` |
-| Failure topology and root-cause analysis | `sentry_dependency_analyst` | `gpt-5.6-luna` | `high` |
-| Fix design | `sentry_solution_architect` | `gpt-5.6-terra` | `low` (Light) |
-| Repository integration | `sentry_repository_integrator` | `gpt-5.6-luna` | `high` |
-| Implementation | `implementer` | `gpt-5.6-luna` | `high` |
-| Code Review | `reviewer` | `gpt-5.6-terra` | `low` (Light) |
-| Testing | `tester` | `gpt-5.6-luna` | `xhigh` (Extra High) |
-| Documentation | `documenter` | `gpt-5.6-luna` | `low` (Light) |
+| Orchestration | `sentry_orchestrator` | Orchestrator |
+| Sentry evidence and initial topology | `sentry_current_state_investigator` | Current-State Investigator / Sentry Evidence |
+| Failure topology and root-cause analysis | `sentry_dependency_analyst` | Dependency Analyst |
+| Fix design | `sentry_solution_architect` | Solution Architect |
+| Repository integration | `sentry_repository_integrator` | Repository Integrator |
+
+Sentry reuses the generic `implementer`, `reviewer`, `tester`, and `documenter`
+agents for delivery, Code Review, testing, and documentation.
 
 ### Sentry Profile Activation
 
 For Sentry planning runs:
 
-- `standard` activates the Orchestrator, Current-State Investigator, Solution
-  Architect, and Documenter. Repository Integrator is conditional.
-- `deep` adds the independent Dependency Analyst and requires Repository
-  Integrator.
-- The Standard and Deep Solution Architects use the same Terra/Light policy.
-  Deep receives more independent evidence; it does not silently change the
-  Solution Architect's model or effort.
+- The Sentry playbook selects its standard and deep worker graphs.
+- Specialized Sentry agents use the same role policy as their generic
+  counterparts unless this table explicitly assigns a different agent.
+- Deep receives more independent evidence; it does not silently change a
+  role's model or effort.
 
 ## Resolution
 

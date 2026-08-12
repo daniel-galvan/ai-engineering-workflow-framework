@@ -29,6 +29,7 @@ It is intended to allow another engineer (or AI assistant) to resume the work wi
 | Source system | Jira / GitHub Issues / Linear / Markdown / Manual |
 | Title | |
 | Type | Story / Bug / Task / Incident / Upgrade / Migration / Vulnerability / Other |
+| Execution repository | |
 | Source repository | |
 | Destination repository | |
 | Branch or change reference | |
@@ -59,15 +60,16 @@ Record explicit non-goals when the work could expand into adjacent work.
 
 | Field | Value |
 | --- | --- |
+| Run ID | |
 | Playbook | |
-| Requested profile | Standard / Deep |
-| Executed profile | Standard / Deep / Not executed |
-| Profile status | Requested / In progress / Executed / Not executed / Blocked |
-| Lifecycle | Planning / Remediation |
-| Mode | Discovery / Investigation / Delivery / Stabilization / Review |
-| Effort | Worker depth: Quick / Standard / Deep; separate from provider reasoning effort |
+| Requested profile | `standard` / `deep` |
+| Executed profile | `standard` / `deep` / `not_executed` |
+| Profile status | `requested` / `in_progress` / `executed` / `not_executed` / `blocked` |
+| Lifecycle | `planning` / `remediation` |
+| Mode | `discovery` / `investigation` / `delivery` / `stabilization` / `review` |
+| Effort | `quick` / `standard` / `deep` worker depth; separate from provider reasoning effort |
 | State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |
-| Outcome | In progress / Completed / No action / Duplicate / Not a bug / Deferred |
+| Outcome | `in_progress` / `completed` / `closed_no_action` / `closed_duplicate` / `closed_not_a_bug` / `deferred` / `blocked` |
 | Current stage | |
 | Current owner | |
 | Next action | |

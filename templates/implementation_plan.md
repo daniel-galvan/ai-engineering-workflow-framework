@@ -35,7 +35,8 @@ investigation from chat history.
 | Requested profile | |
 | Executed profile | |
 | Lifecycle | |
-| Target repository | |
+| Execution repository | |
+| Affected repositories | |
 | Target revision | |
 | Plan status | Draft / Ready for implementation / Approved / Superseded |
 | Approval reference | |
@@ -43,7 +44,7 @@ investigation from chat history.
 
 # 1. Scope and Baseline
 
-Record the verified issue behavior, target repository and revision, affected
+Record the verified issue behavior, code repository and revision, affected
 component, event or request topology, in-scope changes, and explicit
 exclusions.
 

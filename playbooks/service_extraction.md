@@ -9,6 +9,7 @@ depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../contracts/workflow_execution.md
+  - ../contracts/claims.md
   - ../templates/work_record.md
   - ../templates/implementation_plan.md
   - ../templates/service_extraction_run_prompt.md
@@ -128,9 +129,8 @@ Use the prompt's declared `Execution repository` as the durable-artifact root:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Source and destination repositories are investigation targets, not artifact
-roots. Do not infer the artifact root from the playbook location or repository
-list.
+Source and destination are code repositories, not artifact roots. Do not infer
+the artifact root from the playbook location or repository list.
 
 Do not create `implementation_plan.md` during initialization. The Documenter
 creates it from [`templates/implementation_plan.md`](../templates/implementation_plan.md)

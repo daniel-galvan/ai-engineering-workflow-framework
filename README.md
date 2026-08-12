@@ -50,17 +50,17 @@ smallest role and skill set that provides enough evidence and validation.
 
 ## Setup
 
-For cloning, target-repository selection, Codex agent links, prompt creation,
+For cloning, execution-repository selection, Codex agent links, prompt creation,
 and validation, see [SETUP.md](SETUP.md).
 
 ## Quick start
 
-1. Complete [SETUP.md](SETUP.md) for the framework, target repository, and
+1. Complete [SETUP.md](SETUP.md) for the framework, execution repository, and
    provider runtime.
 2. Choose the playbook that matches the primary evidence and goal in
    [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md).
 3. Copy the matching canonical run template from [templates/](templates/) into
-   a session started in the target repository. Fill only the required
+   a session started in the execution repository. Fill only the required
    first-run and scenario fields; do not invent a second prompt format.
 4. Start with `planning` for read-only discovery, diagnosis, design, and an
    implementation plan. Create the plan only after required fan-in passes.
@@ -77,8 +77,9 @@ evidence-to-action reasoning model is
 
 If you are unsure which fields to provide, use the request and example in
 [SETUP.md](SETUP.md#ask-codex-to-prepare-the-prompt) from a session started in
-the target repository. The request explicitly supplies the absolute framework
-checkout path, target/execution repository, work-item ID or URL, selected
+the execution repository. The request explicitly supplies the absolute
+framework checkout path, execution repository, primary code repository when
+different, work-item ID or URL, selected
 playbook, and canonical template. It instructs the agent to fill the existing
 template, mark missing information as `Unknown`, and avoid executing or
 modifying the workflow.
@@ -112,16 +113,17 @@ Work item
 
 ## Current playbooks
 
-| Playbook | Use for | State |
+| Playbook | Use for |
 |---|---|---|
-| [Feature Delivery](playbooks/feature_delivery.md) | Jira features and improvements | Exercising — planning exercised; remediation not yet validated |
-| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | Support- and operations-reported Jira issues | Exercising — first planning attempt incomplete; not validated |
-| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | Production issues backed by Sentry evidence | Exercising — Standard and Deep planning validated; remediation not yet validated |
-| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk | Exercising — planning exercised; remediation not yet validated |
-| [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability | Not exercised — real Jira pilot pending |
+| [Feature Delivery](playbooks/feature_delivery.md) | Jira features and improvements |
+| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | Support- and operations-reported Jira issues |
+| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | Production issues backed by Sentry evidence |
+| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk |
+| [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability |
 
 Choose the specialized playbook first; add a new playbook only when existing
-stages, gates, and artifacts cannot express the scenario cleanly.
+stages, gates, and artifacts cannot express the scenario cleanly. See
+[PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and worker graphs.
 
 ## Guides and examples
 

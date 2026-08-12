@@ -203,8 +203,8 @@ fan-in passes, and the workflow reaches `ready_for_implementation`:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The execution repository comes from the canonical run prompt. Target
-repositories are not artifact roots. The work record links to the plan before
+The execution repository comes from the canonical run prompt. Code repositories
+are not artifact roots. The work record links to the plan before
 the workflow is marked `ready_for_implementation`.
 
 ---

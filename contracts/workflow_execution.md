@@ -26,6 +26,8 @@ live work-item connector.
 | Work item         | The normalized request being handled, such as a Jira Story, bug, incident, or upgrade.                                                                |
 | Coordinator       | The active session or runtime responsible for activating workers, collecting results, completing fan-in, and closing the run.                          |
 | Workflow run      | One execution of a playbook for one work item.                                                                                                        |
+| Execution repository | Repository where the workflow session starts and where durable run artifacts are stored.                                                        |
+| Code repository   | Repository inspected or modified by the workflow. It may be the execution repository or an additional repository.                                  |
 | Playbook          | A scenario-specific workflow made of stages, roles, skills, gates, and outputs.                                                                       |
 | Stage             | A meaningful unit of work inside a playbook.                                                                                                          |
 | Role              | A reusable responsibility and reasoning boundary.                                                                                                     |
@@ -422,14 +424,13 @@ started. It is the durable-artifact root for that run:
 ```
 
 The `work_record.md`, worker artifacts, and any implementation plan belong
-there. Repositories listed for investigation are target repositories, not
-artifact roots. A worker must not place durable workflow files in a target
-repository merely because it is the suspected fault repository or appears
-first in the topology.
+there. Code repositories listed for investigation are not artifact roots. A
+worker must not place durable workflow files in a code repository merely
+because it is the suspected fault repository or appears first in the topology.
 
 The execution repository must be explicit in the canonical run prompt. If it
 is missing or ambiguous, stop with `blocked` and request the smallest missing
-path; do not infer it from the playbook location or target-repository list.
+path; do not infer it from the playbook location or code-repository list.
 
 ---
 

@@ -20,7 +20,7 @@ envelopes, fan-in is complete, and the playbook reaches
 the framework template and link it from the work record's Durable Artifacts
 section. Do not create a plan during initialization or while required discovery
 is incomplete. Use the execution repository declared by the run prompt; never
-use a target repository as the artifact root. When a decision remains after
+use a code repository as the artifact root. When a decision remains after
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.

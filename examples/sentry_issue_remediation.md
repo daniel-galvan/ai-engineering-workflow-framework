@@ -28,11 +28,12 @@ fix, regression test, and validation plan.
 | Item | Example |
 | --- | --- |
 | Sentry issue | `<SENTRY-ISSUE-ID-OR-URL>` |
+| Execution repository | Local checkout where the workflow starts and stores artifacts |
 | Event-origin repository | `<REPORTING-REPOSITORY>` |
 | Candidate fault repository | `<REPOSITORY-OR-UNKNOWN>` |
 | Candidate component | `<COMPONENT-OR-UNKNOWN>` |
 | Downstream or return path | `<PATH-OR-UNKNOWN>` |
-| Working directories | Relevant local repository checkouts |
+| Additional repositories and assets | Relevant local checkouts and evidence folders |
 | Supporting artifacts | Payload JSON, logs, screenshots, traces, or reproduction fixtures |
 
 ## Run Format
