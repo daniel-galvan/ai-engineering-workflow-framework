@@ -41,6 +41,8 @@ Use the canonical
 template. Start with:
 
 ```text
+Playbook: playbooks/techops_issue_remediation.md
+Canonical run template: templates/techops_issue_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
 ```
@@ -55,6 +57,8 @@ For a new planning run, fill the required inputs and omit `Continuation`:
 
 ```text
 Execution repository: /projects/primary-service
+Playbook: playbooks/techops_issue_remediation.md
+Canonical run template: templates/techops_issue_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
 Provider/runtime configuration: /projects/primary-service/.codex/agents/

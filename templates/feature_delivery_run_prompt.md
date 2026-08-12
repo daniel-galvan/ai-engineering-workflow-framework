@@ -20,11 +20,11 @@ recovery, and fan-in.
 Run the Feature Delivery playbook.
 
 Work item: <JIRA-TICKET-ID-OR-URL>
+Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/feature_delivery.md
+Canonical run template: templates/feature_delivery_run_prompt.md
+
 Execution profile: standard
 Lifecycle: planning
-
-Playbook:
-<PATH-TO>/ai-engineering-workflow-framework/playbooks/feature_delivery.md
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>

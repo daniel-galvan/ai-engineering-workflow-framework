@@ -42,6 +42,8 @@ Use the canonical
 template. For a bounded feature, begin with:
 
 ```text
+Playbook: playbooks/feature_delivery.md
+Canonical run template: templates/feature_delivery_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
 ```

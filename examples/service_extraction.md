@@ -43,8 +43,17 @@ Use the
 [`Service Extraction and Stabilization`](../playbooks/service_extraction.md)
 playbook with the canonical
 [`service_extraction_run_prompt.md`](../templates/service_extraction_run_prompt.md).
-The normal run begins with `deep + planning`; remediation begins only after
-explicit approval and re-entry. The planning flow is:
+The normal run begins with:
+
+```text
+Playbook: playbooks/service_extraction.md
+Canonical run template: templates/service_extraction_run_prompt.md
+Execution profile: deep
+Lifecycle: planning
+```
+
+Remediation begins only after explicit approval and re-entry. The planning flow
+is:
 
 ```text
 Initialize

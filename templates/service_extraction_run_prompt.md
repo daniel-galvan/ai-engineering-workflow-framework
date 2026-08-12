@@ -20,11 +20,11 @@ selection, coordination, recovery, and fan-in.
 Run the Service Extraction and Stabilization playbook.
 
 Work item: <JIRA-STORY-ID-OR-URL>
+Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/service_extraction.md
+Canonical run template: templates/service_extraction_run_prompt.md
+
 Execution profile: deep
 Lifecycle: planning
-
-Playbook:
-<PATH-TO>/ai-engineering-workflow-framework/playbooks/service_extraction.md
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>

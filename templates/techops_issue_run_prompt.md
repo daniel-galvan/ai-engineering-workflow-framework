@@ -20,12 +20,12 @@ coordination, recovery, and fan-in.
 Run the TechOps Issue Remediation playbook.
 
 Work item: <TECHOPS-JIRA-ID-OR-URL>
+Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
+Canonical run template: templates/techops_issue_run_prompt.md
+
 Execution profile: standard
 Lifecycle: planning
 The selected execution profile is mandatory; do not silently downgrade it.
-
-Playbook:
-<PATH-TO>/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>

@@ -112,6 +112,8 @@ For a new run, fill only:
 - execution profile and lifecycle;
 - execution repository;
 - selected playbook and its canonical template path;
+- provider/runtime configuration when the execution repository's
+  `.codex/agents/` directory is installed and verified;
 - playbook-specific context and evidence; and
 - additional repositories or constraints when applicable.
 
@@ -156,23 +158,21 @@ Execution repository (the current session starts here and owns the
 durable .thoughts artifact):
 /absolute/path/to/execution-repository
 
+Provider/runtime configuration:
+/absolute/path/to/execution-repository/.codex/agents/
+
 Primary code repository:
 SAME AS EXECUTION REPOSITORY
 
 Work item:
 TECHOPS-12345 (https://your-company.atlassian.net/browse/TECHOPS-12345)
 
-Selected playbook:
-playbooks/techops_issue_remediation.md
+Playbook: playbooks/techops_issue_remediation.md
 
-Canonical run template:
-templates/techops_issue_run_prompt.md
+Canonical run template: templates/techops_issue_run_prompt.md
 
-Execution profile:
-standard
-
-Lifecycle:
-planning
+Execution profile: standard
+Lifecycle: planning
 
 Additional repositories or assets:
 NONE
@@ -193,8 +193,12 @@ by a short list of anything I must review before running it.
 
 ### Vulnerability Investigation
 
-Use the same preparation instructions and replace the scenario-specific values
-with those for the actual investigation:
+The work-item URL is the primary lookup target. Provide optional local
+artifacts or investigation hints only when they add information; the workflow
+retrieves and reconciles the scanner, advisory, severity, and component details
+when the configured integrations make them available.
+
+Replace the scenario-specific values with those for the actual investigation:
 
 ```text
 I am preparing a first-use run prompt. Do not execute the workflow, modify
@@ -207,33 +211,30 @@ Execution repository (the current session starts here and owns the
 durable .thoughts artifact):
 /absolute/path/to/execution-repository
 
+Provider/runtime configuration:
+/absolute/path/to/execution-repository/.codex/agents/
+
 Primary code repository:
 SAME AS EXECUTION REPOSITORY
 
 Work item:
 VULN-1234 (https://your-company.atlassian.net/browse/VULN-1234)
 
-Selected playbook:
-playbooks/vulnerability_investigation.md
+Playbook: playbooks/vulnerability_investigation.md
 
-Canonical run template:
-templates/vulnerability_issue_run_prompt.md
+Canonical run template: templates/vulnerability_issue_run_prompt.md
 
-Execution profile:
-standard
-
-Lifecycle:
-planning
+Execution profile: standard
+Lifecycle: planning
 
 Additional repositories or assets:
-- /absolute/path/to/vulnerability-artifacts/VULN-1234/
+- NONE
 
-Known vulnerability context:
-- Reporting source: Snyk dashboard and Jira
-- Finding or advisory: CVE-YYYY-NNNNN
-- Reported severity: High
-- Affected component: example-package in requirements.lock
-- Other context: Unknown
+Optional supporting artifacts:
+- NONE
+
+Additional context or constraints (optional; unverified):
+- NONE
 
 Read these files relative to the framework checkout:
 - SETUP.md

@@ -47,6 +47,8 @@ prompt.
 For a normal first investigation, use:
 
 ```text
+Playbook: playbooks/sentry_issue_remediation.md
+Canonical run template: templates/sentry_issue_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
 ```

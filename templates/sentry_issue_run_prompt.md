@@ -18,12 +18,12 @@ template when the required run inputs or format change.
 Run the Sentry Issue Remediation playbook.
 
 Issue: <SENTRY-ISSUE-ID-OR-URL>
+Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
+Canonical run template: templates/sentry_issue_run_prompt.md
+
 Execution profile: standard
 Lifecycle: planning
 The selected execution profile is mandatory; do not silently downgrade it.
-
-Playbook:
-<PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
