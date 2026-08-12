@@ -13,7 +13,7 @@ last_updated: 2026-07-24
 Reference mapping from framework skills to Claude Code capability classes.
 
 | Skill ID | Claude capability examples |
-|---|---|
+| --- | --- |
 | `work_item_context` | Issue-tracker connector or supplied artifacts |
 | `workflow_planning` | Task planning and task coordination |
 | `repository_exploration` | Project search and symbol navigation |

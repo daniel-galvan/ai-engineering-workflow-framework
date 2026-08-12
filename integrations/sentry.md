@@ -18,7 +18,7 @@ Playbook through MCP.
 Use the narrowest operation that answers the current question:
 
 | Need | MCP capability |
-|---|---|
+| --- | --- |
 | Issue details | `get_sentry_resource` with `resourceType: issue` |
 | Representative event | `get_sentry_resource` with `resourceType: event` |
 | Search grouped issues | `search_issues` |

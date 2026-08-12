@@ -67,7 +67,7 @@ Work item
 ### Building blocks
 
 | Building block | Responsibility |
-|---|---|
+| --- | --- |
 | Framework | Shared investigation-first engineering method |
 | Contract | Common vocabulary, lifecycle, claims, evidence, workers, gates, and outcomes |
 | Strategy | Coordination and parallelization approach |

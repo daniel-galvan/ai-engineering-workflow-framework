@@ -45,7 +45,7 @@ record the limitation and do not estimate it.
 Reference mapping from framework skills to Codex capabilities.
 
 | Skill ID | Codex capability examples |
-|---|---|
+| --- | --- |
 | `work_item_context` | Connected work-item context or supplied artifacts |
 | `workflow_planning` | `update_plan`, `implement-plan` |
 | `repository_exploration` | `codebase-locator`, `research-codebase`, `codebase-analyzer` |

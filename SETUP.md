@@ -280,6 +280,6 @@ From the framework checkout:
 python3 scripts/validate_library.py
 ```
 
-The validator checks document versions, playbook maturity, template
-consistency, provider mappings, Codex policy/TOML alignment, and configuration
-syntax.
+The validator checks document versions, Markdown table structure, playbook
+maturity, template consistency, provider mappings, Codex policy/TOML alignment,
+and configuration syntax.

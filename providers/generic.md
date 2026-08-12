@@ -13,7 +13,7 @@ last_updated: 2026-07-24
 Use equivalent repository, issue-tracker, editing, execution, and validation tools supplied by the operator.
 
 | Skill ID | Required capability |
-|---|---|
+| --- | --- |
 | `work_item_context` | Read supplied work-item data and linked artifacts |
 | `workflow_planning` | Decompose work and track gates |
 | `repository_exploration` | Search files, symbols, references, and history |

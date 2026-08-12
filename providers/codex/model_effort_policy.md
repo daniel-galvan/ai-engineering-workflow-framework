@@ -25,7 +25,7 @@ reasoning effort. Record the requested and resolved values in the work record.
 User-facing effort labels map to Codex configuration values as follows:
 
 | Policy label | Codex configuration value |
-|---|---|
+| --- | --- |
 | Light | `low` |
 | Medium | `medium` |
 | High | `high` |
@@ -43,7 +43,7 @@ See the [official GPT-5.6 model guidance](https://developers.openai.com/api/docs
 ## Pilot Role Quality Policy
 
 | Role | Codex model | Policy effort | TOML value |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Orchestrator | `gpt-5.6-luna` | High | `high` |
 | Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
 | Dependency Analyst | `gpt-5.6-luna` | High | `high` |
@@ -69,7 +69,7 @@ Sentry-specific investigation. Delivery roles reuse the generic agents so
 implementation, review, testing, and documentation policy cannot drift.
 
 | Responsibility | Codex model | Codex effort |
-|---|---|---|
+| --- | --- | --- |
 | Diagnosis, architecture, implementation, and review | Role-specific | Role-specific |
 | Sentry evidence and testing | Role-specific | Role-specific |
 | Work-record documentation | `gpt-5.6-luna` | `low` (Light) |
@@ -82,7 +82,7 @@ definition with the nearest available model and record the substitution.
 ### Specialized Sentry Agent Mapping
 
 | Worker responsibility | Codex agent | Reuses role policy |
-|---|---|---|---|
+| --- | --- | --- |
 | Orchestration | `sentry_orchestrator` | Orchestrator |
 | Sentry evidence and initial topology | `sentry_current_state_investigator` | Current-State Investigator / Sentry Evidence |
 | Failure topology and root-cause analysis | `sentry_dependency_analyst` | Dependency Analyst |

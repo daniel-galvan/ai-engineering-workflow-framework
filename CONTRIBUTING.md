@@ -53,9 +53,9 @@ From the repository root, run:
 python3 scripts/validate_library.py
 ```
 
-The validator checks document versions, TOML syntax, playbook maturity,
-template consistency, provider-adapter coverage, and Codex policy/TOML
-alignment.
+The validator checks document versions, TOML syntax, Markdown table structure,
+playbook maturity, template consistency, provider-adapter coverage, and Codex
+policy/TOML alignment.
 
 ## Version policy
 

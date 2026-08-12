@@ -13,7 +13,7 @@ last_updated: 2026-07-24
 Reference mapping from framework skills to Cursor capability classes.
 
 | Skill ID | Cursor capability examples |
-|---|---|
+| --- | --- |
 | `work_item_context` | Issue-tracker connector or supplied artifacts |
 | `workflow_planning` | Composer planning and task decomposition |
 | `repository_exploration` | Codebase search and symbol references |

@@ -69,7 +69,7 @@ worker graph or override a role's provider model and reasoning effort.
 When an individual worker needs a provider-neutral depth, use:
 
 | Worker depth | Use for |
-|---|---|
+| --- | --- |
 | `quick` | Small scope, few dependencies, and narrow validation |
 | `standard` | Normal bounded engineering work |
 | `deep` | Cross-repository, architectural, operational, or high-risk work |

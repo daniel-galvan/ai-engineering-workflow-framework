@@ -39,6 +39,46 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def table_cells(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip()[1:-1].split("|")]
+
+
+def is_table_row(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and stripped.endswith("|")
+
+
+for path in ROOT.rglob("*.md"):
+    lines = path.read_text().splitlines()
+    index = 0
+    while index + 1 < len(lines):
+        if not (is_table_row(lines[index]) and is_table_row(lines[index + 1])):
+            index += 1
+            continue
+
+        header = table_cells(lines[index])
+        separator = table_cells(lines[index + 1])
+        is_separator = separator and all(
+            "-" in cell and set(cell) <= {"-", ":"} for cell in separator
+        )
+        if not is_separator:
+            index += 1
+            continue
+
+        relative = path.relative_to(ROOT)
+        if len(header) != len(separator):
+            fail(f"{relative}:{index + 2} has a table column-count mismatch")
+        if not (lines[index + 1].startswith("| ") and lines[index + 1].endswith(" |")):
+            fail(f"{relative}:{index + 2} has a non-portable table separator")
+
+        row = index + 2
+        while row < len(lines) and is_table_row(lines[row]):
+            if len(table_cells(lines[row])) != len(header):
+                fail(f"{relative}:{row + 1} has a table column-count mismatch")
+            row += 1
+        index = row
+
+
 for path in ROOT.rglob("*.md"):
     text = path.read_text()
     version = re.search(r"^version: (.+)$", text, re.M)
