@@ -33,13 +33,10 @@ last_updated: 2026-08-04
 
 When a Jira ticket is thin or incomplete, recover context in this order:
 
-1. the ticket itself for task-specific scope, acceptance criteria, and
-  constraints;
+1. the ticket itself for task-specific scope, acceptance criteria, and constraints;
 2. the immediate parent work item for the immediate business outcome;
-3. ancestor Stories, Epics, or Initiatives for broader goals, boundaries, and
-  sequencing;
-4. selected siblings for dependencies, shared interfaces, precedents, or
-  rollout order;
+3. ancestor Stories, Epics, or Initiatives for broader goals, boundaries, and sequencing;
+4. selected siblings for dependencies, shared interfaces, precedents, or rollout order;
 5. linked tickets, documents, pull requests, and prior decisions; and
 6. current repository evidence for what exists and is feasible today.
 
@@ -51,12 +48,10 @@ not let a parent or sibling override an explicit ticket requirement.
 
 Classify the recovered context as one of:
 
-* `sufficient_for_planning`: outcome, affected surface, and observable
-  acceptance conditions are supported;
-* `partially_recovered`: investigation may continue, but important acceptance
-  criteria or constraints remain unknown; or
-* `clarification_required`: the minimum implementable outcome, affected
-  surface, or acceptance condition cannot be established.
+* `sufficient_for_planning`: outcome, affected surface, and observable acceptance conditions are supported;
+* `partially_recovered`: investigation may continue, but important acceptance criteria or constraints remain unknown; or
+* `clarification_required`: the minimum implementable outcome, affected surface, or acceptance condition cannot be
+  established.
 
 For `clarification_required`, preserve the recovered evidence and ask focused questions. Before escalating, use bounded
 repository, contract, test, and related-work discovery when it can reduce the uncertainty; record feasible options,

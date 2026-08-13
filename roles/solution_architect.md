@@ -57,8 +57,8 @@ smallest reasonable change.
 * Evaluate architectural alternatives.
 * Identify tradeoffs.
 * Minimize technical debt.
-* Express material recommendations as claims linked to evidence and decisions
-  linked to claims, with confidence and uncertainties.
+* Express material recommendations as claims linked to evidence and decisions linked to claims, with confidence and
+  uncertainties.
 * Produce an implementation-ready design.
 
 ---

@@ -45,7 +45,7 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
 | Dependency Analyst | `gpt-5.6-luna` | Medium | `medium` |
 | Repository Integrator | `gpt-5.6-luna` | Medium | `medium` |
-| Solution Architect | `gpt-5.6-luna` | Extra High | `xhigh` |
+| Solution Architect | `gpt-5.6-luna` | High | `high` |
 | Reviewer | `gpt-5.6-luna` | Extra High | `xhigh` |
 | Implementer | `gpt-5.6-luna` | Medium | `medium` |
 | Tester | `gpt-5.6-luna` | Medium | `medium` |
@@ -90,10 +90,9 @@ testing, and documentation.
 For Sentry planning runs:
 
 - The Sentry playbook selects its standard and deep worker graphs.
-- Specialized Sentry agents use the same role policy as their generic
-  counterparts unless this table explicitly assigns a different agent.
-- Deep receives more independent evidence; it does not silently change a
-  role's model or effort.
+- Specialized Sentry agents use the same role policy as their generic counterparts unless this table explicitly assigns
+  a different agent.
+- Deep receives more independent evidence; it does not silently change a role's model or effort.
 
 ## Resolution
 
@@ -117,11 +116,9 @@ descendants is not a successful execution of the selected profile.
 ## Pilot safety
 
 * Exploration, architecture, review, and documentation agents are read-only.
-* Implementation and test agents may write only within the approved workflow
-  and must not make external writes.
+* Implementation and test agents may write only within the approved workflow and must not make external writes.
 * Do not change migrated business logic without explicit approval.
-* Do not treat model selection as evidence of correctness; validation remains
-  required.
+* Do not treat model selection as evidence of correctness; validation remains required.
 
 ## Usage accounting
 

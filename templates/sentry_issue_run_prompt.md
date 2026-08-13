@@ -10,10 +10,9 @@ depends_on:
 
 # Sentry Issue Remediation Run Prompt
 
-Use this as the canonical format for every Sentry Issue Remediation session.
-During prompt preparation, Codex fills the scenario fields from the supplied
-context; do not manually add a second format or copy the playbook process into
-the prompt. Update this template when the required run inputs or format change.
+Use this as the canonical format for every Sentry Issue Remediation session. During prompt preparation, Codex fills the
+scenario fields from the supplied context; do not manually add a second format or copy the playbook process into the
+prompt. Update this template when the required run inputs or format change.
 
 First-use summary:
 - Provide the work item, playbook, profile, lifecycle, execution repository, and optional scenario inputs.
@@ -21,28 +20,23 @@ First-use summary:
 - Planning is read-only; explicit implementation approval is required before remediation.
 - Results are stored under `<execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/`; create the implementation plan only
   after planning fan-in.
-- The prompt-preparation step extracts and preserves all supplied context; the
-  user does not need to repeat it in canonical fields.
-- The prompt-preparation step extracts direct user decisions, constraints, and
-  topology from all supplied context; the user does not need to restate them in
-  the generated prompt.
-- Put extracted direct decisions and non-negotiable constraints in the
-  confirmed-input section; workers must not reopen them as clarification
-  questions.
+- The prompt-preparation step extracts and preserves all supplied context; the user does not need to repeat it in
+  canonical fields.
+- The prompt-preparation step extracts direct user decisions, constraints, and topology from all supplied context; the
+  user does not need to restate them in the generated prompt.
+- Put extracted direct decisions and non-negotiable constraints in the confirmed-input section; workers must not reopen
+  them as clarification questions.
 
 Prompt-preparation rules:
 
-- Treat all user-supplied prose, including context written before the
-  preparation request, as input to classify into the fields below.
+- Treat all user-supplied prose, including context written before the preparation request, as input to classify into the
+  fields below.
 - Preserve explicit decisions as authoritative constraints.
 - Treat possible causes and suspected fault locations as unverified hints.
-- Map an explicit flow `A emits or sends to B; B returns a response to A` as
-  `event_origin_repository: A` and
-  `downstream_or_return_path: B -> A`. Do not infer these roles from a
-  “primary code repository” label.
-- Set `candidate_fault_repository` from the stated suspected fault location;
-  otherwise use `Unknown`. Never swap it with the event-origin repository just
-  because it is the primary or execution repository.
+- Map an explicit flow `A emits or sends to B; B returns a response to A` as `event_origin_repository: A` and
+  `downstream_or_return_path: B -> A`. Do not infer these roles from a “primary code repository” label.
+- Set `candidate_fault_repository` from the stated suspected fault location; otherwise use `Unknown`. Never swap it with
+  the event-origin repository just because it is the primary or execution repository.
 
 ```text
 Run the Sentry Issue Remediation playbook.

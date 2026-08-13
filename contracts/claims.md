@@ -93,26 +93,23 @@ flowchart TB
 
 ## Rules
 
-1. Record evidence before using it to support a material claim. Do not present
-  an interpretation as an observation.
-2. Every material claim must reference evidence or explicitly record why the
-  evidence is unavailable. Confidence is an assessment of the claim, not proof of correctness.
-3. Explain `high`, `medium`, and `low` confidence through the evidence and
-  uncertainties. Use `unknown` when no defensible assessment is possible.
-4. A decision is not the same as approval. A decision may recommend an option;
-  its approval field controls whether an action may proceed.
-5. Every action must reference the decision and gate that authorize it. An
-  action must not execute before its required gate passes.
-6. Preserve IDs when results move between workers, the work record, an
-  implementation plan, and the final handoff.
-7. A material assumption MUST be recorded as a claim with `status: assumed`.
-  It MUST identify an owner, impact if wrong, and validation method. It MUST transition to `supported`, `contradicted`,
-  or
-  `unknown` when new evidence resolves or limits it.
-8. A decision that materially depends on an assumed claim MUST record that
-  assumption as residual risk and include its validation in the required gate or implementation plan.
-9. An approved decision MUST record its approval type. Source or configuration
-  changes require `implementation`; deployment, cutover, or another external operational write also requires `release`.
+1. Record evidence before using it to support a material claim. Do not present an interpretation as an observation.
+2. Every material claim must reference evidence or explicitly record why the evidence is unavailable. Confidence is an
+   assessment of the claim, not proof of correctness.
+3. Explain `high`, `medium`, and `low` confidence through the evidence and uncertainties. Use `unknown` when no
+   defensible assessment is possible.
+4. A decision is not the same as approval. A decision may recommend an option; its approval field controls whether an
+   action may proceed.
+5. Every action must reference the decision and gate that authorize it. An action must not execute before its required
+   gate passes.
+6. Preserve IDs when results move between workers, the work record, an implementation plan, and the final handoff.
+7. A material assumption MUST be recorded as a claim with `status: assumed`. It MUST identify an owner, impact if wrong,
+   and validation method. It MUST transition to `supported`, `contradicted`, or `unknown` when new evidence resolves or
+   limits it.
+8. A decision that materially depends on an assumed claim MUST record that assumption as residual risk and include its
+   validation in the required gate or implementation plan.
+9. An approved decision MUST record its approval type. Source or configuration changes require `implementation`;
+   deployment, cutover, or another external operational write also requires `release`.
 
 ## Example
 

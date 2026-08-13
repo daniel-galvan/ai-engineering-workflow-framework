@@ -25,6 +25,12 @@ The plan is produced during planning and is not authorization to change source c
 must link to this file. A later session must be able to execute the approved plan without reconstructing the
 investigation from chat history.
 
+When this plan reaches `ready_for_implementation`, create the companion `implementation_handoff.md` beside it from
+[`implementation_handoff.md`](implementation_handoff.md) only if implementation will happen in another session or
+environment, or the user explicitly requests a self-contained transfer file. For same-session implementation, mark the
+handoff `Not required`. The handoff is self-contained, uses repository identities and revisions instead of
+source-environment paths, and remains non-executable until its approval status is explicit.
+
 # Metadata
 
 | Field | Value |
@@ -39,7 +45,16 @@ investigation from chat history.
 | Target revision | |
 | Plan status | Draft / Ready for implementation / Approved / Superseded |
 | Approval reference | |
+| Portable handoff | `implementation_handoff.md` / Not created / Not required |
+| Handoff reason | Different session or environment / Explicit request / Not applicable |
 | Last updated | |
+
+# Portable Handoff
+
+Record whether the self-contained `implementation_handoff.md` was generated, its approval status, and why it is needed.
+Do not copy framework-relative links or source-machine paths into the portable handoff. The handoff must preserve the
+approved scope, target repository identity and revision, evidence summary, exact changes, validation, stop conditions,
+rollback, and reporting requirements.
 
 # 1. Scope and Baseline
 
@@ -81,7 +96,7 @@ Do not convert an unavailable check into a success claim.
 | 1 | Reconfirm repository, revision, scope, and worktree state | Implementer | Approved plan and implementation gate | Pending |
 | 2 | Apply the smallest source change described above | Implementer | Step 1 complete | Pending |
 | 3 | Add or update focused regression coverage | Implementer | Step 2 complete | Pending |
-| 4 | Code Review: diff, scope, compatibility, and coverage | Reviewer | Steps 2–3 complete | Pending |
+| 4 | Strict Code Review: happy paths, alternate and edge paths, callers, compatibility, scope, and coverage | Reviewer | Steps 2–3 complete | Pending |
 | 5 | Run the validation ladder and preserve results | Tester | Review findings resolved or accepted | Pending |
 | 6 | Prepare rollout, rollback, monitoring, and post-release checks | Orchestrator / Documenter | Validation result recorded | Pending |
 | 7 | Record ownership, residual risk, next action, and handoff | Documenter | Stabilization evidence complete | Pending |
@@ -97,11 +112,9 @@ Do not convert an unavailable check into a success claim.
 - [ ] Approved scope and target revision reconfirmed.
 - [ ] Source and regression-test changes match this plan.
 - [ ] Diff and compatibility review completed.
-- [ ] Applicable validation results recorded as pass, fail, skipped,
-      unavailable, or inconclusive.
+- [ ] Applicable validation results recorded as pass, fail, skipped, unavailable, or inconclusive.
 - [ ] Rollout, rollback, monitoring, and post-release checks identified.
-- [ ] Residual risks, blockers, owner, and next action recorded in the work
-      record.
+- [ ] Residual risks, blockers, owner, and next action recorded in the work record.
 - [ ] Work-record link and implementation handoff are complete.
 
 # Open Questions and Decisions

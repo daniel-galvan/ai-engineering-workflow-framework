@@ -47,8 +47,7 @@ Use another workflow when:
 - the issue is only noise and requires no code investigation;
 - the work is a normal planned feature;
 - the issue is only a performance or capacity investigation with no fix scope;
-- no repository or fault boundary can be established after Sentry and
-  repository evidence is collected; or
+- no repository or fault boundary can be established after Sentry and repository evidence is collected; or
 - the work is a broad incident requiring incident-command procedures.
 
 ## Required Inputs
@@ -70,8 +69,8 @@ Use another workflow when:
 The workflow derives the repository and deployed revision from Sentry issue, event, release, tag, deployment, and local
 repository evidence. A release name is not treated as an exact commit until it is reconciled with repository history,
 but a release-to-checkout mismatch or an unavailable Sentry release lookup is normally a traceability caveat, not a
-planning blocker. Continue against the best available checkout, record the mismatch, and make exact release
-verification a pre-implementation or validation step when it matters.
+planning blocker. Continue against the best available checkout, record the mismatch, and make exact release verification
+a pre-implementation or validation step when it matters.
 
 Standard planning is bounded: use the latest event as the primary occurrence, and inspect an older representative event
 only when the latest event is insufficient, inconsistent, or the symptom may vary by occurrence. Never exhaustively
@@ -92,27 +91,21 @@ The reporting repository is not necessarily the fault repository. Record these r
 | `candidate_fault_component`  | Package, service, or subsystem suspected          |
 | `downstream_or_return_path`  | Later systems or callbacks affected by the result |
 
-The initial topology is a hypothesis unless the run prompt explicitly records a
-confirmed topology decision. Verify hypotheses with Sentry evidence, release
-metadata, repository history, event payloads, queues, callbacks, and tests. Do
-not infer event origin or candidate fault ownership from a field named “primary
-code repository.” Do not inspect or modify an unrelated project merely because
-it exists in the same monorepo. Code changes are limited to the verified fault
-boundary unless an expanded scope is approved.
+The initial topology is a hypothesis unless the run prompt explicitly records a confirmed topology decision. Verify
+hypotheses with Sentry evidence, release metadata, repository history, event payloads, queues, callbacks, and tests. Do
+not infer event origin or candidate fault ownership from a field named “primary code repository.” Do not inspect or
+modify an unrelated project merely because it exists in the same monorepo. Code changes are limited to the verified
+fault boundary unless an expanded scope is approved.
 
-Confirmed user decisions and constraints are authoritative run inputs. Reporter
-context may identify symptoms, expected behavior, suspected flows, likely
-owners or files, reproduction clues, known exclusions, and related links. Treat
-the latter as investigation leads, not as decisions or evidence. Reconcile
-hints with Sentry, repository, runtime, and test evidence before using them as
-facts; do not reopen a confirmed decision as a clarification question.
+Confirmed user decisions and constraints are authoritative run inputs. Reporter context may identify symptoms, expected
+behavior, suspected flows, likely owners or files, reproduction clues, known exclusions, and related links. Treat the
+latter as investigation leads, not as decisions or evidence. Reconcile hints with Sentry, repository, runtime, and test
+evidence before using them as facts; do not reopen a confirmed decision as a clarification question.
 
-When a confirmed input identifies a comparison source of truth, use that
-system's result as the expected baseline and investigate the discrepancy in the
-other system. Do not ask the user to redefine the baseline or to decide that
-baseline records are duplicates. Record duplicate identity or normalization as
-a technical hypothesis to verify, and propose options only if the evidence
-shows that the implementation choice itself remains unresolved.
+When a confirmed input identifies a comparison source of truth, use that system's result as the expected baseline and
+investigate the discrepancy in the other system. Do not ask the user to redefine the baseline or to decide that baseline
+records are duplicates. Record duplicate identity or normalization as a technical hypothesis to verify, and propose
+options only if the evidence shows that the implementation choice itself remains unresolved.
 
 ## Optional Supporting Artifacts
 
@@ -132,9 +125,8 @@ The default run uses:
 It performs evidence collection, failure analysis, diagnosis, fix design, and work-record maintenance, then stops at
 `ready_for_implementation`.
 
-`standard` is bounded by its worker graph and evidence rules, not by a wall-clock
-guarantee. If provider latency or a worker runtime makes the run unusually
-long, record the duration and runtime cause; do not compensate by skipping a
+`standard` is bounded by its worker graph and evidence rules, not by a wall-clock guarantee. If provider latency or a
+worker runtime makes the run unusually long, record the duration and runtime cause; do not compensate by skipping a
 required worker or claiming completion early.
 
 The `remediation` lifecycle continues through implementation, review, validation, and stabilization after explicit
@@ -181,14 +173,12 @@ re-entry:
 3. start or record a new run with the same profile and `lifecycle: remediation`;
 4. re-read this playbook, the work record, and the implementation plan;
 5. record `profile_status: requested` for the remediation run;
-6. reuse completed planning artifacts and activate `implement`, `review`,
-  `validate`, and `handoff` before source changes;
-7. wait for every required result envelope and complete fan-in before closing
-  the remediation stage; and
-8. complete the shared worker-runtime closure barrier before closing the prior
-  run or starting another lifecycle run; and
-9. report the remediation run's lifecycle, worker activation, fan-in, and
-  runtime-closure status.
+6. reuse completed planning artifacts and activate `implement`, `review`, `validate`, and `handoff` before source
+   changes;
+7. wait for every required result envelope and complete fan-in before closing the remediation stage; and
+8. complete the shared worker-runtime closure barrier before closing the prior run or starting another lifecycle run;
+   and
+9. report the remediation run's lifecycle, worker activation, fan-in, and runtime-closure status.
 
 If new evidence contradicts or expands the approved plan, reactivate the profile's required planning workers before
 implementation. If approval is missing, stop with state `awaiting_input` and reason `approval_required`. If remediation
@@ -199,40 +189,42 @@ lifecycle or required worker activation is missing, stop with state `blocked` an
 If a required worker stops, is unavailable, or its result envelope is missing, the run is incomplete. Continue with the
 canonical run prompt using `Interrupted profile recovery`:
 
+A provider wait timeout or `pending_init`/`running` status is not proof that the worker stopped. Keep that worker
+active, continue waiting or request graceful finalization when supported, and do not close it or start a replacement
+from the timeout alone. Apply the shared [worker wait
+rules](../contracts/workflow_execution.md#worker-wait-and-termination-semantics) before starting recovery.
+
 1. preserve the same work record, profile, lifecycle, and completed artifacts;
 2. record the completed and missing workers plus the recovery reason;
-3. reuse completed Sentry evidence unless a specific discrepancy requires a
-  new query;
+3. reuse completed Sentry evidence unless a specific discrepancy requires a new query;
 4. activate every incomplete required worker for the selected profile;
 5. wait for all result envelopes and complete fan-in; and
 6. report the recovered profile status and next gate.
 
 The missing implementation approval blocks delivery workers only. It must not block the remaining planning workers
-required to complete deep diagnosis and fix design. If delegation remains unavailable, stop as `blocked` or
-`not_executed`; do not use a generic workflow or claim successful deep execution.
+required to complete deep diagnosis and fix design. If the required graph cannot start, stop as `not_executed`. If it
+starts but required activation or fan-in remains incomplete, stop as `blocked`; do not use a generic workflow or claim
+successful profile execution.
 
 Required worker sets are explicit:
 
-- `standard + planning`: `initialize`, `evidence-topology`, `fix-design`, and
-  continuous `handoff`. The `fix-design` worker performs bounded failure analysis before designing the fix.
-- `deep + planning`: all standard planning workers plus `failure-topology` and
-  mandatory `repository-integration`.
-- `standard + remediation`: reuse completed standard planning artifacts, then
-  activate `implement`, `review`, `validate`, and `handoff` after approval.
-- `deep + remediation`: reuse completed deep planning artifacts, then activate
-  `implement`, `review`, `validate`, and `handoff` after approval.
+- `standard + planning`: `initialize`, `evidence-topology`, `fix-design`, and continuous `handoff`. The `fix-design`
+  worker performs bounded failure analysis before designing the fix.
+- `deep + planning`: all standard planning workers plus `failure-topology` and mandatory `repository-integration`.
+- `standard + remediation`: reuse completed standard planning artifacts, then activate `implement`, `review`,
+  `validate`, and `handoff` after approval.
+- `deep + remediation`: reuse completed deep planning artifacts, then activate `implement`, `review`, `validate`, and
+  `handoff` after approval.
 
 ## Profile Execution
 
 The shared execution contract defines profile execution, fan-in, and no-downgrade semantics. For this playbook:
 
 - `standard` activates the standard planning worker set.
-- `deep` activates the standard planning worker set plus `failure-topology` and
-  mandatory `repository-integration`.
-- The Orchestrator waits for every required worker before completing diagnosis
-  or fix design.
-- The final handoff reports requested profile, executed profile, profile
-  status, worker activation, fan-in status, and runtime-closure status.
+- `deep` activates the standard planning worker set plus `failure-topology` and mandatory `repository-integration`.
+- The Orchestrator waits for every required worker before completing diagnosis or fix design.
+- The final handoff reports requested, activated, and executed profile, profile status, worker activation, fan-in
+  status, and runtime-closure status.
 
 ## Worker Profiles
 
@@ -270,10 +262,9 @@ Workers use the shared result envelope defined in the execution contract. Sentry
 
 - `evidence-topology` owns raw Sentry queries for the run.
 - Downstream workers consume normalized evidence artifacts.
-- Workers repeat Sentry or repository analysis only when they identify and
-  record a specific discrepancy.
-- The Documenter records every worker result, blocker, synchronization state,
-  model, effort, usage, and credits when available.
+- Workers repeat Sentry or repository analysis only when they identify and record a specific discrepancy.
+- The Documenter records every worker result, blocker, synchronization state, model, effort, usage, and credits when
+  available.
 
 Provider-specific model, effort, and agent mappings are supplied by the selected provider adapter.
 
@@ -326,13 +317,11 @@ Recover or create:
 <execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/work_record.md
 ```
 
-Do not create `implementation_plan.md` during initialization. Create it after
-all required planning workers have returned terminal result envelopes, fan-in
-is complete, and the workflow is ready for implementation. Normal release
-drift, a missing older event sample, or unavailable persisted rows do not
-prevent plan creation when the candidate fault path and proposed fix are
-otherwise supported. Until the planning gate passes, the work record must state
-why the plan has not been created and give the recovery or decision needed.
+Do not create `implementation_plan.md` during initialization. Create it after all required planning workers have
+returned terminal result envelopes, fan-in is complete, and the workflow is ready for implementation. Normal release
+drift, a missing older event sample, or unavailable persisted rows do not prevent plan creation when the candidate fault
+path and proposed fix are otherwise supported. Until the planning gate passes, the work record must state why the plan
+has not been created and give the recovery or decision needed.
 
 Record the issue, repository, revision, scope, owner, acceptance criteria, unknowns, and safety constraints.
 
@@ -340,8 +329,8 @@ Record the repository/event topology and any optional supporting artifacts.
 
 ### Stage 1 — Collect Sentry Evidence
 
-The `evidence-topology` worker owns raw Sentry queries for the run. Use MCP to
-inspect the issue and latest event first. Capture:
+The `evidence-topology` worker owns raw Sentry queries for the run. Use MCP to inspect the issue and latest event first.
+Capture:
 
 - issue title, status, priority, occurrence count, and latest event;
 - culprit, stack context, environment, release, and timestamp;
@@ -349,16 +338,14 @@ inspect the issue and latest event first. Capture:
 - tags, breadcrumbs, request context, and related event context when needed; and
 - uncertainty, missing data, and possible PII.
 
-Use an older representative event only when the latest event is insufficient,
-inconsistent, or the symptom may vary by occurrence. Do not inspect every
-event in a high-volume issue by default. Record the selected event IDs and the
-reason for any additional sample.
+Use an older representative event only when the latest event is insufficient, inconsistent, or the symptom may vary by
+occurrence. Do not inspect every event in a high-volume issue by default. Record the selected event IDs and the reason
+for any additional sample.
 
-Publish one normalized evidence artifact containing the Sentry facts, latest
-event as the primary occurrence, any justified representative sample, initial
-repository/revision mapping, initial topology, code-path entry point, source
-references, and unresolved boundary questions. Downstream workers consume this
-artifact instead of repeating the same Sentry queries.
+Publish one normalized evidence artifact containing the Sentry facts, latest event as the primary occurrence, any
+justified representative sample, initial repository/revision mapping, initial topology, code-path entry point, source
+references, and unresolved boundary questions. Downstream workers consume this artifact instead of repeating the same
+Sentry queries.
 
 Do not print or persist secrets or unnecessary personal data.
 
@@ -372,9 +359,9 @@ In `standard`, there is no standalone failure-topology worker. The `solution_arc
 analysis after the evidence stage and records only the topology needed to design the approved-scope fix.
 
 For `deep`, activate `repository-integration` after Stage 1 regardless of whether the initial evidence appears
-sufficient. For `standard`, activate it only if repository ownership, monorepo boundaries, deployment responsibility,
-or the approved change scope remains uncertain. A local/deployed revision mismatch or a Sentry release lookup failure
-alone does not require this worker. Its result is an additional input to fix design, not a second copy of the entire
+sufficient. For `standard`, activate it only if repository ownership, monorepo boundaries, deployment responsibility, or
+the approved change scope remains uncertain. A local/deployed revision mismatch or a Sentry release lookup failure alone
+does not require this worker. Its result is an additional input to fix design, not a second copy of the entire
 investigation.
 
 Do not require the user to repeat repository or revision information already present in the Sentry context.
@@ -391,16 +378,14 @@ The stage must conclude with:
 
 - confirmed root cause;
 - best-supported hypothesis with residual uncertainty; or
-- a clarification brief with feasible next paths, recommendation, and the
-  smallest decision owner when a product or design decision remains; or
-- blocked diagnosis only when required evidence or an environment is
-  unavailable, with the missing evidence and owner.
+- a clarification brief with feasible next paths, recommendation, and the smallest decision owner when a product or
+  design decision remains; or
+- blocked diagnosis only when required evidence or an environment is unavailable, with the missing evidence and owner.
 
-An implementation plan does not require an exact production-to-checkout SHA,
-comparison of every event, or persisted-row inspection unless one of those
-items is material to the proposed fix. Record unresolved release mapping,
-event-sampling limits, or unavailable persistence access as explicit risks and
-validation steps instead of turning normal production drift into a blocker.
+An implementation plan does not require an exact production-to-checkout SHA, comparison of every event, or persisted-row
+inspection unless one of those items is material to the proposed fix. Record unresolved release mapping, event-sampling
+limits, or unavailable persistence access as explicit risks and validation steps instead of turning normal production
+drift into a blocker.
 
 ### Stage 4 — Design the Fix
 
@@ -411,22 +396,17 @@ completion criteria. The Documenter persists it as `implementation_plan.md` and 
 Artifacts section with a relative link to the plan. Do not implement until the workflow reaches
 `ready_for_implementation` and approval is recorded.
 
-If the evidence supports more than one credible fix, record the alternatives,
-tradeoffs, validation impact, and a recommendation in the implementation plan
-when a safe recommendation is possible. Do not ask the user to resolve a
-technical hypothesis that the workers can investigate or validate. Use the
-shared Clarification Brief and hand off `awaiting_input` only when a material
-business, scope, ownership, or incompatible-alternatives decision remains
-after bounded discovery and cannot be resolved by a recommendation. Do not
-create a plan only when that genuine decision prevents a safe implementation
-scope.
+If the evidence supports more than one credible fix, record the alternatives, tradeoffs, validation impact, and a
+recommendation in the implementation plan when a safe recommendation is possible. Do not ask the user to resolve a
+technical hypothesis that the workers can investigate or validate. Use the shared Clarification Brief and hand off
+`awaiting_input` only when a material business, scope, ownership, or incompatible-alternatives decision remains after
+bounded discovery and cannot be resolved by a recommendation. Do not create a plan only when that genuine decision
+prevents a safe implementation scope.
 
-The remediation boundary is the explicit set of source files, symbols,
-configuration, dependencies, tests, and operational surfaces that the proposed
-change may touch. The Solution Architect selects it from current evidence; the
-user approves it through the implementation-approval gate. The handoff must
-name that scope in plain language rather than asking the user to “select the
-remediation boundary.”
+The remediation boundary is the explicit set of source files, symbols, configuration, dependencies, tests, and
+operational surfaces that the proposed change may touch. The Solution Architect selects it from current evidence; the
+user approves it through the implementation-approval gate. The handoff must name that scope in plain language rather
+than asking the user to “select the remediation boundary.”
 
 ### Stage 5 — Re-enter Remediation and Implement
 
@@ -475,14 +455,14 @@ status is a separate human-approved action through the MCP integration.
 The workflow succeeds when:
 
 - the Sentry evidence is recorded and redacted;
-- the deployed revision and repository path are reconciled, or the unresolved
-  mapping and its validation impact are explicit;
+- the deployed revision and repository path are reconciled, or the unresolved mapping and its validation impact are
+  explicit;
 - the root cause is evidence-backed;
 - the fix addresses the cause rather than only the symptom;
 - regression coverage exists or its absence is justified;
 - validation results are objective and preserved;
 - every worker has a summarized terminal result and synchronization status;
-- requested and executed profiles, including profile status, are explicit;
+- requested, activated, and executed profiles, including profile status, are explicit;
 - residual and operational risks are explicit; and
 - the work record identifies the next owner and action.
 
@@ -490,24 +470,20 @@ The workflow succeeds when:
 
 The final handoff is ordered as follows:
 
-1. Shared outcome summary: status, verified scope, root cause, fix, validation,
-  implementation-plan path and status, and next action. Explain the next action
-  in plain language, name its owner, identify the file or system where it is
-  performed, and state what completion looks like. Do not use unexplained
-  phrases such as “select the remediation boundary.”
-2. Worker result ledger: one compact row per activated worker and each required
-  worker without a terminal envelope, using the shared contract's ledger fields.
-3. Profile, gate, and synchronization status: distinguish requested versus
-  executed profile, then confirm that all required workers are terminal and all required fan-in barriers passed and the
-  prior run's worker handles are released.
-4. Remaining risks, blockers, clarification brief when input is required, and
-  ownership.
+1. Shared outcome summary: status, verified scope, root cause, fix, validation, implementation-plan path and status, and
+   next action. Explain the next action in plain language, name its owner, identify the file or system where it is
+   performed, and state what completion looks like. Do not use unexplained phrases such as “select the remediation
+   boundary.”
+2. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
+   using the shared contract's ledger fields.
+3. Profile, gate, and synchronization status: distinguish requested, activated, and executed profile, then confirm that
+   all required workers are terminal and all required fan-in barriers passed and the prior run's worker handles are
+   released.
+4. Remaining risks, blockers, clarification brief when input is required, and ownership.
 
-Also include the shared Human-Readable Handoff block: `What happened`, `What
-this means`, `Internal owner`, `What you need to do`, and `To continue`. If no
-technical user action is needed, say `Nothing technical.` For a retryable worker
-runtime failure, `To continue` should give the exact request: `Retry the
-planning run.`
+Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
+`What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
+For a retryable worker runtime failure, `To continue` should give the exact request: `Retry the planning run.`
 
 The handoff must not imply that implementation or validation completed when the workflow stopped at an approval or
 unavailable-environment gate.

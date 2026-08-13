@@ -22,6 +22,7 @@ CLAIMS_CONTRACT = ROOT / "contracts" / "claims.md"
 WORKFLOW_EVALUATION = ROOT / "frameworks" / "workflow_evaluation.md"
 CODEX_POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
 CODEX_AGENT_DIR = ROOT / "providers" / "codex" / "agents"
+IMPLEMENTATION_HANDOFF_TEMPLATE = ROOT / "templates" / "implementation_handoff.md"
 
 ROLE_AGENT_ALIASES = {
     "Orchestrator": ("orchestrator",),
@@ -166,6 +167,17 @@ for agent_name, config in agent_configs.items():
             f"{expected_agents[agent_name][1]}"
         )
 
+for agent_name in ("orchestrator", "sentry_orchestrator"):
+    instructions = agent_configs[agent_name].get("developer_instructions", "")
+    for phrase in (
+        "A `wait_agent` timeout is a polling boundary, not a worker failure.",
+        "do not call `close_agent`",
+        "coordinator_interrupted_after_wait_timeout",
+        "A wait timeout or `running` status is",
+    ):
+        if phrase not in instructions:
+            fail(f"{agent_name}.toml is missing safe wait/recovery rule: {phrase}")
+
 for path in (ROOT / "playbooks").glob("*.md"):
     text = path.read_text()
     maturity = re.search(r"^maturity: (.+)$", text, re.M)
@@ -228,7 +240,7 @@ if "Sentry evidence and repository revision are identified" in sentry_playbook:
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 16):
+for invariant_id in range(1, 20):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
@@ -238,6 +250,7 @@ for heading in (
     "## Authoritative Run Inputs",
     "## Context Preservation and Classification",
     "## Human-Readable Handoff",
+    "## Worker Wait and Termination Semantics",
     "## Stop Conditions",
     "## Explicit Path Verification",
 ):
@@ -263,6 +276,16 @@ if "# Workflow State Machine" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the canonical state machine")
 if "# Workflow State and Engineering State" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing engineering-state semantics")
+for phrase in (
+    "A wait timeout is a polling boundary, not a worker outcome.",
+    "coordinator_interrupted_after_wait_timeout",
+    "activated_profile",
+    "executed_profile",
+    "## Portable Implementation Handoff",
+    "self-contained transfer artifact",
+):
+    if phrase not in workflow_contract:
+        fail(f"contracts/workflow_execution.md is missing wait/profile semantics: {phrase}")
 work_record_template = (ROOT / "templates" / "work_record.md").read_text()
 if "| Engineering state |" not in work_record_template:
     fail("templates/work_record.md is missing engineering state")
@@ -282,6 +305,54 @@ for heading in ("# Workflow Evaluation", "## Pilot Method", "## Comparison Rules
         fail(f"frameworks/workflow_evaluation.md is missing {heading}")
 if "# Workflow Evaluation" not in work_record_template:
     fail("templates/work_record.md is missing workflow evaluation")
+
+if not IMPLEMENTATION_HANDOFF_TEMPLATE.exists():
+    fail("templates/implementation_handoff.md is missing")
+implementation_handoff = IMPLEMENTATION_HANDOFF_TEMPLATE.read_text()
+for heading in (
+    "# Portable Implementation Handoff",
+    "## Start Here",
+    "## Receiving-Session Instructions",
+    "## Environment Preflight",
+    "## Ordered Execution Plan",
+    "## Strict Code Review Requirements",
+    "## Stop Conditions",
+    "## Final Report",
+):
+    if heading not in implementation_handoff:
+        fail(f"templates/implementation_handoff.md is missing {heading}")
+for phrase in (
+    "This document is self-contained",
+    "Execute the approved implementation handoff at:",
+    "You are already at the root of the target repository. Follow the handoff exactly.",
+    "Target project or component path",
+    "sibling projects remain available",
+    "Handoff status",
+    "One implementation approval covers all in-scope steps",
+    "implementation will happen in another session or environment",
+    "Same-session implementation does not require a handoff",
+    "happy paths",
+    "alternate, error, empty",
+    "The commands in this table are authoritative",
+    "Do not claim independent review",
+    "Target branch",
+    "current default branch",
+    "## Scope Boundaries",
+):
+    if phrase not in implementation_handoff:
+        fail(f"templates/implementation_handoff.md is missing {phrase}")
+for phrase in (
+    "## Requested Runtime Settings",
+    "actual model, effort",
+    "provider-specific agents",
+    "| Target revision |",
+    "`Target revision`",
+    "## Scope and Exclusions",
+):
+    if phrase in implementation_handoff:
+        fail(f"templates/implementation_handoff.md must not contain runtime-routing detail: {phrase}")
+if "implementation_handoff.md" not in (ROOT / "templates" / "implementation_plan.md").read_text():
+    fail("templates/implementation_plan.md does not link the portable handoff")
 
 for name in ("generic.md", "claude.md", "cursor.md", "codex.md"):
     text = (ROOT / "providers" / name).read_text()

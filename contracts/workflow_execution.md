@@ -65,6 +65,7 @@ Extension](#special-workflow-extension) are normative requirements for contract-
 | Execution profile | A named selection of worker graph, investigation depth, and validation scope.                                                                         |
 | Lifecycle         | How far a workflow run may proceed, such as planning or remediation.                                                                                  |
 | Engineering state | What has been established about the work item, independently of the current workflow run.                                                            |
+| Portable implementation handoff | A self-contained execution artifact that transfers an approved plan to another session or environment. |
 
 Skills describe what capability is needed. Tools describe how that capability is performed. Model profiles describe how
 much reasoning and execution capacity is assigned. These concepts must not be merged.
@@ -98,6 +99,10 @@ the source of truth.
 | `INV-13` | An explicitly named path MUST be verified as a path before its existence, contents, or configuration status is reported. | [Explicit Path Verification](#explicit-path-verification) |
 | `INV-14` | An explicit user decision or constraint in the run prompt MUST be treated as authoritative and MUST NOT be reopened as an unresolved decision. | [Authoritative Run Inputs](#authoritative-run-inputs) |
 | `INV-15` | Every material detail supplied by the user MUST be preserved, classified, and either used by the workflow or explicitly recorded as unavailable, conflicting, or out of scope. | [Context Preservation and Classification](#context-preservation-and-classification) |
+| `INV-16` | A worker wait timeout MUST NOT be treated as worker failure or authorize closing an active worker. | [Worker Wait and Termination Semantics](#worker-wait-and-termination-semantics) |
+| `INV-17` | A portable implementation handoff MUST be self-contained, approval-gated, and based on repository identity and revision rather than source-environment paths. | [Portable Implementation Handoff](#portable-implementation-handoff) |
+| `INV-18` | Material delivery changes MUST pass a strict Code Review covering relevant behavior paths, boundaries, scope, and coverage before validation is accepted. | [Delivery Code Review Loop](#delivery-code-review-loop) |
+| `INV-19` | A portable implementation handoff MUST be created only for a cross-session or cross-environment transfer, or an explicit user request. | [Portable Implementation Handoff](#portable-implementation-handoff) |
 
 ---
 
@@ -125,32 +130,27 @@ approval.
 
 ## Authoritative Run Inputs
 
-Run prompts may contain both authoritative user inputs and unverified
-investigation hints. They are different kinds of input:
+Run prompts may contain both authoritative user inputs and unverified investigation hints. They are different kinds of
+input:
 
 | Input | Required behavior |
 | --- | --- |
 | Confirmed user decision or constraint | Treat it as the current decision or constraint. Do not ask the user to confirm it again or replace it with an alternative. |
 | Investigation hint, hypothesis, or topology guess | Test it against source, runtime, and work-item evidence. It may be corrected or rejected. |
 
-Workers may explain the technical consequences of an authoritative input and
-may report direct evidence that makes it inconsistent with the observed
-system. They must not silently override it or convert it into a clarification
-question. If the user must deliberately change the decision, present the
-conflict and ask for a new decision explicitly.
+Workers may explain the technical consequences of an authoritative input and may report direct evidence that makes it
+inconsistent with the observed system. They must not silently override it or convert it into a clarification question.
+If the user must deliberately change the decision, present the conflict and ask for a new decision explicitly.
 
-A statement such as “FanMgmt is the source of truth for comparison scenarios”
-is an authoritative comparison rule when it appears in the confirmed-decisions
-section or run constraints. It means the workflow must treat FanMgmt's result
-as the expected baseline and investigate why the rules engine differs; it must
-not ask whether FanMgmt rows should instead be merged, discarded, or treated as
-duplicates unless the user explicitly requests that decision.
+A statement such as “FanMgmt is the source of truth for comparison scenarios” is an authoritative comparison rule when
+it appears in the confirmed-decisions section or run constraints. It means the workflow must treat FanMgmt's result as
+the expected baseline and investigate why the rules engine differs; it must not ask whether FanMgmt rows should instead
+be merged, discarded, or treated as duplicates unless the user explicitly requests that decision.
 
 ## Context Preservation and Classification
 
-All user-supplied context is workflow input. The Coordinator and prompt-preparation
-step must not discard material details because they do not fit the first
-obvious field or because they are not yet verified.
+All user-supplied context is workflow input. The Coordinator and prompt-preparation step must not discard material
+details because they do not fit the first obvious field or because they are not yet verified.
 
 Classify each material detail as one or more of:
 
@@ -161,17 +161,14 @@ Classify each material detail as one or more of:
 - an ambiguity or conflict requiring reconciliation; or
 - unavailable or out of scope.
 
-Map the detail to a canonical field when one exists. Otherwise preserve it in
-the run's additional context and work record with its source and classification.
-Use `Unknown` only when the information is genuinely unavailable; do not use it
-to erase information the user supplied. If inputs conflict, preserve both
-statements, identify the conflict, and resolve it through evidence or an
-explicit user decision. Never silently drop, rewrite, or replace user context.
+Map the detail to a canonical field when one exists. Otherwise preserve it in the run's additional context and work
+record with its source and classification. Use `Unknown` only when the information is genuinely unavailable; do not use
+it to erase information the user supplied. If inputs conflict, preserve both statements, identify the conflict, and
+resolve it through evidence or an explicit user decision. Never silently drop, rewrite, or replace user context.
 
-The prompt-preparation request may contain context before or after its formal
-fields. The preparation step must read all of it and fill the canonical run
-template. The user must not be required to copy the same information into a
-second section manually.
+The prompt-preparation request may contain context before or after its formal fields. The preparation step must read all
+of it and fill the canonical run template. The user must not be required to copy the same information into a second
+section manually.
 
 ---
 
@@ -248,8 +245,9 @@ Each run records:
 | `playbook`     | Canonical playbook identifier.                                                       |
 | `profile`      | Requested execution profile selected for this run.                                  |
 | `lifecycle`    | Maximum run scope, such as `planning` or `remediation`.                              |
-| `executed_profile` | Profile actually executed after worker activation and fan-in.                    |
-| `profile_status` | `requested`, `in_progress`, `executed`, `not_executed`, or `blocked`.               |
+| `activated_profile` | Profile whose worker graph actually started; `None` if no graph started.          |
+| `executed_profile` | Profile whose required workers and fan-in completed; `None` if no profile completed. |
+| `profile_status` | `requested`, `in_progress`, `executed`, `not_executed`, or `blocked`; `not_executed` means no graph started. |
 | `mode`         | Discovery, investigation, delivery, stabilization, review, or another declared mode. |
 | `effort`       | Quick, standard, or deep.                                                            |
 | `state`        | Current workflow lifecycle state.                                                    |
@@ -416,6 +414,10 @@ If a required worker was activated but does not return a terminal envelope, set 
 worker-specific runtime reason. A Coordinator cannot replace a required independent worker. A different profile is a
 new, explicitly requested run; it does not complete the original profile.
 
+Record `activated_profile` when the selected worker graph starts. Record `executed_profile` only for a profile whose
+required workers returned terminal envelopes and whose fan-in passed; use `None` when no profile completed. A run with
+an activated graph but incomplete fan-in is `profile_status: blocked`, not `not_executed`.
+
 ## Clarification Framing
 
 An incomplete requirement or unresolved decision is not automatically a blocker. Confirmed user decisions are not
@@ -460,11 +462,10 @@ re-entry event that:
 3. selects `lifecycle: remediation` without silently changing the profile;
 4. re-reads the playbook, work record, and implementation plan;
 5. records `profile_status: requested` for the remediation run;
-6. activates every required delivery worker before source changes, reusing
-  completed planning artifacts rather than rerunning planning workers;
+6. activates every required delivery worker before source changes, reusing completed planning artifacts rather than
+   rerunning planning workers;
 7. waits for required result envelopes and completes fan-in; and
-8. reports the new run's requested lifecycle, activated workers, and fan-in
-  status.
+8. reports the new run's requested lifecycle, activated workers, and fan-in status.
 
 If any condition is missing, the workflow remains in planning or stops with state `awaiting_input` and reason
 `approval_required`, or state `blocked` and reason `remediation_not_activated`. A generic implementation workflow must
@@ -492,6 +493,17 @@ not approval gates.
 Code Review is a gate, not a final report. The Reviewer records one disposition: `accepted`, `changes_required`,
 `replanning_required`, or `blocked`.
 
+For every material source, configuration, or dependency change, Code Review MUST cover the approved change's:
+
+* intended happy paths and existing behavior that must remain unchanged;
+* alternate, error, empty, missing, null, boundary, and other relevant edge paths;
+* affected callers, producers, consumers, contracts, persistence, and compatibility boundaries;
+* regression coverage, including whether the tests would fail for the original defect where practical; and
+* scope, unintended files, security or operational impact, rollback, and remaining validation gaps.
+
+The Reviewer MUST record which dimensions were checked and any paths that could not be verified. A review that only
+confirms the happy path is incomplete and MUST NOT be reported as an accepted strict review.
+
 `changes_required` findings within approved scope return to the Implementer in the same remediation run. The Implementer
 fixes them, records the result, and the Reviewer rechecks the affected diff before validation begins. No new user
 approval is required. `replanning_required` is reserved for evidence that invalidates the approved scope or design;
@@ -505,22 +517,39 @@ An incomplete required-worker graph is not a completed diagnosis or plan. The ca
 
 1. preserves the same work record, profile, lifecycle, and completed artifacts;
 2. records completed workers, missing workers, and the recovery reason;
-3. reuses completed result envelopes unless a specific discrepancy requires a
-  rerun;
+3. reuses completed result envelopes unless a specific discrepancy requires a rerun;
 4. activates every incomplete required worker for the selected profile;
 5. waits for all required result envelopes and completes fan-in; and
-6. reports the recovered requested/executed profile, worker activation, fan-in,
-  and next gate.
+6. reports the recovered requested/executed profile, worker activation, fan-in, and next gate.
 
-For an individual required worker that does not return a terminal envelope, recovery closes its original handle,
-confirms that it no longer consumes runtime capacity, and makes one fresh replacement attempt. It reuses completed
-artifacts and does not repeat successful work. If the replacement also fails, stop with `profile_status: blocked` and
+For an individual required worker that is confirmed stopped or failed without a terminal envelope, recovery closes its
+original handle only when the provider confirms that it is no longer running, then makes one fresh replacement attempt.
+It reuses completed artifacts and does not repeat successful work. A wait timeout, empty wait result, or `running`
+status is not confirmation that the worker stopped; it keeps the worker active and must not trigger recovery or a
+duplicate worker. If the replacement also has a confirmed runtime failure, stop with `profile_status: blocked` and
 reason `<normalized-worker-id>_runtime_unavailable`. Do not create an implementation plan, invent a Coordinator-only
 review, or present a lower profile as completion of the requested profile.
 
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
 `not_executed`; do not substitute a generic workflow or claim success.
+
+## Worker Wait and Termination Semantics
+
+A wait timeout is a polling boundary, not a worker outcome. When a provider wait returns `timed_out: true`, an empty
+status, or a worker status of `pending_init` or `running`, the Coordinator MUST record the worker as active or in
+progress. The Coordinator MUST continue waiting with a provider-supported timeout, use a provider-supported graceful
+finalization request, or leave the run open; it MUST NOT call `close_agent`, mark the worker failed, or start a
+replacement from that result alone.
+
+The Coordinator MAY close a worker only after collecting its terminal result or after the provider explicitly confirms a
+terminal failure, interruption, shutdown, or that the worker is no longer running. If a close operation reports
+`previous_status: running`, the Coordinator MUST record `coordinator_interrupted_after_wait_timeout` when applicable. It
+MUST NOT describe that worker as provider-failed or runtime-unavailable.
+
+If an overall wait budget is exhausted while a required worker remains active, keep fan-in open and report the run as
+blocked or in progress with the active-worker status, owner, and exact recovery action. Do not force-close a live worker
+to make the run appear closed. Result collection, termination, and provider capacity release remain separate facts.
 
 ## Explicit Path Verification
 
@@ -564,6 +593,40 @@ it is the suspected fault repository or appears first in the topology.
 The execution repository must be explicit in the canonical run prompt. If it is missing or ambiguous, stop with
 `blocked` and request the smallest missing path; do not infer it from the playbook location or code-repository list.
 
+## Portable Implementation Handoff
+
+When a planning run reaches `ready_for_implementation`, the Documenter MAY create `implementation_handoff.md` beside
+`implementation_plan.md` only when implementation will happen in another session or environment, or when the user
+explicitly requests a self-contained transfer file. Same-session implementation does not require a handoff. The
+implementation plan remains the canonical design artifact; the handoff is a derived, self-contained transfer artifact.
+
+The portable handoff MUST:
+
+* contain the work item, target repository identity, target branch and starting revision, scope, exclusions, evidence
+  summary, decisions, approval status, exact source changes, validation plan, environment preflight, stop conditions,
+  rollback, and final reporting requirements;
+* use repository identity, remote references, and commits instead of absolute paths from the source environment;
+* include enough evidence and reasoning to execute without chat history, framework-relative links, or the source
+  environment's work-record directory; and
+* state whether implementation approval is pending, approved, superseded, or complete.
+
+The receiving session MUST start at the root of the target Git repository, verify its identity and current branch, and
+run the environment preflight before changing source. For a monorepo, the session MUST remain at the repository root so
+the workflow can inspect sibling projects. A material repository, branch, or scope mismatch requires a recorded decision
+before implementation. The handoff MUST NOT be treated as approval when its approval status is pending. The user MAY
+give explicit approval in the receiving session; the session must record that approval before changing source and does
+not require the user to edit the handoff file manually.
+
+One implementation approval covers every in-scope step in the handoff. The receiving session MUST NOT ask for approval
+after each implementation slice. It MUST stop for a new decision only when new evidence changes the approved scope or
+design, an unapproved external or irreversible action is required, or a genuine environment, permission, review, or
+validation blocker prevents progress.
+
+The handoff can be executed without a framework checkout. If provider-specific agents or runtime delegation are not
+available, the session MUST record the actual model, effort, worker execution, review independence, and validation
+results. It MUST NOT claim framework-profile execution, independent review, fan-in, or provider settings that were not
+actually observed.
+
 ---
 
 # Parallelism Semantics
@@ -593,8 +656,7 @@ without requiring the reader to reconstruct parallel execution from logs.
 
 ## Human-Readable Handoff
 
-Every playbook handoff must include this short block, especially when the run
-is blocked, incomplete, or awaiting input:
+Every playbook handoff must include this short block, especially when the run is blocked, incomplete, or awaiting input:
 
 ```text
 What happened: <plain-language result>
@@ -604,17 +666,14 @@ What you need to do: <user action, or “Nothing technical.”>
 To continue: “<exact phrase or action the user can provide>”
 ```
 
-The handoff must explain internal runtime terms such as `fan-in`, terminal
-worker envelope, and runtime closure in ordinary language before or alongside
-their status values. Do not present an internal owner as if the user must repair
-the agent runtime. If the user does not need to change code, configuration, or
-environment, say so explicitly. If the next step is a retry, give the exact
-short request, such as `Retry the planning run.`
+The handoff must explain internal runtime terms such as `fan-in`, terminal worker envelope, and runtime closure in
+ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
+the agent runtime. If the user does not need to change code, configuration, or environment, say so explicitly. If the
+next step is a retry, give the exact short request, such as `Retry the planning run.`
 
-The internal owner and the user action are different fields. A blocked run may
-have an internal owner while requiring no technical user action beyond asking
-the workflow to retry. The handoff must not end with only an internal owner or
-an unexplained technical instruction.
+The internal owner and the user action are different fields. A blocked run may have an internal owner while requiring no
+technical user action beyond asking the workflow to retry. The handoff must not end with only an internal owner or an
+unexplained technical instruction.
 
 The ledger contains one compact row per activated worker and each required worker that did not reach a terminal
 envelope:
@@ -642,16 +701,17 @@ it does not prove that the provider released the worker handle or its capacity.
 After result envelopes and artifacts are persisted, the Orchestrator must:
 
 1. mark each completed worker terminal;
-2. close or release every completed worker handle, including continuous
-  handoff/documentation workers from the finished run;
+2. close or release every completed worker handle, including continuous handoff/documentation workers from the finished
+   run;
 3. verify that no required worker from that run remains active; and
-4. record the closure status before marking the run complete or starting a new
-  lifecycle run.
+4. record the closure status before marking the run complete or starting a new lifecycle run.
 
-Never close a worker before collecting its terminal result envelope. A later run reuses durable artifacts, not live
-worker handles from the previous run. If the provider cannot expose release or active-handle status, record
+Never close a worker before collecting its terminal result envelope unless the provider has explicitly confirmed a
+terminal failure or that the worker is no longer running. A later run reuses durable artifacts, not live worker handles
+from the previous run. If the provider cannot expose release or active-handle status, record
 `worker_runtime_release_unavailable` and keep the run `blocked` until the provider confirms that the new run has
-capacity; do not silently downgrade or claim that the run is closed.
+capacity; do not silently downgrade or claim that the run is closed. A force-closed active worker is a Coordinator
+interruption, not evidence of provider release or worker failure.
 
 ---
 

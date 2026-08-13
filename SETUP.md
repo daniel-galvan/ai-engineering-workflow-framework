@@ -77,13 +77,11 @@ links.
 
 The links are useful because they:
 
-- let Codex discover the provider-specific workers from the execution-repository
-  session;
+- let Codex discover the provider-specific workers from the execution-repository session;
 - keep one authoritative copy of each agent definition in the framework;
-- make agent policy updates available to execution repositories without copying
-  or manually synchronizing files; and
-- keep provider configuration local to the developer's machine rather than
-  adding runtime-specific files to the code repository's source history.
+- make agent policy updates available to execution repositories without copying or manually synchronizing files; and
+- keep provider configuration local to the developer's machine rather than adding runtime-specific files to the code
+  repository's source history.
 
 The links do not grant permissions, create delegation capability, or force a worker to run. The playbook and runtime
 still determine whether a worker is required, available, activated, and completed.
@@ -122,8 +120,7 @@ For a new run, fill only:
 - execution profile and lifecycle;
 - execution repository;
 - playbook and its matching canonical template path;
-- provider/runtime configuration when the execution repository's
-  `.codex/agents/` directory is installed and verified;
+- provider/runtime configuration when the execution repository's `.codex/agents/` directory is installed and verified;
 - playbook-specific context and evidence; and
 - additional repositories or constraints when applicable.
 
@@ -133,6 +130,16 @@ verified.
 
 Start with `planning` for investigation, diagnosis, design, and a proposed implementation plan. Use `remediation` only
 after the plan exists and explicit implementation approval has been given.
+
+## Use an implementation plan in another environment
+
+When implementation needs a DevBox or another session, use the generated `implementation_handoff.md` beside the plan. It
+is self-contained and does not require the framework checkout. Copy that one file to the receiving environment, start
+Codex at the root of the target Git repository, and ask it to execute the approved handoff. For a monorepo, keep the
+session at the repository root so sibling projects remain available. The receiving session must verify the target
+repository, current default branch, starting revision, dependencies, approval, review, and validation before reporting
+completion. Create the handoff only for that cross-session or cross-environment transfer, or when explicitly requested;
+same-session implementation does not need one. The handoff does not select a model, effort, or provider runtime.
 
 ## Ask Codex to prepare the prompt
 
@@ -145,18 +152,14 @@ not a description such as “fix the bug”; it is the identifier or URL that an
 and handoff. If the issue is a Jira ticket, use its key and URL. If it is a Sentry issue, use its issue ID or URL. If it
 is another engineering task, use its stable ticket, incident, or work-item identifier.
 
-Separate direct user decisions and non-negotiable constraints from
-investigation hints. Put decisions in the template's authoritative confirmed
-section so workers do not reopen them as clarification questions. Put possible
-causes, suspected flows, and topology guesses in the unverified context
-section. Codex must classify all prose supplied with the preparation request,
-including comments written before the request; preserve every material detail
-in a canonical field or the template's additional-context field. You do not
-need to restate the same information in the generated prompt. For Sentry, map
-an explicit flow
-`A emits or sends to B; B returns a response to A` as event origin `A` and
-return path `B -> A`. Use the stated suspected fault location for the candidate
-fault repository; do not infer or swap topology roles from the primary code
+Separate direct user decisions and non-negotiable constraints from investigation hints. Put decisions in the template's
+authoritative confirmed section so workers do not reopen them as clarification questions. Put possible causes, suspected
+flows, and topology guesses in the unverified context section. Codex must classify all prose supplied with the
+preparation request, including comments written before the request; preserve every material detail in a canonical field
+or the template's additional-context field. You do not need to restate the same information in the generated prompt. For
+Sentry, map an explicit flow
+`A emits or sends to B; B returns a response to A` as event origin `A` and return path `B -> A`. Use the stated
+suspected fault location for the candidate fault repository; do not infer or swap topology roles from the primary code
 repository path.
 
 These requests only prepare prompts; they do not run a workflow. Review the generated prompt, then paste it into the
@@ -331,14 +334,12 @@ by a short list of anything I must review before running it.
 Before asking Codex to fill the template, verify:
 
 1. You know the absolute path of the framework checkout.
-2. You know the absolute path of the checkout where the session will run and
-  where the work record must be saved.
+2. You know the absolute path of the checkout where the session will run and where the work record must be saved.
 3. You have the stable work-item ID or URL.
 4. You selected the playbook from the catalog and its matching template.
-5. You listed other repositories and asset folders separately from the
-  execution repository.
-6. You stated whether this is a new run or a continuation. For a new run,
-  omit `Continuation` rather than filling it with `NONE`.
+5. You listed other repositories and asset folders separately from the execution repository.
+6. You stated whether this is a new run or a continuation. For a new run, omit `Continuation` rather than filling it
+   with `NONE`.
 
 If any value is unavailable, tell Codex to use `Unknown` or `None` in the existing template and flag it for review. Do
 not silently substitute the framework checkout, an attachment folder, or the current directory for the execution

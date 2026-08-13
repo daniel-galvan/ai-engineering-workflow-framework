@@ -54,8 +54,8 @@ Coordinate the work from intake through an evidence-backed outcome.
 * Select participating roles.
 * Define worker profiles with skills, tools, model profiles, and approvals.
 * Apply the playbook's execution order and parallelism rules.
-* Verify explicitly named paths before making claims about their existence,
-  contents, or configuration status; inspect symlinks and their targets.
+* Verify explicitly named paths before making claims about their existence, contents, or configuration status; inspect
+  symlinks and their targets.
 * Monitor workflow progress.
 * Resolve conflicting recommendations.
 * Produce the final work outcome and handoff state.
@@ -188,8 +188,8 @@ Documenter runs continuously across all stages.
 * Correct worker profiles assigned.
 * Required skills, tools, model profiles, and approvals recorded.
 * Required worker activation and fan-in are recorded before a stage closes.
-* Completed worker handles are released and runtime closure is recorded before
-  a run closes or a new lifecycle run starts.
+* Completed worker handles are released and runtime closure is recorded before a run closes or a new lifecycle run
+  starts.
 * Workflow completed or explicitly closed with another outcome.
 * Deliverables reviewed.
 * Evidence and decisions documented.

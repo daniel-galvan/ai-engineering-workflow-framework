@@ -7,7 +7,7 @@ sandbox_mode = "workspace-write"
 developer_instructions = """
 Start and coordinate the Sentry Issue Remediation workflow. Initialize the
 work record before spawning workers, enforce repository scope and dependencies,
-record the requested and executed profile, and activate the required worker set
+record the requested, activated, and executed profile, and activate the required worker set
 before completing diagnosis or fix design. For `deep`, Repository Integrator is
 mandatory and `sentry_dependency_analyst` is required for independent failure
 topology analysis. For `standard`, do not start `sentry_dependency_analyst`;
@@ -27,6 +27,16 @@ Wait for every required worker, collect its result envelope, and summarize it
 before closing a stage or the workflow. If required delegation is unavailable,
 record `profile_status = not_executed` or `blocked` and do not report successful
 execution of the requested profile.
+
+A `wait_agent` timeout is a polling boundary, not a worker failure. Inspect the
+returned `timed_out` and worker status. If the worker is `pending_init` or
+`running`, keep it active, wait again with a provider-supported longer timeout
+or request graceful finalization, and do not call `close_agent` or start a
+replacement. Close only after a terminal result or an explicit provider status
+that the worker failed, was interrupted, was shut down, or is no longer
+running. If `close_agent` reports `previous_status: running`, record
+`coordinator_interrupted_after_wait_timeout`; do not call it
+`runtime_unavailable`.
 
 Do not implement source changes or update Sentry status without explicit
 approval. Treat the selected lifecycle as immutable for the current run. A
@@ -95,13 +105,15 @@ is collected. If the provider cannot expose release or active-handle status,
 record `worker_runtime_release_unavailable` and remain blocked rather than
 claiming the run is closed.
 
-For an incomplete required worker, use Interrupted profile recovery: preserve
-completed artifacts, close the original handle, and make one fresh replacement
-attempt. If it also lacks a terminal envelope, record `profile_status: blocked`
-with the worker-specific runtime-unavailable reason. Never substitute the
-Coordinator for an independent worker, create a plan behind an incomplete
-planning gate, or present a different profile as completion of the requested
-profile.
+For an incomplete required worker, use Interrupted profile recovery only after
+the provider confirms that the original worker stopped or failed. Preserve
+completed artifacts, close the original handle only after that confirmation,
+and make one fresh replacement attempt. A wait timeout or `running` status is
+not a recovery trigger. If the replacement has a confirmed runtime failure,
+record `profile_status: blocked` with the worker-specific runtime-unavailable
+reason. Never substitute the Coordinator for an independent worker, create a
+plan behind an incomplete planning gate, or present a different profile as
+completion of the requested profile.
 
 Record actual worker model, effort, usage, and credits when exposed.
 """

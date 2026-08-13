@@ -123,19 +123,17 @@ The same worker contract can be executed by a human, one AI session, or a provid
 Parallel workers require a fan-in barrier: the Orchestrator waits for all required workers, records their outcomes,
 summarizes their results, and only then closes the stage. Runtime closure is a second barrier: completed worker handles
 must be released before the run is closed or a new lifecycle run is started. Active handles mean the workflow runtime is
-still occupied.
+still occupied. A wait timeout is only a polling boundary; it is not worker failure and does not authorize closing an
+active worker or starting a replacement.
 
 ## Model and effort
 
 Mode, execution profile, worker depth, and provider reasoning effort are separate:
 
-* Mode describes the work: discovery, investigation, delivery, stabilization,
-  or review.
+* Mode describes the work: discovery, investigation, delivery, stabilization, or review.
 * Execution profile selects the playbook's worker graph: `standard` or `deep`.
-* Worker depth is the provider-neutral effort requested for an individual
-  worker: `quick`, `standard`, or `deep`.
-* Model profile describes provider-neutral capacity: `standard_reasoning` or
-  `deep_reasoning`.
+* Worker depth is the provider-neutral effort requested for an individual worker: `quick`, `standard`, or `deep`.
+* Model profile describes provider-neutral capacity: `standard_reasoning` or `deep_reasoning`.
 * Provider adapters map each role to its concrete model and reasoning setting.
 
 For the current Codex pilot, all playbooks use the same role-quality policy. Profiles choose which roles run; they do
@@ -229,6 +227,18 @@ before changing model or effort policy.
 Create `implementation_plan.md` only after required planning fan-in passes and the workflow reaches
 `ready_for_implementation`.
 
+Create the companion `implementation_handoff.md` beside the plan only when implementation will happen in another session
+or environment, or when the user explicitly requests a self-contained transfer file. Do not create one by default for
+same-session implementation. The handoff is a self-contained transfer artifact: it uses repository identities and
+revisions instead of source-machine paths and includes the approved scope, evidence summary, environment preflight,
+ordered implementation, strict Code Review, validation, stop conditions, rollback, and final reporting requirements.
+
+The receiving session does not need the framework checkout. Start it at the root of the target Git repository, provide
+the handoff file, verify the repository, current branch, and target project path, and execute the complete handoff. For
+a monorepo, remain at the repository root so sibling projects are available. A pending approval remains a stop
+condition. If provider agents or delegation are unavailable, record the actual execution and do not claim framework
+profile, independent-review, fan-in, or model-setting results that were not observed.
+
 For a new run, the active session is the Coordinator. A configured provider Orchestrator may be used only when the
 runtime actually supports nested delegation; otherwise the active session starts workers, completes fan-in, and closes
 their handles. Codex users may expose the framework's agent definitions in `<execution-repository>/.codex/agents/`; omit
@@ -306,8 +316,8 @@ When adding capability:
 
 1. Reuse an existing role or skill when possible.
 2. Add a new skill only when the capability is reusable.
-3. After the current pilot freeze ends, add a playbook only when the scenario
-  has distinct stages and gates that existing playbooks cannot express.
+3. After the current pilot freeze ends, add a playbook only when the scenario has distinct stages and gates that
+   existing playbooks cannot express.
 4. Add a provider mapping only for provider-specific execution behavior.
 5. Exercise the change against a real work item.
 6. Record gaps and simplify after the pilot.

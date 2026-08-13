@@ -76,7 +76,8 @@ An empty filtered search is not evidence that a path is absent.
 | Run ID | |
 | Playbook | |
 | Requested profile | `standard` / `deep` |
-| Executed profile | `standard` / `deep` / `not_executed` |
+| Activated profile | `standard` / `deep` / `None` |
+| Executed profile | `standard` / `deep` / `None` |
 | Profile status | `requested` / `in_progress` / `executed` / `not_executed` / `blocked` |
 | Lifecycle | `planning` / `remediation` |
 | Mode | `discovery` / `investigation` / `delivery` / `stabilization` / `review` |

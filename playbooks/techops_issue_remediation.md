@@ -88,27 +88,22 @@ Use [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_
 
 Required planning workers:
 
-- `standard`: `initialize`, `issue-evidence`, `failure-path`, `fix-design`,
-  and continuous `handoff`; add `repository-integration` when the report crosses a repository, service, deployment,
-  ownership, or public-contract seam.
-- `deep`: all standard workers plus mandatory `repository-integration` and
-  `planning-review`.
+- `standard`: `initialize`, `issue-evidence`, `failure-path`, `fix-design`, and continuous `handoff`; add
+  `repository-integration` when the report crosses a repository, service, deployment, ownership, or public-contract
+  seam.
+- `deep`: all standard workers plus mandatory `repository-integration` and `planning-review`.
 
 The remediation sequence is `implement` ↔ `review` → `validate` → `handoff`.
 
 ## Worker Ownership and Non-duplication
 
 - `issue-evidence` owns raw Jira, attachment, support, and prior-issue evidence.
-- `failure-path` owns reproduction status, triggering conditions, competing
-  hypotheses, first concrete divergence, and affected-codebase analysis.
-- `repository-integration` owns cross-repository, deployment, runtime, and
-  ownership reconciliation when activated.
-- `fix-design` owns the smallest supported fix, regression-test strategy,
-  validation plan, and rollback considerations.
-- `planning-review` independently challenges diagnosis, scope, risk, and
-  validation only for `deep`.
-- `handoff` persists result envelopes, confidence, claims, decisions, actions,
-  usage, and next action.
+- `failure-path` owns reproduction status, triggering conditions, competing hypotheses, first concrete divergence, and
+  affected-codebase analysis.
+- `repository-integration` owns cross-repository, deployment, runtime, and ownership reconciliation when activated.
+- `fix-design` owns the smallest supported fix, regression-test strategy, validation plan, and rollback considerations.
+- `planning-review` independently challenges diagnosis, scope, risk, and validation only for `deep`.
+- `handoff` persists result envelopes, confidence, claims, decisions, actions, usage, and next action.
 
 Downstream workers consume normalized artifacts. They repeat evidence or repository analysis only to resolve a recorded
 discrepancy.
@@ -190,16 +185,14 @@ Report:
 1. issue summary, verified symptom, impact, and current outcome;
 2. evidence, reproduction status, root path, first divergence, and ownership;
 3. supported diagnosis, confidence, uncertainties, and considered alternatives;
-4. implementation-plan path/status, change, regression, validation, rollback,
-  and monitoring plan;
-5. Worker result ledger: one compact row per activated worker and each required
-  worker without a terminal envelope, using the shared contract's ledger fields; plus requested/executed profile,
-  activation, fan-in, and runtime-closure status; and
+4. implementation-plan path/status, change, regression, validation, rollback, and monitoring plan;
+5. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
+   using the shared contract's ledger fields; plus requested, activated, and executed profile, fan-in, and
+   runtime-closure status; and
 6. residual risks, owner, and next action.
 
-Also include the shared Human-Readable Handoff block: `What happened`, `What
-this means`, `Internal owner`, `What you need to do`, and `To continue`. If no
-technical user action is needed, say `Nothing technical.`
+Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
+`What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
 
 ## Related Documents
 

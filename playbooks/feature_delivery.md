@@ -51,10 +51,8 @@ The `feature-context` worker owns Jira context recovery for the run. It reads:
 
 1. the ticket for task-specific scope and explicit requirements;
 2. the immediate parent work item for the immediate outcome;
-3. ancestor Stories, Epics, or Initiatives for the broader objective and
-  sequencing;
-4. selected siblings only when they share a dependency, component, release,
-  direct link, or explicit precedent; and
+3. ancestor Stories, Epics, or Initiatives for the broader objective and sequencing;
+4. selected siblings only when they share a dependency, component, release, direct link, or explicit precedent; and
 5. linked documents, pull requests, and repository evidence.
 
 Parent and sibling material is evidence, not automatic scope. The ticket's explicit requirements remain authoritative
@@ -86,17 +84,17 @@ worker-runtime closure.
 ## Continuation and Re-entry
 
 - A planning follow-up may clarify or extend evidence but cannot implement.
-- A remediation re-entry requires explicit approval, the existing work record
-  and implementation plan, required worker activation, fan-in, and closure of the prior run's worker handles.
-- An interrupted run uses the canonical prompt with `Interrupted profile
-  recovery`: preserve completed artifacts, activate only missing required workers, and complete fan-in. For an
-  unavailable
-  required worker, close its original handle and make one fresh replacement attempt. If it also fails, stop with the
+- A remediation re-entry requires explicit approval, the existing work record and implementation plan, required worker
+  activation, fan-in, and closure of the prior run's worker handles.
+- An interrupted run uses the canonical prompt with `Interrupted profile recovery`: preserve completed artifacts,
+  activate only missing required workers, and complete fan-in. A wait timeout or `running` status is not worker
+  unavailability: keep the worker active and do not close it or start a replacement. For a worker confirmed stopped or
+  failed, close its original handle and make one fresh replacement attempt. If it also fails, stop with the
   worker-specific runtime-unavailable reason; never substitute the Coordinator or call the requested profile successful.
-- Missing approval blocks delivery workers only. It does not prevent remaining
-  planning workers from resolving context or design questions.
-- Missing activation, fan-in, or runtime closure is `blocked` or
-  `not_executed`, never successful profile execution.
+- Missing approval blocks delivery workers only. It does not prevent remaining planning workers from resolving context
+  or design questions.
+- If the required graph cannot start, use `not_executed`. If it starts but activation, fan-in, or runtime closure
+  remains incomplete, use `blocked`; it is never successful profile execution.
 
 ## Worker Graph
 
@@ -115,33 +113,28 @@ worker-runtime closure.
 
 Required worker sets:
 
-- `standard + planning`: `initialize`, `feature-context`, `impact-analysis`,
-  `feature-design`, and continuous `handoff`. `repository-integration` is added when the context crosses a repository,
-  service, ownership, deployment, persistence, or public-contract seam.
-- `deep + planning`: standard planning workers plus mandatory
-  `repository-integration` and `planning-review`.
-- `standard + remediation`: reuse completed standard planning artifacts, then
-  activate `implement`, `review`, `validate`, and `handoff` after approval.
-- `deep + remediation`: reuse completed deep planning artifacts, then activate
-  `implement`, `review`, `validate`, and `handoff` after approval.
+- `standard + planning`: `initialize`, `feature-context`, `impact-analysis`, `feature-design`, and continuous `handoff`.
+  `repository-integration` is added when the context crosses a repository, service, ownership, deployment, persistence,
+  or public-contract seam.
+- `deep + planning`: standard planning workers plus mandatory `repository-integration` and `planning-review`.
+- `standard + remediation`: reuse completed standard planning artifacts, then activate `implement`, `review`,
+  `validate`, and `handoff` after approval.
+- `deep + remediation`: reuse completed deep planning artifacts, then activate `implement`, `review`, `validate`, and
+  `handoff` after approval.
 
 The delivery sequence is `implement` ↔ `review` → `validate` → `handoff`. Do not start additional discovery workers
 after approval unless new evidence contradicts the approved plan or expands scope.
 
 ## Worker Outputs and Non-duplication
 
-- `feature-context` owns raw Jira hierarchy, sibling, linked-work, and initial
-  repository-context recovery. Downstream workers consume its context artifact.
-- `impact-analysis` owns dependency, data-flow, contract, and regression-scope
-  analysis.
-- `repository-integration` owns cross-repository, ownership, deployment, and
-  operational reconciliation when activated.
-- `feature-design` owns the smallest implementation design and acceptance
-  criteria traceability.
-- `planning-review` independently challenges scope, assumptions, rollout, and
-  validation only for `deep`.
-- `handoff` records all results, synchronization, model/effort, usage, credits,
-  and next action in the durable work record.
+- `feature-context` owns raw Jira hierarchy, sibling, linked-work, and initial repository-context recovery. Downstream
+  workers consume its context artifact.
+- `impact-analysis` owns dependency, data-flow, contract, and regression-scope analysis.
+- `repository-integration` owns cross-repository, ownership, deployment, and operational reconciliation when activated.
+- `feature-design` owns the smallest implementation design and acceptance criteria traceability.
+- `planning-review` independently challenges scope, assumptions, rollout, and validation only for `deep`.
+- `handoff` records all results, synchronization, model/effort, usage, credits, and next action in the durable work
+  record.
 
 ## Stages
 
@@ -224,11 +217,9 @@ completed worker handles only after their terminal envelopes and artifacts are p
 When created, the plan must include:
 
 1. ticket, parent/initiative context, selected siblings, and source map;
-2. verified objective, in-scope and out-of-scope behavior, and acceptance
-  criteria traceability;
+2. verified objective, in-scope and out-of-scope behavior, and acceptance criteria traceability;
 3. affected repositories, modules, contracts, configuration, and ownership;
-4. ordered source, test, configuration, documentation, rollout, and applicable
-  migration changes;
+4. ordered source, test, configuration, documentation, rollout, and applicable migration changes;
 5. validation ladder, including focused regression tests and applicable CI;
 6. risks, compatibility, rollback, monitoring, and release evidence; and
 7. completion criteria and unresolved assumptions.
@@ -251,20 +242,16 @@ When created, the plan must include:
 
 The final handoff reports:
 
-1. shared outcome: feature objective, context sufficiency, verified scope, and
-  next action;
-2. parent/initiative and selected-sibling context, including conflicts and
-  clarification questions;
-3. implementation-plan path/status, planned change, acceptance traceability,
-  validation, rollout, and rollback;
-4. Worker result ledger: one compact row per activated worker and each required
-  worker without a terminal envelope, using the shared contract's ledger fields; plus requested/executed profile,
-  activation, fan-in, and runtime-closure status; and
+1. shared outcome: feature objective, context sufficiency, verified scope, and next action;
+2. parent/initiative and selected-sibling context, including conflicts and clarification questions;
+3. implementation-plan path/status, planned change, acceptance traceability, validation, rollout, and rollback;
+4. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
+   using the shared contract's ledger fields; plus requested, activated, and executed profile, fan-in, and
+   runtime-closure status; and
 5. remaining risks, blockers, owner, and follow-up work.
 
-Also include the shared Human-Readable Handoff block: `What happened`, `What
-this means`, `Internal owner`, `What you need to do`, and `To continue`. If no
-technical user action is needed, say `Nothing technical.`
+Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
+`What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
 
 Do not imply that implementation, validation, or release completed when the workflow stopped at a planning,
 clarification, approval, environment, or worker gate.

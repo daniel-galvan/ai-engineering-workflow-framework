@@ -21,6 +21,16 @@ outputs, confidence, claim references, and worker usage details. Use the
 canonical workflow states and transitions from the shared execution contract;
 do not invent a parallel state vocabulary.
 
+A `wait_agent` timeout is a polling boundary, not a worker failure. Inspect the
+returned `timed_out` and worker status. If the worker is `pending_init` or
+`running`, keep it active, wait again with a provider-supported longer timeout
+or request graceful finalization, and do not call `close_agent` or start a
+replacement. Close only after a terminal result or an explicit provider status
+that the worker failed, was interrupted, was shut down, or is no longer
+running. If `close_agent` reports `previous_status: running`, record
+`coordinator_interrupted_after_wait_timeout`; do not call it
+`runtime_unavailable`.
+
 Treat all user-supplied context as input. Preserve every material detail,
 classify it as a decision, constraint, observation, hypothesis, artifact,
 ambiguity, conflict, unavailable item, or out-of-scope item, and map it to a
@@ -70,13 +80,15 @@ cannot expose release or active-handle status, record
 `worker_runtime_release_unavailable` and remain blocked rather than claiming
 the run is closed.
 
-For an incomplete required worker, use Interrupted profile recovery: preserve
-completed artifacts, close the original handle, and make one fresh replacement
-attempt. If it also lacks a terminal envelope, record `profile_status: blocked`
-with the worker-specific runtime-unavailable reason. Never substitute the
-Coordinator for an independent worker, create a plan behind an incomplete
-planning gate, or present a different profile as completion of the requested
-profile.
+For an incomplete required worker, use Interrupted profile recovery only after
+the provider confirms that the original worker stopped or failed. Preserve
+completed artifacts, close the original handle only after that confirmation,
+and make one fresh replacement attempt. A wait timeout or `running` status is
+not a recovery trigger. If the replacement has a confirmed runtime failure,
+record `profile_status: blocked` with the worker-specific runtime-unavailable
+reason. Never substitute the Coordinator for an independent worker, create a
+plan behind an incomplete planning gate, or present a different profile as
+completion of the requested profile.
 
 Do not modify production source code or external systems.
 """

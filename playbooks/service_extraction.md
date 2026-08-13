@@ -71,15 +71,15 @@ The shared execution contract governs immutable lifecycle, remediation re-entry,
 this playbook:
 
 - A planning follow-up may clarify the plan but cannot extract code.
-- A remediation re-entry requires explicit approval, the same profile, the
-  existing work record and implementation plan, required-worker activation, result envelopes, fan-in, and worker-runtime
-  closure for the prior run before source changes.
-- An interrupted run uses the canonical prompt with `Interrupted profile
-  recovery`: preserve completed artifacts, activate only missing required workers, and complete fan-in.
-- Missing implementation approval blocks delivery workers only. It must not
-  stop remaining planning workers from completing the service design.
-- Missing required activation or fan-in is `blocked` or `not_executed`; it is
-  never a successful profile execution.
+- A remediation re-entry requires explicit approval, the same profile, the existing work record and implementation plan,
+  required-worker activation, result envelopes, fan-in, and worker-runtime closure for the prior run before source
+  changes.
+- An interrupted run uses the canonical prompt with `Interrupted profile recovery`: preserve completed artifacts,
+  activate only missing required workers, and complete fan-in.
+- Missing implementation approval blocks delivery workers only. It must not stop remaining planning workers from
+  completing the service design.
+- If the required graph cannot start, use `not_executed`. If it starts but required activation or fan-in remains
+  incomplete, use `blocked`; it is never a successful profile execution.
 
 ## Worker Graph
 
@@ -101,13 +101,13 @@ settings; they do not override it.
 
 Required worker sets:
 
-- `standard + planning`: `initialize`, `source-understanding`,
-  `dependency-analysis`, `service-design`, `destination-integration`, and continuous `handoff`.
+- `standard + planning`: `initialize`, `source-understanding`, `dependency-analysis`, `service-design`,
+  `destination-integration`, and continuous `handoff`.
 - `deep + planning`: all standard planning workers plus `planning-review`.
-- `standard + remediation`: reuse completed standard planning artifacts, then
-  activate `implement`, `review`, `validate`, and `handoff` after approval.
-- `deep + remediation`: reuse completed deep planning artifacts, then activate
-  `implement`, `review`, `validate`, and `handoff` after approval.
+- `standard + remediation`: reuse completed standard planning artifacts, then activate `implement`, `review`,
+  `validate`, and `handoff` after approval.
+- `deep + remediation`: reuse completed deep planning artifacts, then activate `implement`, `review`, `validate`, and
+  `handoff` after approval.
 
 The provider adapter maps each generic role to model and reasoning effort. A profile selects workers and validation
 depth; it does not silently change a role's quality policy.
@@ -183,13 +183,10 @@ plan in small vertical slices:
 
 1. establish the destination build and test baseline;
 2. move the smallest independently testable capability;
-3. adapt imports, registration, adapters, routing, configuration, and
-  dependencies;
+3. adapt imports, registration, adapters, routing, configuration, and dependencies;
 4. add or preserve focused tests and required integrations;
-5. keep source and destination behavior comparable while coexistence is
-  required; and
-6. remove temporary extraction code only after the replacement path is
-  validated.
+5. keep source and destination behavior comparable while coexistence is required; and
+6. remove temporary extraction code only after the replacement path is validated.
 
 Preserve migrated business behavior. New features require explicit scope and approval.
 
@@ -234,16 +231,15 @@ for stabilization.
 The final handoff reports:
 
 1. extracted capability, verified source/destination seam, and outcome;
-2. implementation-plan path/status, code changes, validation, coexistence or
-  cutover, rollback, and operational evidence;
-3. Worker result ledger: one compact row per activated worker and each required
-  worker without a terminal envelope, using the shared contract's ledger fields; plus requested/executed profile,
-  activation, fan-in, and runtime-closure status; and
+2. implementation-plan path/status, code changes, validation, coexistence or cutover, rollback, and operational
+   evidence;
+3. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
+   using the shared contract's ledger fields; plus requested, activated, and executed profile, fan-in, and
+   runtime-closure status; and
 4. residual risks, blockers, owner, follow-up work, and next action.
 
-Also include the shared Human-Readable Handoff block: `What happened`, `What
-this means`, `Internal owner`, `What you need to do`, and `To continue`. If no
-technical user action is needed, say `Nothing technical.`
+Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
+`What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
 
 The handoff must not imply implementation, validation, or cutover completed when the workflow stopped at a planning,
 approval, environment, or worker gate.

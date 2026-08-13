@@ -56,12 +56,10 @@ responsibility remains uncertain.
 
 Use the configured Sentry MCP integration. Do not request or use `SENTRY_AUTH_TOKEN` when MCP provides the connection.
 
-Standard planning is bounded and latest-event-first. A different local checkout
-revision, an unavailable Sentry release lookup, a high event count, or missing
-database access is recorded as a limitation when it is not material to the
-candidate fix. The workflow does not inspect every occurrence by default. It
-may use one older representative event or persisted rows only when the latest
-event and source evidence cannot answer a material question.
+Standard planning is bounded and latest-event-first. A different local checkout revision, an unavailable Sentry release
+lookup, a high event count, or missing database access is recorded as a limitation when it is not material to the
+candidate fix. The workflow does not inspect every occurrence by default. It may use one older representative event or
+persisted rows only when the latest event and source evidence cannot answer a material question.
 
 ## Expected Work Record and Artifacts
 
@@ -96,13 +94,12 @@ explicit approval. The remediation lifecycle executes only the approved implemen
 
 The final handoff should report:
 
-- requested and executed profile;
+- requested, activated, and executed profile;
 - profile status, required-worker activation, and fan-in status;
 - verified repository and component scope;
 - evidence-backed root cause and residual uncertainty;
 - proposed source and regression-test changes;
 - validation plan and unavailable or inconclusive checks;
 - implementation-plan path and status; and
-- next owner and smallest safe next action. The next action names the owner,
-  file or system, required decision or action, and completion condition in
-  plain language.
+- next owner and smallest safe next action. The next action names the owner, file or system, required decision or
+  action, and completion condition in plain language.

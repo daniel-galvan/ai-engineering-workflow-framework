@@ -51,10 +51,10 @@ maintenance.
 
 * Create or recover the work record.
 * Maintain `work_record.md`.
-* Record worker runtime closure separately from result fan-in, including any
-  remaining active handles or provider release blocker.
-* Create or maintain `implementation_plan.md` only after required planning
-  fan-in passes and the selected playbook reaches its planning-completion gate.
+* Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
+  release blocker.
+* Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook
+  reaches its planning-completion gate.
 * Record findings from every role.
 * Record evidence and references.
 * Preserve evidence, claim, decision, and action IDs across artifacts.
@@ -86,8 +86,7 @@ Optional
 # Produces
 
 * Updated `work_record.md`
-* `implementation_plan.md` when created by the playbook's planning-completion
-  gate
+* `implementation_plan.md` when created by the playbook's planning-completion gate
 * Decision Log
 * Work Timeline
 * Open Questions

@@ -57,9 +57,9 @@ For cloning, execution-repository selection, Codex agent links, prompt creation,
 1. Complete [SETUP.md](SETUP.md) for the framework, execution repository, and provider runtime.
 2. Choose the playbook that matches the primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md).
 3. Copy the matching canonical run template from [templates/](templates/) into a session started in the execution
-  repository. Fill only the required first-run and scenario fields; do not invent a second prompt format.
+   repository. Fill only the required first-run and scenario fields; do not invent a second prompt format.
 4. Start with `planning` for read-only discovery, diagnosis, design, and an implementation plan. Create the plan only
-  after required fan-in passes.
+   after required fan-in passes.
 5. After explicit approval, run `remediation` through implementation, Code Review, validation, and handoff.
 
 ## First-use view
@@ -72,7 +72,7 @@ The user-facing model is intentionally small:
 | What do I provide? | The work-item ID or URL, execution repository, profile, lifecycle, and relevant repositories, artifacts, or constraints. Provider configuration is optional and only used when installed and verified. |
 | What happens first? | The run initializes or recovers the work record, activates the selected worker graph, and completes required fan-in before claiming success. |
 | What may I approve? | Scope and design approvals are conditional. Implementation approval is required before remediation. Release approval is required for deployment, cutover, or another external operational write. See the [human control model](contracts/workflow_execution.md#human-control-model). |
-| Where do results go? | The execution repository's `.thoughts/<WORK-ITEM-ID>/work_record.md`; `implementation_plan.md` is created only after planning fan-in reaches `ready_for_implementation`. |
+| Where do results go? | The execution repository's `.thoughts/<WORK-ITEM-ID>/work_record.md`; `implementation_plan.md` and its optional portable handoff are created after planning reaches `ready_for_implementation`. |
 
 Users normally do not choose individual workers, skills, tools, model profiles, or worker dependencies. The selected
 playbook and provider policy derive those execution details.
@@ -154,7 +154,7 @@ Use this reading path:
 4. [Templates](templates/) — start a run with the canonical prompt and create the durable work record.
 5. [Examples](examples/) — follow a safe, generic scenario guide for each current playbook.
 6. [Contributing](CONTRIBUTING.md) — extend the framework without duplicating contracts, roles, skills, or provider
-  behavior.
+   behavior.
 
 ## Repository map
 
