@@ -22,24 +22,20 @@ depends_on:
 
 ## Purpose
 
-Use this playbook to decouple a capability into an independently owned service.
-It covers discovery, boundary design, destination integration, approved
-extraction, validation, coexistence or cutover, and handoff. It does not turn
-later feature work in the new service into extraction work.
+Use this playbook to decouple a capability into an independently owned service. It covers discovery, boundary design,
+destination integration, approved extraction, validation, coexistence or cutover, and handoff. It does not turn later
+feature work in the new service into extraction work.
 
-The goal is not to copy files. The goal is to establish a clear service seam,
-an operational path to production, and evidence that the destination can evolve
-independently.
+The goal is not to copy files. The goal is to establish a clear service seam, an operational path to production, and
+evidence that the destination can evolve independently.
 
 ## When To Use
 
-Use when an existing capability is coupled to a source repository, application,
-or service and a destination service boundary must become independently
-buildable, deployable, maintainable, and owned.
+Use when an existing capability is coupled to a source repository, application, or service and a destination service
+boundary must become independently buildable, deployable, maintainable, and owned.
 
-Use another playbook for a database-only, infrastructure-only, or deployment-
-only migration; a normal feature, bug, or upgrade in an existing service; or a
-temporary code copy with no independent-service goal.
+Use another playbook for a database-only, infrastructure-only, or deployment- only migration; a normal feature, bug, or
+upgrade in an existing service; or a temporary code copy with no independent-service goal.
 
 ## Required Inputs
 
@@ -53,8 +49,8 @@ Missing inputs are explicit unknowns. They are never silently inferred.
 
 ## Default Execution
 
-The default is `deep + planning`. Service extraction normally has
-cross-repository, ownership, deployment, or operational uncertainty.
+The default is `deep + planning`. Service extraction normally has cross-repository, ownership, deployment, or
+operational uncertainty.
 
 | Execution profile | Use when | Planning behavior |
 | --- | --- | --- |
@@ -66,23 +62,20 @@ cross-repository, ownership, deployment, or operational uncertainty.
 | `planning` | Investigate, design, integrate, and create an implementation plan; stop at `ready_for_implementation`. No source or external-system changes. |
 | `remediation` | Execute the approved plan through extraction, review, validation, stabilization, and handoff after explicit approval. |
 
-Use [`templates/service_extraction_run_prompt.md`](../templates/service_extraction_run_prompt.md)
-as the canonical session-prompt format. The prompt supplies scenario data; it
-does not redefine the process.
+Use [`templates/service_extraction_run_prompt.md`](../templates/service_extraction_run_prompt.md) as the canonical
+session-prompt format. The prompt supplies scenario data; it does not redefine the process.
 
 ## Continuation, Re-entry, and Recovery
 
-The shared execution contract governs immutable lifecycle, remediation re-entry,
-and interrupted-profile recovery. For this playbook:
+The shared execution contract governs immutable lifecycle, remediation re-entry, and interrupted-profile recovery. For
+this playbook:
 
 - A planning follow-up may clarify the plan but cannot extract code.
 - A remediation re-entry requires explicit approval, the same profile, the
-  existing work record and implementation plan, required-worker activation,
-  result envelopes, fan-in, and worker-runtime closure for the prior run before
-  source changes.
+  existing work record and implementation plan, required-worker activation, result envelopes, fan-in, and worker-runtime
+  closure for the prior run before source changes.
 - An interrupted run uses the canonical prompt with `Interrupted profile
-  recovery`: preserve completed artifacts, activate only missing required
-  workers, and complete fan-in.
+  recovery`: preserve completed artifacts, activate only missing required workers, and complete fan-in.
 - Missing implementation approval blocks delivery workers only. It must not
   stop remaining planning workers from completing the service design.
 - Missing required activation or fan-in is `blocked` or `not_executed`; it is
@@ -90,8 +83,8 @@ and interrupted-profile recovery. For this playbook:
 
 ## Worker Graph
 
-The playbook owns this graph. Generic role documents and provider agents supply
-reusable responsibilities and runtime settings; they do not override it.
+The playbook owns this graph. Generic role documents and provider agents supply reusable responsibilities and runtime
+settings; they do not override it.
 
 | Worker | Role | Skills | Tools | Activation / dependency |
 | --- | --- | --- | --- | --- |
@@ -109,17 +102,15 @@ reusable responsibilities and runtime settings; they do not override it.
 Required worker sets:
 
 - `standard + planning`: `initialize`, `source-understanding`,
-  `dependency-analysis`, `service-design`, `destination-integration`, and
-  continuous `handoff`.
+  `dependency-analysis`, `service-design`, `destination-integration`, and continuous `handoff`.
 - `deep + planning`: all standard planning workers plus `planning-review`.
 - `standard + remediation`: reuse completed standard planning artifacts, then
   activate `implement`, `review`, `validate`, and `handoff` after approval.
 - `deep + remediation`: reuse completed deep planning artifacts, then activate
   `implement`, `review`, `validate`, and `handoff` after approval.
 
-The provider adapter maps each generic role to model and reasoning effort. A
-profile selects workers and validation depth; it does not silently change a
-role's quality policy.
+The provider adapter maps each generic role to model and reasoning effort. A profile selects workers and validation
+depth; it does not silently change a role's quality policy.
 
 ## Work Record and Implementation Plan
 
@@ -129,116 +120,101 @@ Use the prompt's declared `Execution repository` as the durable-artifact root:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Source and destination are code repositories, not artifact roots. Do not infer
-the artifact root from the playbook location or repository list.
+Source and destination are code repositories, not artifact roots. Do not infer the artifact root from the playbook
+location or repository list.
 
-Do not create `implementation_plan.md` during initialization. The Documenter
-creates it from [`templates/implementation_plan.md`](../templates/implementation_plan.md)
-only after all required planning workers return terminal envelopes, fan-in is
-complete, and the workflow is ready for implementation:
+Do not create `implementation_plan.md` during initialization. The Documenter creates it from
+[`templates/implementation_plan.md`](../templates/implementation_plan.md) only after all required planning workers
+return terminal envelopes, fan-in is complete, and the workflow is ready for implementation:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The plan must identify source and destination revisions, the selected service
-seam, moved/adapted/retained dependencies, migration slices, contracts,
-coexistence or cutover, rollback, validation, operations, and completion
-criteria.
+The plan must identify source and destination revisions, the selected service seam, moved/adapted/retained dependencies,
+migration slices, contracts, coexistence or cutover, rollback, validation, operations, and completion criteria.
 
 ## Execution Flow
 
 ### Stage 0 — Initialize
 
-The Orchestrator records the work item, requested profile, lifecycle, worker
-graph, scope, non-goals, acceptance criteria, source and destination context,
-constraints, unknowns, and the next gate. It creates or recovers only the work
+The Orchestrator records the work item, requested profile, lifecycle, worker graph, scope, non-goals, acceptance
+criteria, source and destination context, constraints, unknowns, and the next gate. It creates or recovers only the work
 record and starts the continuous Documenter.
 
 ### Stage 1 — Understand the Source
 
-`source-understanding` documents current behavior, entry points, public
-interfaces, tests, configuration, datastores, queues, events, external APIs,
-observability, deployment assumptions, and ownership. Separate facts,
-inferences, hypotheses, and unknowns.
+`source-understanding` documents current behavior, entry points, public interfaces, tests, configuration, datastores,
+queues, events, external APIs, observability, deployment assumptions, and ownership. Separate facts, inferences,
+hypotheses, and unknowns.
 
 ### Stage 2 — Analyze Dependencies and Boundary
 
-`dependency-analysis` maps upstream callers, downstream consumers, shared
-libraries and models, data and event ownership, authentication, configuration,
-secrets, deployment, and rollback coupling. Classify every material dependency
+`dependency-analysis` maps upstream callers, downstream consumers, shared libraries and models, data and event
+ownership, authentication, configuration, secrets, deployment, and rollback coupling. Classify every material dependency
 as move, remain external, adapt, share temporarily, remove, or unknown.
 
 ### Stage 3 — Design the Service
 
-`service-design` defines the smallest safe destination seam: responsibilities,
-interfaces, data and event ownership, failure and retry behavior, compatibility,
-versioning, migration slices, coexistence, rollback, and explicitly deferred
-features. It compares direct extraction, shared-library-first, strangler, and
-deferral when relevant.
+`service-design` defines the smallest safe destination seam: responsibilities, interfaces, data and event ownership,
+failure and retry behavior, compatibility, versioning, migration slices, coexistence, rollback, and explicitly deferred
+features. It compares direct extraction, shared-library-first, strangler, and deferral when relevant.
 
 ### Stage 4 — Integrate the Destination
 
-`destination-integration` verifies destination conventions for location,
-build, dependencies, tests, runtime, deployment, configuration, secrets,
-observability, CI/CD, ownership, alerts, dashboards, and runbooks. It produces
-the first independently verifiable destination milestone.
+`destination-integration` verifies destination conventions for location, build, dependencies, tests, runtime,
+deployment, configuration, secrets, observability, CI/CD, ownership, alerts, dashboards, and runbooks. It produces the
+first independently verifiable destination milestone.
 
-For `deep`, `planning-review` independently challenges the seam, scope,
-coupling assumptions, coexistence, rollback, and validation plan.
+For `deep`, `planning-review` independently challenges the seam, scope, coupling assumptions, coexistence, rollback, and
+validation plan.
 
 ### Stage 5 — Complete Planning
 
-The Orchestrator waits for every required planning worker and the Documenter
-records the result envelopes and fan-in. Only then may the Documenter create
-`implementation_plan.md` and set `ready_for_implementation`.
+The Orchestrator waits for every required planning worker and the Documenter records the result envelopes and fan-in.
+Only then may the Documenter create `implementation_plan.md` and set `ready_for_implementation`.
 
-No plan is created and no readiness claim is made when planning workers are
-blocked, failed, unavailable, or incomplete.
+No plan is created and no readiness claim is made when planning workers are blocked, failed, unavailable, or incomplete.
 
 ### Stage 6 — Re-enter Remediation and Extract
 
-Enter only after explicit approval and the remediation re-entry requirements
-pass. `implement` executes the approved plan in small vertical slices:
+Enter only after explicit approval and the remediation re-entry requirements pass. `implement` executes the approved
+plan in small vertical slices:
 
 1. establish the destination build and test baseline;
 2. move the smallest independently testable capability;
 3. adapt imports, registration, adapters, routing, configuration, and
-   dependencies;
+  dependencies;
 4. add or preserve focused tests and required integrations;
 5. keep source and destination behavior comparable while coexistence is
-   required; and
+  required; and
 6. remove temporary extraction code only after the replacement path is
-   validated.
+  validated.
 
-Preserve migrated business behavior. New features require explicit scope and
-approval.
+Preserve migrated business behavior. New features require explicit scope and approval.
 
 ### Stage 7 — Code Review and Validate
 
-`review` verifies the approved seam, scope, compatibility, destination
-conventions, coexistence, rollback, and coverage. `validate` records the lowest
-validation level that proves the claim, escalating as needed:
+`review` verifies the approved seam, scope, compatibility, destination conventions, coexistence, rollback, and coverage.
+`validate` records the lowest validation level that proves the claim, escalating as needed:
 
 1. destination build, focused tests, and contract checks;
 2. source/destination regression and integration checks;
 3. deployment, smoke, observability, and operational checks; and
 4. cutover or coexistence verification and post-release observation.
 
-Every check is `pass`, `fail`, `skipped`, `unavailable`, or `inconclusive`.
-Unavailable or inconclusive checks are not passes.
+Every check is `pass`, `fail`, `skipped`, `unavailable`, or `inconclusive`. Unavailable or inconclusive checks are not
+passes.
 
-In-scope review findings return to `implement` and are re-reviewed before
-validation. Reopen planning only when evidence invalidates the approved seam
-or extraction design.
+In-scope review findings return to `implement` and are re-reviewed before validation. Reopen planning only when evidence
+invalidates the approved seam or extraction design.
 
 ### Stage 8 — Stabilize and Hand Off
 
-The service is complete only when it has an explicit owner, independent build
-and test path, documented runtime and deployment path, known consumers,
-configuration and secret ownership, observability, rollback or coexistence,
-residual risks, and follow-up work. Later feature, bug, upgrade, or performance
-work is separate from extraction unless required for stabilization.
+The service is complete only when it has an explicit owner, independent build and test path, documented runtime and
+deployment path, known consumers, configuration and secret ownership, observability, rollback or coexistence, residual
+risks, and follow-up work. Later feature, bug, upgrade, or performance work is separate from extraction unless required
+for stabilization.
 
 ## Gates
 
@@ -259,15 +235,18 @@ The final handoff reports:
 
 1. extracted capability, verified source/destination seam, and outcome;
 2. implementation-plan path/status, code changes, validation, coexistence or
-   cutover, rollback, and operational evidence;
+  cutover, rollback, and operational evidence;
 3. Worker result ledger: one compact row per activated worker and each required
-   worker without a terminal envelope, using the shared contract's ledger
-   fields; plus requested/executed profile, activation, fan-in, and
-   runtime-closure status; and
+  worker without a terminal envelope, using the shared contract's ledger fields; plus requested/executed profile,
+  activation, fan-in, and runtime-closure status; and
 4. residual risks, blockers, owner, follow-up work, and next action.
 
-The handoff must not imply implementation, validation, or cutover completed
-when the workflow stopped at a planning, approval, environment, or worker gate.
+Also include the shared Human-Readable Handoff block: `What happened`, `What
+this means`, `Internal owner`, `What you need to do`, and `To continue`. If no
+technical user action is needed, say `Nothing technical.`
+
+The handoff must not imply implementation, validation, or cutover completed when the workflow stopped at a planning,
+approval, environment, or worker gate.
 
 ## Terminal Outcomes
 

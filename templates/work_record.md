@@ -4,7 +4,7 @@ title: Engineering Work Record
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-11
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -13,7 +13,8 @@ depends_on:
 
 # Engineering Work Record
 
-> Living document for tracking the context, evidence, decisions, changes, issues, and next steps for a unit of engineering work.
+> Living document for tracking context, evidence, decisions, changes, issues, and next steps for a unit of engineering
+> work.
 
 This document should be updated continuously throughout the work.
 
@@ -56,6 +57,18 @@ Record explicit non-goals when the work could expand into adjacent work.
 
 ---
 
+# Path Verification
+
+Before reporting that an explicitly named repository, provider configuration, artifact, or evidence path is absent,
+record a direct path check. Include hidden entries and symlinks when inspecting directories, and verify symlink targets.
+An empty filtered search is not evidence that a path is absent.
+
+| Path | Purpose | Expected type | Observed status | Symlink/content check | Checked at | Evidence or command |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | File / Directory / Symlink / Other | Exists / Absent / Empty / Inaccessible / Broken symlink / Unknown | | | |
+
+---
+
 # Workflow State
 
 | Field | Value |
@@ -69,18 +82,19 @@ Record explicit non-goals when the work could expand into adjacent work.
 | Mode | `discovery` / `investigation` / `delivery` / `stabilization` / `review` |
 | Effort | `quick` / `standard` / `deep` worker depth; separate from provider reasoning effort |
 | State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |
+| Engineering state | `unknown` / `understood` / `designed` / `approved` / `implemented` / `validated` / `released` / `stabilized` / `not_applicable` |
 | Outcome | `in_progress` / `completed` / `closed_no_action` / `closed_duplicate` / `closed_not_a_bug` / `deferred` / `blocked` |
 | Current stage | |
-| Current owner | |
+| Internal owner | Person, team, worker, or runtime responsible for the current state |
+| User action | What the user needs to do, or `Nothing technical.` |
 | Next action | |
 
-Use the lifecycle and outcome terms from `../contracts/workflow_execution.md`.
+Use the lifecycle, workflow-state, engineering-state, and outcome terms from `../contracts/workflow_execution.md`.
 
 # Durable Artifacts
 
-When the selected playbook requires an implementation plan, planning runs that
-reach `ready_for_implementation` must produce and link it. The plan is the
-execution source for a later session; this work record remains the context,
+When the selected playbook requires an implementation plan, planning runs that reach `ready_for_implementation` must
+produce and link it. The plan is the execution source for a later session; this work record remains the context,
 evidence, decision, and worker ledger.
 
 | Artifact | Path | Status | Purpose |
@@ -97,8 +111,8 @@ Record every worker or subagent that materially contributes to the work.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | | | | | | | | | | | | |
 
-Record provider-reported usage or credits when available. Use `Unknown` when
-the execution surface does not expose them; never estimate credit consumption.
+Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
+never estimate credit consumption.
 
 # Worker Synchronization
 
@@ -108,35 +122,56 @@ For every stage that launches multiple workers, record the fan-in barrier.
 | --- | --- | --- | --- | --- |
 | | | | Yes / No | Open / Passed |
 
-The workflow cannot be marked complete while a required worker or barrier is
-still active.
+The workflow cannot be marked complete while a required worker or barrier is still active.
 
-For each worker, record the inputs consumed, outputs produced, approvals, and failure or blocked details in the timeline or the relevant section below.
+For each worker, record inputs consumed, outputs produced, approvals, and failure or blocked details in the timeline or
+relevant section below.
 
 # Worker Runtime Closure
 
-Record the provider-handle closure barrier separately from result fan-in.
-`terminal` means the result was collected; `released` means the provider no
-longer counts the worker against runtime capacity.
+Record the provider-handle closure barrier separately from result fan-in. `terminal` means the result was collected;
+`released` means the provider no longer counts the worker against runtime capacity.
 
 | Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
 | --- | --- | --- | --- | --- |
 | | | Pending / Released / Unknown / Blocked | | |
 
-Do not start a new lifecycle run while the previous run has active handles.
-Reuse its durable artifacts after closure; do not reuse live worker handles.
+Do not start a new lifecycle run while the previous run has active handles. Reuse its durable artifacts after closure;
+do not reuse live worker handles.
 
 # Worker Result Summary
 
-Record one compact result for every worker that reached a terminal outcome.
-Summarize each worker's unique contribution; do not copy full reports here.
+Record one compact result for every worker that reached a terminal outcome. Summarize each worker's unique contribution;
+do not copy full reports here.
 
 | Worker | Outcome | Confidence | Unique contribution | Evidence / claim refs | Uncertainties / blockers | Actual model/effort | Usage/credits |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | | | | | | | | |
 
-The final handoff should present the shared outcome first and this worker
-summary second. Use `Unknown` for unavailable model, token, or credit data.
+The final handoff should present the shared outcome first and this worker summary second. Use `Unknown` for unavailable
+model, token, or credit data.
+
+---
+
+# Workflow Evaluation
+
+Complete this section at terminal handoff, blocked handoff, or a deliberate pilot review. It evaluates the workflow, not
+only the code change. Reuse the worker ledgers above for role, model, effort, usage, and individual outcome; do not
+duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/workflow_evaluation.md).
+
+| Complexity tags | Duration | Worker retries | Worker corrections | Review cycles | Validation failures | Human interventions | Final outcome |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Bounded / Cross-repository / High-risk / Unknown | | | | | | | |
+
+| Dimension | Rating | Evidence / notes |
+| --- | --- | --- |
+| Process quality | Met / Partial / Not met / Not applicable | |
+| Reasoning quality | Met / Partial / Not met / Not applicable | |
+| Engineering quality | Met / Partial / Not met / Not applicable | |
+| Efficiency | Met / Partial / Not met / Not applicable | |
+
+Record the smallest improvement or policy question only when this run provides evidence for it. Do not tune model or
+effort from one run alone.
 
 ---
 
@@ -166,13 +201,14 @@ Avoid interpretations.
 
 # Assumptions
 
-Document assumptions separately from facts.
+Material assumptions are claims with `status: assumed`, not facts. Record the same claim ID in the Claims table and use
+this table to make their validation visible during planning, remediation, and recovery.
 
-Each assumption should eventually be:
+| Claim ID | Assumption | Owner | Impact if wrong | Validation method | Status |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | Assumed / Supported / Contradicted / Unknown |
 
-* Verified
-* Refuted
-* Removed
+Non-material working assumptions may remain in analysis notes.
 
 ---
 
@@ -208,9 +244,9 @@ Use the IDs and relationships from [`../contracts/claims.md`](../contracts/claim
 
 # Claims
 
-| Claim ID | Statement | Evidence refs | Confidence | Uncertainties | Status |
-| --- | --- | --- | --- | --- | --- |
-| | | | High / Medium / Low / Unknown | | Supported / Inferred / Hypothesized / Contradicted / Unknown |
+| Claim ID | Statement | Evidence refs | Confidence | Uncertainties | Status | Assumption owner | Impact if wrong | Validation method |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | High / Medium / Low / Unknown | | Supported / Inferred / Hypothesized / Assumed / Contradicted / Unknown | Required for Assumed | Required for Assumed | Required for Assumed |
 
 # Action Log
 
@@ -244,24 +280,22 @@ Document every meaningful option that was considered.
 
 ## Clarification Brief
 
-Use this section when a decision remains after bounded discovery. The workflow
-state is `awaiting_input` with reason `clarification_required`, unless a true
-external blocker prevented research or option framing.
+Use this section when a decision remains after bounded discovery. The workflow state is `awaiting_input` with reason
+`clarification_required`, unless a true external blocker prevented research or option framing.
 
 | Decision needed | Evidence researched | Feasible options and tradeoffs | Recommendation | Smallest question and owner |
 | --- | --- | --- | --- | --- |
 | | | | | |
 
-Do not use a clarification brief to invent requirements or authorize an
-implementation plan.
+Do not use a clarification brief to invent requirements or authorize an implementation plan.
 
 ---
 
 # Decision Log
 
-| Decision ID | Date | Question or scope | Claim refs | Options considered | Selected option | Rationale | Decision owner | Approval |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | | Not required / Pending / Approved / Rejected |
+| Decision ID | Date | Question or scope | Claim refs | Options considered | Selected option | Rationale | Decision owner | Approval type | Approval |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | | Scope / Design / Implementation / Release / Not required | Pending / Approved / Rejected / Not required |
 
 This section should explain **why** decisions were made.
 

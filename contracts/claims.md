@@ -11,10 +11,15 @@ last_updated: 2026-08-10
 
 > Make material workflow reasoning traceable from an observed fact to an approved action.
 
-This contract is the shared reasoning record for every playbook. It does not
-replace the work record or a playbook-specific artifact. It defines the IDs and
-relationships that let a reviewer challenge a conclusion without relying on an
-AI-generated summary alone.
+This contract is the shared reasoning record for every playbook. It does not replace the work record or a
+playbook-specific artifact. It defines the IDs and relationships that let a reviewer challenge a conclusion without
+relying on an AI-generated summary alone.
+
+## Normative Language
+
+The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** in this document are normative. They mean
+respectively: required, prohibited, recommended unless a documented reason applies, discouraged unless a documented
+reason applies, and permitted.
 
 ```mermaid
 flowchart TB
@@ -29,6 +34,7 @@ flowchart TB
 | --- | --- |
 | Evidence | A source-backed observation, measurement, or external result. Evidence may be verified, inferred, hypothesized, contradicted, or unknown. |
 | Claim | A material statement derived from one or more evidence items. A claim must identify its supporting evidence and confidence. |
+| Material assumption | A claim with `status: assumed`: a necessary but unverified working premise that has an owner, impact, and validation method. |
 | Decision | A selected option, scope boundary, or disposition based on claims. A decision identifies its owner and approval status. |
 | Action | A concrete implementation, validation, documentation, or follow-up step derived from a decision. |
 
@@ -55,7 +61,10 @@ flowchart TB
 | `evidence_refs` | Yes | Evidence IDs supporting or challenging the claim; use `Unknown` when none are available. |
 | `confidence` | Yes | `high`, `medium`, `low`, or `unknown`. |
 | `uncertainties` | Yes | Remaining gaps, conflicts, or limits that explain the confidence level. |
-| `status` | Yes | `supported`, `inferred`, `hypothesized`, `contradicted`, or `unknown`. |
+| `status` | Yes | `supported`, `inferred`, `hypothesized`, `assumed`, `contradicted`, or `unknown`. |
+| `assumption_owner` | Required when `status: assumed` | Person, team, or role responsible for validating or retiring the assumption. |
+| `impact_if_wrong` | Required when `status: assumed` | Scope, safety, design, schedule, or operational consequence if the assumption is false. |
+| `validation_method` | Required when `status: assumed` | Evidence, test, review, decision, or external check that can validate or refute it. |
 
 ### Decision
 
@@ -69,6 +78,7 @@ flowchart TB
 | `rationale` | Yes | Why the selected option follows from the claims. |
 | `decision_owner` | Yes | Human or role accountable for the decision. |
 | `approval` | Yes | `not_required`, `pending`, `approved`, or `rejected`. |
+| `approval_type` | Required when `approval` is not `not_required` | `scope`, `design`, `implementation`, or `release`. |
 
 ### Action
 
@@ -84,18 +94,25 @@ flowchart TB
 ## Rules
 
 1. Record evidence before using it to support a material claim. Do not present
-   an interpretation as an observation.
+  an interpretation as an observation.
 2. Every material claim must reference evidence or explicitly record why the
-   evidence is unavailable. Confidence is an assessment of the claim, not proof
-   of correctness.
+  evidence is unavailable. Confidence is an assessment of the claim, not proof of correctness.
 3. Explain `high`, `medium`, and `low` confidence through the evidence and
-   uncertainties. Use `unknown` when no defensible assessment is possible.
+  uncertainties. Use `unknown` when no defensible assessment is possible.
 4. A decision is not the same as approval. A decision may recommend an option;
-   its approval field controls whether an action may proceed.
+  its approval field controls whether an action may proceed.
 5. Every action must reference the decision and gate that authorize it. An
-   action must not execute before its required gate passes.
+  action must not execute before its required gate passes.
 6. Preserve IDs when results move between workers, the work record, an
-   implementation plan, and the final handoff.
+  implementation plan, and the final handoff.
+7. A material assumption MUST be recorded as a claim with `status: assumed`.
+  It MUST identify an owner, impact if wrong, and validation method. It MUST transition to `supported`, `contradicted`,
+  or
+  `unknown` when new evidence resolves or limits it.
+8. A decision that materially depends on an assumed claim MUST record that
+  assumption as residual risk and include its validation in the required gate or implementation plan.
+9. An approved decision MUST record its approval type. Source or configuration
+  changes require `implementation`; deployment, cutover, or another external operational write also requires `release`.
 
 ## Example
 
@@ -110,4 +127,12 @@ decision-001: Preserve package Y at the new service boundary.
 action-001: Add or preserve package Y in the destination dependency set.
   decision_ref: decision-001
   required_gate: implementation_approval
+
+claim-002: The destination deployment may use the existing package mirror.
+  evidence_refs: [Unknown]
+  confidence: low
+  status: assumed
+  assumption_owner: destination-service owner
+  impact_if_wrong: deployment design and rollout plan must change.
+  validation_method: verify the destination deployment configuration.
 ```

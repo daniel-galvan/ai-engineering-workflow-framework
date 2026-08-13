@@ -21,9 +21,8 @@ Create this file at:
 .thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The plan is produced during planning and is not authorization to change source
-code or external systems. The work record must link to this file. A later
-session must be able to execute the approved plan without reconstructing the
+The plan is produced during planning and is not authorization to change source code or external systems. The work record
+must link to this file. A later session must be able to execute the approved plan without reconstructing the
 investigation from chat history.
 
 # Metadata
@@ -44,15 +43,13 @@ investigation from chat history.
 
 # 1. Scope and Baseline
 
-Record the verified issue behavior, code repository and revision, affected
-component, event or request topology, in-scope changes, and explicit
-exclusions.
+Record the verified issue behavior, code repository and revision, affected component, event or request topology,
+in-scope changes, and explicit exclusions.
 
 # 2. Root Cause and Behavior Contract
 
-Record the confirmed cause or best-supported hypothesis, evidence references,
-current behavior, expected behavior, residual uncertainty, and confidence.
-Preserve the evidence, claim, and decision IDs that support the plan.
+Record the confirmed cause or best-supported hypothesis, evidence references, current behavior, expected behavior,
+residual uncertainty, and confidence. Preserve the evidence, claim, and decision IDs that support the plan.
 
 # 3. Source Change Plan
 
@@ -60,8 +57,8 @@ Preserve the evidence, claim, and decision IDs that support the plan.
 | --- | --- | --- | --- |
 | | | | |
 
-Keep the change minimal. Record import, dependency, configuration, schema,
-contract, or rollout implications when applicable.
+Keep the change minimal. Record import, dependency, configuration, schema, contract, or rollout implications when
+applicable.
 
 # 4. Test and Validation Plan
 
@@ -74,9 +71,8 @@ contract, or rollout implications when applicable.
 | Static or operational checks | | | Reviewer / Tester | |
 | Post-release observation | | | Owner | |
 
-State the failure reproduction, regression scenario, fixtures or inputs, and
-any unavailable or inconclusive validation. Do not convert an unavailable
-check into a success claim.
+State the failure reproduction, regression scenario, fixtures or inputs, and any unavailable or inconclusive validation.
+Do not convert an unavailable check into a success claim.
 
 # 5. Ordered Execution Plan
 
@@ -110,5 +106,4 @@ check into a success claim.
 
 # Open Questions and Decisions
 
-Record unresolved questions, decisions required before implementation, and
-any plan revision history.
+Record unresolved questions, decisions required before implementation, and any plan revision history.

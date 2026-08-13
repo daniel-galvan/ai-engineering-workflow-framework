@@ -11,10 +11,20 @@ depends_on:
 
 # TechOps Issue Remediation Run Prompt
 
-Use this format for every TechOps Issue Remediation session. For a first run,
-fill the work item, execution repository, profile, lifecycle, and scenario
-evidence only. The shared contract and selected playbook own worker selection,
+Use this format for every TechOps Issue Remediation session. For a first run, fill the work item, execution repository,
+profile, lifecycle, and scenario evidence only. The shared contract and selected playbook own worker selection,
 coordination, recovery, and fan-in.
+
+First-use summary:
+- Provide the work item, playbook, profile, lifecycle, execution repository, and optional scenario inputs.
+- The run initializes or recovers the work record, activates the required workers, and follows the playbook gates.
+- Planning is read-only; explicit implementation approval is required before remediation.
+- Results are stored under `<execution-repository>/.thoughts/<WORK-ITEM-ID>/`; create the implementation plan only after
+  planning fan-in.
+- The prompt-preparation step extracts and preserves all supplied context; the
+  user does not need to repeat it in canonical fields.
+- Put direct user decisions and non-negotiable constraints in the confirmed-input section; workers must not reopen them
+  as clarification questions.
 
 ```text
 Run the TechOps Issue Remediation playbook.
@@ -53,10 +63,15 @@ Continuation (omit this entire section for a new investigation):
 Run invariants:
 - The shared contract and selected playbook own lifecycle, worker activation,
   recovery, fan-in, and handoff behavior; do not redefine them here.
+- Verify every explicitly named path before reporting its existence or absence;
+  inspect hidden entries, regular files, symlinks, and symlink targets.
 - The active Coordinator activates required workers, collects result envelopes,
   and reports blocked delegation without claiming profile success.
 - Planning is read-only. Remediation reuses planning artifacts, activates the
   delivery graph before edits, and executes the approved plan end-to-end.
+
+Confirmed user decisions and constraints (authoritative; do not reopen):
+- <NONE-OR-DECISION-OR-CONSTRAINT>
 
 Reported issue context (unverified until reconciled):
 - Report source: Zendesk / Help Desk / Operations / Other
@@ -69,6 +84,9 @@ Supporting evidence and artifacts:
 - Attachments, screenshots, recordings, transcripts, JSON, logs, traces, or exports: <NONE-OR-ABSOLUTE-PATHS>
 - Related Jira issues, incidents, dashboards, runbooks, pull requests, or prior fixes: <NONE-OR-REFERENCES>
 - Redaction, privacy, or access constraints: <NONE-OR-DESCRIPTION>
+
+Additional supplied context (preserve and classify):
+- <NONE-OR-DESCRIPTION-OR-REFERENCE>
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):

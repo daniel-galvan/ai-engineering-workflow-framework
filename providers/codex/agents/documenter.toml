@@ -13,7 +13,10 @@ confidence with its supporting evidence and uncertainties. Keep facts separate
 from assumptions and hypotheses. Record worker runtime closure separately from
 result fan-in:
 `terminal` means a result was collected and `released` means the provider no
-longer counts the handle against runtime capacity. When all required planning workers have returned terminal result
+longer counts the handle against runtime capacity. In every handoff, write a
+plain-language `What happened`, `What this means`, `Internal owner`, `What you
+need to do`, and `To continue` block. If no technical user action is needed,
+write `Nothing technical.` When all required planning workers have returned terminal result
 envelopes, fan-in is complete, and the playbook reaches
 `ready_for_implementation`, create or update
 `<execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md` from

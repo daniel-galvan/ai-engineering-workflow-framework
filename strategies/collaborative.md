@@ -41,7 +41,8 @@ Large engineering work often requires answering different kinds of questions:
 * What risks exist?
 * How should implementation proceed?
 
-Rather than asking one investigator to answer everything at once, this strategy assigns responsibilities to specialized roles.
+Rather than asking one investigator to answer everything at once, this strategy assigns responsibilities to specialized
+roles.
 
 ---
 
@@ -62,9 +63,8 @@ How those responsibilities are fulfilled depends on the available tooling.
 
 # Workflow Depth
 
-Current playbooks select the worker graph through the execution profile. Use
-the playbook as the source of truth; this strategy does not define a second
-worker graph or override a role's provider model and reasoning effort.
+Current playbooks select the worker graph through the execution profile. Use the playbook as the source of truth; this
+strategy does not define a second worker graph or override a role's provider model and reasoning effort.
 
 When an individual worker needs a provider-neutral depth, use:
 
@@ -78,8 +78,8 @@ When an individual worker needs a provider-neutral depth, use:
 
 # Workflow Modes
 
-Mode and worker depth are separate selections. Discovery is a mode, not a
-worker depth. Execution profiles are selected by the playbook.
+Mode and worker depth are separate selections. Discovery is a mode, not a worker depth. Execution profiles are selected
+by the playbook.
 
 | Mode | Use |
 | --- | --- |
@@ -130,10 +130,9 @@ When is the role finished?
 
 # Worker graph ownership
 
-The selected playbook owns the worker graph, dependencies, and execution
-order. The Documenter commonly runs continuously after initialization, but
-the playbook decides whether and how it is activated. Choose the smallest set
-of roles that provides sufficient confidence.
+The selected playbook owns the worker graph, dependencies, and execution order. The Documenter commonly runs
+continuously after initialization, but the playbook decides whether and how it is activated. Choose the smallest set of
+roles that provides sufficient confidence.
 
 ---
 
@@ -171,15 +170,15 @@ See `../contracts/workflow_execution.md` for the worker contract and parallelism
 
 # Role Selection
 
-Select roles from the chosen playbook. This strategy does not define a second
-scenario matrix or fixed role sequence. If no existing playbook expresses the
-required graph, document the special workflow requirements before adding one.
+Select roles from the chosen playbook. This strategy does not define a second scenario matrix or fixed role sequence. If
+no existing playbook expresses the required graph, document the special workflow requirements before adding one.
 
 ---
 
 # AI Execution
 
-When using AI assistants, each selected role is executed through one or more workers defined by the Workflow Execution Contract.
+When using AI assistants, each selected role is executed through one or more workers defined by the Workflow Execution
+Contract.
 
 The worker may be:
 
@@ -191,7 +190,8 @@ The worker may be:
 
 ---
 
-The workflow must not depend on one AI provider. Provider-specific mappings belong in `../providers/`; concrete tool selection belongs in the worker profile.
+The workflow must not depend on one AI provider. Provider-specific mappings belong in `../providers/`; concrete tool
+selection belongs in the worker profile.
 
 ---
 

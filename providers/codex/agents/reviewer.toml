@@ -1,7 +1,7 @@
 name = "reviewer"
 description = "Independent read-only Code Reviewer for correctness, risk, and operational readiness."
-model = "gpt-5.6-terra"
-model_reasoning_effort = "high"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "read-only"
 
 developer_instructions = """

@@ -22,7 +22,8 @@ skills:
 
 > Execute the approved design by making the smallest safe set of changes required to achieve the desired outcome.
 
-The Implementer converts the investigation and design into working software while preserving behavior, minimizing risk, and maintaining code quality.
+The Implementer converts the investigation and design into working software while preserving behavior, minimizing risk,
+and maintaining code quality.
 
 The Implementer owns **execution**, not architecture.
 
@@ -130,9 +131,8 @@ Optional
 
 ## Reconfirm the Implementation Plan
 
-Before source changes, verify the approved plan, target revision, scope,
-approval, and current-run remediation gate. Propose a plan revision when new
-evidence invalidates the approved plan; do not silently redesign it.
+Before source changes, verify the approved plan, target revision, scope, approval, and current-run remediation gate.
+Propose a plan revision when new evidence invalidates the approved plan; do not silently redesign it.
 
 ---
 

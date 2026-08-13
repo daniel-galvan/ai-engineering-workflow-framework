@@ -21,9 +21,11 @@ skills:
 
 # Reviewer
 
-> Independently evaluate the proposed implementation by validating correctness, maintainability, architectural alignment, and operational risk before the work is considered complete.
+> Independently evaluate the proposed implementation by validating correctness, maintainability, and architectural
+> alignment, along with operational risk, before the work is considered complete.
 
-The Reviewer acts as a skeptical peer whose responsibility is to challenge assumptions, identify weaknesses, and ensure the solution satisfies both the original objectives and engineering standards.
+The Reviewer acts as a skeptical peer whose responsibility is to challenge assumptions, identify weaknesses, and ensure
+the solution satisfies both the original objectives and engineering standards.
 
 The Reviewer does **not** redesign or reimplement the solution.
 
@@ -31,7 +33,8 @@ The Reviewer does **not** redesign or reimplement the solution.
 
 # Purpose
 
-Provide an independent assessment of the implementation and determine whether it is ready for validation, deployment, or additional iteration.
+Provide an independent assessment of the implementation and determine whether it is ready for validation, deployment, or
+additional iteration.
 
 ---
 
@@ -211,10 +214,9 @@ Choose one:
 
 Include rationale.
 
-Also record one workflow disposition: `accepted`, `changes_required`,
-`replanning_required`, or `blocked`. In-scope changes-required findings return
-to the Implementer and are re-reviewed before validation; they are not a final
-handoff or a new approval gate.
+Also record one workflow disposition: `accepted`, `changes_required`, `replanning_required`, or `blocked`. In-scope
+changes-required findings return to the Implementer and are re-reviewed before validation; they are not a final handoff
+or a new approval gate.
 
 ---
 

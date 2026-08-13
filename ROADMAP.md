@@ -1,8 +1,7 @@
 # Roadmap
 
-Current behavior and exercise status live in [README.md](README.md),
-[PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md), and the playbooks. This file lists
-only planned evolution.
+Current behavior and exercise status live in [README.md](README.md), [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md), and the
+playbooks. This file lists only planned evolution.
 
 ## Next validation
 
@@ -11,19 +10,10 @@ only planned evolution.
 - Recover and validate TechOps planning and remediation.
 - Validate Sentry and Vulnerability remediation lifecycles.
 
-## Planned scenario coverage
+## Expansion freeze
 
-- Bug-fix and incident workflows where the existing playbooks are insufficient.
-- Migration workflow family.
-- New-project workflow.
-- Package-upgrade workflow.
-- Architecture-review workflow.
-- Add a dedicated triage playbook only if a distinct worker graph or gate is
-  proven necessary.
+Do not add playbooks or execution abstractions during the current pilot. First validate the five existing playbooks
+through remediation, Code Review, validation, and handoff; simplify any rules that real runs prove unnecessary.
 
-## Framework evolution
-
-- Dynamic orchestration.
-- Capability-based role selection.
-- Prompt composition.
-- Provider-specific runtime adapters.
+After that, reconsider scenario coverage and framework evolution only when a validated gap cannot be expressed by the
+existing contract, roles, skills, stages, gates, and artifacts.

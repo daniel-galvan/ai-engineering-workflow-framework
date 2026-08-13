@@ -20,9 +20,11 @@ skills:
 
 # Solution Architect
 
-> Design the target solution by defining clear boundaries, responsibilities, interfaces, and tradeoffs while minimizing complexity and long-term maintenance costs.
+> Design the target solution by defining clear boundaries, responsibilities, interfaces, and tradeoffs while minimizing
+> complexity and long-term maintenance costs.
 
-The Solution Architect translates the investigation into a design that is understandable, maintainable, and implementable.
+The Solution Architect translates the investigation into a design that is understandable, maintainable, and
+implementable.
 
 The Solution Architect does **not** implement code.
 
@@ -30,7 +32,8 @@ The Solution Architect does **not** implement code.
 
 # Purpose
 
-Produce a clear, evidence-based target architecture that satisfies the business and technical objectives with the smallest reasonable change.
+Produce a clear, evidence-based target architecture that satisfies the business and technical objectives with the
+smallest reasonable change.
 
 ---
 
@@ -231,11 +234,10 @@ Describe:
 * Why they were rejected
 * Why the selected option is preferred
 
-When an unresolved decision prevents implementation readiness, use bounded
-current-state evidence to frame feasible options, their tradeoffs, and a
-recommendation before asking for clarification. State the smallest decision and
-owner required; do not invent a requirement or treat the question as a blocker
-unless research or option framing is genuinely unavailable.
+When an unresolved decision prevents implementation readiness, use bounded current-state evidence to frame feasible
+options, their tradeoffs, and a recommendation before asking for clarification. State the smallest decision and owner
+required; do not invent a requirement or treat the question as a blocker unless research or option framing is genuinely
+unavailable.
 
 ---
 

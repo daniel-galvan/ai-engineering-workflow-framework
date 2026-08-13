@@ -1,13 +1,20 @@
 # AI-assisted Software Engineering Workflow Framework
 
-> [!WARNING] **Work in progress — pilot, not fully validated.** Use with care, verify all outputs, and protect sensitive
-> data. You are responsible for its use and resulting decisions or changes.
+> [!WARNING]
+> **Work in progress — pilot, not fully validated.** Use with care, verify all outputs, and protect sensitive data.
+> You are responsible for its use and resulting decisions or changes.
 
 Provider-neutral, evidence-driven playbooks, roles, skills, and execution contracts for AI-assisted software
 engineering.
 
 The framework turns a work item into a traceable workflow with investigation, design, implementation, independent
-review, validation, durable context, and an honest handoff.
+review, validation, durable context, and an honest, human-readable handoff.
+
+## Core promise
+
+AI-assisted engineering where every material conclusion is traceable from [evidence](contracts/claims.md) to claim,
+decision, and action. Workers and provider adapters support that reasoning chain; they are not the product's central
+promise.
 
 ## Introduction
 
@@ -50,10 +57,25 @@ For cloning, execution-repository selection, Codex agent links, prompt creation,
 1. Complete [SETUP.md](SETUP.md) for the framework, execution repository, and provider runtime.
 2. Choose the playbook that matches the primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md).
 3. Copy the matching canonical run template from [templates/](templates/) into a session started in the execution
-   repository. Fill only the required first-run and scenario fields; do not invent a second prompt format.
+  repository. Fill only the required first-run and scenario fields; do not invent a second prompt format.
 4. Start with `planning` for read-only discovery, diagnosis, design, and an implementation plan. Create the plan only
-   after required fan-in passes.
+  after required fan-in passes.
 5. After explicit approval, run `remediation` through implementation, Code Review, validation, and handoff.
+
+## First-use view
+
+The user-facing model is intentionally small:
+
+| Question | Answer |
+| --- | --- |
+| What playbook do I use? | Choose the most specialized playbook for the work item's primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md). |
+| What do I provide? | The work-item ID or URL, execution repository, profile, lifecycle, and relevant repositories, artifacts, or constraints. Provider configuration is optional and only used when installed and verified. |
+| What happens first? | The run initializes or recovers the work record, activates the selected worker graph, and completes required fan-in before claiming success. |
+| What may I approve? | Scope and design approvals are conditional. Implementation approval is required before remediation. Release approval is required for deployment, cutover, or another external operational write. See the [human control model](contracts/workflow_execution.md#human-control-model). |
+| Where do results go? | The execution repository's `.thoughts/<WORK-ITEM-ID>/work_record.md`; `implementation_plan.md` is created only after planning fan-in reaches `ready_for_implementation`. |
+
+Users normally do not choose individual workers, skills, tools, model profiles, or worker dependencies. The selected
+playbook and provider policy derive those execution details.
 
 The shared rules are in [contracts/workflow_execution.md](contracts/workflow_execution.md). The evidence-to-action
 reasoning model is [contracts/claims.md](contracts/claims.md). The practical explanation is
@@ -72,16 +94,30 @@ profile, permissions, and approvals.
 
 ## Architecture
 
+### User-facing flow
+
 ```text
 Work item
-  -> canonical run template
-    -> playbook and lifecycle
-      -> shared execution contract
-        -> orchestrator and worker graph
-          -> roles + skills + tools
-            -> provider adapter and model policy
-              -> evidence, artifacts, validation, and work record
+  -> choose playbook
+    -> fill canonical run template
+      -> planning
+        -> approve implementation plan
+          -> remediation
+            -> Code Review, validation, and handoff
 ```
+
+### Execution flow
+
+```text
+Coordinator
+  -> worker graph
+    -> roles + skills + tools
+      -> provider adapter and model policy
+        -> evidence, artifacts, validation, and work record
+```
+
+The execution flow is the framework's internal model. Users primarily interact with the user-facing flow and the
+canonical run template.
 
 | Building block   | Purpose                                                                             |
 | ---------------- | ----------------------------------------------------------------------------------- |
@@ -104,8 +140,9 @@ Work item
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
 | [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability |
 
-Choose the specialized playbook first; add a new playbook only when existing stages, gates, and artifacts cannot express
-the scenario cleanly. See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and worker graphs.
+The current pilot set is frozen at these five playbooks while their remediation lifecycles are exercised. After that
+validation, add a playbook only when the existing stages, gates, and artifacts cannot express the scenario cleanly. See
+[PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and worker graphs.
 
 ## Guides and examples
 
@@ -117,7 +154,7 @@ Use this reading path:
 4. [Templates](templates/) — start a run with the canonical prompt and create the durable work record.
 5. [Examples](examples/) — follow a safe, generic scenario guide for each current playbook.
 6. [Contributing](CONTRIBUTING.md) — extend the framework without duplicating contracts, roles, skills, or provider
-   behavior.
+  behavior.
 
 ## Repository map
 
@@ -147,9 +184,10 @@ Run the framework validator after changes:
 python3 scripts/validate_library.py
 ```
 
-The pilot is intentionally incremental. Document facts and limitations in the work record, exercise changes against real
-work items, and simplify after each pilot. See [CONTRIBUTING.md](CONTRIBUTING.md) for extension rules and
-[ROADMAP.md](ROADMAP.md) for planned coverage.
+The pilot is intentionally incremental. Document facts, limitations, and the [workflow
+evaluation](frameworks/workflow_evaluation.md) in the work record; exercise changes against real work items; and
+simplify after each pilot. See [CONTRIBUTING.md](CONTRIBUTING.md) for extension rules and [ROADMAP.md](ROADMAP.md) for
+planned coverage.
 
 ## Versioning
 

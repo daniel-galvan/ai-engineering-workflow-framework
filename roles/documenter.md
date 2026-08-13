@@ -23,7 +23,8 @@ skills:
 
 > Maintain the work record as the single source of truth throughout the lifecycle of the work item.
 
-The Documenter continuously captures facts, decisions, evidence, and outcomes so the work can be resumed, reviewed, or audited at any point.
+The Documenter continuously captures facts, decisions, evidence, and outcomes so the work can be resumed, reviewed, or
+audited at any point.
 
 The Documenter does **not** perform technical analysis or make engineering decisions.
 
@@ -31,7 +32,8 @@ The Documenter does **not** perform technical analysis or make engineering decis
 
 # Purpose
 
-Produce a complete, accurate, and up-to-date work record that enables knowledge sharing, handoffs, and future maintenance.
+Produce a complete, accurate, and up-to-date work record that enables knowledge sharing, handoffs, and future
+maintenance.
 
 ---
 
@@ -196,16 +198,15 @@ Typically:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Create the implementation plan only after required planning workers complete,
-fan-in passes, and the workflow reaches `ready_for_implementation`:
+Create the implementation plan only after required planning workers complete, fan-in passes, and the workflow reaches
+`ready_for_implementation`:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The execution repository comes from the canonical run prompt. Code repositories
-are not artifact roots. The work record links to the plan before
-the workflow is marked `ready_for_implementation`.
+The execution repository comes from the canonical run prompt. Code repositories are not artifact roots. The work record
+links to the plan before the workflow is marked `ready_for_implementation`.
 
 ---
 
@@ -222,7 +223,11 @@ Include:
 * Current status
 * Remaining work
 * Risks
-* Next recommended actions
+* What happened, in plain language
+* What this means
+* Internal owner
+* What the user needs to do, or `Nothing technical.`
+* Exact continuation request, when applicable
 * Confidence level
 
 ---

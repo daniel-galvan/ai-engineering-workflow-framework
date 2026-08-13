@@ -18,9 +18,8 @@ depends_on:
 
 ## Example Scenario
 
-A TechOps Jira issue reports that a user-visible action did not produce the
-expected result. The ticket includes screenshots, a payload export, and an
-approximate timestamp, but the responsible repository is unknown.
+A TechOps Jira issue reports that a user-visible action did not produce the expected result. The ticket includes
+screenshots, a payload export, and an approximate timestamp, but the responsible repository is unknown.
 
 ## Example Inputs
 
@@ -36,9 +35,7 @@ approximate timestamp, but the responsible repository is unknown.
 
 ## Run Format
 
-Use the canonical
-[`techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md)
-template. Start with:
+Use the canonical [`techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md) template. Start with:
 
 ```text
 Playbook: playbooks/techops_issue_remediation.md
@@ -47,9 +44,8 @@ Execution profile: standard
 Lifecycle: planning
 ```
 
-Use `deep` when ownership crosses systems or repositories, the first-loss
-point is unclear, the failure is intermittent, or the impact and rollback are
-non-trivial.
+Use `deep` when ownership crosses systems or repositories, the first-loss point is unclear, the failure is intermittent,
+or the impact and rollback are non-trivial.
 
 ## Run-Input Examples
 
@@ -64,12 +60,11 @@ Lifecycle: planning
 Provider/runtime configuration: /projects/primary-service/.codex/agents/
 ```
 
-The current session is the Coordinator. If the likely fault later moves to a
-second checkout, list it as an additional repository; retain the same work
-record for the run.
+The current session is the Coordinator. If the likely fault later moves to a second checkout, list it as an additional
+repository; retain the same work record for the run.
 
-For an approved remediation re-entry, keep the same artifact root and add only
-the continuation information that changed:
+For an approved remediation re-entry, keep the same artifact root and add only the continuation information that
+changed:
 
 ```text
 Lifecycle: remediation
@@ -80,8 +75,8 @@ Continuation:
 - Approval reference: <USER-APPROVAL-MESSAGE-OR-REFERENCE>
 ```
 
-Do not manually provide completed or required worker lists. The Coordinator
-derives them from the selected profile and preserved work record.
+Do not manually provide completed or required worker lists. The Coordinator derives them from the selected profile and
+preserved work record.
 
 ## Expected Planning Outcome
 
@@ -91,27 +86,23 @@ The work record is created at:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-The workflow records normalized report evidence, reproduction status, the
-first concrete divergence or its limitation, ownership, supported diagnosis,
-confidence, and a regression and validation strategy. It creates
+The workflow records normalized report evidence, reproduction status, the first concrete divergence or its limitation,
+ownership, supported diagnosis, confidence, and a regression and validation strategy. It creates
 `implementation_plan.md` only after required planning fan-in passes.
 
 ## Approved Delivery
 
-Explicit remediation approval starts a new remediation run using the same
-profile, work record, and implementation plan:
+Explicit remediation approval starts a new remediation run using the same profile, work record, and implementation plan:
 
 ```text
 Implement → Code Review → Validate → Handoff
 ```
 
-The Coordinator continues through all approved in-scope steps. A new approval
-is needed only when evidence changes the approved scope or design, or a genuine
-blocker requires a decision.
+The Coordinator continues through all approved in-scope steps. A new approval is needed only when evidence changes the
+approved scope or design, or a genuine blocker requires a decision.
 
 ## Expected Handoff
 
-Report the symptom, evidence, reproduction status, first-loss point, affected
-codebase, diagnosis confidence, implementation-plan status, validation,
-rollback/monitoring considerations, worker ledger, residual risks, owner, and
+Report the symptom, evidence, reproduction status, first-loss point, affected codebase, diagnosis confidence,
+implementation-plan status, validation, rollback/monitoring considerations, worker ledger, residual risks, owner, and
 next action.

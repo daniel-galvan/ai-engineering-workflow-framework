@@ -19,10 +19,9 @@ depends_on:
 
 ## Example Scenario
 
-A Jira Story requests moving an existing capability from a monorepo or source
-repository into a new destination repository. The destination must use the
-migrated code, preserve required behavior, and become independently maintainable
-before new feature work begins.
+A Jira Story requests moving an existing capability from a monorepo or source repository into a new destination
+repository. The destination must use the migrated code, preserve required behavior, and become independently
+maintainable before new feature work begins.
 
 ## Example Inputs
 
@@ -39,11 +38,8 @@ before new feature work begins.
 
 ## Run Format
 
-Use the
-[`Service Extraction and Stabilization`](../playbooks/service_extraction.md)
-playbook with the canonical
-[`service_extraction_run_prompt.md`](../templates/service_extraction_run_prompt.md).
-The normal run begins with:
+Use the [`Service Extraction and Stabilization`](../playbooks/service_extraction.md) playbook with the canonical
+[`service_extraction_run_prompt.md`](../templates/service_extraction_run_prompt.md). The normal run begins with:
 
 ```text
 Playbook: playbooks/service_extraction.md
@@ -52,8 +48,7 @@ Execution profile: deep
 Lifecycle: planning
 ```
 
-Remediation begins only after explicit approval and re-entry. The planning flow
-is:
+Remediation begins only after explicit approval and re-entry. The planning flow is:
 
 ```text
 Initialize
@@ -66,10 +61,8 @@ Initialize
               → Stabilize and hand off
 ```
 
-Use Standard only for bounded extractions with known ownership and limited
-dependencies. Use Deep by default for new repositories, cross-repository
-dependencies, deployment changes, data or event contracts, or production
-cutovers.
+Use Standard only for bounded extractions with known ownership and limited dependencies. Use Deep by default for new
+repositories, cross-repository dependencies, deployment changes, data or event contracts, or production cutovers.
 
 ## Work Record
 
@@ -79,21 +72,18 @@ Recover or create:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-The record must preserve source and destination context, current-state
-evidence, dependency and ownership analysis, boundary decisions, integration
-constraints, implementation progress, validation, blockers, rollback, and
-stabilization ownership.
+The record must preserve source and destination context, current-state evidence, dependency and ownership analysis,
+boundary decisions, integration constraints, implementation progress, validation, blockers, rollback, and stabilization
+ownership.
 
-Create `implementation_plan.md` beside the work record only after all required
-planning workers complete, fan-in passes, and the workflow reaches
-`ready_for_implementation`.
+Create `implementation_plan.md` beside the work record only after all required planning workers complete, fan-in passes,
+and the workflow reaches `ready_for_implementation`.
 
 ## Safety Boundary
 
-Planning makes no source or external-system changes. After approved remediation
-re-entry, understand source behavior and destination constraints before moving
-code. Do not change behavior merely because code is being moved. Prefer this
-order for migrated code:
+Planning makes no source or external-system changes. After approved remediation re-entry, understand source behavior and
+destination constraints before moving code. Do not change behavior merely because code is being moved. Prefer this order
+for migrated code:
 
 1. imports and namespaces;
 2. registration and routing;
@@ -102,8 +92,7 @@ order for migrated code:
 5. focused tests and documentation; and
 6. behavior changes only with explicit approval.
 
-Do not remove the source path until coexistence, rollback, ownership, and
-operational readiness are understood.
+Do not remove the source path until coexistence, rollback, ownership, and operational readiness are understood.
 
 ## Expected Handoff
 

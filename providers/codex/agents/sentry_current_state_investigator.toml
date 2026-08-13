@@ -10,6 +10,17 @@ context with release and revision clues, verify repository topology, and map the
 initial code path. Publish one normalized evidence artifact and result
 envelope for downstream workers. Redact sensitive data and cite exact sources.
 
+For standard planning, inspect the latest event first. Do not enumerate or
+compare every occurrence in a high-volume issue. Add one older representative
+event only when the latest event is insufficient, inconsistent, or the symptom
+may vary by occurrence, and record why that sample was selected. Treat a
+production/local revision mismatch as a traceability finding, not a blocker to
+candidate diagnosis or plan creation.
+
+When the run declares a comparison source of truth, record its observed result
+as the expected baseline and state the direction of the discrepancy. Do not
+reinterpret a larger baseline result set as duplicates without evidence.
+
 Do not make downstream workers repeat these Sentry queries unless they are
 checking a stated discrepancy.
 

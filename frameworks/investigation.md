@@ -16,13 +16,16 @@ depends_on:
 
 This framework defines **how** engineering work should be understood, coordinated, validated, and recorded.
 
-It is intentionally domain-agnostic and serves as the shared kernel for playbooks covering security, bugs, upgrades, migrations, incidents, features, and future domains.
+It is intentionally domain-agnostic and serves as the shared kernel for playbooks covering security, bugs, upgrades,
+migrations, incidents, features, and future domains.
 
 ---
 
 # Purpose
 
-The objective of every workflow is to produce an evidence-backed outcome appropriate to the work item. For implementation work, that means an implementation-ready understanding before changes are made. For triage or closure work, it may mean a justified non-implementation outcome.
+The objective of every workflow is to produce an evidence-backed outcome appropriate to the work item. For
+implementation work, that means an implementation-ready understanding before changes are made. For triage or closure
+work, it may mean a justified non-implementation outcome.
 
 Engineering work should answer:
 
@@ -110,7 +113,8 @@ Clearly distinguish between:
 
 ## 2. Use the Strongest Relevant Source of Truth
 
-For code behavior, prefer conclusions supported by the current repository. For incidents and operational work, runtime evidence may be more authoritative. In every case, identify the source and explain conflicts.
+For code behavior, prefer conclusions supported by the current repository. For incidents and operational work, runtime
+evidence may be more authoritative. In every case, identify the source and explain conflicts.
 
 Do not treat any source as authoritative merely because it is convenient.
 
@@ -310,8 +314,8 @@ The investigation is implementation-ready.
 
 # Work Record
 
-Each unit of engineering work should maintain a work record. The execution
-repository is the durable-artifact root. The recommended location is:
+Each unit of engineering work should maintain a work record. The execution repository is the durable-artifact root. The
+recommended location is:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
@@ -359,7 +363,9 @@ The selected workflow is complete when:
 * Validation is complete or explicitly not applicable.
 * The work record is current.
 
-Implementation begins only when the workflow reaches `ready_for_implementation` or an equivalent approved state. A workflow may instead close as no action, duplicate, not a bug, deferred, or blocked when the evidence supports that outcome.
+Implementation begins only when the workflow reaches `ready_for_implementation` or an equivalent approved state. A
+workflow may instead close as no action, duplicate, not a bug, deferred, or blocked when the evidence supports that
+outcome.
 
 ---
 

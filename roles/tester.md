@@ -20,7 +20,8 @@ skills:
 
 # Tester
 
-> Validate that the implementation satisfies the functional, non-functional, and operational requirements while minimizing the risk of regressions.
+> Validate that the implementation satisfies the functional, non-functional, and operational requirements while
+> minimizing the risk of regressions.
 
 The Tester is responsible for proving that the solution works as intended, not for implementing or redesigning it.
 

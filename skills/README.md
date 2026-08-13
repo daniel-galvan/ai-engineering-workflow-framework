@@ -10,9 +10,11 @@ A skill defines:
 * completion criteria,
 * safety boundaries.
 
-Provider adapters map these capabilities to platform-specific tools. Skills do not name or require a specific AI provider.
+Provider adapters map these capabilities to platform-specific tools. Skills do not name or require a specific AI
+provider.
 
-The canonical skill ID is the filename without `.md`. Roles and playbooks must reference these IDs rather than provider-specific capability names.
+The canonical skill ID is the filename without `.md`. Roles and playbooks must reference these IDs rather than
+provider-specific capability names.
 
 ## Catalog
 
@@ -28,4 +30,5 @@ The canonical skill ID is the filename without `.md`. Roles and playbooks must r
 * `work_record_maintenance.md`
 * `failure_diagnosis.md`
 
-Worker tool, model-profile, dependency, approval, and failure semantics are defined in [`../contracts/workflow_execution.md`](../contracts/workflow_execution.md).
+Worker tool, model-profile, dependency, approval, and failure semantics are defined in
+[`../contracts/workflow_execution.md`](../contracts/workflow_execution.md).

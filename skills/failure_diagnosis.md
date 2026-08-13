@@ -31,13 +31,11 @@ last_updated: 2026-07-28
 
 ## Completion Criteria
 
-The failure is reproduced, verified against direct evidence, or explicitly
-classified as not reproducible with the reason and remaining uncertainty
-documented. The recommended fix addresses the confirmed cause rather than only
-the reported symptom.
+The failure is reproduced, verified against direct evidence, or explicitly classified as not reproducible with the
+reason and remaining uncertainty documented. The recommended fix addresses the confirmed cause rather than only the
+reported symptom.
 
 ## Safety
 
-Do not infer root cause from an exception title alone. Preserve sensitive data
-boundaries, redact personally identifiable information, and do not change code
-until the diagnosis reaches the playbook's implementation gate.
+Do not infer root cause from an exception title alone. Preserve sensitive data boundaries, redact personally
+identifiable information, and do not change code until the diagnosis reaches the playbook's implementation gate.

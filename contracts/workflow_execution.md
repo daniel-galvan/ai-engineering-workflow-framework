@@ -9,13 +9,33 @@ last_updated: 2026-08-11
 
 # Workflow Execution Contract
 
-> Define the smallest shared contract required to execute engineering work with reusable playbooks, roles, skills, tools, and workers.
+> Define the smallest shared contract for reusable playbooks, roles, skills, tools, workers, and provider-neutral
+> execution.
 
-This contract is the seam between the workflow definition and the platform that executes it. A provider may implement the contract differently, but it must preserve the same inputs, outputs, evidence expectations, and completion semantics.
+This contract is the seam between the workflow definition and the platform that executes it. A provider may implement
+the contract differently, but it must preserve the same inputs, outputs, evidence expectations, and completion
+semantics.
 
-The contract is intentionally small. It supports sequential, parallel, and
-conditional playbooks without requiring a general orchestration backend or a
-live work-item connector.
+The contract is intentionally small. It supports sequential, parallel, and conditional playbooks without requiring a
+general orchestration backend or a live work-item connector.
+
+## Normative Language
+
+The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** in this document are normative. They mean
+respectively: required, prohibited, recommended unless a documented reason applies, discouraged unless a documented
+reason applies, and permitted.
+
+## Document Classification
+
+Unless explicitly marked otherwise, the sections from [Vocabulary](#vocabulary) through [Special Workflow
+Extension](#special-workflow-extension) are normative requirements for contract-compliant workflows.
+
+| Classification | Location | Purpose |
+| --- | --- | --- |
+| Normative specification | Vocabulary, contracts, lifecycle, gates, state machine, artifact rules, and extension rules | Defines required behavior and conformance. |
+| Implementation guidance | Introductory provider-flexibility explanations and linked operating/provider guides | Explains how a provider may satisfy the contract without changing its required outcomes. |
+| Non-normative example | [Illustrative Worker Profile](#illustrative-worker-profile-non-normative) | Shows one representation; it does not introduce a configuration language or additional requirements. |
+| Normative checklist | [Pilot Conformance Checklist](#pilot-conformance-checklist) | Defines the minimum evidence required before a run may be called contract-compliant. |
 
 ---
 
@@ -44,22 +64,120 @@ live work-item connector.
 | Adapter           | A provider-specific implementation at a defined seam, such as Jira, Git, or an AI platform.                                                           |
 | Execution profile | A named selection of worker graph, investigation depth, and validation scope.                                                                         |
 | Lifecycle         | How far a workflow run may proceed, such as planning or remediation.                                                                                  |
+| Engineering state | What has been established about the work item, independently of the current workflow run.                                                            |
 
-Skills describe what capability is needed. Tools describe how that capability is performed. Model profiles describe how much reasoning and execution capacity is assigned. These concepts must not be merged.
+Skills describe what capability is needed. Tools describe how that capability is performed. Model profiles describe how
+much reasoning and execution capacity is assigned. These concepts must not be merged.
 
-The `orchestrator` is the reusable role that owns workflow coordination. The
-Coordinator is the active runtime performing that role. A provider may run the
-role in a dedicated worker, or the main session may act as both Coordinator and
-Orchestrator when nested delegation is unavailable.
+The `orchestrator` is the reusable role that owns workflow coordination. The Coordinator is the active runtime
+performing that role. A provider may run the role in a dedicated worker, or the main session may act as both Coordinator
+and Orchestrator when nested delegation is unavailable.
 
-The canonical role ID is the role filename without `.md`, such as `current_state_investigator` or `repository_integrator`.
+The canonical role ID is the role filename without `.md`, such as `current_state_investigator` or
+`repository_integrator`.
+
+## Workflow Invariants
+
+These invariants are the compact, testable surface of the detailed normative rules below. The referenced sections remain
+the source of truth.
+
+| ID | Invariant | Detailed rule |
+| --- | --- | --- |
+| `INV-01` | A run MUST declare one work item and one explicit execution repository. | [Work Item Contract](#work-item-contract); [Durable Artifact Root](#durable-artifact-root) |
+| `INV-02` | A planning run MUST NOT modify source code or external systems. | [Workflow State Machine](#workflow-state-machine) |
+| `INV-03` | A remediation run MUST have explicit implementation approval and recorded re-entry before source changes. | [Lifecycle Continuation and Re-entry](#lifecycle-continuation-and-re-entry) |
+| `INV-04` | A requested execution profile MUST NOT be silently downgraded or reported as successfully executed at a lower profile. | [Profile Execution Semantics](#profile-execution-semantics) |
+| `INV-05` | The Coordinator MUST NOT replace a required independent worker. | [Profile Execution Semantics](#profile-execution-semantics) |
+| `INV-06` | Completion MUST require terminal envelopes for required workers and passed fan-in. | [Stage Completion and Fan-In](#stage-completion-and-fan-in) |
+| `INV-07` | Runtime closure MUST be recorded before a run is closed or a new lifecycle run starts. | [Worker Runtime Closure](#worker-runtime-closure) |
+| `INV-08` | Durable workflow artifacts MUST be stored under the execution repository's `.thoughts/<WORK-ITEM-ID>/`. | [Durable Artifact Root](#durable-artifact-root) |
+| `INV-09` | Every material claim MUST identify evidence, confidence, uncertainty, and status. | [Evidence and Artifact Minimums](#evidence-and-artifact-minimums); [Claims Contract](claims.md) |
+| `INV-10` | A decision is not approval; an action MUST have an authorizing decision and required gate. | [Evidence and Artifact Minimums](#evidence-and-artifact-minimums); [Claims Contract](claims.md) |
+| `INV-11` | In-scope Code Review findings MUST return to implementation and review without requiring new approval. | [Delivery Code Review Loop](#delivery-code-review-loop) |
+| `INV-12` | A handoff MUST report the actual profile, worker outcomes, limitations, artifact status, and a human-readable next action. | [Stage Completion and Fan-In](#stage-completion-and-fan-in); [Human-Readable Handoff](#human-readable-handoff); [Pilot Conformance Checklist](#pilot-conformance-checklist) |
+| `INV-13` | An explicitly named path MUST be verified as a path before its existence, contents, or configuration status is reported. | [Explicit Path Verification](#explicit-path-verification) |
+| `INV-14` | An explicit user decision or constraint in the run prompt MUST be treated as authoritative and MUST NOT be reopened as an unresolved decision. | [Authoritative Run Inputs](#authoritative-run-inputs) |
+| `INV-15` | Every material detail supplied by the user MUST be preserved, classified, and either used by the workflow or explicitly recorded as unavailable, conflicting, or out of scope. | [Context Preservation and Classification](#context-preservation-and-classification) |
+
+---
+
+# Human Control Model
+
+The engineer owns scope, decisions, approvals, and interpretation of results. An approval is explicit only when its
+type, owner, scope, and recorded decision or plan are clear. One approval may cover more than one type only when that is
+recorded explicitly.
+
+| Approval type | Controls | Required for current playbooks |
+| --- | --- | --- |
+| `scope` | Expanding the declared work item, repositories, operational target, or non-goal. | Conditional: every playbook when the proposed work exceeds its declared scope. |
+| `design` | Selecting a material solution, architecture, security posture, or rollout alternative. | Conditional: every playbook when a material decision remains after investigation. It may be combined with implementation approval. |
+| `implementation` | Source, configuration, or other remediation changes in the approved plan. | Required: every playbook before `lifecycle: remediation`. |
+| `release` | Deployment, cutover, production configuration, or other external operational write. | Conditional: every playbook when its plan includes such an action; implementation approval alone is insufficient. |
+
+```text
+User -> scope approval (when needed) -> planning -> design approval (when needed)
+     -> implementation plan -> implementation approval -> remediation
+     -> independent review -> validation -> release approval (when needed) -> handoff
+```
+
+Planning is read-only. An approved design is not implementation approval, and implementation approval is not release
+approval.
+
+## Authoritative Run Inputs
+
+Run prompts may contain both authoritative user inputs and unverified
+investigation hints. They are different kinds of input:
+
+| Input | Required behavior |
+| --- | --- |
+| Confirmed user decision or constraint | Treat it as the current decision or constraint. Do not ask the user to confirm it again or replace it with an alternative. |
+| Investigation hint, hypothesis, or topology guess | Test it against source, runtime, and work-item evidence. It may be corrected or rejected. |
+
+Workers may explain the technical consequences of an authoritative input and
+may report direct evidence that makes it inconsistent with the observed
+system. They must not silently override it or convert it into a clarification
+question. If the user must deliberately change the decision, present the
+conflict and ask for a new decision explicitly.
+
+A statement such as “FanMgmt is the source of truth for comparison scenarios”
+is an authoritative comparison rule when it appears in the confirmed-decisions
+section or run constraints. It means the workflow must treat FanMgmt's result
+as the expected baseline and investigate why the rules engine differs; it must
+not ask whether FanMgmt rows should instead be merged, discarded, or treated as
+duplicates unless the user explicitly requests that decision.
+
+## Context Preservation and Classification
+
+All user-supplied context is workflow input. The Coordinator and prompt-preparation
+step must not discard material details because they do not fit the first
+obvious field or because they are not yet verified.
+
+Classify each material detail as one or more of:
+
+- an authoritative decision or constraint;
+- an observed report or requested outcome;
+- an unverified hypothesis, hint, or topology assumption;
+- a supporting artifact, reference, or data source;
+- an ambiguity or conflict requiring reconciliation; or
+- unavailable or out of scope.
+
+Map the detail to a canonical field when one exists. Otherwise preserve it in
+the run's additional context and work record with its source and classification.
+Use `Unknown` only when the information is genuinely unavailable; do not use it
+to erase information the user supplied. If inputs conflict, preserve both
+statements, identify the conflict, and resolve it through evidence or an
+explicit user decision. Never silently drop, rewrite, or replace user context.
+
+The prompt-preparation request may contain context before or after its formal
+fields. The preparation step must read all of it and fill the canonical run
+template. The user must not be required to copy the same information into a
+second section manually.
 
 ---
 
 # Pilot Tool IDs
 
-These provider-neutral tool IDs cover the current pilot workflows. Providers
-map them to concrete capabilities.
+These provider-neutral tool IDs cover the current pilot workflows. Providers map them to concrete capabilities.
 
 | Tool ID              | Meaning                                                                 |
 | -------------------- | ----------------------------------------------------------------------- |
@@ -91,13 +209,15 @@ Model profiles describe intent and reasoning capacity without naming a provider-
 | `standard_reasoning` | Normal analysis and execution for bounded work.                                        |
 | `deep_reasoning`     | Extended analysis for cross-repository, architectural, operational, or high-risk work. |
 
-Provider adapters map these profiles to available models and provider-specific effort settings. The mapping must be recorded when a worker runs.
+Provider adapters map these profiles to available models and provider-specific effort settings. The mapping must be
+recorded when a worker runs.
 
 ---
 
 # Work Item Contract
 
-Every workflow begins with a normalized work item. The source may be Jira, another work tracker, a document, or manual input.
+Every workflow begins with a normalized work item. The source may be Jira, another work tracker, a document, or manual
+input.
 
 | Field                 | Required    | Description                                                              |
 | --------------------- | ----------- | ------------------------------------------------------------------------ |
@@ -133,6 +253,7 @@ Each run records:
 | `mode`         | Discovery, investigation, delivery, stabilization, review, or another declared mode. |
 | `effort`       | Quick, standard, or deep.                                                            |
 | `state`        | Current workflow lifecycle state.                                                    |
+| `engineering_state` | What has been established about the work item, independently of workflow execution. |
 | `workers`      | Selected workers and their dependencies.                                             |
 | `gates`        | Required conditions and their status.                                                |
 | `artifacts`    | Durable outputs produced during the run.                                             |
@@ -163,7 +284,7 @@ Each worker must have a stable identifier and an explicit execution profile.
 | `failure_behavior` | Yes                | How errors, uncertainty, missing inputs, and blocked work are recorded.                                              |
 | `usage`            | Recommended        | Provider-reported execution usage, such as input/output tokens, duration, or credits. Unknown values remain unknown. |
 
-Illustrative profile:
+### Illustrative Worker Profile (Non-normative)
 
 ```yaml
 worker:
@@ -195,16 +316,16 @@ worker:
   failure_behavior: record the error, preserve partial findings, and mark the worker blocked
 ```
 
-The example is a contract illustration, not a requirement to introduce a configuration language yet.
+This example illustrates the contract fields. It is not a required configuration format and does not introduce a
+configuration language.
 
-Provider-reported usage is observational metadata, not a worker input. A
-provider adapter may populate it after execution. Workers must not estimate
-credits when the provider does not expose them.
+Provider-reported usage is observational metadata, not a worker input. A provider adapter may populate it after
+execution. Workers must not estimate credits when the provider does not expose them.
 
 ## Worker Result Envelope
 
-Every worker returns one compact result envelope in addition to its durable
-artifacts. The envelope is the unit consumed by the Orchestrator at fan-in.
+Every worker returns one compact result envelope in addition to its durable artifacts. The envelope is the unit consumed
+by the Orchestrator at fan-in.
 
 | Field              | Required    | Description                                                     |
 | ------------------ | ----------- | --------------------------------------------------------------- |
@@ -222,16 +343,13 @@ artifacts. The envelope is the unit consumed by the Orchestrator at fan-in.
 | `usage`            | Recommended | Provider-reported tokens, duration, credits, or `Unknown`.      |
 | `errors_blockers`  | Yes         | Errors, blockers, or `None`.                                    |
 
-The summary must describe the worker's unique contribution, not repeat the
-entire input artifact. A downstream worker must consume the envelope and
-referenced artifacts rather than independently repeating the same investigation
-unless it is checking a stated discrepancy.
+The summary must describe the worker's unique contribution, not repeat the entire input artifact. A downstream worker
+must consume the envelope and referenced artifacts rather than independently repeating the same investigation unless it
+is checking a stated discrepancy.
 
-`confidence` must be explainable through the referenced evidence and recorded
-uncertainties. A `complete` outcome does not imply high confidence. Use
-`unknown` when the worker cannot make a defensible confidence assessment.
-Material conclusions should use the IDs from the
-[`Claims, Evidence, Decisions, and Actions Contract`](claims.md).
+`confidence` must be explainable through the referenced evidence and recorded uncertainties. A `complete` outcome does
+not imply high confidence. Use `unknown` when the worker cannot make a defensible confidence assessment. Material
+conclusions should use the IDs from the [`Claims, Evidence, Decisions, and Actions Contract`](claims.md).
 
 ---
 
@@ -259,10 +377,9 @@ Modes and effort are separate dimensions.
 
 `discovery` is a mode, not an effort level. A discovery run may be quick, standard, or deep.
 
-Worker effort is separate from the execution profile and from provider
-reasoning effort. The playbook selects the execution profile; the provider
-adapter applies the role's model and reasoning policy. A profile must not
-silently lower the quality policy of a role.
+Worker effort is separate from the execution profile and from provider reasoning effort. The playbook selects the
+execution profile; the provider adapter applies the role's model and reasoning policy. A profile must not silently lower
+the quality policy of a role.
 
 ## Execution Profiles and Lifecycle
 
@@ -273,67 +390,70 @@ Execution profile and lifecycle are independent dimensions:
 | Execution profile | Worker graph, investigation depth, and validation scope | `standard`, `deep`        |
 | Lifecycle         | How far the run may proceed                             | `planning`, `remediation` |
 
-The profile answers “how much investigation is appropriate?” The lifecycle
-answers “how far may this run proceed?” A `deep` planning run investigates
-more thoroughly but still stops before implementation. A standard remediation
-run may implement after the required approval gate.
+The profile answers “how much investigation is appropriate?” The lifecycle answers “how far may this run proceed?” A
+`deep` planning run investigates more thoroughly but still stops before implementation. A standard remediation run may
+implement after the required approval gate.
 
-Every profile must preserve the shared safety, evidence, work-record, approval,
-and fan-in requirements. Provider adapters map the selected profile to concrete
-model and effort settings without changing the lifecycle gates.
+Every profile must preserve the shared safety, evidence, work-record, approval, and fan-in requirements. Provider
+adapters map the selected profile to concrete model and effort settings without changing the lifecycle gates.
 
 ## Profile Execution Semantics
 
-The requested profile is an execution requirement, not descriptive metadata.
-At initialization, the Orchestrator records the requested profile and its
-required workers. Before completing the run, it records the executed profile
-and profile status.
+The requested profile is an execution requirement, not descriptive metadata. At initialization, the Orchestrator records
+the requested profile and its required workers. Before completing the run, it records the executed profile and profile
+status.
 
-The Orchestrator must not silently downgrade a profile to a smaller worker
-graph. If required delegation is unavailable, the run is `not_executed` or
-`blocked`; it is not a successful execution of the requested profile.
+The Orchestrator must not silently downgrade a profile to a smaller worker graph. If required delegation is unavailable,
+the run is `not_executed` or `blocked`; it is not a successful execution of the requested profile.
 
-`requested` means the graph has not started, `in_progress` means required
-workers are active or awaiting fan-in, and `executed` means all required
-workers returned terminal envelopes and fan-in passed. `not_executed` means
-the graph could not start. `blocked` means it started but cannot reach its next
-gate. Escalation is a new recorded profile selection, never a profile status.
+`requested` means the graph has not started, `in_progress` means required workers are active or awaiting fan-in, and
+`executed` means all required workers returned terminal envelopes and fan-in passed. `not_executed` means the graph
+could not start. `blocked` means it started but cannot reach its next gate. Escalation is a new recorded profile
+selection, never a profile status.
 
-Set `profile_status: executed` only after every required worker returns a
-terminal envelope and required fan-in passes. If a required worker was
-activated but does not return a terminal envelope, set `profile_status:
-blocked` and record the worker-specific runtime reason. A Coordinator cannot
-replace a required independent worker. A different profile is a new,
-explicitly requested run; it does not complete the original profile.
+Set `profile_status: executed` only after every required worker returns a terminal envelope and required fan-in passes.
+If a required worker was activated but does not return a terminal envelope, set `profile_status: blocked` and record the
+worker-specific runtime reason. A Coordinator cannot replace a required independent worker. A different profile is a
+new, explicitly requested run; it does not complete the original profile.
 
 ## Clarification Framing
 
-An incomplete requirement or unresolved decision is not automatically a
-blocker. Before requesting clarification, the Orchestrator must use the
-available planning workers for bounded discovery of the current implementation,
-contracts, tests, repository history, and related work when that evidence can
-reduce the uncertainty.
+An incomplete requirement or unresolved decision is not automatically a blocker. Confirmed user decisions are not
+clarification candidates. Before requesting clarification about anything else, the Orchestrator must use the available
+planning workers for bounded discovery of the current implementation, contracts, tests, repository history, and related
+work when that evidence can reduce the uncertainty.
 
-If a decision still prevents implementation readiness, the Solution Architect
-must record a Clarification Brief in the work record, with alternatives
-summarized in `Alternatives Considered`: the decision needed, evidence
-researched, one or more feasible options, tradeoffs and validation impact,
-recommendation, and the smallest question and owner needed to proceed.
+If a decision still prevents implementation readiness, the Solution Architect must record a Clarification Brief in the
+work record, with alternatives summarized in `Alternatives Considered`: the decision needed, evidence researched, one or
+more feasible options, tradeoffs and validation impact, recommendation, and the smallest question and owner needed to
+proceed.
 
-Use state `awaiting_input` with reason `clarification_required` for this
-decision gap. Use `blocked` only when an unavailable environment, permission,
-or indispensable evidence prevents bounded discovery or meaningful option
-framing. Proposed options are not authorization to implement and do not permit
-creating an implementation plan before the planning gate passes.
+Use state `awaiting_input` with reason `clarification_required` for this decision gap. Use `blocked` only when an
+unavailable environment, permission, or indispensable evidence prevents bounded discovery or meaningful option framing.
+Proposed options are not authorization to implement and do not permit creating an implementation plan before the
+planning gate passes.
+
+## Stop Conditions
+
+A stop condition stops the affected action or transition; it does not discard already collected evidence. The
+Coordinator records the condition, affected claims or decisions, and smallest safe next action in the work record.
+
+| Category | Conditions | Required behavior |
+| --- | --- | --- |
+| Stop immediately | Required authorization is missing; scope is unsafe or destructive; a security or privacy concern exists; or contradictory evidence invalidates a material claim or approved decision. | Do not perform the affected change or transition. Preserve evidence. Use `awaiting_input` for a needed approval or decision; otherwise use `blocked` until the risk or contradiction is resolved. |
+| Continue investigation | Non-critical context, an implementation detail, or a dependency is unclear. | Continue bounded evidence collection, record the uncertainty, and do not present an unsupported material conclusion. |
+| Ask the user | A business, scope, ownership, or incompatible-alternatives decision remains after bounded discovery. | Produce a Clarification Brief and enter `awaiting_input`; do not select or implement an alternative on the user's behalf. |
+
+Contradictory evidence stops reliance on the affected claim or decision, not all investigation. The next action is to
+reconcile the conflict or request the smallest necessary decision.
 
 ## Lifecycle Continuation and Re-entry
 
-The selected lifecycle is immutable for one workflow run. A conversation may
-continue, but a planning run does not become a remediation run merely because
-the user asks a follow-up question or says to continue.
+The selected lifecycle is immutable for one workflow run. A conversation may continue, but a planning run does not
+become a remediation run merely because the user asks a follow-up question or says to continue.
 
-To move from `planning` to `remediation`, the Orchestrator must create or
-explicitly record a new lifecycle run or re-entry event that:
+To move from `planning` to `remediation`, the Orchestrator must create or explicitly record a new lifecycle run or
+re-entry event that:
 
 1. preserves the existing work record and approved implementation plan;
 2. records explicit implementation approval;
@@ -341,96 +461,108 @@ explicitly record a new lifecycle run or re-entry event that:
 4. re-reads the playbook, work record, and implementation plan;
 5. records `profile_status: requested` for the remediation run;
 6. activates every required delivery worker before source changes, reusing
-   completed planning artifacts rather than rerunning planning workers;
+  completed planning artifacts rather than rerunning planning workers;
 7. waits for required result envelopes and completes fan-in; and
 8. reports the new run's requested lifecycle, activated workers, and fan-in
-   status.
+  status.
 
-If any condition is missing, the workflow remains in planning or stops with
-state `awaiting_input` and reason `approval_required`, or state `blocked` and
-reason `remediation_not_activated`. A generic implementation workflow must not
-replace the selected playbook's remediation worker graph.
+If any condition is missing, the workflow remains in planning or stops with state `awaiting_input` and reason
+`approval_required`, or state `blocked` and reason `remediation_not_activated`. A generic implementation workflow must
+not replace the selected playbook's remediation worker graph.
 
-Before the first source change, the Orchestrator records the activated delivery
-workers, their dependencies, and the required `implement → review
-→ validate → handoff` path in the work record. The Coordinator does not act as
-the Implementer, Reviewer, or Tester. If the required remediation graph cannot
-be activated, do not edit source; stop with
+Before the first source change, the Orchestrator records the activated delivery workers, their dependencies, and the
+required `implement → review → validate → handoff` path in the work record. The Coordinator does not act as the
+Implementer, Reviewer, or Tester. If the required remediation graph cannot be activated, do not edit source; stop with
 `profile_status: blocked` and reason `remediation_not_activated`.
 
 ## Approved Remediation Continuity
 
-One explicit remediation approval authorizes every in-scope step in the
-approved implementation plan: implementation, review, validation,
-stabilization, and handoff. It does not require approval after each planned
-implementation slice. A partial slice leaves the run `in_progress`; the
-Orchestrator continues the ordered worker graph until the plan is complete.
+One explicit remediation approval authorizes every in-scope step in the approved implementation plan: implementation,
+review, validation, stabilization, and handoff. It does not require approval after each planned implementation slice. A
+partial slice leaves the run `in_progress`; the Orchestrator continues the ordered worker graph until the plan is
+complete.
 
-Pause for a new user decision only when new evidence invalidates the approved
-scope or design, a required step exceeds that scope, an unapproved external or
-irreversible action is required, or a genuine environment, permission, or
-validation blocker prevents progress. Ordinary remaining plan steps, worker
-handoffs, and focused per-slice checks are not approval gates.
+Pause for a new user decision only when new evidence invalidates the approved scope or design, a required step exceeds
+that scope, an unapproved external or irreversible action is required, or a genuine environment, permission, or
+validation blocker prevents progress. Ordinary remaining plan steps, worker handoffs, and focused per-slice checks are
+not approval gates.
 
 ## Delivery Code Review Loop
 
-Code Review is a gate, not a final report. The Reviewer records one disposition:
-`accepted`, `changes_required`, `replanning_required`, or `blocked`.
+Code Review is a gate, not a final report. The Reviewer records one disposition: `accepted`, `changes_required`,
+`replanning_required`, or `blocked`.
 
-`changes_required` findings within approved scope return to the Implementer in
-the same remediation run. The Implementer fixes them, records the result, and
-the Reviewer rechecks the affected diff before validation begins. No new user
-approval is required. `replanning_required` is reserved for evidence that
-invalidates the approved scope or design; `blocked` is reserved for a genuine
-external, environment, permission, or validation blocker. Numeric priority is
+`changes_required` findings within approved scope return to the Implementer in the same remediation run. The Implementer
+fixes them, records the result, and the Reviewer rechecks the affected diff before validation begins. No new user
+approval is required. `replanning_required` is reserved for evidence that invalidates the approved scope or design;
+`blocked` is reserved for a genuine external, environment, permission, or validation blocker. Numeric priority is
 evidence of urgency, not a substitute for this disposition.
 
 ## Interrupted Profile Recovery
 
-An incomplete required-worker graph is not a completed diagnosis or plan. The
-canonical run prompt must support an `Interrupted profile recovery` continuation
-that:
+An incomplete required-worker graph is not a completed diagnosis or plan. The canonical run prompt must support an
+`Interrupted profile recovery` continuation that:
 
 1. preserves the same work record, profile, lifecycle, and completed artifacts;
 2. records completed workers, missing workers, and the recovery reason;
 3. reuses completed result envelopes unless a specific discrepancy requires a
-   rerun;
+  rerun;
 4. activates every incomplete required worker for the selected profile;
 5. waits for all required result envelopes and completes fan-in; and
 6. reports the recovered requested/executed profile, worker activation, fan-in,
-   and next gate.
+  and next gate.
 
-For an individual required worker that does not return a terminal envelope,
-recovery closes its original handle, confirms that it no longer consumes
-runtime capacity, and makes one fresh replacement attempt. It reuses completed
-artifacts and does not repeat successful work. If the replacement also fails,
-stop with `profile_status: blocked` and reason
-`<normalized-worker-id>_runtime_unavailable`. Do not create an implementation plan, invent a
-Coordinator-only review, or present a lower profile as completion of the
-requested profile.
+For an individual required worker that does not return a terminal envelope, recovery closes its original handle,
+confirms that it no longer consumes runtime capacity, and makes one fresh replacement attempt. It reuses completed
+artifacts and does not repeat successful work. If the replacement also fails, stop with `profile_status: blocked` and
+reason `<normalized-worker-id>_runtime_unavailable`. Do not create an implementation plan, invent a Coordinator-only
+review, or present a lower profile as completion of the requested profile.
 
-The approval gate applies to delivery workers. Missing implementation approval
-must not prevent remaining planning workers from completing diagnosis and fix
-design. If recovery delegation is unavailable, remain `blocked` or
+The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
+workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
 `not_executed`; do not substitute a generic workflow or claim success.
+
+## Explicit Path Verification
+
+An explicitly named path is any path supplied by the user, run template, derived artifact rule, worker result, or
+provider configuration. Before making a claim about it, the Coordinator MUST verify the path itself and record the
+result in the work record.
+
+The verification MUST distinguish at least:
+
+* path exists and has the expected type;
+* path is absent;
+* path is inaccessible or permission denied;
+* path exists but is empty;
+* no entries matched a particular filter; and
+* a symlink exists but its target is missing or inaccessible.
+
+Directory inspection MUST include hidden entries and symlinks. Configuration discovery MUST inspect both regular files
+and symlinks, then verify symlink targets. An empty result from a filtered search MUST NOT be interpreted as evidence
+that the directory or configuration is absent. If the path cannot be verified, record `Unknown` or `blocked` with the
+attempted check; do not infer absence.
+
+The work record must preserve the path, expected type, observed status, check time, and command or other evidence used
+for the conclusion. This applies to the execution repository, provider configuration, code repositories, durable
+artifacts, and supporting evidence paths.
+
+---
 
 ## Durable Artifact Root
 
-The prompt's `Execution repository` is the repository where the workflow is
-started. It is the durable-artifact root for that run:
+The prompt's `Execution repository` is the repository where the workflow is started. It is the durable-artifact root for
+that run:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/
 ```
 
-The `work_record.md`, worker artifacts, and any implementation plan belong
-there. Code repositories listed for investigation are not artifact roots. A
-worker must not place durable workflow files in a code repository merely
-because it is the suspected fault repository or appears first in the topology.
+The `work_record.md`, worker artifacts, and any implementation plan belong there. Code repositories listed for
+investigation are not artifact roots. A worker must not place durable workflow files in a code repository merely because
+it is the suspected fault repository or appears first in the topology.
 
-The execution repository must be explicit in the canonical run prompt. If it
-is missing or ambiguous, stop with `blocked` and request the smallest missing
-path; do not infer it from the playbook location or code-repository list.
+The execution repository must be explicit in the canonical run prompt. If it is missing or ambiguous, stop with
+`blocked` and request the smallest missing path; do not infer it from the playbook location or code-repository list.
 
 ---
 
@@ -443,26 +575,49 @@ path; do not infer it from the playbook location or code-repository list.
 | `conditional` | The worker may run in parallel only when the playbook or Orchestrator confirms that its inputs are independent. |
 | `continuous`  | The worker starts after initialization and consumes incremental artifacts throughout the run.                   |
 
-Dependencies describe readiness to start. Inputs describe artifacts consumed. A worker may consume outputs from another worker without being blocked from starting when the playbook explicitly supports incremental updates.
+Dependencies describe readiness to start. Inputs describe artifacts consumed. A worker may consume outputs from another
+worker without being blocked from starting when the playbook explicitly supports incremental updates.
 
 # Stage Completion and Fan-In
 
-A stage that launches multiple workers has a fan-in barrier. The Orchestrator
-must wait for every required worker to reach a terminal outcome before marking
-the stage or workflow complete.
+A stage that launches multiple workers has a fan-in barrier. The Orchestrator must wait for every required worker to
+reach a terminal outcome before marking the stage or workflow complete.
 
-The Orchestrator must preserve each worker's result, error, blocker, and usage
-metadata; summarize every worker result in the durable work record; distinguish
-all worker outcomes; and keep the parent workflow `in_progress` while any
+The Orchestrator must preserve each worker's result, error, blocker, and usage metadata; summarize every worker result
+in the durable work record; distinguish all worker outcomes; and keep the parent workflow `in_progress` while any
 required worker is still active.
 
-The final workflow handoff contains both a shared outcome summary and a compact
-worker-result ledger. The shared summary answers what should happen next. The
-worker ledger makes each contribution, outcome, limitation, and usage visible
+The final workflow handoff contains both a shared outcome summary and a compact worker-result ledger. The shared summary
+answers what should happen next. The worker ledger makes each contribution, outcome, limitation, and usage visible
 without requiring the reader to reconstruct parallel execution from logs.
 
-The ledger contains one compact row per activated worker and each required
-worker that did not reach a terminal envelope:
+## Human-Readable Handoff
+
+Every playbook handoff must include this short block, especially when the run
+is blocked, incomplete, or awaiting input:
+
+```text
+What happened: <plain-language result>
+What this means: <why the run stopped or what is ready>
+Internal owner: <runtime, team, worker, or person responsible>
+What you need to do: <user action, or “Nothing technical.”>
+To continue: “<exact phrase or action the user can provide>”
+```
+
+The handoff must explain internal runtime terms such as `fan-in`, terminal
+worker envelope, and runtime closure in ordinary language before or alongside
+their status values. Do not present an internal owner as if the user must repair
+the agent runtime. If the user does not need to change code, configuration, or
+environment, say so explicitly. If the next step is a retry, give the exact
+short request, such as `Retry the planning run.`
+
+The internal owner and the user action are different fields. A blocked run may
+have an internal owner while requiring no technical user action beyond asking
+the workflow to retry. The handoff must not end with only an internal owner or
+an unexplained technical instruction.
+
+The ledger contains one compact row per activated worker and each required worker that did not reach a terminal
+envelope:
 
 | Column | Required content |
 | --- | --- |
@@ -473,35 +628,30 @@ worker that did not reach a terminal envelope:
 | Evidence or artifact | Evidence/claim references or durable artifact path. |
 | Model, effort, and usage | Actual provider values when exposed; otherwise `Unknown`. |
 
-A required worker without a terminal envelope must appear with its reason. It
-keeps fan-in open or the run `blocked`; it cannot be omitted to make a profile
-appear successful.
+A required worker without a terminal envelope must appear with its reason. It keeps fan-in open or the run `blocked`; it
+cannot be omitted to make a profile appear successful.
 
-An active subagent is never evidence that a stage is complete. A workflow may
-finish only after the fan-in barrier passes or a documented terminal outcome
-explains why the remaining worker was not required.
+An active subagent is never evidence that a stage is complete. A workflow may finish only after the fan-in barrier
+passes or a documented terminal outcome explains why the remaining worker was not required.
 
 ## Worker Runtime Closure
 
-Fan-in and runtime closure are separate barriers. A terminal result envelope
-proves that the worker returned a result; it does not prove that the provider
-released the worker handle or its capacity.
+Fan-in and runtime closure are separate barriers. A terminal result envelope proves that the worker returned a result;
+it does not prove that the provider released the worker handle or its capacity.
 
 After result envelopes and artifacts are persisted, the Orchestrator must:
 
 1. mark each completed worker terminal;
 2. close or release every completed worker handle, including continuous
-   handoff/documentation workers from the finished run;
+  handoff/documentation workers from the finished run;
 3. verify that no required worker from that run remains active; and
 4. record the closure status before marking the run complete or starting a new
-   lifecycle run.
+  lifecycle run.
 
-Never close a worker before collecting its terminal result envelope. A later
-run reuses durable artifacts, not live worker handles from the previous run.
-If the provider cannot expose release or active-handle status, record
-`worker_runtime_release_unavailable` and keep the run `blocked` until the
-provider confirms that the new run has capacity; do not silently downgrade or
-claim that the run is closed.
+Never close a worker before collecting its terminal result envelope. A later run reuses durable artifacts, not live
+worker handles from the previous run. If the provider cannot expose release or active-handle status, record
+`worker_runtime_release_unavailable` and keep the run `blocked` until the provider confirms that the new run has
+capacity; do not silently downgrade or claim that the run is closed.
 
 ---
 
@@ -523,9 +673,8 @@ Partial findings are preserved for every non-complete outcome.
 
 # Workflow State Machine
 
-These are the canonical workflow states. They describe where a run is now;
-`planning` and `remediation` remain lifecycle values that limit how far the run
-may proceed.
+These are the canonical workflow states. They describe where a run is now; `planning` and `remediation` remain lifecycle
+values that limit how far the run may proceed.
 
 ```mermaid
 flowchart TB
@@ -563,26 +712,47 @@ flowchart TB
 | `handoff` | Results, artifacts, ownership, and next steps are being finalized. | `completed` |
 | `completed` | Required gates passed or a documented terminal outcome was recorded. | None; start a new run for new scope. |
 
-Planning normally ends at `ready_for_implementation`, `awaiting_input`, or
-`blocked` and must not modify source. Remediation enters `implementation` only
-through explicit approval and a recorded re-entry. A failed required worker
-keeps the run `in_progress` or moves it to `blocked`; it cannot be treated as
-successful fan-in.
+Planning normally ends at `ready_for_implementation`, `awaiting_input`, or `blocked` and must not modify source.
+Remediation enters `implementation` only through explicit approval and a recorded re-entry. A failed required worker
+keeps the run `in_progress` or moves it to `blocked`; it cannot be treated as successful fan-in.
 
-`closed_no_action`, `closed_duplicate`, `closed_not_a_bug`, and `deferred` are
-terminal outcomes recorded with `completed`; they are not additional normal
-delivery states. A playbook may add domain-specific states only when it
+`closed_no_action`, `closed_duplicate`, `closed_not_a_bug`, and `deferred` are terminal outcomes recorded with
+`completed`; they are not additional normal delivery states. A playbook may add domain-specific states only when it
 preserves these meanings and records every transition reason.
+
+---
+
+# Workflow State and Engineering State
+
+Workflow state describes what the workflow run is doing. Engineering state describes what has been established about the
+work item. They are independent: a run can be `blocked` while the work item is `approved`, or a completed planning run
+can leave the work item `designed` but not approved.
+
+Every work record MUST record both states at handoff and when recovering an interrupted run. Engineering state is not a
+second state machine and does not authorize source changes.
+
+| Engineering state | Meaning |
+| --- | --- |
+| `unknown` | The work item's current behavior, scope, or outcome is not yet established. |
+| `understood` | The current behavior, problem, and material scope are evidence-backed. |
+| `designed` | An evidence-backed implementation design or plan exists. |
+| `approved` | The implementation plan is explicitly approved for remediation. |
+| `implemented` | Approved source or configuration changes are complete. |
+| `validated` | Declared validation passed or its limitations are explicitly recorded. |
+| `released` | The approved change is deployed or otherwise externally released. |
+| `stabilized` | Required post-release observation, ownership, and operational follow-up are complete. |
+| `not_applicable` | The state does not apply to the selected work item or terminal outcome. |
+
+Engineering state MAY move backward when evidence invalidates a prior conclusion. The work record MUST preserve the
+reason and affected decision or claim.
 
 ---
 
 # Evidence and Artifact Minimums
 
-Use the [`Claims, Evidence, Decisions, and Actions Contract`](claims.md) for
-the durable reasoning chain. Every material claim must identify its supporting
-evidence, confidence, uncertainties, and status. Every decision must identify
-the claims, options, owner, and approval status. Every action must identify its
-authorizing decision and required gate.
+Use the [`Claims, Evidence, Decisions, and Actions Contract`](claims.md) for the durable reasoning chain. Every material
+claim must identify its supporting evidence, confidence, uncertainties, and status. Every decision must identify the
+claims, options, owner, and approval status. Every action must identify its authorizing decision and required gate.
 
 Every stage must declare the artifacts it produces and the gate those artifacts satisfy.
 
@@ -602,13 +772,14 @@ A special workflow is valid when it declares the same minimum contract as a norm
 - terminal outcomes;
 - work-record requirements.
 
-Special workflows may add domain-specific stages and artifacts. They must not bypass the shared work-item, evidence, lifecycle, or work-record rules.
+Special workflows may add domain-specific stages and artifacts. They must not bypass the shared work-item, evidence,
+lifecycle, or work-record rules.
 
 ---
 
-# Pilot Validation
+# Pilot Conformance Checklist
 
-The first pilot is contract-compliant when the work record can answer:
+A pilot run MUST NOT be called contract-compliant unless its work record can answer:
 
 - Which work item was handled?
 - Which playbook and mode were selected?
@@ -619,5 +790,6 @@ The first pilot is contract-compliant when the work record can answer:
 - What evidence supports the current understanding?
 - Which gates passed or failed?
 - What errors, blockers, and unknowns occurred?
+- Were all explicitly named paths verified, including symlink targets where applicable?
 - Why did the workflow finish, stop, or defer?
 - What is the next action and who owns it?

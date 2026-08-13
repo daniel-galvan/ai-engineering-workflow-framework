@@ -34,19 +34,18 @@ last_updated: 2026-08-04
 When a Jira ticket is thin or incomplete, recover context in this order:
 
 1. the ticket itself for task-specific scope, acceptance criteria, and
-   constraints;
+  constraints;
 2. the immediate parent work item for the immediate business outcome;
 3. ancestor Stories, Epics, or Initiatives for broader goals, boundaries, and
-   sequencing;
+  sequencing;
 4. selected siblings for dependencies, shared interfaces, precedents, or
-   rollout order;
+  rollout order;
 5. linked tickets, documents, pull requests, and prior decisions; and
 6. current repository evidence for what exists and is feasible today.
 
-Sibling tickets are context, not inherited requirements. Inspect only siblings
-that are directly linked, describe the same repository or component, share a
-dependency or release, or establish an explicit precedent. Record conflicts
-and do not let a parent or sibling override an explicit ticket requirement.
+Sibling tickets are context, not inherited requirements. Inspect only siblings that are directly linked, describe the
+same repository or component, share a dependency or release, or establish an explicit precedent. Record conflicts and do
+not let a parent or sibling override an explicit ticket requirement.
 
 ## Context Sufficiency
 
@@ -59,17 +58,16 @@ Classify the recovered context as one of:
 * `clarification_required`: the minimum implementable outcome, affected
   surface, or acceptance condition cannot be established.
 
-For `clarification_required`, preserve the recovered evidence and ask focused
-questions. Before escalating, use bounded repository, contract, test, and
-related-work discovery when it can reduce the uncertainty; record feasible
-options, recommendation, and the smallest decision needed. Do not create an
-implementation plan or invent requirements.
+For `clarification_required`, preserve the recovered evidence and ask focused questions. Before escalating, use bounded
+repository, contract, test, and related-work discovery when it can reduce the uncertainty; record feasible options,
+recommendation, and the smallest decision needed. Do not create an implementation plan or invent requirements.
 
 ## Completion Criteria
 
-The work can be described without relying on memory or unstated assumptions,
-or its remaining clarification questions are explicit.
+The work can be described without relying on memory or unstated assumptions, or its remaining clarification questions
+are explicit.
 
 ## Safety
 
-Do not treat a ticket, dashboard, or prior record as proof of current repository behavior. Reconcile it with current evidence.
+Do not treat a ticket, dashboard, or prior record as proof of current repository behavior. Reconcile it with current
+evidence.

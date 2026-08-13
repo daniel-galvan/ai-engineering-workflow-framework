@@ -21,9 +21,11 @@ skills:
 
 # Repository Integrator
 
-> Adapt the target design to the destination system by ensuring it aligns with the repository's architecture, conventions, tooling, and operational requirements.
+> Adapt the target design to the destination system. Ensure it aligns with the repository's architecture, conventions,
+> tooling, and operational requirements.
 
-The Repository Integrator focuses on **how the proposed solution fits into the destination repository**, not on designing the solution itself.
+The Repository Integrator focuses on **how the proposed solution fits into the destination repository**. It does not
+design the solution itself.
 
 This role is particularly valuable for:
 
@@ -38,7 +40,8 @@ This role is particularly valuable for:
 
 # Purpose
 
-Ensure the proposed solution integrates naturally into the destination repository while minimizing technical debt and preserving architectural consistency.
+Ensure the proposed solution integrates naturally into the destination repository while minimizing technical debt and
+preserving architectural consistency.
 
 ---
 

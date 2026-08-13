@@ -26,14 +26,12 @@ depends_on:
 
 ## Use When
 
-Use this playbook for TechOps or comparable Jira issues reported through
-Zendesk, Help Desk, operations, or support channels when the primary evidence
-is the issue report, comments, attachments, logs, payloads, screenshots, or
+Use this playbook for TechOps or comparable Jira issues reported through Zendesk, Help Desk, operations, or support
+channels when the primary evidence is the issue report, comments, attachments, logs, payloads, screenshots, or
 recordings.
 
-Do not use it when Sentry is the primary evidence source, the issue is a
-security finding, the work is a planned feature within an initiative, or the
-goal is a service extraction. Use the more specialized playbook instead.
+Do not use it when Sentry is the primary evidence source, the issue is a security finding, the work is a planned feature
+within an initiative, or the goal is a service extraction. Use the more specialized playbook instead.
 
 ## Inputs and Evidence
 
@@ -43,13 +41,11 @@ Required inputs:
 - execution repository; and
 - known repository, system, owner, or reproduction hints when available.
 
-Optional evidence includes attachments, screenshots, recordings, transcripts,
-JSON, logs, traces, exports, prior incidents, dashboards, runbooks, pull
-requests, and related resolved tickets.
+Optional evidence includes attachments, screenshots, recordings, transcripts, JSON, logs, traces, exports, prior
+incidents, dashboards, runbooks, pull requests, and related resolved tickets.
 
-`issue-evidence` owns evidence normalization. Record each artifact's source,
-timestamp when available, redaction status, and limitations. Treat an
-attachment as evidence, not proof of current code or runtime behavior.
+`issue-evidence` owns evidence normalization. Record each artifact's source, timestamp when available, redaction status,
+and limitations. Treat an attachment as evidence, not proof of current code or runtime behavior.
 
 ## Default Execution
 
@@ -57,13 +53,11 @@ attachment as evidence, not proof of current code or runtime behavior.
 - Lifecycle: `planning`
 - Mode: `investigation`
 
-Planning is read-only. It creates `implementation_plan.md` only after required
-fan-in passes and the diagnosis explains the reported symptom. The shared
-contract owns lifecycle, approvals, state transitions, recovery, fan-in, and
-runtime closure.
+Planning is read-only. It creates `implementation_plan.md` only after required fan-in passes and the diagnosis explains
+the reported symptom. The shared contract owns lifecycle, approvals, state transitions, recovery, fan-in, and runtime
+closure.
 
-Use [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md)
-for every run.
+Use [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md) for every run.
 
 ## Execution Profiles and Lifecycle
 
@@ -95,8 +89,8 @@ for every run.
 Required planning workers:
 
 - `standard`: `initialize`, `issue-evidence`, `failure-path`, `fix-design`,
-  and continuous `handoff`; add `repository-integration` when the report
-  crosses a repository, service, deployment, ownership, or public-contract seam.
+  and continuous `handoff`; add `repository-integration` when the report crosses a repository, service, deployment,
+  ownership, or public-contract seam.
 - `deep`: all standard workers plus mandatory `repository-integration` and
   `planning-review`.
 
@@ -116,8 +110,8 @@ The remediation sequence is `implement` ↔ `review` → `validate` → `handoff
 - `handoff` persists result envelopes, confidence, claims, decisions, actions,
   usage, and next action.
 
-Downstream workers consume normalized artifacts. They repeat evidence or
-repository analysis only to resolve a recorded discrepancy.
+Downstream workers consume normalized artifacts. They repeat evidence or repository analysis only to resolve a recorded
+discrepancy.
 
 ## Stages and Gates
 
@@ -129,62 +123,52 @@ Create or recover:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Record the issue, profile, lifecycle, execution repository, known systems,
-artifact locations, constraints, and explicit non-goals. Do not create an
-implementation plan during initialization.
+Record the issue, profile, lifecycle, execution repository, known systems, artifact locations, constraints, and explicit
+non-goals. Do not create an implementation plan during initialization.
 
 ### Stage 1 — Normalize the Report
 
-Read the issue, comments, related resolved work, and supplied artifacts before
-touching code. Record reported and expected behavior, impact, affected users or
-systems, evidence IDs, facts, assumptions, unknowns, and redaction limits.
+Read the issue, comments, related resolved work, and supplied artifacts before touching code. Record reported and
+expected behavior, impact, affected users or systems, evidence IDs, facts, assumptions, unknowns, and redaction limits.
 
 ### Stage 2 — Reproduce and Trace the Failure Path
 
-Attempt reproduction when safe and practical. If reproduction is unavailable,
-record the reason and preserve the strongest indirect signals. Trace the entry
-point, services, queues, APIs, data changes, and observable result until the
-first concrete divergence from expected behavior is identified or explicitly
-unknown.
+Attempt reproduction when safe and practical. If reproduction is unavailable, record the reason and preserve the
+strongest indirect signals. Trace the entry point, services, queues, APIs, data changes, and observable result until the
+first concrete divergence from expected behavior is identified or explicitly unknown.
 
 ### Stage 3 — Reconcile Ownership and Design the Fix
 
-Confirm the owning repository, module, service, and blast radius. Run
-Repository Integrator when the profile requires it. Compare plausible causes,
-record supporting and contradictory evidence, and select the smallest fix that
-addresses the supported cause rather than only the symptom.
+Confirm the owning repository, module, service, and blast radius. Run Repository Integrator when the profile requires
+it. Compare plausible causes, record supporting and contradictory evidence, and select the smallest fix that addresses
+the supported cause rather than only the symptom.
 
-If a product or operational decision remains, perform bounded discovery,
-record feasible options and a recommendation, then use `awaiting_input` with a
-Clarification Brief. Do not create an implementation plan until that decision
-is resolved.
+If a product or operational decision remains, perform bounded discovery, record feasible options and a recommendation,
+then use `awaiting_input` with a Clarification Brief. Do not create an implementation plan until that decision is
+resolved.
 
 ### Stage 4 — Review, Plan, and Handoff
 
-For `deep`, the Planning Reviewer independently challenges the diagnosis and
-design. After required worker envelopes, fan-in, and planning gates pass, the
-Documenter creates:
+For `deep`, the Planning Reviewer independently challenges the diagnosis and design. After required worker envelopes,
+fan-in, and planning gates pass, the Documenter creates:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The plan records the diagnosis, evidence/claim/decision IDs, change and test
-steps, validation ladder, risks, rollback, monitoring, ownership, and residual
-uncertainty. It is not authorization to make changes.
+The plan records the diagnosis, evidence/claim/decision IDs, change and test steps, validation ladder, risks, rollback,
+monitoring, ownership, and residual uncertainty. It is not authorization to make changes.
 
 ### Stage 5 — Approved Remediation
 
-Explicit approval and remediation re-entry activate `implement`, `review`,
-`validate`, and continuous `handoff` before source changes. In-scope review
-findings return to `implement` for repair and re-review; they are not a new
-approval gate or final handoff.
+Explicit approval and remediation re-entry activate `implement`, `review`, `validate`, and continuous `handoff` before
+source changes. In-scope review findings return to `implement` for repair and re-review; they are not a new approval
+gate or final handoff.
 
 ### Stage 6 — Stabilize and Hand Off
 
-Record validation, release or rollback actions, monitoring, owner, residual
-risk, and next action. Close worker handles only after terminal envelopes and
-artifacts are preserved.
+Record validation, release or rollback actions, monitoring, owner, residual risk, and next action. Close worker handles
+only after terminal envelopes and artifacts are preserved.
 
 ## Gates
 
@@ -207,12 +191,15 @@ Report:
 2. evidence, reproduction status, root path, first divergence, and ownership;
 3. supported diagnosis, confidence, uncertainties, and considered alternatives;
 4. implementation-plan path/status, change, regression, validation, rollback,
-   and monitoring plan;
+  and monitoring plan;
 5. Worker result ledger: one compact row per activated worker and each required
-   worker without a terminal envelope, using the shared contract's ledger
-   fields; plus requested/executed profile, activation, fan-in, and
-   runtime-closure status; and
+  worker without a terminal envelope, using the shared contract's ledger fields; plus requested/executed profile,
+  activation, fan-in, and runtime-closure status; and
 6. residual risks, owner, and next action.
+
+Also include the shared Human-Readable Handoff block: `What happened`, `What
+this means`, `Internal owner`, `What you need to do`, and `To continue`. If no
+technical user action is needed, say `Nothing technical.`
 
 ## Related Documents
 

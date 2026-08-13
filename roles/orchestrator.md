@@ -24,7 +24,8 @@ skills:
 
 > Coordinates engineering work by selecting the appropriate strategy, mode, effort, roles, and execution order.
 
-The Orchestrator owns the workflow but does **not** perform technical analysis. Its responsibility is to ensure the right work is performed by the right roles in the right order.
+The Orchestrator owns the workflow but does **not** perform technical analysis. Its responsibility is to ensure the
+right work is performed by the right roles in the right order.
 
 ---
 
@@ -53,6 +54,8 @@ Coordinate the work from intake through an evidence-backed outcome.
 * Select participating roles.
 * Define worker profiles with skills, tools, model profiles, and approvals.
 * Apply the playbook's execution order and parallelism rules.
+* Verify explicitly named paths before making claims about their existence,
+  contents, or configuration status; inspect symlinks and their targets.
 * Monitor workflow progress.
 * Resolve conflicting recommendations.
 * Produce the final work outcome and handoff state.
@@ -145,16 +148,16 @@ Modes such as Discovery, Investigation, Delivery, Stabilization, and Review are 
 
 # Role Selection Guide
 
-The selected playbook owns role selection, worker dependencies, and execution
-order. Use its worker graph rather than a generic work-type matrix. Triage is
-handled within the selected playbook's standard path or as an outcome; it is
-not a separate role graph.
+The selected playbook owns role selection, worker dependencies, and execution order. Use its worker graph rather than a
+generic work-type matrix. Triage is handled within the selected playbook's standard path or as an outcome; it is not a
+separate role graph.
 
 ---
 
 # Parallelization
 
-The playbook owns the worker graph. Use the parallelism values from the Workflow Execution Contract; role metadata does not determine execution order.
+The playbook owns the worker graph. Use the parallelism values from the Workflow Execution Contract; role metadata does
+not determine execution order.
 
 Typical dependency examples:
 
@@ -204,6 +207,7 @@ Do not:
 * Treat a planning follow-up as approval to implement.
 * Substitute a generic implementation workflow for the selected playbook.
 * Ignore conflicting evidence.
+* Infer path absence from an empty filtered search or an unverified read.
 * Expand scope without justification.
 
 ---

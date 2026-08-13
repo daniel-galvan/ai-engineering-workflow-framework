@@ -18,10 +18,9 @@ depends_on:
 
 ## Example Scenario
 
-A Jira ticket requests a capability change but lacks enough local detail to
-implement safely. The workflow recovers its immediate parent, ancestors,
-selected siblings, linked decisions, and repository evidence without treating
-that context as automatic scope.
+A Jira ticket requests a capability change but lacks enough local detail to implement safely. The workflow recovers its
+immediate parent, ancestors, selected siblings, linked decisions, and repository evidence without treating that context
+as automatic scope.
 
 ## Example Inputs
 
@@ -37,9 +36,8 @@ that context as automatic scope.
 
 ## Run Format
 
-Use the canonical
-[`feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md)
-template. For a bounded feature, begin with:
+Use the canonical [`feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md) template. For a
+bounded feature, begin with:
 
 ```text
 Playbook: playbooks/feature_delivery.md
@@ -48,8 +46,8 @@ Execution profile: standard
 Lifecycle: planning
 ```
 
-Use `deep` when ownership, repositories, public contracts, persistence,
-rollout, or acceptance criteria remain uncertain.
+Use `deep` when ownership, repositories, public contracts, persistence, rollout, or acceptance criteria remain
+uncertain.
 
 ## Expected Planning Outcome
 
@@ -59,10 +57,9 @@ The work record is created at:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-When context is incomplete, perform bounded discovery and record a
-Clarification Brief with feasible options and a recommendation. Do not create
-an implementation plan until the minimum implementable outcome is clear and
-planning fan-in passes.
+When context is incomplete, perform bounded discovery and record a Clarification Brief with feasible options and a
+recommendation. Do not create an implementation plan until the minimum implementable outcome is clear and planning
+fan-in passes.
 
 When ready, create:
 
@@ -72,20 +69,17 @@ When ready, create:
 
 ## Approved Delivery
 
-Explicit remediation approval starts a new remediation run using the same
-profile, work record, and implementation plan. Reuse planning artifacts, then
-activate the delivery graph:
+Explicit remediation approval starts a new remediation run using the same profile, work record, and implementation plan.
+Reuse planning artifacts, then activate the delivery graph:
 
 ```text
 Implement → Code Review → Validate → Handoff
 ```
 
-The Coordinator does not perform those roles. One approval covers the entire
-approved plan; a new approval is needed only if evidence changes the scope or
-design, or a genuine blocker requires a decision.
+The Coordinator does not perform those roles. One approval covers the entire approved plan; a new approval is needed
+only if evidence changes the scope or design, or a genuine blocker requires a decision.
 
 ## Expected Handoff
 
-Report the verified scope, implementation-plan status, delivered changes,
-worker ledger, validation results, release or rollback considerations, residual
-risks, owner, and next action.
+Report the verified scope, implementation-plan status, delivered changes, worker ledger, validation results, release or
+rollback considerations, residual risks, owner, and next action.

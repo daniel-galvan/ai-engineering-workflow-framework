@@ -23,7 +23,8 @@ skills:
 
 > Discover and document the current state of the system before any design or implementation decisions are made.
 
-The Current-State Investigator is responsible for understanding **what exists today**, **how it works**, and **where additional investigation is required**.
+The Current-State Investigator is responsible for understanding **what exists today**, **how it works**, and **where
+additional investigation is required**.
 
 The Current-State Investigator does **not** redesign, optimize, or implement solutions.
 

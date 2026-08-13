@@ -33,8 +33,10 @@ last_updated: 2026-07-24
 
 ## Completion Criteria
 
-The plan identifies the smallest worker graph and capability set that provides sufficient confidence. Every worker has explicit dependencies, approvals, exit criteria, and failure behavior.
+The plan identifies the smallest worker graph and capability set that provides sufficient confidence. Every worker has
+explicit dependencies, approvals, exit criteria, and failure behavior.
 
 ## Safety
 
-Do not select a tool because it is available. Select only capabilities required by the work and record the allowlist in the worker profile.
+Do not select a tool because it is available. Select only capabilities required by the work and record the allowlist in
+the worker profile.

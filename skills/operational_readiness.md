@@ -33,4 +33,5 @@ Operational ownership and release risks are explicit, with evidence for required
 
 ## Safety
 
-Do not declare readiness based on a successful local run when deployment, permissions, or observability remain unverified.
+Do not declare readiness based on a successful local run when deployment, permissions, or observability remain
+unverified.

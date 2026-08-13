@@ -22,7 +22,8 @@ skills:
 
 > Analyze dependencies, coupling, ownership, and impact to determine how changes propagate through the system.
 
-The Dependency Analyst identifies **what depends on the target**, **what the target depends on**, and the implications for extraction, refactoring, or implementation.
+The Dependency Analyst identifies **what depends on the target** and **what the target depends on**. It explains the
+implications for extraction, refactoring, or implementation.
 
 The Dependency Analyst does **not** redesign the system or propose implementation details.
 
