@@ -162,6 +162,13 @@ or frame feasible solutions. Record options, tradeoffs, recommendation, and the 
 Clarification Brief. Use `awaiting_input` with reason `clarification_required`; do not call this a blocker unless an
 external dependency prevents the bounded research.
 
+Before setting `clarification_required`, consume every supplied artifact and
+material user context and apply the shared
+[Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate).
+The context result must state the strongest supported interpretation of the
+feature, the smallest repository check that can reduce uncertainty, and the
+plain-language decision or action that remains.
+
 ### Stage 2 — Analyze Impact and Integration
 
 Trace the code path, module seam, data, contracts, configuration, tests, ownership, and operational implications
@@ -178,6 +185,11 @@ explicitly deferred action.
 
 For a clarification-required run, design does not create an implementation plan. It frames one or more supported
 solutions, recommends one when evidence permits, and identifies the smallest decision that would make planning ready.
+
+The feature-design result must list the context and artifacts consumed,
+confirmed acceptance facts, assumptions or hypotheses, feasible feature
+options, recommendation, validation probe, and next action. A generic request
+for more product detail is not a sufficient clarification result.
 
 ### Stage 4 — Review, Plan, and Handoff
 
@@ -242,7 +254,8 @@ When created, the plan must include:
 
 The final handoff reports:
 
-1. shared outcome: feature objective, context sufficiency, verified scope, and next action;
+1. shared outcome: feature objective, context sufficiency, verified scope, and next action. The next action must name
+   the owner, location, and completion condition in plain language;
 2. parent/initiative and selected-sibling context, including conflicts and clarification questions;
 3. implementation-plan path/status, planned change, acceptance traceability, validation, rollout, and rollback;
 4. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,

@@ -47,6 +47,11 @@ upgrade in an existing service; or a temporary code copy with no independent-ser
 
 Missing inputs are explicit unknowns. They are never silently inferred.
 
+User-supplied diagrams, dependency reports, manifests, source excerpts, prior
+analysis, and other supporting artifacts are workflow inputs. Record each one
+as consumed, unavailable, conflicting, or out of scope before asking the user
+to resolve an unknown.
+
 ## Default Execution
 
 The default is `deep + planning`. Service extraction normally has cross-repository, ownership, deployment, or
@@ -148,6 +153,12 @@ record and starts the continuous Documenter.
 queues, events, external APIs, observability, deployment assumptions, and ownership. Separate facts, inferences,
 hypotheses, and unknowns.
 
+Apply the shared
+[Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate)
+before reporting insufficient evidence or asking the user to resolve a
+technical uncertainty. The result must identify the strongest supported
+boundary hypothesis and the smallest repository check that can test it.
+
 ### Stage 2 — Analyze Dependencies and Boundary
 
 `dependency-analysis` maps upstream callers, downstream consumers, shared libraries and models, data and event
@@ -159,6 +170,12 @@ as move, remain external, adapt, share temporarily, remove, or unknown.
 `service-design` defines the smallest safe destination seam: responsibilities, interfaces, data and event ownership,
 failure and retry behavior, compatibility, versioning, migration slices, coexistence, rollback, and explicitly deferred
 features. It compares direct extraction, shared-library-first, strangler, and deferral when relevant.
+
+The service-design result must list consumed repositories and artifacts,
+confirmed coupling facts, boundary hypotheses, feasible extraction options,
+recommendation, falsification or validation checks, and the next action in
+plain language. Do not ask the user to resolve a technical dependency that
+the source and destination repositories can clarify.
 
 ### Stage 4 — Integrate the Destination
 
@@ -236,7 +253,9 @@ The final handoff reports:
 3. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
    using the shared contract's ledger fields; plus requested, activated, and executed profile, fan-in, and
    runtime-closure status; and
-4. residual risks, blockers, owner, follow-up work, and next action.
+4. residual risks, blockers, owner, follow-up work, and next action. The next
+   action must name the owner, location, and completion condition in plain
+   language.
 
 Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
 `What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`

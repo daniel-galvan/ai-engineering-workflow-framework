@@ -19,6 +19,7 @@ last_updated: 2026-07-28
 * Repository and revision associated with the failure
 * Current work record
 * Relevant runtime and dependency context
+* User-supplied context and supporting artifacts
 
 ## Produces
 
@@ -28,12 +29,14 @@ last_updated: 2026-07-28
 * Competing root-cause hypotheses
 * Evidence-based root-cause conclusion
 * Fix boundary and regression-test strategy
+* Smallest falsification check or local feedback loop
 
 ## Completion Criteria
 
 The failure is reproduced, verified against direct evidence, or explicitly classified as not reproducible with the
-reason and remaining uncertainty documented. The recommended fix addresses the confirmed cause rather than only the
-reported symptom.
+reason and remaining uncertainty documented. Before requesting clarification, consume the available context and
+artifacts, record the strongest supported hypothesis or explain why none is possible, and identify the smallest
+falsification check. The recommended fix addresses the confirmed cause rather than only the reported symptom.
 
 ## Safety
 

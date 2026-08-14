@@ -103,6 +103,7 @@ the source of truth.
 | `INV-17` | A portable implementation handoff MUST be self-contained, approval-gated, and based on repository identity and revision rather than source-environment paths. | [Portable Implementation Handoff](#portable-implementation-handoff) |
 | `INV-18` | Material delivery changes MUST pass a strict Code Review covering relevant behavior paths, boundaries, scope, and coverage before validation is accepted. | [Delivery Code Review Loop](#delivery-code-review-loop) |
 | `INV-19` | A portable implementation handoff MUST be created only for a cross-session or cross-environment transfer, or an explicit user request. | [Portable Implementation Handoff](#portable-implementation-handoff) |
+| `INV-20` | Diagnosis and fix-design MUST pass the gate before clarification. | [Gate](#evidence-to-hypothesis-gate) |
 
 ---
 
@@ -169,6 +170,42 @@ resolve it through evidence or an explicit user decision. Never silently drop, r
 The prompt-preparation request may contain context before or after its formal fields. The preparation step must read all
 of it and fill the canonical run template. The user must not be required to copy the same information into a second
 section manually.
+
+## Evidence-to-Hypothesis Gate
+
+A diagnosis or fix-design worker MUST pass this gate before returning
+`needs_input`, `blocked`, or a result that would make the parent workflow enter
+`awaiting_input` with reason `clarification_required`.
+
+1. Consume every available user-supplied fact, decision, hint, and supporting
+   artifact. List the paths or facts actually used in `inputs_consumed`. If an
+   input cannot be read, record the access failure and its owner.
+2. Perform bounded repository, contract, test, runtime, or artifact discovery
+   when that evidence can reduce the uncertainty. Do not request evidence that
+   the worker can obtain or evaluate locally.
+3. Record confirmed facts with evidence references and confidence.
+4. Record the strongest current hypothesis, its supporting evidence, confidence,
+   and remaining uncertainty. If no defensible hypothesis is possible, explain
+   why the available evidence cannot support one.
+5. Record the smallest falsification check or feedback loop that can confirm or
+   reject the hypothesis.
+6. Record feasible options and a recommendation when a technical or design
+   choice remains. Ask the user only for a business, scope, ownership, or
+   incompatible-alternatives decision that bounded discovery cannot resolve.
+7. State the next action in plain language, including who acts, where the action
+   occurs, and what result completes it.
+
+One supported hypothesis is sufficient for a simple issue. Record ranked
+alternatives when the evidence supports more than one credible explanation.
+
+The Coordinator MUST reject an incomplete clarification result. A result is
+incomplete when it only asks for more data, says that the root cause is unknown,
+repeats `Unknown` without explaining why, or gives an internal instruction
+without a hypothesis, falsification check, or concrete next action. The
+Coordinator must request continuation from the worker when possible. If the
+worker cannot continue, preserve its partial result and report the runtime or
+access limitation; do not present the incomplete result as a successful
+diagnosis or a useful clarification brief.
 
 ---
 
@@ -670,6 +707,12 @@ The handoff must explain internal runtime terms such as `fan-in`, terminal worke
 ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
 the agent runtime. If the user does not need to change code, configuration, or environment, say so explicitly. If the
 next step is a retry, give the exact short request, such as `Retry the planning run.`
+
+When the workflow stops for clarification or a blocker, the next action must
+name the specific decision, artifact, file, command, or owner involved. It
+must explain why that action is needed and what completion looks like. “Provide
+more information,” “investigate further,” and similar generic instructions are
+not sufficient.
 
 The internal owner and the user action are different fields. A blocked run may have an internal owner while requiring no
 technical user action beyond asking the workflow to retry. The handoff must not end with only an internal owner or an

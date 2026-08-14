@@ -60,6 +60,9 @@ smallest reasonable change.
 * Express material recommendations as claims linked to evidence and decisions linked to claims, with confidence and
   uncertainties.
 * Produce an implementation-ready design.
+* Consume all supplied context and supporting artifacts before requesting clarification.
+* Record the strongest supported hypothesis, the smallest falsification check, and a plain-language next action when
+  implementation readiness is not reached.
 
 ---
 
@@ -238,6 +241,17 @@ When an unresolved decision prevents implementation readiness, use bounded curre
 options, their tradeoffs, and a recommendation before asking for clarification. State the smallest decision and owner
 required; do not invent a requirement or treat the question as a blocker unless research or option framing is genuinely
 unavailable.
+
+Before returning a clarification result, the Solution Architect must provide:
+
+* inputs consumed, including supplied artifacts and material user context;
+* confirmed facts with evidence references and confidence;
+* the strongest supported hypothesis, or the reason none is possible;
+* the smallest falsification or validation check;
+* feasible options and a recommendation when a technical choice remains; and
+* a plain-language next action naming the owner, location, and completion condition.
+
+A generic request for more information is not a complete role result.
 
 ---
 

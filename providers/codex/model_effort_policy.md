@@ -45,7 +45,7 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
 | Dependency Analyst | `gpt-5.6-luna` | Medium | `medium` |
 | Repository Integrator | `gpt-5.6-luna` | Medium | `medium` |
-| Solution Architect | `gpt-5.6-luna` | High | `high` |
+| Solution Architect | `gpt-5.6-luna` | Extra High | `xhigh` |
 | Reviewer | `gpt-5.6-luna` | Extra High | `xhigh` |
 | Implementer | `gpt-5.6-luna` | Medium | `medium` |
 | Tester | `gpt-5.6-luna` | Medium | `medium` |

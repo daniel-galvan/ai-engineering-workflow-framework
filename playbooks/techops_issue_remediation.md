@@ -126,17 +126,33 @@ non-goals. Do not create an implementation plan during initialization.
 Read the issue, comments, related resolved work, and supplied artifacts before touching code. Record reported and
 expected behavior, impact, affected users or systems, evidence IDs, facts, assumptions, unknowns, and redaction limits.
 
+Consume every supplied attachment, log, screenshot, payload, and repository
+artifact before requesting clarification. Apply the shared
+[Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate)
+and preserve the exact input path or reference in the evidence record.
+
 ### Stage 2 — Reproduce and Trace the Failure Path
 
 Attempt reproduction when safe and practical. If reproduction is unavailable, record the reason and preserve the
 strongest indirect signals. Trace the entry point, services, queues, APIs, data changes, and observable result until the
 first concrete divergence from expected behavior is identified or explicitly unknown.
 
+Before returning `needs_input` or `blocked`, record the strongest supported
+failure hypothesis, the smallest reproduction or source check, and the exact
+reason the remaining information is necessary. Do not stop with only “more
+investigation is needed.”
+
 ### Stage 3 — Reconcile Ownership and Design the Fix
 
 Confirm the owning repository, module, service, and blast radius. Run Repository Integrator when the profile requires
 it. Compare plausible causes, record supporting and contradictory evidence, and select the smallest fix that addresses
 the supported cause rather than only the symptom.
+
+The fix-design result must include consumed inputs, confirmed facts, ranked
+causes when alternatives are credible, evidence references, confidence,
+falsification checks, remediation options, recommendation, and a
+plain-language next action. The Coordinator rejects a generic clarification
+result that omits these elements.
 
 If a product or operational decision remains, perform bounded discovery, record feasible options and a recommendation,
 then use `awaiting_input` with a Clarification Brief. Do not create an implementation plan until that decision is
@@ -189,7 +205,8 @@ Report:
 5. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
    using the shared contract's ledger fields; plus requested, activated, and executed profile, fan-in, and
    runtime-closure status; and
-6. residual risks, owner, and next action.
+6. residual risks, owner, and next action. The next action must name the owner,
+   location, and completion condition in plain language.
 
 Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
 `What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
