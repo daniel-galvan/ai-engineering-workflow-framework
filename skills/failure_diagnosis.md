@@ -29,14 +29,16 @@ last_updated: 2026-07-28
 * Competing root-cause hypotheses
 * Evidence-based root-cause conclusion
 * Fix boundary and regression-test strategy
-* Smallest falsification check or local feedback loop
+* Executed falsification check or local feedback-loop result
+* Remaining checks that require unavailable external evidence
 
 ## Completion Criteria
 
 The failure is reproduced, verified against direct evidence, or explicitly classified as not reproducible with the
 reason and remaining uncertainty documented. Before requesting clarification, consume the available context and
-artifacts, record the strongest supported hypothesis or explain why none is possible, and identify the smallest
-falsification check. The recommended fix addresses the confirmed cause rather than only the reported symptom.
+artifacts, record the strongest supported hypothesis or explain why none is possible, and execute the smallest safe
+falsification check. A proposed check is not enough. The recommended fix addresses the confirmed cause rather than
+only the reported symptom.
 
 ## Safety
 

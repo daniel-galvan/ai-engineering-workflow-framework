@@ -166,8 +166,9 @@ Before setting `clarification_required`, consume every supplied artifact and
 material user context and apply the shared
 [Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate).
 The context result must state the strongest supported interpretation of the
-feature, the smallest repository check that can reduce uncertainty, and the
-plain-language decision or action that remains.
+feature, the executed check and result in `checks_performed`, any unavailable
+checks in `checks_remaining`, and the plain-language decision or action that
+remains. Do not defer a runnable source or test check to the user.
 
 ### Stage 2 — Analyze Impact and Integration
 
@@ -188,8 +189,9 @@ solutions, recommends one when evidence permits, and identifies the smallest dec
 
 The feature-design result must list the context and artifacts consumed,
 confirmed acceptance facts, assumptions or hypotheses, feasible feature
-options, recommendation, validation probe, and next action. A generic request
-for more product detail is not a sufficient clarification result.
+options, recommendation, `checks_performed`, `checks_remaining`, and the next
+action. A generic request for more product detail is not a sufficient
+clarification result when the repository can answer part of the question.
 
 ### Stage 4 — Review, Plan, and Handoff
 

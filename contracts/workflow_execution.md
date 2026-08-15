@@ -104,6 +104,8 @@ the source of truth.
 | `INV-18` | Material delivery changes MUST pass a strict Code Review covering relevant behavior paths, boundaries, scope, and coverage before validation is accepted. | [Delivery Code Review Loop](#delivery-code-review-loop) |
 | `INV-19` | A portable implementation handoff MUST be created only for a cross-session or cross-environment transfer, or an explicit user request. | [Portable Implementation Handoff](#portable-implementation-handoff) |
 | `INV-20` | Diagnosis and fix-design MUST pass the gate before clarification. | [Gate](#evidence-to-hypothesis-gate) |
+| `INV-21` | Clarification MUST report executed checks. | [Gate](#evidence-to-hypothesis-gate) |
+| `INV-22` | Local reproduction informs the current-code fix. | [Parity](#production-parity-prioritization) |
 
 ---
 
@@ -187,8 +189,12 @@ A diagnosis or fix-design worker MUST pass this gate before returning
 4. Record the strongest current hypothesis, its supporting evidence, confidence,
    and remaining uncertainty. If no defensible hypothesis is possible, explain
    why the available evidence cannot support one.
-5. Record the smallest falsification check or feedback loop that can confirm or
-   reject the hypothesis.
+5. Execute the smallest safe falsification check or feedback loop that can
+   confirm or reject the hypothesis. Record the command, function, fixture,
+   artifact comparison, or other concrete check and its result in
+   `checks_performed`. A proposed check is not a performed check. If any safe
+   local or repository check is available, run it before requesting external
+   evidence.
 6. Record feasible options and a recommendation when a technical or design
    choice remains. Ask the user only for a business, scope, ownership, or
    incompatible-alternatives decision that bounded discovery cannot resolve.
@@ -201,11 +207,12 @@ alternatives when the evidence supports more than one credible explanation.
 The Coordinator MUST reject an incomplete clarification result. A result is
 incomplete when it only asks for more data, says that the root cause is unknown,
 repeats `Unknown` without explaining why, or gives an internal instruction
-without a hypothesis, falsification check, or concrete next action. The
-Coordinator must request continuation from the worker when possible. If the
-worker cannot continue, preserve its partial result and report the runtime or
-access limitation; do not present the incomplete result as a successful
-diagnosis or a useful clarification brief.
+without a hypothesis, an executed check, or a concrete next action. It is also
+incomplete when `checks_remaining` contains a safe local check that the worker
+could have run. The Coordinator must request continuation from the worker when
+possible. If the worker cannot continue, preserve its partial result and
+report the runtime or access limitation; do not present the incomplete result
+as a successful diagnosis or a useful clarification brief.
 
 ---
 
@@ -369,6 +376,8 @@ by the Orchestrator at fan-in.
 | `summary`          | Yes         | The worker's unique contribution in a few sentences.            |
 | `inputs_consumed`  | Yes         | Artifacts or facts actually used.                               |
 | `outputs_produced` | Yes         | Artifacts, decisions, or validation results produced.           |
+| `checks_performed` | Conditional | Checks actually run and results for diagnosis or fix design.    |
+| `checks_remaining` | Conditional | Unavailable or external checks and why they remain.             |
 | `evidence_refs`    | Recommended | Evidence IDs or sources supporting or challenging the result.   |
 | `claim_refs`       | Recommended | Claim IDs produced or materially used by the result.            |
 | `confidence`       | Yes         | `high`, `medium`, `low`, or `unknown`; confidence in the result's material claims. |
@@ -462,10 +471,30 @@ clarification candidates. Before requesting clarification about anything else, t
 planning workers for bounded discovery of the current implementation, contracts, tests, repository history, and related
 work when that evidence can reduce the uncertainty.
 
+For diagnosis and fix design, bounded discovery includes executing the
+smallest safe local or repository check that can reduce the uncertainty. A
+missing production trace or revision mapping does not justify clarification if
+the current checkout and supplied inputs can first be replayed locally.
+
 If a decision still prevents implementation readiness, the Solution Architect must record a Clarification Brief in the
 work record, with alternatives summarized in `Alternatives Considered`: the decision needed, evidence researched, one or
 more feasible options, tradeoffs and validation impact, recommendation, and the smallest question and owner needed to
 proceed.
+
+## Production-Parity Prioritization
+
+When a production symptom is reproduced locally with supplied production input
+and a reachable current code path, treat that result as actionable diagnosis
+for the current code. Exact deployed-revision mapping is a residual release
+risk and rollout-verification step, not a prerequisite for the implementation
+plan or a user-facing request to compare versions first, unless it changes the
+target code, fix scope, or safety decision.
+
+The next action should be to fix the current path, add the regression test,
+run validation, and verify the deployed result. Record production-parity work
+as a rollout or pre-release check. If the local path does not match the
+reported path, or parity evidence would change the target boundary, preserve
+that conflict and request the smallest required decision or evidence.
 
 Use state `awaiting_input` with reason `clarification_required` for this decision gap. Use `blocked` only when an
 unavailable environment, permission, or indispensable evidence prevents bounded discovery or meaningful option framing.

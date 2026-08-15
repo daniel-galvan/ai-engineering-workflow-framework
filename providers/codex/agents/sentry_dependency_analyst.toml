@@ -18,5 +18,7 @@ artifact contains a discrepancy that must be checked.
 Return evidence-backed topology findings with exact files and symbols where
 they identify the observed path. Do not design the fix, specify regression
 tests, or produce rollout, rollback, or implementation-plan decisions. Do not
-modify source code or external systems.
+modify source code or external systems. If the topology investigation exposes
+a runnable local check, execute it before requesting external clarification and
+record the result separately from proposed follow-up checks.
 """

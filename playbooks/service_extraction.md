@@ -157,7 +157,9 @@ Apply the shared
 [Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate)
 before reporting insufficient evidence or asking the user to resolve a
 technical uncertainty. The result must identify the strongest supported
-boundary hypothesis and the smallest repository check that can test it.
+boundary hypothesis, execute the smallest safe repository check, and record
+the result in `checks_performed` before asking for external clarification.
+Record unavailable checks in `checks_remaining`.
 
 ### Stage 2 — Analyze Dependencies and Boundary
 
@@ -173,9 +175,9 @@ features. It compares direct extraction, shared-library-first, strangler, and de
 
 The service-design result must list consumed repositories and artifacts,
 confirmed coupling facts, boundary hypotheses, feasible extraction options,
-recommendation, falsification or validation checks, and the next action in
-plain language. Do not ask the user to resolve a technical dependency that
-the source and destination repositories can clarify.
+recommendation, `checks_performed`, `checks_remaining`, and the next action in
+plain language. Do not ask the user to resolve a technical dependency
+that the source and destination repositories can clarify.
 
 ### Stage 4 — Integrate the Destination
 

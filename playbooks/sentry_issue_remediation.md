@@ -383,9 +383,12 @@ Before requesting clarification, apply the shared
 [Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate).
 The fix-design result must show which Sentry evidence, user context, and
 supporting artifacts it consumed; confirmed facts; the strongest hypothesis;
-the smallest local or repository check that can test it; and a plain-language
-next action. Missing production payloads, release mapping, or older events are
-uncertainties unless they are indispensable to a safe decision.
+the smallest local or repository check it actually executed; the result in
+`checks_performed`; remaining unavailable checks in `checks_remaining`; and a
+plain-language next action. Missing production payloads, release mapping, or
+older events are uncertainties unless they are indispensable to a safe
+decision. Do not ask for production evidence before running an available local
+replay or source-level check.
 
 The stage must conclude with:
 
@@ -418,9 +421,10 @@ prevents a safe implementation scope.
 
 A clarification result is incomplete if it only requests production data or
 repeats an unresolved question without reporting the consumed evidence,
-strongest hypothesis, falsification check, and concrete next action. The
-Coordinator must return that result for continuation when the worker runtime
-supports it, or preserve the incomplete status and limitation.
+strongest hypothesis, `checks_performed`, and concrete next action. Record
+unavailable checks in `checks_remaining`. The Coordinator must return that
+result for continuation when the worker runtime supports it, or preserve the
+incomplete status and limitation.
 
 The remediation boundary is the explicit set of source files, symbols, configuration, dependencies, tests, and
 operational surfaces that the proposed change may touch. The Solution Architect selects it from current evidence; the

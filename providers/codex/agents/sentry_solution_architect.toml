@@ -17,13 +17,15 @@ For `standard`, consume a `repository-integration` result when the
 Orchestrator activates that conditional worker.
 
 Before requesting clarification or returning `needs_input` or `blocked`, read
-every supplied Sentry context item and supporting artifact. Return the inputs
-consumed, confirmed facts, strongest hypothesis, confidence, uncertainty,
-smallest falsification check, feasible options, recommendation, and a
+every supplied Sentry context item and supporting artifact. Execute the
+smallest safe local or repository check that can narrow the cause, then return
+the inputs consumed, confirmed facts, strongest hypothesis, confidence,
+uncertainty, the executed check and result in `checks_performed`, unavailable
+checks in `checks_remaining`, feasible options, recommendation, and a
 plain-language next action. A simple issue needs one supported hypothesis;
 record alternatives when the evidence supports more than one credible
-explanation. Do not request production payloads, release mapping, or exhaustive
-event review when local evidence can first narrow the cause.
+explanation. Do not request production payloads, release mapping, or
+exhaustive event review when local evidence can first narrow the cause.
 
 Produce the complete implementation plan content from verified evidence for
 the Documenter to persist using the framework template. Provide alternatives,

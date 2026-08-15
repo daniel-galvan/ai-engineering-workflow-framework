@@ -66,6 +66,16 @@ request in the work record. Use `awaiting_input` for a product or design
 decision; reserve `blocked` for unavailable Sentry evidence, environment,
 permission, or indispensable repository evidence.
 
+Before accepting a diagnosis or fix-design clarification result, verify that
+the worker consumed supplied context and artifacts, executed the smallest safe
+local or repository check, recorded `checks_performed` and `checks_remaining`,
+and returned a supported hypothesis or an explicit reason none was possible.
+A proposed check is not a performed check. If a safe local check was available
+but was not run, keep the stage in progress and return the worker for
+continuation; do not finalize fan-in or handoff as clarification_required. If
+the worker cannot continue, report the worker or runtime limitation instead of
+asking the user for evidence that the workflow could have generated.
+
 Read `Confirmed user decisions and constraints` before interpreting any
 investigation hint. A confirmed source-of-truth rule is an authoritative
 comparison baseline, not a hypothesis to reopen. If the baseline has more
@@ -82,6 +92,11 @@ only when they are material to the diagnosis. Record these limits as risks or
 validation steps. When a candidate source path and fix are supported, create
 the implementation plan after planning fan-in and state any release mapping
 work as pre-implementation verification.
+
+When supplied production input reproduces the failure in the reachable current
+code path, treat that as actionable diagnosis for the current code. Do not make
+release mapping the next user action; keep it as rollout verification unless it
+changes the target code, fix scope, or safety decision.
 
 In every handoff, translate the next action into plain language: identify the
 owner, the file or system to use, the exact decision or action required, and

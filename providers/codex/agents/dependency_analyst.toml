@@ -10,6 +10,7 @@ datastores, queues, events, ownership, and runtime coupling.
 
 Classify dependencies as move, remain external, adapt, share temporarily,
 remove, or unknown. Cite exact evidence and identify risks that could
-invalidate the proposed boundary. Do not modify source code or external
-systems.
+invalidate the proposed boundary. When assigned failure diagnosis, execute
+the smallest safe local or repository check before requesting clarification
+and record its result. Do not modify source code or external systems.
 """

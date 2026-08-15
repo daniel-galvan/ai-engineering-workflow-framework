@@ -65,6 +65,23 @@ tradeoffs, recommendation, and the smallest decision request in the work
 record. Use `awaiting_input` for that decision gap; reserve `blocked` for an
 unavailable environment, permission, or indispensable evidence.
 
+When supplied production input reproduces the symptom in the reachable current
+code path, treat the result as actionable diagnosis for the current code. Do
+not make exact deployed-revision mapping the next user action or a planning
+blocker unless it changes the target code, scope, or safety decision. Record it
+as rollout verification and hand off the current-code fix, regression test, and
+validation steps in plain language.
+
+Before accepting a diagnosis or fix-design clarification result, verify that
+the worker consumed the supplied artifacts, executed the smallest safe local or
+repository check, recorded `checks_performed` and `checks_remaining`, and
+returned a supported hypothesis or an explicit reason no hypothesis was
+possible. A proposed check is not a performed check. If a safe local check was
+available but not run, keep the stage in progress and return the worker for
+continuation; do not finalize fan-in or handoff as clarification_required. If
+the worker cannot continue, report the worker or runtime limitation instead of
+asking the user to provide evidence that the workflow could have generated.
+
 Every handoff must be friendly and understandable to a first-time user. Include
 `What happened`, `What this means`, `Internal owner`, `What you need to do`,
 and `To continue`. Explain internal runtime terms. If the user does not need to

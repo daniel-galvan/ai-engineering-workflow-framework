@@ -61,8 +61,10 @@ smallest reasonable change.
   uncertainties.
 * Produce an implementation-ready design.
 * Consume all supplied context and supporting artifacts before requesting clarification.
-* Record the strongest supported hypothesis, the smallest falsification check, and a plain-language next action when
-  implementation readiness is not reached.
+* Execute the smallest safe falsification check before requesting clarification, and record the result and any remaining
+  unavailable checks.
+* Record the strongest supported hypothesis and a plain-language next action when implementation readiness is not
+  reached.
 
 ---
 
@@ -247,7 +249,8 @@ Before returning a clarification result, the Solution Architect must provide:
 * inputs consumed, including supplied artifacts and material user context;
 * confirmed facts with evidence references and confidence;
 * the strongest supported hypothesis, or the reason none is possible;
-* the smallest falsification or validation check;
+* checks actually performed and their results;
+* checks that remain unavailable or require external evidence, with reasons;
 * feasible options and a recommendation when a technical choice remains; and
 * a plain-language next action naming the owner, location, and completion condition.
 

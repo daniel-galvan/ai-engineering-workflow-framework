@@ -137,10 +137,18 @@ Attempt reproduction when safe and practical. If reproduction is unavailable, re
 strongest indirect signals. Trace the entry point, services, queues, APIs, data changes, and observable result until the
 first concrete divergence from expected behavior is identified or explicitly unknown.
 
-Before returning `needs_input` or `blocked`, record the strongest supported
-failure hypothesis, the smallest reproduction or source check, and the exact
-reason the remaining information is necessary. Do not stop with only “more
-investigation is needed.”
+Before returning `needs_input` or `blocked`, execute the smallest safe
+reproduction or source check and record its command, symbol, inputs, and result
+in `checks_performed`. For an original rule, text, and reachable Python path,
+run the repository-native activity or test before requesting a production
+trace. Record only genuinely unavailable or external checks in
+`checks_remaining`; do not stop with only “more investigation is needed.”
+
+When supplied production input reproduces the symptom in the reachable current
+code path, treat it as the actionable diagnosis for the code being fixed. Do
+not make deployed-revision mapping the next user action or a planning blocker;
+record it as rollout verification unless it changes the target code, scope, or
+safety decision.
 
 ### Stage 3 — Reconcile Ownership and Design the Fix
 
@@ -150,9 +158,9 @@ the supported cause rather than only the symptom.
 
 The fix-design result must include consumed inputs, confirmed facts, ranked
 causes when alternatives are credible, evidence references, confidence,
-falsification checks, remediation options, recommendation, and a
-plain-language next action. The Coordinator rejects a generic clarification
-result that omits these elements.
+`checks_performed`, `checks_remaining`, remediation options, recommendation,
+and a plain-language next action. The Coordinator rejects a clarification
+result that omits an available local check or reports only a proposed check.
 
 If a product or operational decision remains, perform bounded discovery, record feasible options and a recommendation,
 then use `awaiting_input` with a Clarification Brief. Do not create an implementation plan until that decision is
