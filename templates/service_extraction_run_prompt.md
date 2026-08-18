@@ -3,7 +3,7 @@ title: Service Extraction and Stabilization Run Prompt
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-07-31
+last_updated: 2026-08-17
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/service_extraction.md
@@ -25,6 +25,8 @@ First-use summary:
   canonical fields.
 - Put direct user decisions and non-negotiable constraints in the confirmed-input section; workers must not reopen them
   as clarification questions.
+- `standard + planning` is the default. Select `deep + planning` only when the scenario needs independent planning
+  review for a disputed seam, material cutover, coexistence, rollback, or validation risk.
 
 ```text
 Run the Service Extraction and Stabilization playbook.
@@ -33,8 +35,9 @@ Work item: <JIRA-STORY-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/service_extraction.md
 Canonical run template: templates/service_extraction_run_prompt.md
 
-Execution profile: deep
+Execution profile: standard
 Lifecycle: planning
+The selected execution profile is mandatory; do not silently downgrade it.
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
@@ -72,6 +75,9 @@ Run invariants:
 Repositories and working directories:
 - Source: <ABSOLUTE-PATH-OR-UNKNOWN>
 - Destination: <ABSOLUTE-PATH-OR-UNKNOWN>
+
+Use `Unknown` only when unavailable. A missing source or destination prevents
+implementation readiness, but does not prevent bounded planning discovery.
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>

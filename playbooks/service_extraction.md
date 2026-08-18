@@ -4,7 +4,7 @@ version: 0.1
 status: Pilot
 maturity: not_exercised
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-17
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -54,13 +54,15 @@ to resolve an unknown.
 
 ## Default Execution
 
-The default is `deep + planning`. Service extraction normally has cross-repository, ownership, deployment, or
-operational uncertainty.
+The default is `standard + planning`. It establishes the complete source,
+dependency, destination, and design baseline. Select `deep + planning` when
+the extraction needs an independent challenge of the seam, coexistence,
+cutover, rollback, or validation plan.
 
 | Execution profile | Use when | Planning behavior |
 | --- | --- | --- |
-| `standard` | Bounded extraction with known source, destination, ownership, and runtime | Runs source, dependency, design, destination-integration, and continuous documentation workers. |
-| `deep` | New service repository, unclear coupling or ownership, data/event contracts, new deployment, cutover, or disputed boundary | Runs the standard graph plus an independent planning review before the plan is accepted. |
+| `standard` | Default | Full source, dependency, destination, design, and documentation baseline. |
+| `deep` | Disputed seam or material operational risk | Standard graph plus independent planning review. |
 
 | Lifecycle | Behavior |
 | --- | --- |
@@ -96,9 +98,9 @@ settings; they do not override it.
 | `initialize` | `orchestrator` | `work_item_context`, `workflow_planning`, `work_record_maintenance` | `work_item_read`, `work_record_read`, `work_record_write` | First |
 | `source-understanding` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `artifact_write` | After `initialize` |
 | `dependency-analysis` | `dependency_analyst` | `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write` | After `source-understanding` |
-| `service-design` | `solution_architect` | `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `dependency-analysis` |
-| `destination-integration` | `repository_integrator` | `destination_integration`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `artifact_write` | After `service-design` |
-| `planning-review` | `reviewer` | `architecture_mapping`, `operational_readiness` | `repository_read`, `diff_review`, `artifact_write` | Deep only; after `destination-integration` |
+| `destination-integration` | `repository_integrator` | `destination_integration`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `build_run`, `test_run`, `artifact_write` | After `dependency-analysis` |
+| `service-design` | `solution_architect` | `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `dependency-analysis` and `destination-integration` |
+| `planning-review` | `reviewer` | `architecture_mapping`, `operational_readiness` | `repository_read`, `diff_review`, `artifact_write` | Deep only; after `service-design` |
 | `implement` | `implementer` | `code_migration`, `build_and_test` | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write` | Remediation only; approval plus completed planning fan-in |
 | `review` | `reviewer` | `architecture_mapping`, `build_and_test`, `operational_readiness` | `repository_read`, `diff_review`, `test_run`, `artifact_write` | After `implement` |
 | `validate` | `tester` | `build_and_test`, `operational_readiness` | `build_run`, `test_run`, `runtime_observe`, `artifact_write` | After `review` |
@@ -106,8 +108,9 @@ settings; they do not override it.
 
 Required worker sets:
 
-- `standard + planning`: `initialize`, `source-understanding`, `dependency-analysis`, `service-design`,
-  `destination-integration`, and continuous `handoff`.
+- `standard + planning`: `initialize`, `source-understanding`,
+  `dependency-analysis`, `destination-integration`, `service-design`, and
+  continuous `handoff`.
 - `deep + planning`: all standard planning workers plus `planning-review`.
 - `standard + remediation`: reuse completed standard planning artifacts, then activate `implement`, `review`,
   `validate`, and `handoff` after approval.
@@ -167,23 +170,33 @@ Record unavailable checks in `checks_remaining`.
 ownership, authentication, configuration, secrets, deployment, and rollback coupling. Classify every material dependency
 as move, remain external, adapt, share temporarily, remove, or unknown.
 
-### Stage 3 — Design the Service
+### Stage 3 — Integrate the Destination
 
-`service-design` defines the smallest safe destination seam: responsibilities, interfaces, data and event ownership,
-failure and retry behavior, compatibility, versioning, migration slices, coexistence, rollback, and explicitly deferred
-features. It compares direct extraction, shared-library-first, strangler, and deferral when relevant.
+`destination-integration` runs after dependency analysis and before final
+service design. It verifies destination conventions for location, build,
+dependencies, tests, runtime, deployment, configuration, secrets,
+observability, CI/CD, ownership, alerts, dashboards, and runbooks.
+
+Before final design, run the existing destination build or focused test baseline
+when safe. Record the command and result in `checks_performed`. If no runnable
+baseline exists, record that fact and the planned establishment step in
+`checks_remaining`; do not report the destination as validated.
+
+### Stage 4 — Design the Service
+
+`service-design` consumes source, dependency, and destination-integration
+results. It defines the smallest safe destination seam: responsibilities,
+interfaces, data and event ownership, failure and retry behavior,
+compatibility, versioning, migration slices, coexistence, rollback, and
+explicitly deferred features. It compares direct extraction,
+shared-library-first, strangler, and deferral when relevant.
 
 The service-design result must list consumed repositories and artifacts,
-confirmed coupling facts, boundary hypotheses, feasible extraction options,
-recommendation, `checks_performed`, `checks_remaining`, and the next action in
-plain language. Do not ask the user to resolve a technical dependency
-that the source and destination repositories can clarify.
-
-### Stage 4 — Integrate the Destination
-
-`destination-integration` verifies destination conventions for location, build, dependencies, tests, runtime,
-deployment, configuration, secrets, observability, CI/CD, ownership, alerts, dashboards, and runbooks. It produces the
-first independently verifiable destination milestone.
+confirmed coupling facts, destination baseline result, seam hypotheses,
+feasible extraction options, recommendation, `checks_performed`,
+`checks_remaining`, and the next action in plain language. Do not ask the user
+to resolve a technical dependency that the source and destination repositories
+can clarify.
 
 For `deep`, `planning-review` independently challenges the seam, scope, coupling assumptions, coexistence, rollback, and
 validation plan.
@@ -200,7 +213,7 @@ No plan is created and no readiness claim is made when planning workers are bloc
 Enter only after explicit approval and the remediation re-entry requirements pass. `implement` executes the approved
 plan in small vertical slices:
 
-1. establish the destination build and test baseline;
+1. establish any destination baseline absent during planning;
 2. move the smallest independently testable capability;
 3. adapt imports, registration, adapters, routing, configuration, and dependencies;
 4. add or preserve focused tests and required integrations;
@@ -239,7 +252,7 @@ for stabilization.
 | Source ready | Current behavior, entry points, runtime assumptions, and unknowns are recorded. |
 | Boundary ready | Coupling, ownership, material dependencies, and risks are evidenced or explicitly blocked. |
 | Design ready | The destination seam, alternatives, compatibility, coexistence, rollback, and validation strategy are clear. |
-| Integration ready | Destination placement, build/runtime path, operational requirements, and adaptations are known. |
+| Integration ready | Destination location, baseline status, runtime, operations, and adaptations are known. |
 | Implementation ready | Required planning fan-in passed and `implementation_plan.md` exists. |
 | Approval ready | Explicit implementation approval and remediation re-entry are recorded. |
 | Validation ready | Review findings are resolved or accepted and validation results are preserved. |

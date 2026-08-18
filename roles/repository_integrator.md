@@ -6,7 +6,7 @@ status: Pilot
 category: Integration
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-08-17
 required_documents:
 
   - ../frameworks/investigation.md
@@ -59,6 +59,8 @@ preserving architectural consistency.
 
 * Understand the destination architecture.
 * Validate architectural alignment.
+* Run the smallest safe existing destination build or test baseline before
+  final design.
 * Define integration points.
 * Adapt interfaces where necessary.
 * Identify repository conventions.
@@ -72,14 +74,15 @@ preserving architectural consistency.
 
 Required
 
-* Target Architecture
-* Design Decisions
-* Interface Definitions
-* Implementation Strategy
+* Destination repository or workspace
+* Current-state summary and declared outcome
 
 Optional
 
-* Destination repository
+* Target architecture
+* Design decisions
+* Interface definitions
+* Implementation strategy
 * Coding standards
 * Architecture documentation
 * Deployment documentation
@@ -91,6 +94,7 @@ Optional
 # Produces
 
 * Integration Plan
+* Destination Discovery and Build/Test Baseline
 * Repository Alignment Report
 * Integration Points
 * Required Adaptations

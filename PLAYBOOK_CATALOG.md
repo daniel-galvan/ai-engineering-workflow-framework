@@ -3,7 +3,7 @@ title: Playbook Architecture Catalog
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-17
 ---
 
 # Playbook Architecture Catalog
@@ -138,8 +138,8 @@ service. **State:** Not exercised; real Jira planning and remediation validation
 flowchart TB
     A["Initialize"] --> B["Source understanding"]
     B --> C["Dependency and seam analysis"]
-    C --> D["Service design"]
-    D --> E["Destination integration"]
+    C --> D["Destination integration and baseline"]
+    D --> E["Service design"]
     E --> F["Planning review: deep only"]
     E --> G["Plan and handoff"]
     F --> G["Plan and handoff"]
@@ -148,7 +148,8 @@ flowchart TB
 ```
 
 Its distinguishing concern is the source-to-destination seam: contracts, dependencies, operations, coexistence or
-cutover, rollback, and ownership. It is not the default for a normal feature or improvement.
+cutover, rollback, and ownership. `standard` includes destination integration; `deep` adds independent planning review.
+It is not the default for a normal feature or improvement.
 
 ## Selection Guide
 

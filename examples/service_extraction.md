@@ -3,7 +3,7 @@ title: Service Extraction and Stabilization Example
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-17
 depends_on:
   - ../frameworks/investigation.md
   - ../playbooks/service_extraction.md
@@ -44,7 +44,7 @@ Use the [`Service Extraction and Stabilization`](../playbooks/service_extraction
 ```text
 Playbook: playbooks/service_extraction.md
 Canonical run template: templates/service_extraction_run_prompt.md
-Execution profile: deep
+Execution profile: standard
 Lifecycle: planning
 ```
 
@@ -54,15 +54,15 @@ Remediation begins only after explicit approval and re-entry. The planning flow 
 Initialize
   → Understand source
     → Analyze dependencies and boundary
-      → Design service
-        → Integrate destination
+      → Integrate destination
+        → Design service
           → Extract and adapt
             → Code Review and validate
               → Stabilize and hand off
 ```
 
-Use Standard only for bounded extractions with known ownership and limited dependencies. Use Deep by default for new
-repositories, cross-repository dependencies, deployment changes, data or event contracts, or production cutovers.
+Use Standard by default. Select Deep when the seam is disputed or coexistence, cutover, rollback, ownership, or
+validation risk needs independent planning review.
 
 ## Work Record
 

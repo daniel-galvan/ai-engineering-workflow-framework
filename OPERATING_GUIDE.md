@@ -4,7 +4,7 @@ title: AI-assisted Software Engineering Workflow Framework Operating Guide
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-17
 ---
 
 # AI-assisted Software Engineering Workflow Framework Operating Guide
@@ -170,14 +170,14 @@ remains unvalidated. Sentry is an integration source; its MCP operations do not 
 
 ## Service Extraction workflow
 
-The default is `deep + planning`:
+The default is `standard + planning`:
 
 ```text
 Initialize
   → Understand source
-        → Analyze dependencies and boundary
-      → Design service
-        → Integrate destination
+    → Analyze dependencies and seam
+      → Integrate destination and verify baseline
+        → Design service
           → Planning review (Deep only)
             → Ready for implementation
 ```
@@ -185,6 +185,10 @@ Initialize
 The Documenter runs continuously. Explicit approval and `lifecycle: remediation` are required before extraction, review,
 validation, stabilization, or cutover. Use the canonical
 [`service_extraction_run_prompt.md`](templates/service_extraction_run_prompt.md) to start or resume a run.
+
+Select `deep + planning` only when an independent challenge is needed for a
+disputed seam, material coexistence or cutover risk, unclear ownership, or a
+high-impact validation concern.
 
 For migrated code, the preferred change order is:
 
