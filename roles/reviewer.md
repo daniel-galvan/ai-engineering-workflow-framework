@@ -6,7 +6,7 @@ status: Pilot
 category: Review
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-19
 required_documents:
 
   - ../frameworks/investigation.md
@@ -218,6 +218,17 @@ Also record one workflow disposition: `accepted`, `changes_required`, `replannin
 changes-required findings return to the Implementer and are re-reviewed before validation; they are not a final handoff
 or a new approval gate.
 
+Code Review is valid only after the delegated Implementer returns a terminal
+result for the current diff. A Coordinator summary, a planning review, or an
+unexecuted review cannot be recorded as accepted delivery review.
+
+Before reviewing behavior, compare the diff with the approved plan and the
+Implementer's plan-conformance manifest. Reject unmapped files, new tables,
+models, fixtures, runtime abstractions, or dependencies that are not explicitly
+mapped to the approved plan. For service extraction, reject private replacement
+persistence, hard-coded runtime fixtures, parallel replacement implementations,
+and unresolved prohibited source dependencies.
+
 For planning review, challenge proposed seams against authoritative outcomes and
 evidence. Keep feasible migration, dependency, test, environment, and
 operational work in the plan or risk record. Do not promote a worker hypothesis
@@ -242,6 +253,7 @@ The Reviewer is complete when:
 * Approval status is clearly stated.
 * Follow-up work is identified.
 * The Tester has sufficient guidance for validation.
+* The current diff and all required review dimensions are recorded.
 
 ---
 

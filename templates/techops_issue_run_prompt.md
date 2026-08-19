@@ -3,7 +3,7 @@ title: TechOps Issue Remediation Run Prompt
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-19
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/techops_issue_remediation.md
@@ -69,6 +69,12 @@ Run invariants:
   and reports blocked delegation without claiming profile success.
 - Planning is read-only. Remediation reuses planning artifacts, activates the
   delivery graph before edits, and executes the approved plan end-to-end.
+- The current session is Coordinator-only and must not edit source or substitute
+  for the Implementer, Reviewer, or Tester. Before edits, record the Delivery
+  Activation Barrier; if it cannot pass, stop without changing source.
+- Do not report remediation complete until the Implementer, Reviewer, Tester,
+  and Documenter return the required terminal results and fan-in and runtime
+  closure are recorded.
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>

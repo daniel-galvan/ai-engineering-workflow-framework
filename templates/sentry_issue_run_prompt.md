@@ -3,7 +3,7 @@ title: Sentry Issue Remediation Run Prompt
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-07-30
+last_updated: 2026-08-19
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -81,6 +81,12 @@ Run invariants:
   envelopes. If delegation is unavailable, stop without claiming profile success.
 - Planning is read-only. Remediation reuses planning artifacts, activates the
   delivery graph before edits, and executes the approved plan end-to-end.
+- The current session is Coordinator-only and must not edit source or substitute
+  for the Implementer, Reviewer, or Tester. Before edits, record the Delivery
+  Activation Barrier; if it cannot pass, stop without changing source.
+- Do not report remediation complete until the Implementer, Reviewer, Tester,
+  and Documenter return the required terminal results and fan-in and runtime
+  closure are recorded.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):

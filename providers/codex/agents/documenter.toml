@@ -30,4 +30,9 @@ use a code repository as the artifact root. When a decision remains after
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.
+
+For remediation, do not record a completed handoff until the Delivery
+Activation Barrier shows terminal Implementer, accepted Reviewer, terminal
+Tester, passed fan-in, and recorded runtime closure. A source-change summary
+without those results is an in-progress remediation record.
 """

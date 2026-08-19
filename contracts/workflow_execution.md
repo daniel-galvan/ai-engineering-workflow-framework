@@ -4,7 +4,7 @@ version: 0.1
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-19
 ---
 
 # Workflow Execution Contract
@@ -107,6 +107,8 @@ the source of truth.
 | `INV-21` | Clarification MUST report executed checks. | [Gate](#evidence-to-hypothesis-gate) |
 | `INV-22` | Local reproduction informs the current-code fix. | [Parity](#production-parity-prioritization) |
 | `INV-23` | Planning MUST distinguish implementation-plan work from a true planning blocker. | [Planning Readiness and Implementation Work](#planning-readiness-and-implementation-work) |
+| `INV-24` | Barrier before edits. | [Barrier](#delivery-activation-and-completion-barrier) |
+| `INV-25` | Delivery gates and closure required. | [Barrier](#delivery-activation-and-completion-barrier) |
 
 ---
 
@@ -572,6 +574,46 @@ required `implement → review → validate → handoff` path in the work record
 Implementer, Reviewer, or Tester. If the required remediation graph cannot be activated, do not edit source; stop with
 `profile_status: blocked` and reason `remediation_not_activated`.
 
+## Delivery Activation and Completion Barrier
+
+Implementation approval is necessary but not sufficient to start remediation. Before any source, configuration,
+dependency, or infrastructure change, the current remediation run MUST record a Delivery Activation Barrier containing:
+
+1. the remediation re-entry event, unchanged execution profile, `lifecycle: remediation`, approved plan, and approval
+   type, owner, scope, and reference;
+2. the required delivery graph for the selected playbook: `implement`, `review`, `validate`, and `handoff`, with each
+   worker's actual ID, role, dependency, activation state, and result state;
+3. an active delegated `implement` worker authorized to edit the approved scope; and
+4. the current Coordinator's explicit non-authority to edit source or substitute for the Implementer, Reviewer, or
+   Tester.
+
+The graph may execute sequentially. A downstream worker may be recorded as `awaiting_dependency`, but it must not be
+omitted from the current run's activation ledger. If the required graph or active Implementer cannot be created, stop
+before source changes with `profile_status: blocked` and reason `remediation_not_activated`.
+
+The Coordinator may inspect files to coordinate work and maintain durable artifacts, but it MUST NOT implement, review,
+or validate source changes. A source change made before the barrier is a workflow violation and invalidates any claim
+that the remediation run executed the selected playbook.
+
+The remediation run remains `in_progress` until the Implementer returns a terminal result. It cannot enter `handoff` or
+`completed` until the Reviewer returns `accepted`, the Tester returns terminal
+validation results, the Documenter records the final handoff, required fan-in
+passes, and runtime closure is recorded. A partial implementation is not
+completion.
+
+## Implementation Plan Conformance Check
+
+Before the first source change, the delegated Implementer MUST record a plan-conformance manifest in the work record.
+For every proposed changed file, the manifest MUST identify the approved plan step, the existing implementation or
+reuse target, the intended change, and the validation that will prove it. Every new table, model, fixture, runtime
+abstraction, or dependency MUST be mapped to an explicit plan step. A change that is not mapped, contradicts an
+explicit plan boundary, or replaces the approved design to avoid repairing the named implementation MUST stop before
+editing with `replanning_required`.
+
+The Reviewer MUST compare the current diff with this manifest and the approved plan before reviewing behavior. A
+missing manifest, unmapped change, forbidden replacement, hard-coded runtime fixture, or unresolved dependency that the
+plan requires to be removed is `changes_required` or `replanning_required`, not an accepted implementation.
+
 ## Approved Remediation Continuity
 
 One explicit remediation approval authorizes every in-scope step in the approved implementation plan: implementation,
@@ -583,6 +625,20 @@ Pause for a new user decision only when new evidence invalidates the approved sc
 that scope, an unapproved external or irreversible action is required, or a genuine environment, permission, or
 validation blocker prevents progress. Ordinary remaining plan steps, worker handoffs, and focused per-slice checks are
 not approval gates.
+
+## Continuous Worker Progress
+
+While a remediation delivery graph is active, an `in_progress`, `running`, or `awaiting_dependency` status is an
+intermediate status, not a handoff and not a request for user action. The Coordinator MUST continue polling active
+workers. After an Implementer returns a terminal result, the Coordinator MUST immediately advance the same run to
+Reviewer; after the Reviewer returns `accepted`, it MUST advance to Tester; after Tester validation, it MUST advance to
+Documenter, fan-in, and runtime closure. It MUST NOT end the run with a final-looking status that requires the user to
+say “continue” or “what next?” for an ordinary worker transition.
+
+If the provider yields control while a worker remains active, record `in_progress`, identify the active worker and the
+next automatic transition in plain language, and state `No action is required from the user.` Resume polling or
+continuation when the runtime permits. A user follow-up may resume an interrupted run, but it MUST NOT be required for
+normal dependency advancement.
 
 ## Delivery Code Review Loop
 

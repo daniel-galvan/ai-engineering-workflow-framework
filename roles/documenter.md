@@ -6,7 +6,7 @@ status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-19
 required_documents:
 
   - ../frameworks/investigation.md
@@ -254,6 +254,7 @@ The Documenter is complete when:
 * Worker result fan-in and runtime closure are both recorded.
 * Handoff information is complete.
 * Another engineer can continue without reconstructing context.
+* A remediation handoff records terminal Implementer, accepted Reviewer, terminal Tester, fan-in, and runtime closure.
 
 ---
 

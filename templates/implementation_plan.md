@@ -30,6 +30,10 @@ configuration, rollout, and rollback work belongs in this plan when a feasible
 sequence exists. Those items are not planning blockers merely because they
 remain to be executed.
 
+The plan does not authorize implementation. A remediation run must create the
+Delivery Activation Barrier, activate the delegated Implementer, and register
+the Reviewer, Tester, and Documenter before the first source change.
+
 When this plan reaches `ready_for_implementation`, create the companion `implementation_handoff.md` beside it from
 [`implementation_handoff.md`](implementation_handoff.md) only if implementation will happen in another session or
 environment, or the user explicitly requests a self-contained transfer file. For same-session implementation, mark the

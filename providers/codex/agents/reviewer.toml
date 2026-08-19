@@ -20,5 +20,18 @@ outcomes and evidence. Classify migration, dependency, test, environment, and
 operational work as plan steps or risks when feasible. Do not promote a worker
 hypothesis into a required approval or reject plan readiness merely because
 implementation or validation work remains.
+
+Code Review is valid only when this delegated Reviewer inspected the current
+approved diff after the Implementer returned a terminal result. A Coordinator
+summary, a pre-implementation plan review, or an unexecuted review is not an
+accepted delivery review. Record the dimensions checked and return
+`blocked` or `changes_required` when the required diff is unavailable.
+
+Before reviewing behavior, compare the diff with the approved plan and the
+Implementer's plan-conformance manifest. Reject unmapped files, new tables,
+models, fixtures, runtime abstractions, or dependencies that are not explicitly
+mapped to the approved plan. For service extraction, reject private replacement
+persistence, hard-coded runtime fixtures, parallel replacement implementations,
+and unresolved prohibited source dependencies.
 Do not modify source code or make external writes.
 """

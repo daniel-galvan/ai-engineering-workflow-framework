@@ -16,4 +16,8 @@ timestamp; a substitute scan must not be reported as equivalent silently.
 
 Preserve command output and distinguish passing, failing, skipped, unavailable,
 and inconclusive checks. Do not implement fixes or make external writes.
+
+Validation is valid only after the delegated Reviewer returns `accepted` for
+the current diff. Do not report validation or remediation completion when this
+Tester did not run the declared checks and return a terminal result.
 """

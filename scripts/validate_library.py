@@ -177,6 +177,42 @@ for agent_name in ("orchestrator", "sentry_orchestrator"):
     ):
         if phrase not in instructions:
             fail(f"{agent_name}.toml is missing safe wait/recovery rule: {phrase}")
+    for phrase in (
+        "An implementation approval received during a planning conversation",
+        "Coordinator-only",
+        "Never report remediation complete after",
+        "An `in_progress`, `running`, or `awaiting_dependency` status is intermediate",
+        "No action is required from the user.",
+    ):
+        if phrase not in instructions:
+            fail(f"{agent_name}.toml is missing remediation barrier rule: {phrase}")
+
+for agent_name, phrases in {
+    "implementer": (
+        "delegated current-run Implementer",
+        "Delivery Activation Barrier",
+        "workflow violation",
+        "plan-conformance manifest",
+        "replanning_required",
+    ),
+    "reviewer": (
+        "delegated Reviewer inspected the current",
+        "accepted delivery review",
+        "plan-conformance manifest",
+    ),
+    "tester": (
+        "delegated Reviewer returns `accepted`",
+        "terminal result",
+    ),
+    "documenter": (
+        "completed handoff",
+        "Activation Barrier shows terminal",
+    ),
+}.items():
+    instructions = agent_configs[agent_name].get("developer_instructions", "")
+    for phrase in phrases:
+        if phrase not in instructions:
+            fail(f"{agent_name}.toml is missing remediation barrier rule: {phrase}")
 
 for path in (ROOT / "playbooks").glob("*.md"):
     text = path.read_text()
@@ -192,6 +228,13 @@ for path in TEMPLATES:
         fail(f"{path.relative_to(ROOT)} is missing the authoritative-input section")
     if "Additional supplied context (preserve and classify):" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the additional-context section")
+    for phrase in (
+        "The current session is Coordinator-only",
+        "Activation Barrier",
+        "Do not report remediation complete until",
+    ):
+        if phrase not in text:
+            fail(f"{path.relative_to(ROOT)} is missing remediation safety rule: {phrase}")
 
 for path in (ROOT / "playbooks").glob("*.md"):
     text = path.read_text()
@@ -243,6 +286,9 @@ for phrase in (
     "unavailable baseline is not a planning blocker",
     "do not prevent `ready_for_implementation`.",
     "`boundary_not_safe` and `destination_not_ready` are reserved for true planning",
+    "shared Delivery Activation Barrier",
+    "delegated `implement` worker",
+    "The remediation run cannot be reported complete",
 ):
     if phrase not in service_extraction_playbook:
         fail(f"playbooks/service_extraction.md is missing planning-readiness rule: {phrase}")
@@ -272,7 +318,7 @@ for phrase in (
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 24):
+for invariant_id in range(1, 26):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
@@ -294,6 +340,16 @@ for phrase in (
     "## Planning Readiness and Implementation Work",
     "Implementation-plan work includes",
     "A true planning blocker exists only",
+    "## Delivery Activation and Completion Barrier",
+    "active delegated `implement` worker",
+    "A source change made before the barrier",
+    "The remediation run remains `in_progress`",
+    "## Implementation Plan Conformance Check",
+    "plan-conformance manifest",
+    "unmapped change",
+    "## Continuous Worker Progress",
+    "ordinary worker transition",
+    "runtime closure is recorded",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing planning-readiness rule: {phrase}")
@@ -334,10 +390,31 @@ if "# Path Verification" not in work_record_template:
     fail("templates/work_record.md is missing path verification")
 if "# Input Register" not in work_record_template:
     fail("templates/work_record.md is missing input provenance")
+if "# Delivery Activation Gate" not in work_record_template:
+    fail("templates/work_record.md is missing the delivery activation gate")
+if "# Implementation Conformance Check" not in work_record_template:
+    fail("templates/work_record.md is missing implementation conformance")
 if "| Internal owner |" not in work_record_template:
     fail("templates/work_record.md is missing internal-owner handoff guidance")
 if "| User action |" not in work_record_template:
     fail("templates/work_record.md is missing user-action handoff guidance")
+
+role_requirements = {
+    "orchestrator.md": ("Delivery Activation Barrier", "does not implement", "An active worker status is not a handoff"),
+    "implementer.md": ("delegated worker", "workflow violation"),
+    "reviewer.md": ("delegated Implementer returns a terminal", "accepted delivery review"),
+    "tester.md": ("delegated Reviewer accepts the current diff", "terminal result"),
+    "documenter.md": ("remediation handoff records terminal Implementer", "runtime closure"),
+}
+for filename, phrases in role_requirements.items():
+    role_text = (ROOT / "roles" / filename).read_text()
+    for phrase in phrases:
+        if phrase not in role_text:
+            fail(f"roles/{filename} is missing remediation barrier rule: {phrase}")
+
+implementation_plan_template = (ROOT / "templates" / "implementation_plan.md").read_text()
+if "The plan does not authorize implementation" not in implementation_plan_template:
+    fail("templates/implementation_plan.md is missing the delivery activation rule")
 if not WORKFLOW_EVALUATION.exists():
     fail("frameworks/workflow_evaluation.md is missing")
 workflow_evaluation = WORKFLOW_EVALUATION.read_text()

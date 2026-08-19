@@ -6,7 +6,7 @@ status: Pilot
 category: Implementation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-07-31
+last_updated: 2026-08-19
 required_documents:
 
   - ../frameworks/investigation.md
@@ -134,6 +134,20 @@ Optional
 Before source changes, verify the approved plan, target revision, scope, approval, and current-run remediation gate.
 Propose a plan revision when new evidence invalidates the approved plan; do not silently redesign it.
 
+The Implementer must be a delegated worker in the current remediation run and
+must be recorded in the Delivery Activation Barrier. If the Coordinator or
+another unregistered worker changed source before that barrier passed, report a
+workflow violation and do not present the changes as successful playbook
+execution.
+
+Before the first edit, record a plan-conformance manifest in the work record.
+For every proposed file, identify the approved plan step, existing implementation
+or reuse target, intended change, and validation. Map every new table, model,
+fixture, runtime abstraction, or dependency to an explicit plan step. If a
+change is unmapped, contradicts an explicit boundary, or replaces the approved
+design instead of repairing the named implementation, stop before editing with
+`replanning_required`.
+
 ---
 
 ## Implement Incrementally
@@ -224,6 +238,7 @@ The Implementer is complete when:
 * Documentation is updated.
 * The work is ready for review.
 * Outstanding risks are documented.
+* The current-run Delivery Activation Barrier and implementation result are recorded.
 
 ---
 

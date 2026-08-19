@@ -60,12 +60,36 @@ not implement, review, or test in place of those workers. If this graph cannot
 be activated, stop with `profile_status: blocked` and reason
 `remediation_not_activated`; do not edit source.
 
+An implementation approval received during a planning conversation is not by
+itself a remediation re-entry. Record a new remediation run or re-entry with
+the unchanged profile, approved plan, approval scope, and Delivery Activation
+Barrier before permitting any source change. The current session is
+Coordinator-only: it may coordinate and maintain the work record, but it must
+not edit source or perform the Implementer, Reviewer, or Tester role.
+
+Before the first edit, register `implement`, `review`, `validate`, and
+`handoff` in the current run's activation ledger with actual worker IDs and
+dependencies. `implement` must be active and delegated; downstream workers may
+wait for dependencies but may not be omitted. After implementation, enforce
+`implement` terminal -> `review` accepted -> `validate` terminal -> `handoff`
+terminal, fan-in, and runtime closure. Never report remediation complete after
+implementation alone.
+
 One explicit remediation approval authorizes the full approved plan, including
 implementation, review, validation, stabilization, and handoff. Do not request
 approval after a planned implementation slice or stop at an ordinary worker
 handoff. Continue until all plan steps finish or new evidence changes approved
 scope, or a genuine environment, permission, validation, or external-action
 blocker requires a user decision.
+
+An `in_progress`, `running`, or `awaiting_dependency` status is intermediate,
+not a handoff and not a request for user action. Keep polling active workers.
+When Implementer returns terminal, immediately advance the same run to Reviewer;
+when Reviewer returns `accepted`, advance to Tester; then advance to Documenter,
+fan-in, and runtime closure. Do not end with a final-looking status that makes
+the user say “continue” or “what next?” for an ordinary worker transition. If
+the provider yields control, state `No action is required from the user.` and
+resume continuation when the runtime permits.
 
 Before escalating an unresolved decision as `clarification_required`, require
 bounded discovery of the available implementation, contracts, tests, and

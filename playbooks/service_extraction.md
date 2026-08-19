@@ -4,7 +4,7 @@ version: 0.1
 status: Pilot
 maturity: exercising
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-19
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -237,8 +237,13 @@ validation limitations.
 
 ### Stage 6 — Re-enter Remediation and Extract
 
-Enter only after explicit approval and the remediation re-entry requirements pass. `implement` executes the approved
-plan in small vertical slices:
+Enter only after explicit approval and the remediation re-entry requirements pass. Before the first edit, the work
+record MUST show the shared Delivery Activation Barrier: the current remediation re-entry, approved plan, active
+delegated `implement` worker, and the registered `review`, `validate`, and `handoff` workers with their dependencies.
+The Coordinator MUST NOT edit source or perform any of those delivery roles. If the barrier cannot pass, stop with
+`remediation_not_activated` and make no source changes.
+
+The active `implement` worker executes the approved plan in small vertical slices:
 
 1. establish any destination baseline absent during planning;
 2. move the smallest independently testable capability;
@@ -247,12 +252,24 @@ plan in small vertical slices:
 5. keep source and destination behavior comparable while coexistence is required; and
 6. remove temporary extraction code only after the replacement path is validated.
 
+Before the first edit, the Implementer records a plan-conformance manifest in
+the work record. Each proposed file must map to an approved plan step, an
+existing implementation or reuse target, an intended change, and validation.
+For the ACTIVITY slice, the manifest must explicitly confirm that the migrated
+`workflows.legacy` closure remains the target; no private replacement
+persistence tables, hard-coded runtime fixtures, or parallel replacement
+implementation are being added; and prohibited `fanmgmt` or `distlock`
+runtime dependencies are being removed rather than bypassed. An unmapped or
+contradictory change stops implementation with `replanning_required` before
+source edits.
+
 Preserve migrated business behavior. New features require explicit scope and approval.
 
 ### Stage 7 — Code Review and Validate
 
-`review` verifies the approved seam, scope, compatibility, destination conventions, coexistence, rollback, and coverage.
-`validate` records the lowest validation level that proves the claim, escalating as needed:
+After `implement` returns a terminal result, `review` verifies the approved seam, scope, compatibility, destination
+conventions, coexistence, rollback, and coverage. `validate` starts only after the Reviewer returns `accepted` and
+records the lowest validation level that proves the claim, escalating as needed:
 
 1. destination build, focused tests, and contract checks;
 2. source/destination regression and integration checks;
@@ -264,6 +281,9 @@ passes.
 
 In-scope review findings return to `implement` and are re-reviewed before validation. Reopen planning only when evidence
 invalidates the approved seam or extraction design.
+
+The remediation run cannot be reported complete until `implement`, `review`, `validate`, and `handoff` have returned
+the required terminal results, fan-in has passed, and runtime closure is recorded.
 
 ### Stage 8 — Stabilize and Hand Off
 

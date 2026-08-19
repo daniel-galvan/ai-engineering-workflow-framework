@@ -6,7 +6,7 @@ status: Pilot
 category: Coordination
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-19
 required_documents:
 
   - ../frameworks/investigation.md
@@ -133,6 +133,13 @@ Optional:
 9. Produce the final outcome and handoff.
 10. Decide implementation readiness or another closure state.
 
+An active worker status is not a handoff. Continue polling and advance the same
+worker graph automatically: Implementer terminal -> Reviewer accepted -> Tester
+terminal -> Documenter, fan-in, and runtime closure. Do not require the user to
+say “continue” or “what next?” for an ordinary dependency transition. If the
+runtime yields control, report that the run is still in progress, name the
+active worker and next transition, and state that no user action is required.
+
 ---
 
 # Effort Selection
@@ -189,8 +196,12 @@ Documenter runs continuously across all stages.
 * Correct worker profiles assigned.
 * Required skills, tools, model profiles, and approvals recorded.
 * Required worker activation and fan-in are recorded before a stage closes.
+* The Delivery Activation Barrier is passed before any remediation source change.
+* The Coordinator does not implement, review, or validate in place of delivery workers.
 * Completed worker handles are released and runtime closure is recorded before a run closes or a new lifecycle run
   starts.
+* Remediation is not complete until Implementer, Reviewer, Tester, and
+  Documenter results are terminal and accepted where required.
 * Workflow completed or explicitly closed with another outcome.
 * Deliverables reviewed.
 * Evidence and decisions documented.

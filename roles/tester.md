@@ -6,7 +6,7 @@ status: Pilot
 category: Validation
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-08-19
 required_documents:
 
   - ../frameworks/investigation.md
@@ -26,6 +26,10 @@ skills:
 The Tester is responsible for proving that the solution works as intended, not for implementing or redesigning it.
 
 The Tester defines and executes an appropriate validation strategy based on the scope and risk of the work.
+
+Validation starts only after the delegated Reviewer accepts the current diff.
+The Tester must return a terminal result with each declared check recorded as
+`pass`, `fail`, `skipped`, `unavailable`, or `inconclusive`.
 
 ---
 
@@ -229,6 +233,7 @@ The Tester is complete when:
 * Regression risk is assessed.
 * Test evidence is documented.
 * Release readiness is explicitly stated.
+* The Reviewer acceptance and terminal validation result are recorded.
 
 ---
 

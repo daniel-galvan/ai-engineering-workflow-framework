@@ -4,7 +4,7 @@ title: Engineering Work Record
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-19
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -140,6 +140,47 @@ The workflow cannot be marked complete while a required worker or barrier is sti
 
 For each worker, record inputs consumed, outputs produced, approvals, and failure or blocked details in the timeline or
 relevant section below.
+
+# Delivery Activation Gate
+
+For every remediation run, record this gate at re-entry. Complete the first
+six checks before the first source, configuration, dependency, or
+infrastructure change. A downstream worker may wait for a dependency, but it
+must remain in the current run's activation ledger. Evaluate the Completion
+barrier before final handoff.
+
+| Check | Required evidence | Status |
+| --- | --- | --- |
+| Remediation re-entry | Re-entry with the same profile and `lifecycle: remediation` | Pending / Passed / Blocked |
+| Implementation approval | Approval type, owner, scope, decision, and reference | Pending / Passed / Blocked |
+| Approved plan | Existing approved `implementation_plan.md` | Pending / Passed / Blocked |
+| Delivery graph | Worker IDs, roles, dependencies, and states | Pending / Passed / Blocked |
+| Implementer authority | Delegated Implementer authorized for the approved scope | Pending / Passed / Blocked |
+| Coordinator restriction | Coordinator does not edit or substitute for delivery workers | Pending / Passed / Blocked |
+| Completion barrier | Implementer, Reviewer, Tester, Documenter, fan-in, runtime closure | Pending / Passed / Blocked |
+
+No source change is permitted while any of the first six checks is `Pending` or
+`Blocked`. A remediation run cannot be reported complete while the Completion
+barrier is `Pending` or `Blocked`.
+
+# Implementation Conformance Check
+
+Before the first source change, the delegated Implementer records a
+plan-conformance manifest. Every proposed file maps to an approved plan step,
+an existing implementation or reuse target, an intended change, and validation.
+Every new table, model, fixture, runtime abstraction, or dependency maps to an
+explicit plan step.
+
+| Check | Required evidence | Status |
+| --- | --- | --- |
+| Plan-conformance manifest | Files, plan steps, reuse targets, changes, validation | Pending / Passed / Blocked |
+| Boundary compliance | No unmapped or explicitly forbidden implementation pattern | Pending / Passed / Blocked |
+| Extraction | Migrated target; no private tables or prohibited deps | Pending / Passed / Blocked / Not applicable |
+
+If the manifest exposes an unmapped change, a contradictory boundary, or a
+replacement of the approved design, stop before editing with
+`replanning_required`. The Reviewer checks this manifest against the current
+diff before accepting the implementation.
 
 # Worker Runtime Closure
 
