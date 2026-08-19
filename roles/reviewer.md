@@ -6,7 +6,7 @@ status: Pilot
 category: Review
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-08-18
 required_documents:
 
   - ../frameworks/investigation.md
@@ -217,6 +217,12 @@ Include rationale.
 Also record one workflow disposition: `accepted`, `changes_required`, `replanning_required`, or `blocked`. In-scope
 changes-required findings return to the Implementer and are re-reviewed before validation; they are not a final handoff
 or a new approval gate.
+
+For planning review, challenge proposed seams against authoritative outcomes and
+evidence. Keep feasible migration, dependency, test, environment, and
+operational work in the plan or risk record. Do not promote a worker hypothesis
+into a required approval or reject plan readiness merely because that work
+remains.
 
 ---
 

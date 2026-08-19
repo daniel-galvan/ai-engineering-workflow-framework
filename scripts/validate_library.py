@@ -237,10 +237,42 @@ for phrase in (
 if "Sentry evidence and repository revision are identified" in sentry_playbook:
     fail("playbooks/sentry_issue_remediation.md still blocks on exact revision identification")
 
+service_extraction_playbook = (ROOT / "playbooks" / "service_extraction.md").read_text()
+for phrase in (
+    "independently deployable vertical slice",
+    "unavailable baseline is not a planning blocker",
+    "do not prevent `ready_for_implementation`.",
+    "`boundary_not_safe` and `destination_not_ready` are reserved for true planning",
+):
+    if phrase not in service_extraction_playbook:
+        fail(f"playbooks/service_extraction.md is missing planning-readiness rule: {phrase}")
+
+planning_readiness_reference = (
+    "[planning-readiness]: "
+    "../contracts/workflow_execution.md#planning-readiness-and-implementation-work"
+)
+for filename in (
+    "feature_delivery.md",
+    "techops_issue_remediation.md",
+    "vulnerability_investigation.md",
+):
+    if planning_readiness_reference not in (ROOT / "playbooks" / filename).read_text():
+        fail(f"playbooks/{filename} is missing the shared planning-readiness reference")
+
+sentry_repository_integrator = agent_configs["sentry_repository_integrator"].get(
+    "developer_instructions", ""
+)
+for phrase in (
+    "failing or unavailable build or test baseline",
+    "do not return `blocked` merely because",
+):
+    if phrase not in sentry_repository_integrator:
+        fail(f"sentry_repository_integrator.toml is missing planning-readiness rule: {phrase}")
+
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 20):
+for invariant_id in range(1, 24):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
@@ -258,6 +290,13 @@ for heading in (
         fail(f"contracts/workflow_execution.md is missing {heading}")
 if "## Delivery Code Review Loop" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the delivery review loop")
+for phrase in (
+    "## Planning Readiness and Implementation Work",
+    "Implementation-plan work includes",
+    "A true planning blocker exists only",
+):
+    if phrase not in workflow_contract:
+        fail(f"contracts/workflow_execution.md is missing planning-readiness rule: {phrase}")
 if not CLAIMS_CONTRACT.exists():
     fail("contracts/claims.md is missing")
 claims_contract = CLAIMS_CONTRACT.read_text()
@@ -293,6 +332,8 @@ if "| Approval type |" not in work_record_template:
     fail("templates/work_record.md is missing approval type")
 if "# Path Verification" not in work_record_template:
     fail("templates/work_record.md is missing path verification")
+if "# Input Register" not in work_record_template:
+    fail("templates/work_record.md is missing input provenance")
 if "| Internal owner |" not in work_record_template:
     fail("templates/work_record.md is missing internal-owner handoff guidance")
 if "| User action |" not in work_record_template:

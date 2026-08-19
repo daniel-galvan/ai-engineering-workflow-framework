@@ -4,7 +4,7 @@ version: 0.1
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-11
+last_updated: 2026-08-18
 ---
 
 # Workflow Execution Contract
@@ -106,6 +106,7 @@ the source of truth.
 | `INV-20` | Diagnosis and fix-design MUST pass the gate before clarification. | [Gate](#evidence-to-hypothesis-gate) |
 | `INV-21` | Clarification MUST report executed checks. | [Gate](#evidence-to-hypothesis-gate) |
 | `INV-22` | Local reproduction informs the current-code fix. | [Parity](#production-parity-prioritization) |
+| `INV-23` | Planning MUST distinguish implementation-plan work from a true planning blocker. | [Planning Readiness and Implementation Work](#planning-readiness-and-implementation-work) |
 
 ---
 
@@ -165,13 +166,19 @@ Classify each material detail as one or more of:
 - unavailable or out of scope.
 
 Map the detail to a canonical field when one exists. Otherwise preserve it in the run's additional context and work
-record with its source and classification. Use `Unknown` only when the information is genuinely unavailable; do not use
-it to erase information the user supplied. If inputs conflict, preserve both statements, identify the conflict, and
-resolve it through evidence or an explicit user decision. Never silently drop, rewrite, or replace user context.
+record's Input Register with its source and classification. Use `Unknown` only when the information is genuinely
+unavailable; do not use it to erase information the user supplied. If inputs conflict, preserve both statements,
+identify the conflict, and resolve it through evidence or an explicit user decision. Never silently drop, rewrite, or
+replace user context.
 
 The prompt-preparation request may contain context before or after its formal fields. The preparation step must read all
 of it and fill the canonical run template. The user must not be required to copy the same information into a second
 section manually.
+
+Historical artifacts, including prior plans and work records, are supporting evidence by default. A statement in one is
+authoritative only when current user input or an explicitly identified approved decision adopts it. A worker-created
+hypothesis may recommend a seam or action, but MUST NOT become a mandatory gate, approval, or user requirement without
+supporting evidence and a recorded decision.
 
 ## Evidence-to-Hypothesis Gate
 
@@ -480,6 +487,29 @@ If a decision still prevents implementation readiness, the Solution Architect mu
 work record, with alternatives summarized in `Alternatives Considered`: the decision needed, evidence researched, one or
 more feasible options, tradeoffs and validation impact, recommendation, and the smallest question and owner needed to
 proceed.
+
+## Planning Readiness and Implementation Work
+
+Planning creates an approval-gated implementation plan; it does not complete implementation, validation, deployment,
+or stabilization work. A planning worker MUST classify each finding as either implementation-plan work, a risk or
+validation limitation, or a true planning blocker.
+
+Implementation-plan work includes moving or adapting dependencies, imports, configuration, infrastructure, queues,
+callbacks, locks, tests, fixtures, deployment definitions, rollout, rollback, and environment setup. Existing test
+failures, unavailable test tooling, missing local services, and incomplete destination behavior are plan inputs when
+their impact and a safe execution sequence can be described. They MUST be recorded as ordered plan steps, validation
+requirements, risks, or residual limitations; they MUST NOT by themselves prevent plan creation.
+
+A true planning blocker exists only when a required source, destination, scope, safety constraint, or indispensable
+evidence is unavailable or contradictory such that no safe, feasible plan can be written; when a user business, scope,
+ownership, or incompatible-alternatives decision remains after bounded discovery; or when a required worker cannot
+return a terminal result. A worker whose investigation is complete MUST return `complete` with recorded limitations,
+not `blocked`, merely because implementation or validation work remains.
+
+`ready_for_implementation` requires terminal planning fan-in and an implementation plan with a feasible sequence,
+scope, validation strategy, risks, and explicit prerequisites. It does not require source changes, passing tests,
+available local tooling, provisioned infrastructure, or release approval. Implementation approval remains the gate for
+performing those steps.
 
 ## Production-Parity Prioritization
 
@@ -793,9 +823,9 @@ Every worker ends in one of these outcomes:
 
 | Outcome          | Meaning                                                                               |
 | ---------------- | ------------------------------------------------------------------------------------- |
-| `complete`       | Exit criteria are satisfied with recorded evidence.                                   |
+| `complete`       | Exit criteria are satisfied with recorded evidence, limitations, and planned follow-up work. |
 | `needs_input`    | Required information is missing and work cannot proceed safely.                       |
-| `blocked`        | An external dependency, environment, permission, or decision prevents progress.       |
+| `blocked`        | An external dependency, environment, permission, or decision prevents a safe usable result at the current stage. |
 | `failed`         | The worker attempted the work and encountered an error that requires review or retry. |
 | `not_applicable` | The playbook determined that this worker is not required.                             |
 

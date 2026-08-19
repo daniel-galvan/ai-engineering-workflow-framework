@@ -25,6 +25,11 @@ The plan is produced during planning and is not authorization to change source c
 must link to this file. A later session must be able to execute the approved plan without reconstructing the
 investigation from chat history.
 
+Uncompleted dependency adaptation, environment setup, test work, operational
+configuration, rollout, and rollback work belongs in this plan when a feasible
+sequence exists. Those items are not planning blockers merely because they
+remain to be executed.
+
 When this plan reaches `ready_for_implementation`, create the companion `implementation_handoff.md` beside it from
 [`implementation_handoff.md`](implementation_handoff.md) only if implementation will happen in another session or
 environment, or the user explicitly requests a self-contained transfer file. For same-session implementation, mark the
@@ -73,7 +78,7 @@ residual uncertainty, and confidence. Preserve the evidence, claim, and decision
 | | | | |
 
 Keep the change minimal. Record import, dependency, configuration, schema, contract, or rollout implications when
-applicable.
+applicable. Every material action must retain its originating claim and decision references.
 
 # 4. Test and Validation Plan
 

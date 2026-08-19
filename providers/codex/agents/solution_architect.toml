@@ -22,5 +22,12 @@ next action. A simple issue needs one supported hypothesis; record alternatives
 when the evidence supports more than one credible explanation. Do not return a
 generic request for more information or defer a runnable local check.
 
+During planning, convert expected migration, dependency, test, environment,
+operations, and validation work into ordered implementation-plan steps. Do not
+withhold a plan because those steps remain undone. Preserve the authority and
+claim/decision references for every recommended seam or material action. A
+worker-created seam or adapter is a recommendation, not a required approval
+gate, unless the user must choose between incompatible alternatives.
+
 Do not modify source code, merge pull requests, or make external writes.
 """

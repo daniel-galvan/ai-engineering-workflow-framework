@@ -2,9 +2,9 @@
 title: Service Extraction and Stabilization Playbook
 version: 0.1
 status: Pilot
-maturity: not_exercised
+maturity: exercising
 owner: Engineering
-last_updated: 2026-08-17
+last_updated: 2026-08-18
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -34,7 +34,7 @@ evidence that the destination can evolve independently.
 Use when an existing capability is coupled to a source repository, application, or service and a destination service
 boundary must become independently buildable, deployable, maintainable, and owned.
 
-Use another playbook for a database-only, infrastructure-only, or deployment- only migration; a normal feature, bug, or
+Use another playbook for a database-only, infrastructure-only, or deployment-only migration; a normal feature, bug, or
 upgrade in an existing service; or a temporary code copy with no independent-service goal.
 
 ## Required Inputs
@@ -51,6 +51,13 @@ User-supplied diagrams, dependency reports, manifests, source excerpts, prior
 analysis, and other supporting artifacts are workflow inputs. Record each one
 as consumed, unavailable, conflicting, or out of scope before asking the user
 to resolve an unknown.
+
+At initialization, record each material input's source and authority. Current
+user decisions and explicitly identified approved decisions are authoritative.
+Historical plans, work records, and worker conclusions are supporting evidence
+unless the current run explicitly adopts them. A proposed seam remains a
+hypothesis or recommendation until its claim and decision references are
+recorded.
 
 ## Default Execution
 
@@ -180,15 +187,22 @@ observability, CI/CD, ownership, alerts, dashboards, and runbooks.
 Before final design, run the existing destination build or focused test baseline
 when safe. Record the command and result in `checks_performed`. If no runnable
 baseline exists, record that fact and the planned establishment step in
-`checks_remaining`; do not report the destination as validated.
+`checks_remaining`; do not report the destination as validated. A failing or
+unavailable baseline is not a planning blocker when the destination, impact,
+and establishment work can be documented. Return a terminal integration result
+with those limits and place the setup, repair, and validation work in the
+implementation plan.
 
 ### Stage 4 — Design the Service
 
 `service-design` consumes source, dependency, and destination-integration
-results. It defines the smallest safe destination seam: responsibilities,
-interfaces, data and event ownership, failure and retry behavior,
-compatibility, versioning, migration slices, coexistence, rollback, and
-explicitly deferred features. It compares direct extraction,
+results. It defines the smallest safe destination seam: the smallest
+independently deployable vertical slice that satisfies every authoritative
+required outcome. It must not reduce the required end state to a thin adapter
+or partial path merely because that path is easier to describe. The result
+defines responsibilities, interfaces, data and event ownership, failure and
+retry behavior, compatibility, versioning, migration slices, coexistence,
+rollback, and explicitly deferred features. It compares direct extraction,
 shared-library-first, strangler, and deferral when relevant.
 
 The service-design result must list consumed repositories and artifacts,
@@ -196,7 +210,10 @@ confirmed coupling facts, destination baseline result, seam hypotheses,
 feasible extraction options, recommendation, `checks_performed`,
 `checks_remaining`, and the next action in plain language. Do not ask the user
 to resolve a technical dependency that the source and destination repositories
-can clarify.
+can clarify. Every recommended seam and material plan action must retain its
+claim, decision, and authority status. A worker-created seam or adapter option
+must not become an approval gate unless the user must select between genuinely
+incompatible alternatives.
 
 For `deep`, `planning-review` independently challenges the seam, scope, coupling assumptions, coexistence, rollback, and
 validation plan.
@@ -206,7 +223,17 @@ validation plan.
 The Orchestrator waits for every required planning worker and the Documenter records the result envelopes and fan-in.
 Only then may the Documenter create `implementation_plan.md` and set `ready_for_implementation`.
 
-No plan is created and no readiness claim is made when planning workers are blocked, failed, unavailable, or incomplete.
+The plan must turn dependency closure, legacy-test reuse or expansion,
+environment setup, destination integration, queues, callbacks, locking,
+deployment, rollout, rollback, and unavailable validation into ordered work,
+risks, and completion checks when applicable. Those expected extraction tasks
+do not prevent `ready_for_implementation`.
+
+No plan is created and no readiness claim is made when a planning worker is
+failed, unavailable, or incomplete, or when a true planning blocker from the
+shared contract prevents a feasible plan. Do not classify a worker as blocked
+when it completed its investigation and only identified implementation work or
+validation limitations.
 
 ### Stage 6 — Re-enter Remediation and Extract
 
@@ -249,14 +276,19 @@ for stabilization.
 
 | Gate | Required condition |
 | --- | --- |
-| Source ready | Current behavior, entry points, runtime assumptions, and unknowns are recorded. |
-| Boundary ready | Coupling, ownership, material dependencies, and risks are evidenced or explicitly blocked. |
-| Design ready | The destination seam, alternatives, compatibility, coexistence, rollback, and validation strategy are clear. |
-| Integration ready | Destination location, baseline status, runtime, operations, and adaptations are known. |
+| Source ready | Current behavior, entry points, runtime assumptions, tests, and unknowns are recorded. |
+| Boundary ready | Coupling and material dependencies are classified; the plan can sequence their move, adaptation, retention, or removal. |
+| Design ready | The proposed seam satisfies authoritative outcomes and retains claim, decision, and authority references. |
+| Integration ready | Destination location, baseline status, runtime, operations, and required adaptations are known; unavailable validation is planned. |
 | Implementation ready | Required planning fan-in passed and `implementation_plan.md` exists. |
 | Approval ready | Explicit implementation approval and remediation re-entry are recorded. |
 | Validation ready | Review findings are resolved or accepted and validation results are preserved. |
 | Handoff ready | Ownership, operations, rollback or coexistence, residual risk, and next action are explicit. |
+
+`boundary_not_safe` and `destination_not_ready` are reserved for true planning
+blockers. They do not apply merely because a dependency must be migrated, a
+test baseline is failing or unavailable, or destination work remains to be
+implemented.
 
 ## Required Handoff Output
 

@@ -6,7 +6,7 @@ status: Pilot
 category: Design
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-18
 required_documents:
 
   - ../frameworks/investigation.md
@@ -255,6 +255,12 @@ Before returning a clarification result, the Solution Architect must provide:
 * a plain-language next action naming the owner, location, and completion condition.
 
 A generic request for more information is not a complete role result.
+
+During planning, convert migration, dependency, test, environment, operations,
+and validation work into ordered plan steps when a feasible sequence exists.
+Do not treat a worker-created seam or adapter as a user requirement or approval
+gate. Preserve each material recommendation's authority and claim/decision
+references in the plan.
 
 ---
 

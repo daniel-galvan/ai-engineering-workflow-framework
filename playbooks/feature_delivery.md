@@ -205,6 +205,10 @@ return terminal envelopes, fan-in passes, and context is sufficient for planning
 The plan is not authorization to make changes. If context remains `clarification_required`, do not create it; hand off
 `awaiting_input` with the clarification packet and Clarification Brief instead.
 
+Apply the shared [planning-readiness rule][planning-readiness]. Remaining code, dependency, configuration, test,
+environment, operational, rollout, or validation work belongs in the plan when a feasible sequence exists; it is not a
+planning blocker by itself.
+
 If `planning-review` exhausts its one recovery attempt, stop with `profile_status: blocked` and reason
 `planning_review_runtime_unavailable`. Do not create an implementation plan or offer a Coordinator-only plan as a
 deep-profile alternative.
@@ -277,3 +281,5 @@ clarification, approval, environment, or worker gate.
 - [`../templates/work_record.md`](../templates/work_record.md)
 - [`../templates/implementation_plan.md`](../templates/implementation_plan.md)
 - [`../examples/feature_delivery.md`](../examples/feature_delivery.md)
+
+[planning-readiness]: ../contracts/workflow_execution.md#planning-readiness-and-implementation-work

@@ -6,7 +6,7 @@ status: Pilot
 category: Integration
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-17
+last_updated: 2026-08-18
 required_documents:
 
   - ../frameworks/investigation.md
@@ -67,6 +67,10 @@ preserving architectural consistency.
 * Recommend incremental integration steps.
 * Identify operational requirements.
 * Minimize integration risk.
+
+A failing or unavailable baseline is a completed integration finding when its
+impact and establishment work are known. Record it for the implementation and
+validation plan; do not make it a planning blocker by itself.
 
 ---
 

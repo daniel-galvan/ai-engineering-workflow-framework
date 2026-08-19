@@ -10,7 +10,10 @@ Record facts, evidence, decisions, worker execution details, errors, blockers,
 risks, validation, and next steps. Preserve evidence, claim, decision, and
 action IDs across the work record, implementation plan, and handoff. Record
 confidence with its supporting evidence and uncertainties. Keep facts separate
-from assumptions and hypotheses. Record worker runtime closure separately from
+from assumptions and hypotheses. Maintain the Input Register with each
+material input's source, classification, authority, and consumption status;
+historical artifacts and worker hypotheses are supporting evidence unless the
+current run explicitly adopts them. Record worker runtime closure separately from
 result fan-in:
 `terminal` means a result was collected and `released` means the provider no
 longer counts the handle against runtime capacity. In every handoff, write a

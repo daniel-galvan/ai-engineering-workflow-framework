@@ -3,7 +3,7 @@ title: Service Extraction and Stabilization Run Prompt
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-17
+last_updated: 2026-08-18
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/service_extraction.md
@@ -25,6 +25,9 @@ First-use summary:
   canonical fields.
 - Put direct user decisions and non-negotiable constraints in the confirmed-input section; workers must not reopen them
   as clarification questions.
+- Treat historical plans, work records, architecture notes, and legacy tests as supporting artifacts unless this run
+  explicitly adopts a decision from them. Existing tests and unavailable tooling are implementation-plan inputs, not
+  planning blockers by themselves.
 - `standard + planning` is the default. Select `deep + planning` only when the scenario needs independent planning
   review for a disputed seam, material cutover, coexistence, rollback, or validation risk.
 
@@ -89,6 +92,14 @@ Service extraction context (unverified until reconciled):
 - Known contracts, data, events, runtime, deployment, or ownership constraints: <DESCRIPTION-OR-NONE>
 - Related tickets, pull requests, or documents: <NONE-OR-REFERENCES>
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
+
+Optional supporting artifacts:
+- <NONE-OR-ABSOLUTE-PATHS>
+
+For each artifact, preserve whether it is a current authoritative decision,
+supporting reference, historical plan, architecture note, or existing test
+baseline. Do not turn a historical conclusion or worker hypothesis into a
+required gate unless the current run explicitly adopts it.
 
 Additional supplied context (preserve and classify):
 - <NONE-OR-DESCRIPTION-OR-REFERENCE>

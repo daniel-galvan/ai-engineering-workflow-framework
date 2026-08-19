@@ -89,6 +89,9 @@ Feature context and constraints (unverified until reconciled):
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
 - Constraints, dependencies, or release timing: <NONE-OR-DESCRIPTION>
 
+Optional supporting artifacts:
+- <NONE-OR-ABSOLUTE-PATHS>
+
 Additional supplied context (preserve and classify):
 - <NONE-OR-DESCRIPTION-OR-REFERENCE>
 

@@ -329,6 +329,81 @@ preserve the template's field names, and return the completed prompt followed
 by a short list of anything I must review before running it.
 ```
 
+### Service Extraction and Stabilization
+
+Service Extraction requires separate source and destination repositories. The
+execution repository is the checkout where the session starts and where the
+durable `.thoughts` artifacts are created.
+
+```text
+I am preparing a first-use run prompt. Do not execute the workflow, modify
+files, or commit changes.
+
+Framework checkout:
+/absolute/path/to/ai-engineering-workflow-framework
+
+Execution repository (the current session starts here and owns the
+durable .thoughts artifact):
+/absolute/path/to/execution-repository
+
+Provider/runtime configuration:
+/absolute/path/to/execution-repository/.codex/agents/
+
+Work item:
+PROJ-12345 (https://your-company.atlassian.net/browse/PROJ-12345)
+
+Playbook: playbooks/service_extraction.md
+Canonical run template: templates/service_extraction_run_prompt.md
+
+Execution profile: standard
+Lifecycle: planning
+
+Repositories and working directories:
+- Source: /absolute/path/to/source-repository
+- Destination: /absolute/path/to/destination-repository
+
+Confirmed user decisions and constraints (authoritative; do not reopen):
+- Preserve migrated behavior; limit changes to imports, wiring, adapters,
+  configuration, and required tests unless explicitly approved.
+
+Service extraction context (unverified until reconciled):
+- Capability or service: <CAPABILITY-OR-SERVICE>
+- Desired destination boundary: <DESCRIPTION-OR-UNKNOWN>
+- Required behavior and acceptance criteria: <DESCRIPTION-OR-UNKNOWN>
+- Known contracts, data, events, runtime, deployment, or ownership
+  constraints: <DESCRIPTION-OR-NONE>
+- Related tickets, pull requests, or documents: <NONE-OR-REFERENCES>
+- Explicit non-goals: <NONE-OR-DESCRIPTION>
+
+Optional supporting artifacts:
+- /absolute/path/to/architecture.md-or-NONE
+- /absolute/path/to/dependency-report.json-or-NONE
+- /absolute/path/to/prior-plan-or-work-record.md-or-NONE
+- /absolute/path/to/legacy-tests-or-NONE
+
+Additional supplied context (preserve and classify):
+- Historical artifacts are supporting references unless this run explicitly
+  adopts one of their decisions. Existing tests and unavailable tooling must be
+  planned as implementation or validation work, not treated as blockers by
+  themselves.
+
+Additional run-specific constraints or approvals:
+- <NONE-OR-ENTER-CONSTRAINT>
+
+Read these files relative to the framework checkout:
+- SETUP.md
+- OPERATING_GUIDE.md
+- PLAYBOOK_CATALOG.md
+- playbooks/service_extraction.md
+- templates/service_extraction_run_prompt.md
+
+Fill the existing canonical template for this work item. Do not invent a new
+format. For a new run, use lifecycle `planning` and omit the template's entire
+Continuation section. Mark unavailable information as `Unknown` or `None`,
+preserve the template's field names, and return the completed prompt followed
+by a short list of anything I must review before running it.
+```
+
 ### Prompt-preparation checklist
 
 Before asking Codex to fill the template, verify:

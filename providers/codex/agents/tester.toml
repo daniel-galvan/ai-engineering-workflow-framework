@@ -1,7 +1,7 @@
 name = "tester"
 description = "Runs risk-based functional, regression, and operational validation."
 model = "gpt-5.6-luna"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """

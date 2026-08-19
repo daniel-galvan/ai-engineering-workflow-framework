@@ -6,7 +6,7 @@ status: Pilot
 provider: codex
 provider_independent_profiles: true
 owner: Engineering
-last_updated: 2026-08-11
+last_updated: 2026-08-18
 ---
 
 # Codex Model and Effort Policy
@@ -42,13 +42,13 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Role | Codex model | Policy effort | TOML value |
 | --- | --- | --- | --- |
 | Orchestrator | `gpt-5.6-luna` | Medium | `medium` |
-| Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
-| Dependency Analyst | `gpt-5.6-luna` | Medium | `medium` |
-| Repository Integrator | `gpt-5.6-luna` | Medium | `medium` |
+| Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | High | `high` |
+| Dependency Analyst | `gpt-5.6-luna` | High | `high` |
+| Repository Integrator | `gpt-5.6-luna` | High | `high` |
 | Solution Architect | `gpt-5.6-luna` | Extra High | `xhigh` |
 | Reviewer | `gpt-5.6-luna` | Extra High | `xhigh` |
-| Implementer | `gpt-5.6-luna` | Medium | `medium` |
-| Tester | `gpt-5.6-luna` | Medium | `medium` |
+| Implementer | `gpt-5.6-luna` | High | `high` |
+| Tester | `gpt-5.6-luna` | High | `high` |
 | Documenter | `gpt-5.6-luna` | Light | `low` |
 
 ## Agent selection

@@ -6,7 +6,7 @@ status: Pilot
 category: Integration
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-17
+last_updated: 2026-08-18
 ---
 
 # Destination Integration
@@ -35,6 +35,10 @@ Optional inputs:
 
 The destination has a clear location, build/test baseline or explicit absence,
 runtime path, ownership model, and rollback approach.
+
+An unavailable or failing baseline is a planning input when its impact and
+establishment work can be described. Record it in the implementation and
+validation plan; do not treat it as a planning blocker by itself.
 
 ## Safety
 

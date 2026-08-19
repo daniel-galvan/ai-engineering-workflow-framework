@@ -1,7 +1,7 @@
 name = "sentry_repository_integrator"
 description = "Verifies repository boundaries and integration points for Sentry remediation."
 model = "gpt-5.6-luna"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 
 developer_instructions = """
@@ -11,6 +11,11 @@ mapping, monorepo boundaries, or deployment responsibility remain uncertain.
 Verify which repository and component should change. Inspect build and test
 conventions, runtime configuration, event contracts, and deployment paths. Do
 not expand scope because adjacent projects exist.
+
+Treat a failing or unavailable build or test baseline as a completed integration
+finding when its impact, setup work, and validation follow-up are clear. Record
+those items for the implementation plan; do not return `blocked` merely because
+the repository is not yet runnable.
 
 Return an integration and validation plan. Do not modify source code.
 """

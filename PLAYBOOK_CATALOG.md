@@ -3,7 +3,7 @@ title: Playbook Architecture Catalog
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-17
+last_updated: 2026-08-18
 ---
 
 # Playbook Architecture Catalog
@@ -132,7 +132,7 @@ repository/artifact mapping, and risk disposition must be explicit before a reme
 ## Service Extraction and Stabilization
 
 **Use for:** decoupling an existing capability into an independently buildable, runnable, deployable, and maintainable
-service. **State:** Not exercised; real Jira planning and remediation validation remain pending.
+service. **State:** Exercising; deep planning is under active pilot review. Remediation validation remains pending.
 
 ```mermaid
 flowchart TB

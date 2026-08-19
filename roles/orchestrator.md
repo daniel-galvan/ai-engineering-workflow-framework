@@ -6,7 +6,7 @@ status: Pilot
 category: Coordination
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-07-31
+last_updated: 2026-08-18
 required_documents:
 
   - ../frameworks/investigation.md
@@ -58,6 +58,7 @@ Coordinate the work from intake through an evidence-backed outcome.
   symlinks and their targets.
 * Monitor workflow progress.
 * Resolve conflicting recommendations.
+* Distinguish implementation-plan work and validation limitations from true planning blockers.
 * Produce the final work outcome and handoff state.
 
 ---

@@ -6,7 +6,7 @@ status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-18
 required_documents:
 
   - ../frameworks/investigation.md
@@ -51,6 +51,7 @@ maintenance.
 
 * Create or recover the work record.
 * Maintain `work_record.md`.
+* Maintain the Input Register with each material input's source, classification, authority, and consumption status.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.
 * Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook

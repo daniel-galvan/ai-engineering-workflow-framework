@@ -178,6 +178,10 @@ fan-in, and planning gates pass, the Documenter creates:
 The plan records the diagnosis, evidence/claim/decision IDs, change and test steps, validation ladder, risks, rollback,
 monitoring, ownership, and residual uncertainty. It is not authorization to make changes.
 
+Apply the shared [planning-readiness rule][planning-readiness]. Remaining code, dependency, configuration, test,
+environment, operational, rollout, or validation work belongs in the plan when a feasible sequence exists; it is not a
+planning blocker by itself.
+
 ### Stage 5 — Approved Remediation
 
 Explicit approval and remediation re-entry activate `implement`, `review`, `validate`, and continuous `handoff` before
@@ -225,3 +229,5 @@ Also include the shared Human-Readable Handoff block: `What happened`, `What thi
 - [`../templates/work_record.md`](../templates/work_record.md)
 - [`../templates/implementation_plan.md`](../templates/implementation_plan.md)
 - [`../examples/techops_issue_remediation.md`](../examples/techops_issue_remediation.md)
+
+[planning-readiness]: ../contracts/workflow_execution.md#planning-readiness-and-implementation-work

@@ -4,7 +4,7 @@ title: Engineering Work Record
 version: 0.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-11
+last_updated: 2026-08-18
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -54,6 +54,19 @@ Examples:
 * Assess a dependency, code, infrastructure, or data change.
 
 Record explicit non-goals when the work could expand into adjacent work.
+
+---
+
+# Input Register
+
+Record every material user-supplied input before workers use it. Historical
+plans, work records, and worker conclusions are supporting evidence unless the
+current run explicitly adopts them as a decision. Do not promote a hypothesis
+to an authority or approval gate.
+
+| Input or artifact | Source or path | Classification | Authority | Status / worker |
+| --- | --- | --- | --- | --- |
+| | | Decision / Constraint / Observation / Hypothesis / Artifact / Conflict | Current user decision / Approved decision / Supporting evidence | Consumed / Unavailable / Conflicting / Out of scope |
 
 ---
 

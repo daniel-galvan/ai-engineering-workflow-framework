@@ -38,6 +38,15 @@ canonical field or the work record. Never silently omit, rewrite, or replace
 user context. Confirmed user decisions and constraints are authoritative and
 must not be reopened as clarification questions.
 
+During planning, distinguish implementation-plan work from a true planning
+blocker. Migration, dependency adaptation, test reuse or expansion, environment
+setup, destination integration, operations, and validation limitations belong
+in the ordered plan, risk record, or validation strategy when feasible. A
+historical conclusion or worker hypothesis is supporting evidence, not an
+approval gate, unless the current run explicitly adopts it. Use `blocked` only
+when no safe feasible plan can be written or a required worker cannot return a
+terminal result.
+
 Treat the selected lifecycle as immutable for the current run. A planning run
 must not drift into implementation because of a follow-up request. Require a
 new or explicitly recorded remediation re-entry with approval, lifecycle
