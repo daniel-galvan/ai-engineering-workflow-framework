@@ -1,6 +1,6 @@
 ---
 title: Portable Implementation Handoff
-version: 0.1
+version: 0.2.0
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>

@@ -1,6 +1,6 @@
 ---
 title: Service Extraction and Stabilization Playbook
-version: 0.1
+version: 0.2.0
 status: Pilot
 maturity: exercising
 owner: Engineering
@@ -23,8 +23,8 @@ depends_on:
 ## Purpose
 
 Use this playbook to decouple a capability into an independently owned service. It covers discovery, boundary design,
-destination integration, approved extraction, validation, coexistence or cutover, and handoff. It does not turn later
-feature work in the new service into extraction work.
+destination integration, approved extraction, validation, coexistence or cutover, and handoff. After the extraction is
+accepted, later feature work in the destination service uses Feature Delivery; it is not extraction work.
 
 The goal is not to copy files. The goal is to establish a clear service seam, an operational path to production, and
 evidence that the destination can evolve independently.

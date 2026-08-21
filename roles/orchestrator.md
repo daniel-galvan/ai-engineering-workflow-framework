@@ -1,7 +1,7 @@
 ---
 
 title: Orchestrator Role
-version: 0.1
+version: 0.2.0
 status: Pilot
 category: Coordination
 produces_decisions: true
@@ -22,7 +22,7 @@ skills:
 
 # Orchestrator
 
-> Coordinates engineering work by selecting the appropriate strategy, mode, effort, roles, and execution order.
+> Coordinates engineering work by selecting the appropriate strategy, lifecycle, profile, roles, and execution order.
 
 The Orchestrator owns the workflow but does **not** perform technical analysis. Its responsibility is to ensure the
 right work is performed by the right roles in the right order.
@@ -49,10 +49,9 @@ Coordinate the work from intake through an evidence-backed outcome.
 
 * Understand the work item.
 * Select the workflow strategy.
-* Select the appropriate effort level.
-* Select the workflow mode.
+* Apply the selected lifecycle and execution profile.
 * Select participating roles.
-* Define worker profiles with skills, tools, model profiles, and approvals.
+* Define worker profiles with skills, tools, internal provider metadata, and approvals.
 * Apply the playbook's execution order and parallelism rules.
 * Verify explicitly named paths before making claims about their existence, contents, or configuration status; inspect
   symlinks and their targets.
@@ -125,7 +124,7 @@ Optional:
 1. Classify the work item.
 2. Select the playbook.
 3. Select the execution strategy.
-4. Select the execution profile, lifecycle, mode, and effort level.
+4. Apply the selected lifecycle and execution profile; derive internal worker metadata.
 5. Record the execution repository, artifact root, roles, and worker graph.
 6. Execute the playbook stages and gates.
 7. Review deliverables and evidence.
@@ -192,9 +191,9 @@ Documenter runs continuously across all stages.
 
 # Success Criteria
 
-* Appropriate strategy, mode, and effort selected.
+* Appropriate strategy, lifecycle, and profile applied.
 * Correct worker profiles assigned.
-* Required skills, tools, model profiles, and approvals recorded.
+* Required skills, tools, internal provider metadata, and approvals recorded.
 * Required worker activation and fan-in are recorded before a stage closes.
 * The Delivery Activation Barrier is passed before any remediation source change.
 * The Coordinator does not implement, review, or validate in place of delivery workers.

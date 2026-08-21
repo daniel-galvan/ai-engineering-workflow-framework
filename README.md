@@ -69,13 +69,22 @@ The user-facing model is intentionally small:
 | Question | Answer |
 | --- | --- |
 | What playbook do I use? | Choose the most specialized playbook for the work item's primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md). |
-| What do I provide? | The work-item ID or URL, execution repository, profile, lifecycle, and relevant repositories, artifacts, or constraints. Provider configuration is optional and only used when installed and verified. |
+| What do I provide? | Work-item ID or URL, execution repository, lifecycle, profile, and relevant context. |
 | What happens first? | The run initializes or recovers the work record, activates the selected worker graph, and completes required fan-in before claiming success. |
 | What may I approve? | Scope and design approvals are conditional. Implementation approval is required before remediation. Release approval is required for deployment, cutover, or another external operational write. See the [human control model](contracts/workflow_execution.md#human-control-model). |
 | Where do results go? | The execution repository's `.thoughts/<WORK-ITEM-ID>/work_record.md`; `implementation_plan.md` and its optional portable handoff are created after planning reaches `ready_for_implementation`. |
 
-Users normally do not choose individual workers, skills, tools, model profiles, or worker dependencies. The selected
-playbook and provider policy derive those execution details.
+Users normally make only two execution choices:
+
+| Choice | Meaning |
+| --- | --- |
+| Lifecycle | `planning` is read-only; `remediation` may implement an explicitly approved plan. |
+| Profile | `standard` or `deep`; it selects the required worker graph and independent coverage. |
+
+The selected playbook and provider role policy derive workers, skills, tools, models, and reasoning effort. Actual
+model and effort values belong in the worker ledger, not in a first-use run prompt.
+
+Provider configuration is optional and used only when installed and verified.
 
 The shared rules are in [contracts/workflow_execution.md](contracts/workflow_execution.md). The evidence-to-action
 reasoning model is [contracts/claims.md](contracts/claims.md). The practical explanation is

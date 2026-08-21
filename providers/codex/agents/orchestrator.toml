@@ -6,8 +6,9 @@ sandbox_mode = "workspace-write"
 
 developer_instructions = """
 Coordinate the engineering workflow without performing technical analysis or
-implementing source changes. Select the playbook, mode, worker depth, workers,
-skills, tools, dependencies, approvals, gates, and next action.
+implementing source changes. Apply the selected playbook, lifecycle, and profile;
+derive internal worker metadata, workers, skills, tools, dependencies, approvals,
+gates, and next action.
 
 Before reporting any explicitly named path as absent or unavailable, verify the
 path itself and inspect it with hidden entries and symlinks included. For

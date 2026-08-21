@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.1
+version: 0.2.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-19
@@ -38,6 +38,17 @@ It is intended to allow another engineer (or AI assistant) to resume the work wi
 | Work owner | |
 | Started | |
 | Last Updated | |
+
+---
+
+# Playbook Selection
+
+Record this before activating the worker graph. It explains the classification; it is not another user input or
+approval.
+
+| Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
+| --- | --- | --- | --- | --- |
+| | | | | |
 
 ---
 
@@ -93,11 +104,13 @@ An empty filtered search is not evidence that a path is absent.
 | Executed profile | `standard` / `deep` / `None` |
 | Profile status | `requested` / `in_progress` / `executed` / `not_executed` / `blocked` |
 | Lifecycle | `planning` / `remediation` |
-| Mode | `discovery` / `investigation` / `delivery` / `stabilization` / `review` |
-| Effort | `quick` / `standard` / `deep` worker depth; separate from provider reasoning effort |
+| Internal mode | `discovery` / `investigation` / `delivery` / `stabilization` / `review`; not a run input |
+| Internal depth | `quick` / `standard` / `deep`; not a run input |
 | State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |
 | Engineering state | `unknown` / `understood` / `designed` / `approved` / `implemented` / `validated` / `released` / `stabilized` / `not_applicable` |
 | Outcome | `in_progress` / `completed` / `closed_no_action` / `closed_duplicate` / `closed_not_a_bug` / `deferred` / `blocked` |
+| Workflow execution | `completed` / `incomplete` / `blocked`; process result, not engineering correctness |
+| Task outcome | `solved` / `partially_solved` / `plan_produced` / `blocked` / `wrong_direction` / `no_action` |
 | Current stage | |
 | Internal owner | Person, team, worker, or runtime responsible for the current state |
 | User action | What the user needs to do, or `Nothing technical.` |
@@ -119,9 +132,12 @@ evidence, decision, and worker ledger.
 
 # Worker Execution Ledger
 
+`Mode`, `Worker depth`, and `Capacity classification` are internal audit metadata. The user-facing run choices are
+Lifecycle and Profile. Actual model and effort are observed provider values, not requested global settings.
+
 Record every worker or subagent that materially contributes to the work.
 
-| Worker | Role | Mode | Effort | Skills | Tools | Model profile | Actual model/effort | Usage/credits | Depends on | Outcome | Confidence |
+| Worker | Role | Mode | Depth | Skills | Tools | Capacity | Model/effort | Usage | Depends on | Outcome | Confidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | | | | | | | | | | | | |
 
@@ -214,9 +230,17 @@ Complete this section at terminal handoff, blocked handoff, or a deliberate pilo
 only the code change. Reuse the worker ledgers above for role, model, effort, usage, and individual outcome; do not
 duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/workflow_evaluation.md).
 
-| Complexity tags | Duration | Worker retries | Worker corrections | Review cycles | Validation failures | Human interventions | Final outcome |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Bounded / Cross-repository / High-risk / Unknown | | | | | | | |
+| Complexity tags | Duration | Worker retries | Worker corrections | Review cycles | Validation failures |
+| --- | --- | --- | --- | --- | --- |
+| Bounded / Cross-repository / High-risk / Unknown | | | | | |
+
+| Human interaction | Count | Evidence / reason |
+| --- | --- | --- |
+| Clarifications requested | | |
+| Decisions requested | | |
+| Approvals requested | | |
+| Manual corrections | | |
+| Manual reruns | | |
 
 | Dimension | Rating | Evidence / notes |
 | --- | --- | --- |
@@ -224,6 +248,7 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Reasoning quality | Met / Partial / Not met / Not applicable | |
 | Engineering quality | Met / Partial / Not met / Not applicable | |
 | Efficiency | Met / Partial / Not met / Not applicable | |
+| Task outcome | Solved / Partially solved / Plan produced / Blocked / Wrong direction / No action | |
 
 Record the smallest improvement or policy question only when this run provides evidence for it. Do not tune model or
 effort from one run alone.

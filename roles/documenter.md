@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.1
+version: 0.2.0
 status: Pilot
 category: Documentation
 produces_decisions: false

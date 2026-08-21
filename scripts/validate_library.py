@@ -105,7 +105,7 @@ for path in ROOT.rglob("*.md"):
     if in_fence:
         fail(f"{path.relative_to(ROOT)} has an unclosed fenced block")
     version = re.search(r"^version: (.+)$", text, re.M)
-    if version and version.group(1) != "0.1":
+    if version and version.group(1) != "0.2.0":
         fail(f"{path.relative_to(ROOT)} has version {version.group(1)!r}")
 
 agent_configs = {}
@@ -289,6 +289,7 @@ for phrase in (
     "shared Delivery Activation Barrier",
     "delegated `implement` worker",
     "The remediation run cannot be reported complete",
+    "uses Feature Delivery",
 ):
     if phrase not in service_extraction_playbook:
         fail(f"playbooks/service_extraction.md is missing planning-readiness rule: {phrase}")
@@ -318,7 +319,7 @@ for phrase in (
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 26):
+for invariant_id in range(1, 27):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
@@ -327,6 +328,7 @@ for heading in (
     "# Human Control Model",
     "## Authoritative Run Inputs",
     "## Context Preservation and Classification",
+    "## Playbook Selection",
     "## Human-Readable Handoff",
     "## Worker Wait and Termination Semantics",
     "## Stop Conditions",
@@ -353,6 +355,12 @@ for phrase in (
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing planning-readiness rule: {phrase}")
+for phrase in (
+    "Workflow execution: <completed | incomplete | blocked>",
+    "Task outcome: <solved | partially_solved | plan_produced | blocked | wrong_direction | no_action>",
+):
+    if phrase not in workflow_contract:
+        fail(f"contracts/workflow_execution.md is missing handoff result: {phrase}")
 if not CLAIMS_CONTRACT.exists():
     fail("contracts/claims.md is missing")
 claims_contract = CLAIMS_CONTRACT.read_text()
@@ -398,6 +406,9 @@ if "| Internal owner |" not in work_record_template:
     fail("templates/work_record.md is missing internal-owner handoff guidance")
 if "| User action |" not in work_record_template:
     fail("templates/work_record.md is missing user-action handoff guidance")
+for phrase in ("# Playbook Selection", "| Workflow execution |", "| Task outcome |"):
+    if phrase not in work_record_template:
+        fail(f"templates/work_record.md is missing outcome/classification field: {phrase}")
 
 role_requirements = {
     "orchestrator.md": ("Delivery Activation Barrier", "does not implement", "An active worker status is not a handoff"),
@@ -423,6 +434,9 @@ for heading in ("# Workflow Evaluation", "## Pilot Method", "## Comparison Rules
         fail(f"frameworks/workflow_evaluation.md is missing {heading}")
 if "# Workflow Evaluation" not in work_record_template:
     fail("templates/work_record.md is missing workflow evaluation")
+for phrase in ("Task outcome", "Manual corrections", "Manual reruns"):
+    if phrase not in workflow_evaluation:
+        fail(f"frameworks/workflow_evaluation.md is missing outcome/burden metric: {phrase}")
 
 if not IMPLEMENTATION_HANDOFF_TEMPLATE.exists():
     fail("templates/implementation_handoff.md is missing")

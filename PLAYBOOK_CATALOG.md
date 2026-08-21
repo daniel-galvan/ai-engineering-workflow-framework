@@ -1,6 +1,6 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.1
+version: 0.2.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-18
@@ -153,6 +153,10 @@ It is not the default for a normal feature or improvement.
 
 ## Selection Guide
 
+At initialization, the Coordinator records the primary evidence, primary goal, selected playbook, closest alternative,
+and why the selected playbook is the better fit. This helps selection without adding another prompt field or replacing
+the engineer's judgment.
+
 | Primary evidence and goal | Playbook |
 | --- | --- |
 | Jira initiative, planned capability, or improvement | Feature Delivery |
@@ -160,6 +164,9 @@ It is not the default for a normal feature or improvement.
 | Sentry issue, event evidence, and production failure | Sentry Issue Remediation |
 | Scanner, CVE, advisory, or security finding | Vulnerability Investigation |
 | Existing capability moved into a new independently operated service | Service Extraction and Stabilization |
+
+After an extraction is accepted, later feature work in the destination service uses Feature Delivery. Do not keep using
+Service Extraction merely because the service originated from an extraction.
 
 Use the most specialized playbook with the evidence already available. The current pilot set is frozen while remediation
 lifecycles are exercised. After that validation, add a playbook only when a scenario has distinct stages, gates, or

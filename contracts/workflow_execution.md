@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.1
+version: 0.2.0
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -53,8 +53,8 @@ Extension](#special-workflow-extension) are normative requirements for contract-
 | Role              | A reusable responsibility and reasoning boundary.                                                                                                     |
 | Skill             | A reusable capability required to perform work.                                                                                                       |
 | Tool              | A concrete operation available to a worker.                                                                                                           |
-| Model profile     | The model and reasoning configuration selected for a worker.                                                                                          |
-| Worker            | One execution instance combining a role, skills, tools, model profile, and inputs. A worker may be a human, AI subagent, or step in a single session. |
+| Capacity class | Internal provider-neutral reasoning-capacity metadata. |
+| Worker | One execution instance: role, skills, tools, metadata, and inputs. Human, AI, or session work. |
 | Artifact          | A durable output such as a map, decision, code change, test result, or handoff.                                                                       |
 | Evidence          | A source-backed observation used to support or challenge a claim.                                                                                     |
 | Claim             | A material statement derived from one or more evidence items, with an explicit confidence and uncertainty assessment.                                  |
@@ -67,8 +67,9 @@ Extension](#special-workflow-extension) are normative requirements for contract-
 | Engineering state | What has been established about the work item, independently of the current workflow run.                                                            |
 | Portable implementation handoff | A self-contained execution artifact that transfers an approved plan to another session or environment. |
 
-Skills describe what capability is needed. Tools describe how that capability is performed. Model profiles describe how
-much reasoning and execution capacity is assigned. These concepts must not be merged.
+Skills describe what capability is needed. Tools describe how that capability is performed. Provider-neutral capacity
+classification describes requested reasoning capacity. These concepts must not be merged. They are internal worker
+metadata, not normal run inputs.
 
 The `orchestrator` is the reusable role that owns workflow coordination. The Coordinator is the active runtime
 performing that role. A provider may run the role in a dedicated worker, or the main session may act as both Coordinator
@@ -107,6 +108,7 @@ the source of truth.
 | `INV-21` | Clarification MUST report executed checks. | [Gate](#evidence-to-hypothesis-gate) |
 | `INV-22` | Local reproduction informs the current-code fix. | [Parity](#production-parity-prioritization) |
 | `INV-23` | Planning MUST distinguish implementation-plan work from a true planning blocker. | [Planning Readiness and Implementation Work](#planning-readiness-and-implementation-work) |
+| `INV-26` | Record why the playbook matches primary evidence and goal. | [Playbook Selection](#playbook-selection) |
 | `INV-24` | Barrier before edits. | [Barrier](#delivery-activation-and-completion-barrier) |
 | `INV-25` | Delivery gates and closure required. | [Barrier](#delivery-activation-and-completion-barrier) |
 
@@ -250,9 +252,11 @@ The tool list is an allowlist. A worker may not use an unlisted tool merely beca
 
 ---
 
-# Pilot Model Profiles
+# Internal Provider-Neutral Capacity Classifications
 
-Model profiles describe intent and reasoning capacity without naming a provider-specific model.
+These classifications describe intent and reasoning capacity without naming a provider-specific model. They are
+internal worker metadata. A user selects lifecycle and profile; the provider role policy resolves concrete model and
+reasoning effort.
 
 | Profile              | Meaning                                                                                |
 | -------------------- | -------------------------------------------------------------------------------------- |
@@ -285,6 +289,12 @@ input.
 
 Missing fields become explicit unknowns. They are never silently invented.
 
+## Playbook Selection
+
+Before activating a worker graph, the Coordinator MUST record the primary evidence, primary goal, selected playbook,
+and closest alternative considered. The selection must explain why the chosen playbook fits better than the alternative.
+This is a classification record, not another user input or approval gate.
+
 ---
 
 # Workflow Run Contract
@@ -305,6 +315,8 @@ Each run records:
 | `effort`       | Quick, standard, or deep.                                                            |
 | `state`        | Current workflow lifecycle state.                                                    |
 | `engineering_state` | What has been established about the work item, independently of workflow execution. |
+| `workflow_execution` | `completed`, `incomplete`, or `blocked`; whether the selected graph actually finished. |
+| `task_outcome` | `solved`, `partially_solved`, `plan_produced`, `blocked`, `wrong_direction`, or `no_action`. |
 | `workers`      | Selected workers and their dependencies.                                             |
 | `gates`        | Required conditions and their status.                                                |
 | `artifacts`    | Durable outputs produced during the run.                                             |
@@ -325,7 +337,7 @@ Each worker must have a stable identifier and an explicit execution profile.
 | `effort`           | Yes                | Provider-neutral worker depth: quick, standard, or deep. It does not select the provider model or reasoning setting. |
 | `skills`           | Yes                | Canonical skill identifiers selected for this worker.                                                                |
 | `tools`            | Yes                | Allowed concrete tool identifiers. An empty list means no tools are available.                                       |
-| `model_profile`    | Yes for AI workers | Provider-neutral model and reasoning profile.                                                                        |
+| `model_profile` | Yes for AI workers | Internal capacity class; not a normal run input. |
 | `inputs`           | Yes                | Artifacts or facts the worker may consume.                                                                           |
 | `outputs`          | Yes                | Artifacts or decisions the worker must produce.                                                                      |
 | `depends_on`       | Yes                | Worker or gate dependencies. Use an empty list when none exist.                                                      |
@@ -406,9 +418,10 @@ conclusions should use the IDs from the [`Claims, Evidence, Decisions, and Actio
 
 ---
 
-# Modes and Effort
+# Internal Worker Metadata
 
-Modes and effort are separate dimensions.
+Mode, worker depth, and capacity classification are separate internal dimensions. They are recorded for provider
+adapters and auditability; users do not select them in canonical run prompts.
 
 ## Modes
 
@@ -420,7 +433,7 @@ Modes and effort are separate dimensions.
 | `stabilization` | Reduce operational risk after extraction, migration, upgrade, or release.         |
 | `review`        | Independently assess correctness, risk, and readiness.                            |
 
-## Worker Effort
+## Provider-Neutral Worker Depth
 
 | Effort     | Meaning                                                          |
 | ---------- | ---------------------------------------------------------------- |
@@ -430,9 +443,9 @@ Modes and effort are separate dimensions.
 
 `discovery` is a mode, not an effort level. A discovery run may be quick, standard, or deep.
 
-Worker effort is separate from the execution profile and from provider reasoning effort. The playbook selects the
-execution profile; the provider adapter applies the role's model and reasoning policy. A profile must not silently lower
-the quality policy of a role.
+Worker depth is separate from the execution profile and provider reasoning effort. The playbook selects the execution
+profile; the provider adapter applies the role's model and reasoning policy. A profile must not silently lower the
+quality policy of a role.
 
 ## Execution Profiles and Lifecycle
 
@@ -448,7 +461,7 @@ The profile answers “how much investigation is appropriate?” The lifecycle a
 implement after the required approval gate.
 
 Every profile must preserve the shared safety, evidence, work-record, approval, and fan-in requirements. Provider
-adapters map the selected profile to concrete model and effort settings without changing the lifecycle gates.
+adapters apply the provider role policy without changing lifecycle gates or the role-quality policy.
 
 ## Profile Execution Semantics
 
@@ -811,12 +824,19 @@ without requiring the reader to reconstruct parallel execution from logs.
 Every playbook handoff must include this short block, especially when the run is blocked, incomplete, or awaiting input:
 
 ```text
+Workflow execution: <completed | incomplete | blocked>
+Task outcome: <solved | partially_solved | plan_produced | blocked | wrong_direction | no_action>
 What happened: <plain-language result>
 What this means: <why the run stopped or what is ready>
 Internal owner: <runtime, team, worker, or person responsible>
 What you need to do: <user action, or “Nothing technical.”>
 To continue: “<exact phrase or action the user can provide>”
 ```
+
+`Workflow execution: completed` means required workers reached terminal results, fan-in passed, and runtime closure was
+recorded. It does not prove the diagnosis, implementation, or release was correct. `Task outcome` reports the value to
+the engineering work item: a plan can be produced while the task remains unsolved, and a completed workflow can reveal a
+wrong direction.
 
 The handoff must explain internal runtime terms such as `fan-in`, terminal worker envelope, and runtime closure in
 ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
@@ -1000,8 +1020,8 @@ lifecycle, or work-record rules.
 A pilot run MUST NOT be called contract-compliant unless its work record can answer:
 
 - Which work item was handled?
-- Which playbook and mode were selected?
-- Which workers ran, with which roles, skills, tools, model profiles, and effort?
+- Which playbook, lifecycle, and profile were selected?
+- Which workers ran, with which roles, skills, tools, internal metadata, and observed provider settings?
 - What did each worker consume and produce?
 - What was each worker's unique result, outcome, and limitation?
 - Did every required fan-in barrier pass before completion?

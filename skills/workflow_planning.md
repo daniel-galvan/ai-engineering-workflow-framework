@@ -1,7 +1,7 @@
 ---
 
 title: Workflow Planning
-version: 0.1
+version: 0.2.0
 status: Pilot
 category: Coordination
 provider_independent: true
@@ -11,7 +11,7 @@ last_updated: 2026-07-24
 
 # Workflow Planning
 
-> Select the playbook, mode, effort, roles, skills, tools, model profiles, order, and gates for a unit of work.
+> Select the playbook, lifecycle, profile, roles, skills, tools, order, and gates for a unit of work.
 
 ## Inputs
 
@@ -23,9 +23,8 @@ last_updated: 2026-07-24
 
 ## Produces
 
-* Workflow mode
-* Effort level
-* Worker profiles with role, skill, tool, and model selections
+* Lifecycle and execution profile
+* Worker profiles with role, skill, tool, and internal provider metadata
 * Inputs and outputs for each worker
 * Execution order and parallelism
 * Parallel work opportunities

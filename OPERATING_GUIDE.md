@@ -1,7 +1,7 @@
 ---
 
 title: AI-assisted Software Engineering Workflow Framework Operating Guide
-version: 0.1
+version: 0.2.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-17
@@ -57,7 +57,7 @@ Work item
   → Playbook
     → Stages and gates
       → Workers
-        → Role + Skills + Tools + Model profile + Effort
+        → Role + Skills + Tools + internal worker metadata
           → Provider adapter
             → Provider agent/model execution
               → Evidence, artifacts, validation, and work record
@@ -115,7 +115,7 @@ Skills define inputs, outputs, completion criteria, and safety boundaries.
 
 ## Workers and subagents
 
-A worker is one execution instance. It combines a role, selected skills, tools, model profile, effort, inputs, outputs,
+A worker is one execution instance. It combines a role, selected skills, tools, internal metadata, inputs, outputs,
 dependencies, parallelism, approval, exit criteria, and failure behavior.
 
 The same worker contract can be executed by a human, one AI session, or a provider-specific subagent.
@@ -126,19 +126,22 @@ must be released before the run is closed or a new lifecycle run is started. Act
 still occupied. A wait timeout is only a polling boundary; it is not worker failure and does not authorize closing an
 active worker or starting a replacement.
 
-## Model and effort
+## Profile and provider role policy
 
-Mode, execution profile, worker depth, and provider reasoning effort are separate:
+For a normal run, choose only:
 
-* Mode describes the work: discovery, investigation, delivery, stabilization, or review.
-* Execution profile selects the playbook's worker graph: `standard` or `deep`.
-* Worker depth is the provider-neutral effort requested for an individual worker: `quick`, `standard`, or `deep`.
-* Model profile describes provider-neutral capacity: `standard_reasoning` or `deep_reasoning`.
-* Provider adapters map each role to its concrete model and reasoning setting.
+| Choice | Values | Answers |
+| --- | --- | --- |
+| Lifecycle | `planning`, `remediation` | How far may this run proceed? |
+| Profile | `standard`, `deep` | Which worker graph and independent coverage must run? |
 
-For the current Codex pilot, all playbooks use the same role-quality policy. Profiles choose which roles run; they do
-not change a role's model or provider reasoning effort. The canonical mapping is in
+The provider role policy selects the model and reasoning effort for each role. It is advanced configuration, not a
+third normal run choice. For the current Codex pilot, profiles choose which roles run; they do not change a role's
+model or reasoning effort. The canonical mapping is in
 [providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md).
+
+`mode`, provider-neutral worker depth, and provider-neutral capacity classification remain internal worker metadata.
+They support provider adapters and audit records; users do not select them in a canonical run prompt.
 
 ## Current playbooks
 

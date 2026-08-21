@@ -1,6 +1,6 @@
 ---
 title: Workflow Evaluation
-version: 0.1
+version: 0.2.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-11
@@ -29,9 +29,24 @@ Use `Unknown` when the runtime does not expose a value; never estimate tokens or
 | Reasoning quality | Are material conclusions traceable, calibrated, and responsive to contradictions? | Evidence, claims, assumptions, decisions |
 | Engineering quality | Did the work reach the declared implementation, review, validation, release, or handoff outcome? | Plan, diff, review, validation, operational evidence |
 | Efficiency | Did the run avoid unnecessary retries, duplicated investigation, workers, and human burden? | Duration, usage, retry/correction counts, worker summaries |
+| Task outcome | Did the run move the work item forward? | Solved / partial / plan / blocked / wrong / no action |
 
 Rate each dimension `met`, `partial`, `not_met`, or `not_applicable`. A low cost or short run is not a quality result by
 itself. A completed worker graph does not prove the diagnosis, implementation, or release was correct.
+
+Record `workflow_execution` and `task_outcome` separately at every terminal or blocked handoff. Workflow execution is
+`completed`, `incomplete`, or `blocked`; it measures whether the selected graph finished. Task outcome measures the
+engineering value delivered to the work item. Do not use a numeric score: the named outcome is clearer and auditable.
+
+Record human burden separately from automated efficiency:
+
+| Interaction | Count | Interpretation |
+| --- | --- | --- |
+| Clarifications requested | | Missing context or decisions that remained after bounded discovery. |
+| Decisions requested | | Product, scope, ownership, or incompatible-alternatives decisions. |
+| Approvals requested | | Expected control points; not automatically workflow friction. |
+| Manual corrections | | User intervention needed to correct a workflow result or process error. |
+| Manual reruns | | User-requested reruns, with the reason recorded. |
 
 ## Comparison Rules
 

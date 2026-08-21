@@ -1,7 +1,7 @@
 ---
 
 title: Collaborative Workflow Strategy
-version: 0.1
+version: 0.2.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-10
@@ -61,12 +61,13 @@ How those responsibilities are fulfilled depends on the available tooling.
 
 ---
 
-# Workflow Depth
+# Internal Worker Metadata
 
 Current playbooks select the worker graph through the execution profile. Use the playbook as the source of truth; this
 strategy does not define a second worker graph or override a role's provider model and reasoning effort.
 
-When an individual worker needs a provider-neutral depth, use:
+Provider-neutral worker depth and mode are internal metadata. A user selects lifecycle and profile; the playbook and
+provider role policy derive this metadata. When an individual worker needs a provider-neutral depth, use:
 
 | Worker depth | Use for |
 | --- | --- |
@@ -78,8 +79,8 @@ When an individual worker needs a provider-neutral depth, use:
 
 # Workflow Modes
 
-Mode and worker depth are separate selections. Discovery is a mode, not a worker depth. Execution profiles are selected
-by the playbook.
+Mode and worker depth are separate internal classifications. Discovery is a mode, not a worker depth. Execution profiles
+are selected by the playbook.
 
 | Mode | Use |
 | --- | --- |
@@ -160,7 +161,8 @@ Selection precedence is:
 1. Role metadata provides default skills and required documents.
 2. The playbook selects the roles and skills required for the scenario.
 3. Each stage may add or restrict skills for its workers.
-4. The worker profile defines tools, model profile, effort, inputs, outputs, dependencies, approvals, and exit criteria.
+4. The worker profile defines tools, internal provider metadata, inputs, outputs, dependencies, approvals, and
+   exit criteria.
 
 The playbook owns the execution graph. Role documents do not define worker ordering.
 

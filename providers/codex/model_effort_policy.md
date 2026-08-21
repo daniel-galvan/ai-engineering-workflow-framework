@@ -1,26 +1,25 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.1
+version: 0.2.0
 status: Pilot
 provider: codex
 provider_independent_profiles: true
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-20
 ---
 
 # Codex Model and Effort Policy
 
 This policy maps reusable framework roles to Codex custom agents for Feature Delivery, TechOps Issue Remediation,
-Vulnerability Investigation, Service Extraction, and Sentry Issue Remediation. It does not assign one provider model to
-the provider-neutral `standard_reasoning` or `deep_reasoning` labels; the role policy below is the concrete pilot
-mapping.
+Vulnerability Investigation, Service Extraction, and Sentry Issue Remediation. It is advanced provider configuration,
+not a normal run input. The role policy below is the concrete pilot mapping.
 
 The pilot uses one role-quality policy across Feature Delivery, Service Extraction, Sentry, TechOps Issue Remediation,
 and Vulnerability Investigation. Profiles select which roles run; they do not change a role's model or reasoning effort.
 Record the requested and resolved values in the work record.
 
-User-facing effort labels map to Codex configuration values as follows:
+Codex policy labels map to configuration values as follows:
 
 | Policy label | Codex configuration value |
 | --- | --- |
@@ -42,20 +41,20 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Role | Codex model | Policy effort | TOML value |
 | --- | --- | --- | --- |
 | Orchestrator | `gpt-5.6-luna` | Medium | `medium` |
-| Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | High | `high` |
+| Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
 | Dependency Analyst | `gpt-5.6-luna` | High | `high` |
 | Repository Integrator | `gpt-5.6-luna` | High | `high` |
-| Solution Architect | `gpt-5.6-luna` | Extra High | `xhigh` |
-| Reviewer | `gpt-5.6-luna` | Extra High | `xhigh` |
+| Solution Architect | `gpt-5.6-terra` | Light | `low` |
+| Reviewer | `gpt-5.6-terra` | Medium | `medium` |
 | Implementer | `gpt-5.6-luna` | High | `high` |
 | Tester | `gpt-5.6-luna` | High | `high` |
-| Documenter | `gpt-5.6-luna` | Light | `low` |
+| Documenter | `gpt-5.6-luna` | Low | `low` |
 
 ## Agent selection
 
 The playbook is the source of truth for which workers run in each execution profile. This policy is the source of truth
 only for the model and reasoning effort assigned to each role. The profile changes the worker graph, not the quality
-policy of a role. The contract's worker depth (`quick`, `standard`, or `deep`) is separate from Codex reasoning effort.
+policy of a role. Provider-neutral worker depth is internal contract metadata, separate from Codex reasoning effort.
 
 ## Sentry Issue Remediation
 
@@ -66,7 +65,7 @@ the generic agents so implementation, review, testing, and documentation policy 
 | --- | --- | --- |
 | Diagnosis, architecture, implementation, and review | Role-specific | Role-specific |
 | Sentry evidence and testing | Role-specific | Role-specific |
-| Work-record documentation | `gpt-5.6-luna` | `low` (Light) |
+| Work-record documentation | `gpt-5.6-luna` | `low` (Low) |
 
 This profile is enforced by the named agent files when the Orchestrator uses those agents. Prompt text alone does not
 override a pinned agent model or effort. If a requested model is unavailable, use a separate equivalent agent definition
