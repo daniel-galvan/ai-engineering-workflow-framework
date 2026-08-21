@@ -58,8 +58,7 @@ policy of a role. Provider-neutral worker depth is internal contract metadata, s
 
 ## Sentry Issue Remediation
 
-The Sentry playbook uses specialized `sentry_*.toml` agents only for Sentry-specific investigation. Delivery roles reuse
-the generic agents so implementation, review, testing, and documentation policy cannot drift.
+Only Sentry-specific investigation uses specialized `sentry_*.toml` agents.
 
 | Responsibility | Codex model | Codex effort |
 | --- | --- | --- |

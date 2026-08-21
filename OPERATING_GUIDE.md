@@ -4,7 +4,7 @@ title: AI-assisted Software Engineering Workflow Framework Operating Guide
 version: 0.2.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-17
+last_updated: 2026-08-20
 ---
 
 # AI-assisted Software Engineering Workflow Framework Operating Guide
@@ -150,26 +150,9 @@ Document status remains `Pilot` while the framework is in progress. Playbook mat
 separately. Remediation is not validated until a compliant delivery run activates the required delivery workers,
 completes Code Review and validation, and records fan-in.
 
-See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for the current playbook list, exercise state, worker graphs, and
-selection guidance.
-
-The Service Extraction playbook is for establishing an independently buildable, runnable, deployable, and maintainable
-service from an existing capability. It is not a generic label for every migration and should not be reused for a normal
-feature after extraction is complete.
-
-The Feature Delivery playbook turns a Jira feature or improvement into a verified scope, acceptance-criteria
-traceability, implementation plan, and approved delivery workflow. It recovers thin-ticket context from the immediate
-parent and ancestor hierarchy, selected siblings, linked decisions, and repository evidence without treating that
-context as automatically inherited scope.
-
-The TechOps Issue Remediation playbook turns a support- or operations-reported Jira issue into normalized report
-evidence, a reproduction and failure-path analysis, repository ownership, a minimal remediation plan, and an approved
-delivery workflow. Attachments are first-class evidence but must be reconciled with current repository and runtime
-evidence.
-
-The Sentry Issue Remediation playbook turns Sentry evidence into a verified diagnosis, minimal fix, implementation plan,
-regression-test plan, validation plan, and handoff. Standard and Deep planning are validated. The remediation lifecycle
-remains unvalidated. Sentry is an integration source; its MCP operations do not replace repository evidence or testing.
+The [Playbook Catalog](PLAYBOOK_CATALOG.md) is the concise source for playbook selection, worker graphs, and exercise
+state. It also defines the Service Extraction boundary: later feature work in an extracted service uses Feature
+Delivery.
 
 ## Service Extraction workflow
 

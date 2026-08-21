@@ -193,10 +193,8 @@ Run the framework validator after changes:
 python3 scripts/validate_library.py
 ```
 
-The pilot is intentionally incremental. Document facts, limitations, and the [workflow
-evaluation](frameworks/workflow_evaluation.md) in the work record; exercise changes against real work items; and
-simplify after each pilot. See [CONTRIBUTING.md](CONTRIBUTING.md) for extension rules and [ROADMAP.md](ROADMAP.md) for
-planned coverage.
+Document facts, limitations, and [workflow evaluation](frameworks/workflow_evaluation.md) in the work record. Exercise
+changes against real work items, then simplify. See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
 
 ## Versioning
 
