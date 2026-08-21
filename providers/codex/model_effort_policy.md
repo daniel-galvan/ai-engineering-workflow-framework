@@ -6,7 +6,7 @@ status: Pilot
 provider: codex
 provider_independent_profiles: true
 owner: Engineering
-last_updated: 2026-08-20
+last_updated: 2026-08-21
 ---
 
 # Codex Model and Effort Policy
@@ -42,19 +42,19 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 
 | Role | Codex model | Policy effort | TOML value |
 | --- | --- | --- | --- |
-| Orchestrator | `gpt-5.6-luna` | High | `high` |
+| Orchestrator | `gpt-5.6-terra` | Medium | `medium` |
 | Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
-| Dependency Analyst | `gpt-5.6-luna` | High | `high` |
-| Repository Integrator | `gpt-5.6-luna` | High | `high` |
-| Solution Architect | `gpt-5.6-terra` | Light | `low` |
+| Dependency Analyst | `gpt-5.6-luna` | Medium | `medium` |
+| Repository Integrator | `gpt-5.6-luna` | Medium | `medium` |
+| Solution Architect | `gpt-5.6-terra` | Medium | `medium` |
 | Reviewer | `gpt-5.6-terra` | Medium | `medium` |
 | Implementer | `gpt-5.6-luna` | High | `high` |
 | Tester | `gpt-5.6-luna` | High | `high` |
 | Documenter | `gpt-5.6-luna` | Low | `low` |
 
-Prioritize comparison of the current baseline for the Orchestrator (`gpt-5.6-luna` / High), Solution Architect
-(`gpt-5.6-terra` / Light), and Reviewer (`gpt-5.6-terra` / Medium). Keep the baseline only when comparable runs show
-that it maintains or improves quality and human-effort metrics.
+This baseline assigns the balanced model to coordination and design, while Deep's additional analysis workers use
+Medium effort. Implementation and testing remain High while remediation reliability is inconsistent. Keep the baseline
+only when comparable runs show that it maintains or improves quality, elapsed-time, and human-effort metrics.
 
 ## Agent selection
 

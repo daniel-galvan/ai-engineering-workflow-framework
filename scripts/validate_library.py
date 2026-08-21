@@ -449,8 +449,10 @@ for phrase in (
         fail(f"templates/work_record.md is missing outcome/burden metric: {phrase}")
 for phrase in (
     "initial hypothesis: an experimental baseline",
-    "Orchestrator | `gpt-5.6-luna` | High | `high`",
-    "Solution Architect | `gpt-5.6-terra` | Light | `low`",
+    "Orchestrator | `gpt-5.6-terra` | Medium | `medium`",
+    "Dependency Analyst | `gpt-5.6-luna` | Medium | `medium`",
+    "Repository Integrator | `gpt-5.6-luna` | Medium | `medium`",
+    "Solution Architect | `gpt-5.6-terra` | Medium | `medium`",
     "Reviewer | `gpt-5.6-terra` | Medium | `medium`",
 ):
     if phrase not in policy_text:
