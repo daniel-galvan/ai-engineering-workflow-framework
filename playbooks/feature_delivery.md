@@ -30,8 +30,8 @@ Use this playbook for a planned new capability or improvement whose primary sour
 that are incomplete when parent initiative context, selected sibling work, linked decisions, and repository evidence can
 recover the missing context.
 
-Do not use it for a production failure with Sentry evidence, a security finding, service extraction, or a migration with
-a separate source and destination boundary. Use the corresponding specialized playbook instead.
+Do not use it for a production failure with Sentry evidence or a security finding. A feature that moves an existing
+capability into an independently operated destination uses the source-to-destination scenario below.
 
 ## Default
 
@@ -70,7 +70,7 @@ provider policy.
 | Profile | Use when | Planning behavior |
 | --- | --- | --- |
 | `standard` | Known initiative, bounded feature, and one credible repository or component | Recovers context, maps current behavior and impact, designs the smallest feature slice, and documents the plan. Repository integration is conditional. |
-| `deep` | Cross-repository work, unclear ownership, public contract, persistence, rollout, security, or disputed requirements | Adds mandatory repository integration and independent planning review. |
+| `deep` | Cross-repository work, source-to-destination delivery, unclear ownership, public contract, persistence, rollout, security, or disputed requirements | Adds mandatory repository integration and independent planning review. |
 
 | Lifecycle | Behavior |
 | --- | --- |
@@ -103,10 +103,10 @@ worker-runtime closure.
 | `initialize` | `orchestrator` | `work_item_context`, `workflow_planning`, `work_record_maintenance` | `work_item_read`, `work_record_read`, `work_record_write` | First |
 | `feature-context` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `architecture_mapping` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; after `initialize` |
 | `impact-analysis` | `dependency_analyst` | `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write` | Required; after `feature-context` |
-| `repository-integration` | `repository_integrator` | `destination_integration`, `architecture_mapping`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required for `deep`; conditional for `standard`; after `feature-context` |
+| `repository-integration` | `repository_integrator` | `destination_integration`, `architecture_mapping`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `build_run`, `test_run`, `artifact_write` | Required for `deep`; conditional for `standard`; after `feature-context` |
 | `feature-design` | `solution_architect` | `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `impact-analysis` and any required integration analysis |
 | `planning-review` | `reviewer` | `architecture_mapping`, `operational_readiness` | `repository_read`, `diff_review`, `artifact_write` | Deep only; after `feature-design` |
-| `implement` | `implementer` | `build_and_test` | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write` | Remediation only; approval plus completed planning fan-in |
+| `implement` | `implementer` | `code_migration`, `build_and_test` | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write` | Remediation only; approval plus completed planning fan-in |
 | `review` | `reviewer` | `architecture_mapping`, `build_and_test`, `operational_readiness` | `repository_read`, `diff_review`, `test_run`, `artifact_write` | After `implement` |
 | `validate` | `tester` | `build_and_test`, `operational_readiness` | `build_run`, `test_run`, `runtime_observe`, `artifact_write` | After `review` |
 | `handoff` | `documenter` | `work_record_maintenance` | `work_record_read`, `work_record_write`, `artifact_write` | Continuous after `initialize` |
@@ -122,6 +122,9 @@ Required worker sets:
 - `deep + remediation`: reuse completed deep planning artifacts, then activate `implement`, `review`, `validate`, and
   `handoff` after approval.
 
+An existing capability moving into an independently operated destination always uses `deep`; it is never a standard
+feature run.
+
 The delivery sequence is `implement` ↔ `review` → `validate` → `handoff`. Do not start additional discovery workers
 after approval unless new evidence contradicts the approved plan or expands scope.
 
@@ -135,6 +138,36 @@ after approval unless new evidence contradicts the approved plan or expands scop
 - `planning-review` independently challenges scope, assumptions, rollout, and validation only for `deep`.
 - `handoff` records all results, synchronization, model/effort, usage, credits, and next action in the durable work
   record.
+
+## Source-to-Destination Feature Delivery
+
+This source-to-destination feature delivery scenario uses `deep` for moving an existing capability from a source
+repository, application, or service into an independently buildable, runnable, deployable, maintainable, and owned
+destination. It is still one feature delivery flow, not a separate playbook.
+
+The run prompt MUST identify the source, destination, capability, acceptance criteria, and known runtime, deployment,
+ownership, data, event, and contract constraints. The execution repository remains the durable-artifact root; source
+and destination repositories are evidence and code locations, not artifact roots.
+
+For this scenario:
+
+- `feature-context` records the current source behavior, entry points, interfaces, tests, configuration, datastores,
+  queues, events, external APIs, observability, deployment assumptions, and ownership.
+- `impact-analysis` maps callers, consumers, shared code, data and event ownership, authentication, configuration,
+  secrets, deployment, and rollback coupling. It classifies each dependency as move, remain external, adapt, share
+  temporarily, remove, or unknown.
+- `repository-integration` verifies destination conventions and runs the smallest safe build or test baseline before
+  design. An unavailable baseline is not a planning blocker; a failing baseline is a plan input when its repair is
+  feasible.
+- `feature-design` defines the smallest independently deployable vertical slice that satisfies authoritative outcomes.
+  It records the source-to-destination seam, ownership, compatibility, coexistence or cutover, rollback, and deferred
+  work; it must not substitute a thin adapter or partial path for the required end state.
+
+The implementation plan records source and destination revisions, the selected seam, every dependency disposition,
+migration slices, contracts, validation, operations, coexistence or cutover, rollback, and completion criteria. During
+remediation, preserve migrated behavior unless an approved feature change says otherwise. The plan-conformance manifest
+must map each changed file to the approved step and reject private replacement persistence, hard-coded runtime fixtures,
+parallel replacement implementations, and prohibited source dependencies.
 
 ## Stages
 
@@ -242,6 +275,9 @@ When created, the plan must include:
 6. risks, compatibility, rollback, monitoring, and release evidence; and
 7. completion criteria and unresolved assumptions.
 
+For source-to-destination delivery, include source and destination revisions, the seam, every dependency disposition,
+destination baseline result, coexistence or cutover, and rollback.
+
 ## Gates
 
 | Gate | Pass condition |
@@ -250,6 +286,7 @@ When created, the plan must include:
 | Clarification framed | When needed, bounded discovery, feasible options, recommendation, and the smallest decision request are recorded. |
 | Planning context sufficient | Outcome, affected surface, and observable acceptance conditions are supported. |
 | Impact understood | Relevant code, dependencies, contracts, tests, and operational implications are known or explicitly blocked. |
+| Source-to-destination ready | When applicable, source behavior, destination baseline, dependency dispositions, seam, ownership, and rollback are recorded. |
 | Design ready | Smallest feature slice and acceptance traceability are documented. |
 | Implementation ready | Required planning fan-in passed and `implementation_plan.md` exists. |
 | Approval ready | Explicit implementation approval and remediation re-entry are recorded. |
@@ -268,6 +305,9 @@ The final handoff reports:
    using the shared contract's ledger fields; plus requested, activated, and executed profile, fan-in, and
    runtime-closure status; and
 5. remaining risks, blockers, owner, and follow-up work.
+
+For source-to-destination delivery, also report the verified seam, dependency dispositions, destination baseline,
+coexistence or cutover, rollback, and operational ownership.
 
 Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
 `What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`

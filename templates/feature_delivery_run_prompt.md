@@ -25,6 +25,8 @@ First-use summary:
   canonical fields.
 - Put direct user decisions and non-negotiable constraints in the confirmed-input section; workers must not reopen them
   as clarification questions.
+- For a feature that moves an existing capability into an independently operated destination, provide the
+  source-to-destination scenario fields and select `deep`.
 
 ```text
 Run the Feature Delivery playbook.
@@ -78,6 +80,16 @@ Run invariants:
 Additional repositories and working directories (optional; the execution
 repository is already declared):
 - <REPOSITORY-OR-DIRECTORY-OR-NONE>
+
+Source-to-destination feature scenario (omit for a normal feature; requires `deep`):
+- Source: <ABSOLUTE-PATH-OR-UNKNOWN>
+- Destination: <ABSOLUTE-PATH-OR-UNKNOWN>
+- Capability: <NAME-OR-UNKNOWN>
+- Desired destination seam: <DESCRIPTION-OR-UNKNOWN>
+- Known contracts, data, events, runtime, deployment, or ownership constraints: <DESCRIPTION-OR-NONE>
+
+Use `Unknown` only when unavailable. Missing source or destination information prevents implementation readiness, but
+does not prevent bounded planning discovery.
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>

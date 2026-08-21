@@ -225,7 +225,7 @@ unexecuted review cannot be recorded as accepted delivery review.
 Before reviewing behavior, compare the diff with the approved plan and the
 Implementer's plan-conformance manifest. Reject unmapped files, new tables,
 models, fixtures, runtime abstractions, or dependencies that are not explicitly
-mapped to the approved plan. For service extraction, reject private replacement
+mapped to the approved plan. For source-to-destination feature delivery, reject private replacement
 persistence, hard-coded runtime fixtures, parallel replacement implementations,
 and unresolved prohibited source dependencies.
 

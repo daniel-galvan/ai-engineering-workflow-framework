@@ -12,12 +12,14 @@ last_updated: 2026-08-20
 # Codex Model and Effort Policy
 
 This policy maps reusable framework roles to Codex custom agents for Feature Delivery, TechOps Issue Remediation,
-Vulnerability Investigation, Service Extraction, and Sentry Issue Remediation. It is advanced provider configuration,
-not a normal run input. The role policy below is the concrete pilot mapping.
+Vulnerability Investigation, and Sentry Issue Remediation. It is advanced provider configuration, not a normal run
+input. The role policy below is an initial hypothesis: an experimental baseline to validate against real runs, not a
+claim of optimal model selection.
 
-The pilot uses one role-quality policy across Feature Delivery, Service Extraction, Sentry, TechOps Issue Remediation,
-and Vulnerability Investigation. Profiles select which roles run; they do not change a role's model or reasoning effort.
-Record the requested and resolved values in the work record.
+The experimental baseline is versioned and shared across Feature Delivery, Sentry, TechOps Issue Remediation, and
+Vulnerability Investigation. Profiles select which roles run; they do not change a role's model or reasoning effort.
+Record the requested and resolved values in the work record and revise this baseline only from comparable evaluation
+evidence.
 
 Codex policy labels map to configuration values as follows:
 
@@ -36,11 +38,11 @@ because that alias routes to Sol. Verify any Codex App-only label, such as `Ultr
 it in an agent definition. See the [official GPT-5.6 model
 guidance](https://developers.openai.com/api/docs/guides/latest-model).
 
-## Pilot Role Quality Policy
+## Experimental Role Baseline
 
 | Role | Codex model | Policy effort | TOML value |
 | --- | --- | --- | --- |
-| Orchestrator | `gpt-5.6-luna` | Medium | `medium` |
+| Orchestrator | `gpt-5.6-luna` | High | `high` |
 | Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
 | Dependency Analyst | `gpt-5.6-luna` | High | `high` |
 | Repository Integrator | `gpt-5.6-luna` | High | `high` |
@@ -49,6 +51,10 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Implementer | `gpt-5.6-luna` | High | `high` |
 | Tester | `gpt-5.6-luna` | High | `high` |
 | Documenter | `gpt-5.6-luna` | Low | `low` |
+
+Prioritize comparison of the current baseline for the Orchestrator (`gpt-5.6-luna` / High), Solution Architect
+(`gpt-5.6-terra` / Light), and Reviewer (`gpt-5.6-terra` / Medium). Keep the baseline only when comparable runs show
+that it maintains or improves quality and human-effort metrics.
 
 ## Agent selection
 

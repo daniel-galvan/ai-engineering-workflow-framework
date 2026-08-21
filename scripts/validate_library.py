@@ -280,19 +280,17 @@ for phrase in (
 if "Sentry evidence and repository revision are identified" in sentry_playbook:
     fail("playbooks/sentry_issue_remediation.md still blocks on exact revision identification")
 
-service_extraction_playbook = (ROOT / "playbooks" / "service_extraction.md").read_text()
+feature_delivery_playbook = (ROOT / "playbooks" / "feature_delivery.md").read_text()
 for phrase in (
     "independently deployable vertical slice",
     "unavailable baseline is not a planning blocker",
-    "do not prevent `ready_for_implementation`.",
-    "`boundary_not_safe` and `destination_not_ready` are reserved for true planning",
-    "shared Delivery Activation Barrier",
-    "delegated `implement` worker",
-    "The remediation run cannot be reported complete",
-    "uses Feature Delivery",
+    "source-to-destination feature delivery",
+    "always uses `deep`",
+    "source and destination revisions",
+    "private replacement persistence",
 ):
-    if phrase not in service_extraction_playbook:
-        fail(f"playbooks/service_extraction.md is missing planning-readiness rule: {phrase}")
+    if phrase not in feature_delivery_playbook:
+        fail(f"playbooks/feature_delivery.md is missing source-to-destination rule: {phrase}")
 
 planning_readiness_reference = (
     "[planning-readiness]: "
@@ -336,6 +334,8 @@ for heading in (
 ):
     if heading not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing {heading}")
+if "MUST override a historical worker conclusion" not in workflow_contract:
+    fail("contracts/workflow_execution.md is missing current-decision precedence")
 if "## Delivery Code Review Loop" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the delivery review loop")
 for phrase in (
@@ -357,7 +357,7 @@ for phrase in (
         fail(f"contracts/workflow_execution.md is missing planning-readiness rule: {phrase}")
 for phrase in (
     "Workflow execution: <completed | incomplete | blocked>",
-    "Task outcome: <solved | partially_solved | plan_produced | blocked | wrong_direction | no_action>",
+    "Task outcome: <solved | partially_solved | plan_only | blocked | incorrect>",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing handoff result: {phrase}")
@@ -434,9 +434,26 @@ for heading in ("# Workflow Evaluation", "## Pilot Method", "## Comparison Rules
         fail(f"frameworks/workflow_evaluation.md is missing {heading}")
 if "# Workflow Evaluation" not in work_record_template:
     fail("templates/work_record.md is missing workflow evaluation")
-for phrase in ("Task outcome", "Manual corrections", "Manual reruns"):
+for phrase in (
+    "Task outcome",
+    "Clarifications",
+    "Approvals",
+    "Manual corrections",
+    "Reruns",
+    "Human review effort",
+):
     if phrase not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing outcome/burden metric: {phrase}")
+    if phrase not in work_record_template:
+        fail(f"templates/work_record.md is missing outcome/burden metric: {phrase}")
+for phrase in (
+    "initial hypothesis: an experimental baseline",
+    "Orchestrator | `gpt-5.6-luna` | High | `high`",
+    "Solution Architect | `gpt-5.6-terra` | Light | `low`",
+    "Reviewer | `gpt-5.6-terra` | Medium | `medium`",
+):
+    if phrase not in policy_text:
+        fail(f"{CODEX_POLICY.relative_to(ROOT)} is missing experimental baseline: {phrase}")
 
 if not IMPLEMENTATION_HANDOFF_TEMPLATE.exists():
     fail("templates/implementation_handoff.md is missing")

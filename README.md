@@ -41,7 +41,7 @@ Use it for work with meaningful uncertainty, dependencies, risk, or coordination
 - Jira features, improvements, bugs, and TechOps issues;
 - Sentry production failures;
 - vulnerability and scanner findings;
-- migrations and service extraction; and
+- migrations and source-to-destination feature delivery; and
 - special workflows that need distinct stages or gates.
 
 Do not use the full worker graph for a trivial, well-bounded change. Use the smallest role and skill set that provides
@@ -143,13 +143,12 @@ canonical run template.
 
 | Playbook                                                                | Use for                                                                |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [Feature Delivery](playbooks/feature_delivery.md)                       | Jira features and improvements                                         |
+| [Feature Delivery](playbooks/feature_delivery.md)                       | Jira features, improvements, and source-to-destination delivery        |
 | [TechOps Issue Remediation](playbooks/techops_issue_remediation.md)     | Support- and operations-reported Jira issues                           |
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
-| [Service Extraction and Stabilization](playbooks/service_extraction.md) | Creating an independently operated service from an existing capability |
 
-The current pilot set is frozen at these five playbooks while their remediation lifecycles are exercised. After that
+The current pilot set is frozen at these four playbooks while their remediation lifecycles are exercised. After that
 validation, add a playbook only when the existing stages, gates, and artifacts cannot express the scenario cleanly. See
 [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and worker graphs.
 

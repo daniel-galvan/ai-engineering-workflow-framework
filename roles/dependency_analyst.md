@@ -238,7 +238,7 @@ Describe:
 
 Identify logical boundaries suitable for:
 
-* Service extraction
+* Source-to-destination feature delivery
 * Shared libraries
 * Interfaces
 * Adapters

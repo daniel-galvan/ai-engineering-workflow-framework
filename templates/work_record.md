@@ -110,7 +110,7 @@ An empty filtered search is not evidence that a path is absent.
 | Engineering state | `unknown` / `understood` / `designed` / `approved` / `implemented` / `validated` / `released` / `stabilized` / `not_applicable` |
 | Outcome | `in_progress` / `completed` / `closed_no_action` / `closed_duplicate` / `closed_not_a_bug` / `deferred` / `blocked` |
 | Workflow execution | `completed` / `incomplete` / `blocked`; process result, not engineering correctness |
-| Task outcome | `solved` / `partially_solved` / `plan_produced` / `blocked` / `wrong_direction` / `no_action` |
+| Task outcome | `solved` / `partially_solved` / `plan_only` / `blocked` / `incorrect` |
 | Current stage | |
 | Internal owner | Person, team, worker, or runtime responsible for the current state |
 | User action | What the user needs to do, or `Nothing technical.` |
@@ -234,13 +234,13 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | --- | --- | --- | --- | --- | --- |
 | Bounded / Cross-repository / High-risk / Unknown | | | | | |
 
-| Human interaction | Count | Evidence / reason |
+| Human interaction | Measure | Evidence / reason |
 | --- | --- | --- |
-| Clarifications requested | | |
-| Decisions requested | | |
-| Approvals requested | | |
-| Manual corrections | | |
-| Manual reruns | | |
+| Clarifications | Count | |
+| Approvals | Count | |
+| Manual corrections | Count | |
+| Reruns | Count | |
+| Human review effort | Minutes | |
 
 | Dimension | Rating | Evidence / notes |
 | --- | --- | --- |
@@ -248,7 +248,7 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Reasoning quality | Met / Partial / Not met / Not applicable | |
 | Engineering quality | Met / Partial / Not met / Not applicable | |
 | Efficiency | Met / Partial / Not met / Not applicable | |
-| Task outcome | Solved / Partially solved / Plan produced / Blocked / Wrong direction / No action | |
+| Task outcome | Solved / Partially Solved / Plan Only / Blocked / Incorrect | |
 
 Record the smallest improvement or policy question only when this run provides evidence for it. Do not tune model or
 effort from one run alone.

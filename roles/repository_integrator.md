@@ -29,7 +29,7 @@ design the solution itself.
 
 This role is particularly valuable for:
 
-* Service extraction
+* Source-to-destination feature delivery
 * Repository migration
 * Monolith decomposition
 * New services

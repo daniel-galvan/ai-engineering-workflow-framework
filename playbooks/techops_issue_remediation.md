@@ -30,8 +30,8 @@ Use this playbook for TechOps or comparable Jira issues reported through Zendesk
 channels when the primary evidence is the issue report, comments, attachments, logs, payloads, screenshots, or
 recordings.
 
-Do not use it when Sentry is the primary evidence source, the issue is a security finding, the work is a planned feature
-within an initiative, or the goal is a service extraction. Use the more specialized playbook instead.
+Do not use it when Sentry is the primary evidence source, the issue is a security finding, or the work is a planned
+feature within an initiative, including source-to-destination feature delivery. Use the more specialized playbook.
 
 ## Inputs and Evidence
 

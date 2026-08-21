@@ -4,7 +4,7 @@ version: 0.2.0
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-20
 ---
 
 # Workflow Execution Contract
@@ -27,13 +27,16 @@ reason applies, and permitted.
 
 ## Document Classification
 
-Unless explicitly marked otherwise, the sections from [Vocabulary](#vocabulary) through [Special Workflow
-Extension](#special-workflow-extension) are normative requirements for contract-compliant workflows.
+The [Workflow Invariants](#workflow-invariants), contract tables, lifecycle gates, state machine, artifact rules, and
+[Pilot Conformance Checklist](#pilot-conformance-checklist) are the normative core. They define the minimum required
+behavior. Rationale, provider examples, and explanations of how to satisfy a requirement are implementation guidance;
+they do not create additional gates. This keeps the contract authoritative without treating its explanatory prose as a
+second specification.
 
 | Classification | Location | Purpose |
 | --- | --- | --- |
-| Normative specification | Vocabulary, contracts, lifecycle, gates, state machine, artifact rules, and extension rules | Defines required behavior and conformance. |
-| Implementation guidance | Introductory provider-flexibility explanations and linked operating/provider guides | Explains how a provider may satisfy the contract without changing its required outcomes. |
+| Normative core | Invariants, contract tables, lifecycle gates, state machine, artifact rules, extension rules, and conformance checklist | Defines required behavior and conformance. |
+| Implementation guidance | Rationale, examples, provider-flexibility explanations, and linked operating/provider guides | Explains how to satisfy the core without changing its required outcomes. |
 | Non-normative example | [Illustrative Worker Profile](#illustrative-worker-profile-non-normative) | Shows one representation; it does not introduce a configuration language or additional requirements. |
 | Normative checklist | [Pilot Conformance Checklist](#pilot-conformance-checklist) | Defines the minimum evidence required before a run may be called contract-compliant. |
 
@@ -98,7 +101,7 @@ the source of truth.
 | `INV-11` | In-scope Code Review findings MUST return to implementation and review without requiring new approval. | [Delivery Code Review Loop](#delivery-code-review-loop) |
 | `INV-12` | A handoff MUST report the actual profile, worker outcomes, limitations, artifact status, and a human-readable next action. | [Stage Completion and Fan-In](#stage-completion-and-fan-in); [Human-Readable Handoff](#human-readable-handoff); [Pilot Conformance Checklist](#pilot-conformance-checklist) |
 | `INV-13` | An explicitly named path MUST be verified as a path before its existence, contents, or configuration status is reported. | [Explicit Path Verification](#explicit-path-verification) |
-| `INV-14` | An explicit user decision or constraint in the run prompt MUST be treated as authoritative and MUST NOT be reopened as an unresolved decision. | [Authoritative Run Inputs](#authoritative-run-inputs) |
+| `INV-14` | A current explicit user decision or constraint MUST be treated as authoritative, MUST override a historical worker conclusion, and MUST NOT be reopened as an unresolved decision. | [Authoritative Run Inputs](#authoritative-run-inputs) |
 | `INV-15` | Every material detail supplied by the user MUST be preserved, classified, and either used by the workflow or explicitly recorded as unavailable, conflicting, or out of scope. | [Context Preservation and Classification](#context-preservation-and-classification) |
 | `INV-16` | A worker wait timeout MUST NOT be treated as worker failure or authorize closing an active worker. | [Worker Wait and Termination Semantics](#worker-wait-and-termination-semantics) |
 | `INV-17` | A portable implementation handoff MUST be self-contained, approval-gated, and based on repository identity and revision rather than source-environment paths. | [Portable Implementation Handoff](#portable-implementation-handoff) |
@@ -179,10 +182,11 @@ The prompt-preparation request may contain context before or after its formal fi
 of it and fill the canonical run template. The user must not be required to copy the same information into a second
 section manually.
 
-Historical artifacts, including prior plans and work records, are supporting evidence by default. A statement in one is
-authoritative only when current user input or an explicitly identified approved decision adopts it. A worker-created
-hypothesis may recommend a seam or action, but MUST NOT become a mandatory gate, approval, or user requirement without
-supporting evidence and a recorded decision.
+Historical artifacts, including prior plans, work records, and worker conclusions, are supporting evidence by default.
+A current explicit user decision or constraint overrides a historical worker conclusion. A statement in a historical
+artifact is authoritative only when current user input or an explicitly identified approved decision adopts it. A
+worker-created hypothesis may recommend a seam or action, but MUST NOT become a mandatory gate, approval, or user
+requirement without supporting evidence and a recorded decision.
 
 ## Evidence-to-Hypothesis Gate
 
@@ -316,7 +320,7 @@ Each run records:
 | `state`        | Current workflow lifecycle state.                                                    |
 | `engineering_state` | What has been established about the work item, independently of workflow execution. |
 | `workflow_execution` | `completed`, `incomplete`, or `blocked`; whether the selected graph actually finished. |
-| `task_outcome` | `solved`, `partially_solved`, `plan_produced`, `blocked`, `wrong_direction`, or `no_action`. |
+| `task_outcome` | `solved`, `partially_solved`, `plan_only`, `blocked`, or `incorrect`. |
 | `workers`      | Selected workers and their dependencies.                                             |
 | `gates`        | Required conditions and their status.                                                |
 | `artifacts`    | Durable outputs produced during the run.                                             |
@@ -825,7 +829,7 @@ Every playbook handoff must include this short block, especially when the run is
 
 ```text
 Workflow execution: <completed | incomplete | blocked>
-Task outcome: <solved | partially_solved | plan_produced | blocked | wrong_direction | no_action>
+Task outcome: <solved | partially_solved | plan_only | blocked | incorrect>
 What happened: <plain-language result>
 What this means: <why the run stopped or what is ready>
 Internal owner: <runtime, team, worker, or person responsible>

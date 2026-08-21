@@ -329,11 +329,11 @@ preserve the template's field names, and return the completed prompt followed
 by a short list of anything I must review before running it.
 ```
 
-### Service Extraction and Stabilization
+### Source-to-destination Feature Delivery
 
-Service Extraction requires separate source and destination repositories. The
-execution repository is the checkout where the session starts and where the
-durable `.thoughts` artifacts are created.
+Use `deep` Feature Delivery when a feature moves an existing capability into a
+separate destination. The execution repository is the checkout where the
+session starts and where the durable `.thoughts` artifacts are created.
 
 ```text
 I am preparing a first-use run prompt. Do not execute the workflow, modify
@@ -352,10 +352,10 @@ Provider/runtime configuration:
 Work item:
 PROJ-12345 (https://your-company.atlassian.net/browse/PROJ-12345)
 
-Playbook: playbooks/service_extraction.md
-Canonical run template: templates/service_extraction_run_prompt.md
+Playbook: playbooks/feature_delivery.md
+Canonical run template: templates/feature_delivery_run_prompt.md
 
-Execution profile: standard
+Execution profile: deep
 Lifecycle: planning
 
 Repositories and working directories:
@@ -366,7 +366,7 @@ Confirmed user decisions and constraints (authoritative; do not reopen):
 - Preserve migrated behavior; limit changes to imports, wiring, adapters,
   configuration, and required tests unless explicitly approved.
 
-Service extraction context (unverified until reconciled):
+Source-to-destination feature context (unverified until reconciled):
 - Capability or service: <CAPABILITY-OR-SERVICE>
 - Desired destination boundary: <DESCRIPTION-OR-UNKNOWN>
 - Required behavior and acceptance criteria: <DESCRIPTION-OR-UNKNOWN>
@@ -394,8 +394,8 @@ Read these files relative to the framework checkout:
 - SETUP.md
 - OPERATING_GUIDE.md
 - PLAYBOOK_CATALOG.md
-- playbooks/service_extraction.md
-- templates/service_extraction_run_prompt.md
+- playbooks/feature_delivery.md
+- templates/feature_delivery_run_prompt.md
 
 Fill the existing canonical template for this work item. Do not invent a new
 format. For a new run, use lifecycle `planning` and omit the template's entire

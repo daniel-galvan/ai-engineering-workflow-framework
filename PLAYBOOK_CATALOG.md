@@ -3,7 +3,7 @@ title: Playbook Architecture Catalog
 version: 0.2.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-21
 ---
 
 # Playbook Architecture Catalog
@@ -35,8 +35,8 @@ only after fan-in, and requires explicit approval before remediation.
 
 ## Feature Delivery
 
-**Use for:** planned Jira features and improvements within an active initiative. **State:** Exercising; planning
-exercised; remediation not yet validated.
+**Use for:** planned Jira features and improvements, including a capability moving into an independently operated
+destination. **State:** Exercising; planning exercised; remediation not yet validated.
 
 The distinguishing seam is Jira Context Recovery: the ticket, its immediate parent and ancestor hierarchy, selected
 related siblings, linked decisions, and repository evidence establish scope. Parent and sibling context informs the
@@ -60,6 +60,9 @@ flowchart TB
 planning review mandatory. If the minimum implementable outcome, affected surface, or acceptance condition cannot be
 recovered, bounded discovery frames feasible options and a recommendation before the workflow requests clarification; it
 does not invent a plan.
+
+Source-to-destination delivery requires `deep` and evidence for the seam, dependency dispositions, destination
+baseline, operations, coexistence or cutover, rollback, and ownership.
 
 ## TechOps Issue Remediation
 
@@ -129,28 +132,6 @@ flowchart TB
 The playbook separates scanner severity from actual reachability and risk. Evidence, dependency path,
 repository/artifact mapping, and risk disposition must be explicit before a remediation plan is accepted.
 
-## Service Extraction and Stabilization
-
-**Use for:** decoupling an existing capability into an independently buildable, runnable, deployable, and maintainable
-service. **State:** Exercising; deep planning is under active pilot review. Remediation validation remains pending.
-
-```mermaid
-flowchart TB
-    A["Initialize"] --> B["Source understanding"]
-    B --> C["Dependency and seam analysis"]
-    C --> D["Destination integration and baseline"]
-    D --> E["Service design"]
-    E --> F["Planning review: deep only"]
-    E --> G["Plan and handoff"]
-    F --> G["Plan and handoff"]
-    G --> H["Approved extraction"]
-    H --> I["Implement → Code Review → Validate → Stabilize"]
-```
-
-Its distinguishing concern is the source-to-destination seam: contracts, dependencies, operations, coexistence or
-cutover, rollback, and ownership. `standard` includes destination integration; `deep` adds independent planning review.
-It is not the default for a normal feature or improvement.
-
 ## Selection Guide
 
 At initialization, the Coordinator records the primary evidence, primary goal, selected playbook, closest alternative,
@@ -159,15 +140,10 @@ the engineer's judgment.
 
 | Primary evidence and goal | Playbook |
 | --- | --- |
-| Jira initiative, planned capability, or improvement | Feature Delivery |
+| Jira initiative, planned capability, improvement, or capability moving into an independently operated destination | Feature Delivery |
 | Support- or operations-reported Jira issue, attachments, logs, or unclear ownership | TechOps Issue Remediation |
 | Sentry issue, event evidence, and production failure | Sentry Issue Remediation |
 | Scanner, CVE, advisory, or security finding | Vulnerability Investigation |
-| Existing capability moved into a new independently operated service | Service Extraction and Stabilization |
 
-After an extraction is accepted, later feature work in the destination service uses Feature Delivery. Do not keep using
-Service Extraction merely because the service originated from an extraction.
-
-Use the most specialized playbook with the evidence already available. The current pilot set is frozen while remediation
-lifecycles are exercised. After that validation, add a playbook only when a scenario has distinct stages, gates, or
-artifacts that the existing playbooks cannot express cleanly.
+Use the most specialized playbook with the evidence already available. See [ROADMAP.md](ROADMAP.md) for validation and
+expansion policy.

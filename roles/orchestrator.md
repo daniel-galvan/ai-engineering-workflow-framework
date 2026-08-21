@@ -147,7 +147,7 @@ active worker and next transition, and state that no user action is required.
 | --- | --- |
 | Quick | Small bug, documentation, trivial fix |
 | Standard | Feature, medium refactor, sprint story |
-| Deep | Service extraction, architecture, incident |
+| Deep | Source-to-destination feature delivery, architecture, incident |
 
 Modes such as Discovery, Investigation, Delivery, Stabilization, and Review are selected separately.
 

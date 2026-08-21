@@ -4,114 +4,22 @@ title: AI-assisted Software Engineering Workflow Framework Operating Guide
 version: 0.2.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-20
+last_updated: 2026-08-21
 ---
 
 # AI-assisted Software Engineering Workflow Framework Operating Guide
 
-This is the practical overview of the complete framework. It describes an AI-assisted engineering workflow framework,
-not a collection of isolated prompts.
+This guide explains how to run and resume a workflow. For the framework overview, roles, skills, and architecture, see
+the [README](README.md); for scenario selection and worker graphs, see the [Playbook Catalog](PLAYBOOK_CATALOG.md).
 
-## Introduction and responsibility
+## Responsibilities and safeguards
 
-The framework assists engineering work; it does not replace the engineer. The user defines the goal and scope, supplies
-or approves context, interprets worker results, adjusts the workflow, makes decisions, grants approvals, and is solely
-responsible for use of the tool and resulting changes.
+The framework assists engineering work; it does not replace the engineer. The user owns scope, context, decisions,
+approvals, and the resulting changes. Treat AI output as evidence rather than authority, keep uncertainty visible, and
+use explicit scope, approval, independent review, validation, privacy, and security controls.
 
-This is an evolving pilot. Its workflows, roles, profiles, and provider adapters have known limitations and must be
-improved through real exercises. Quality is more important than quantity: a larger worker graph, higher token usage, or
-greater effort does not guarantee a better outcome. Role quality is profile-independent; profiles change execution depth
-and coordination, not the quality contract of an individual role.
-
-The framework also requires three safeguards: treat AI output as evidence rather than authority, keep uncertainty
-visible, and use explicit scope, approval, independent review, validation, privacy, and security controls before changes
-are accepted.
-
-## Purpose
-
-Turn an engineering work item into an evidence-backed outcome through reusable workflows, roles, skills, tools, workers,
-validation, and durable context.
-
-Its core promise is traceability: every material conclusion can be challenged through [evidence, claim, decision, and
-action](contracts/claims.md), rather than accepted because an AI worker stated it.
-
-It supports Jira Stories, bugs, incidents, TechOps issues, features, upgrades, migrations, new projects,
-vulnerabilities, and special workflows.
-
-## Core principles
-
-* Investigate before implementing.
-* Prefer evidence over assumptions.
-* Keep the smallest practical scope.
-* Separate facts, inferences, hypotheses, and unknowns.
-* Reuse roles and skills instead of creating monolithic prompts.
-* Preserve context in a durable work record.
-* Use incremental changes, gates, validation, and explicit, human-readable handoffs.
-* Keep provider-specific behavior behind adapters.
-* Evolve the framework through exercised pilots rather than speculative design.
-
-## Architecture
-
-```text
-Work item
-  → Playbook
-    → Stages and gates
-      → Workers
-        → Role + Skills + Tools + internal worker metadata
-          → Provider adapter
-            → Provider agent/model execution
-              → Evidence, artifacts, validation, and work record
-```
-
-### Building blocks
-
-| Building block | Responsibility |
-| --- | --- |
-| Framework | Shared investigation-first engineering method |
-| Contract | Common vocabulary, lifecycle, claims, evidence, workers, gates, and outcomes |
-| Strategy | Coordination and parallelization approach |
-| Role | Reusable responsibility and reasoning boundary |
-| Skill | Reusable provider-neutral capability |
-| Tool | Concrete allowed operation |
-| Playbook | Scenario-specific stages, dependencies, and outputs |
-| Provider adapter | Mapping to Codex or another execution platform |
-| Work record | Durable context, evidence, decisions, errors, and handoff |
-
-See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for the current scenario selection guide and worker graphs.
-
-## Roles
-
-The current role catalog is:
-
-* `orchestrator`
-* `current_state_investigator`
-* `dependency_analyst`
-* `solution_architect`
-* `repository_integrator`
-* `implementer`
-* `reviewer`
-* `tester`
-* `documenter`
-
-Roles define responsibilities. They do not define provider, model, tool implementation, or fixed execution order.
-
-## Skills
-
-Current reusable skills cover:
-
-* work-item context recovery;
-* workflow planning;
-* repository exploration;
-* dependency mapping;
-* architecture mapping;
-* destination integration;
-* code migration;
-* build and test;
-* operational readiness;
-* work-record maintenance; and
-* failure diagnosis.
-
-Skills define inputs, outputs, completion criteria, and safety boundaries.
+This is an evolving pilot. More workers, tokens, or effort do not guarantee a better outcome; profiles change evidence
+and coordination depth, not a role's quality contract.
 
 ## Workers and subagents
 
@@ -143,47 +51,16 @@ model or reasoning effort. The canonical mapping is in
 `mode`, provider-neutral worker depth, and provider-neutral capacity classification remain internal worker metadata.
 They support provider adapters and audit records; users do not select them in a canonical run prompt.
 
-## Current playbooks
+## Source-to-destination Feature Delivery
 
-Document status remains `Pilot` while the framework is in progress. Playbook maturity is explicit: `not_exercised` or
-`exercising`. `exercising` means that real work is being used to test the playbook; the validated scope is recorded
-separately. Remediation is not validated until a compliant delivery run activates the required delivery workers,
-completes Code Review and validation, and records fan-in.
+Use Feature Delivery with `deep + planning` when a feature moves an existing capability into an independently operated
+destination. The scenario requires source and destination evidence, a verified seam, dependency dispositions,
+destination baseline, coexistence or cutover, rollback, and ownership. Use the canonical
+[`feature_delivery_run_prompt.md`](templates/feature_delivery_run_prompt.md) to start or resume a run.
 
-The [Playbook Catalog](PLAYBOOK_CATALOG.md) is the concise source for playbook selection, worker graphs, and exercise
-state. It also defines the Service Extraction boundary: later feature work in an extracted service uses Feature
-Delivery.
-
-## Service Extraction workflow
-
-The default is `standard + planning`:
-
-```text
-Initialize
-  → Understand source
-    → Analyze dependencies and seam
-      → Integrate destination and verify baseline
-        → Design service
-          → Planning review (Deep only)
-            → Ready for implementation
-```
-
-The Documenter runs continuously. Explicit approval and `lifecycle: remediation` are required before extraction, review,
-validation, stabilization, or cutover. Use the canonical
-[`service_extraction_run_prompt.md`](templates/service_extraction_run_prompt.md) to start or resume a run.
-
-Select `deep + planning` only when an independent challenge is needed for a
-disputed seam, material coexistence or cutover risk, unclear ownership, or a
-high-impact validation concern.
-
-For migrated code, the preferred change order is:
-
-1. imports and namespaces;
-2. registration and routing;
-3. adapters and integration boundaries;
-4. configuration and deployment wiring;
-5. focused tests and documentation;
-6. behavior changes only with explicit approval.
+The Documenter runs continuously. Explicit approval and `lifecycle: remediation` are required before source changes,
+review, validation, stabilization, or cutover. Preserve migrated behavior unless the approved feature explicitly changes
+it.
 
 ## Work records
 
@@ -294,23 +171,10 @@ investigation or coordination. Use a smaller role/skill set or a direct session.
 * Automatic model/credit accounting is not universal.
 * The framework improves process quality; it does not guarantee correct code.
 
-## Special workflows
+## Extending the framework
 
-A new uncommon workflow is valid when it still declares the common contract: purpose, inputs, stages, roles, skills,
-tools, workers, artifacts, evidence, gates, approvals, failure behavior, terminal outcomes, and work-record rules. It
-may add domain-specific stages but must not bypass the shared lifecycle.
-
-## Extension approach
-
-When adding capability:
-
-1. Reuse an existing role or skill when possible.
-2. Add a new skill only when the capability is reusable.
-3. After the current pilot freeze ends, add a playbook only when the scenario has distinct stages and gates that
-   existing playbooks cannot express.
-4. Add a provider mapping only for provider-specific execution behavior.
-5. Exercise the change against a real work item.
-6. Record gaps and simplify after the pilot.
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) for extension rules. New workflows must preserve the shared contract and are
+appropriate only when existing stages and gates cannot express the scenario.
 
 ## Current status
 
