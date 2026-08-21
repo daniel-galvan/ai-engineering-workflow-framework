@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RELEASE_VERSION = "0.3.0"
+MODEL_BASELINE_ID = "codex-role-policy-v0.3.0-01"
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
@@ -17,6 +19,12 @@ SKILLS = {
 TEMPLATES = list((ROOT / "templates").glob("*_run_prompt.md"))
 INVARIANT = "The shared contract and selected playbook own lifecycle, worker activation,"
 MATURITY = {"not_exercised", "exercising"}
+EXERCISE_COMBINATIONS = (
+    "standard + planning",
+    "deep + planning",
+    "standard + remediation",
+    "deep + remediation",
+)
 WORKFLOW_CONTRACT = ROOT / "contracts" / "workflow_execution.md"
 WORKFLOW_GUIDANCE = ROOT / "contracts" / "workflow_execution_guidance.md"
 WORKFLOW_VOCABULARY = ROOT / "contracts" / "workflow_vocabulary.md"
@@ -54,6 +62,16 @@ def is_table_row(line: str) -> bool:
     return stripped.startswith("|") and stripped.endswith("|")
 
 
+def frontmatter(text: str) -> list[str]:
+    lines = text.splitlines()
+    if not lines or lines[0] != "---":
+        return []
+    try:
+        return lines[1 : lines.index("---", 1)]
+    except ValueError:
+        return []
+
+
 for path in ROOT.rglob("*.md"):
     lines = path.read_text().splitlines()
     index = 0
@@ -87,12 +105,33 @@ for path in ROOT.rglob("*.md"):
 
 for path in ROOT.rglob("*.md"):
     text = path.read_text()
+    dependency_list = False
+    for line in frontmatter(text):
+        if line == "depends_on:":
+            dependency_list = True
+            continue
+        if dependency_list and line.startswith("  - "):
+            dependency = line[4:]
+            if not (path.parent / dependency).resolve().exists():
+                fail(f"{path.relative_to(ROOT)} references missing dependency {dependency}")
+            continue
+        if dependency_list and line.strip():
+            dependency_list = False
+
     in_fence = False
     for line_number, line in enumerate(text.splitlines(), start=1):
         if line.startswith(("```", "~~~")):
             in_fence = not in_fence
             continue
-        if in_fence or line.lstrip().startswith("|") or not line.strip():
+        if in_fence:
+            continue
+        for target in re.findall(r"(?<!!)\[[^]]+\]\(([^)]+)\)", line):
+            target = target.strip().strip("<>").split("#", 1)[0]
+            if not target or re.match(r"^[a-z][a-z0-9+.-]*:", target, re.I):
+                continue
+            if not (path.parent / target).resolve().exists():
+                fail(f"{path.relative_to(ROOT)}:{line_number} has broken link {target}")
+        if line.lstrip().startswith("|") or not line.strip():
             continue
         if re.match(r"^\s*\#{1,6}[^\s#]", line):
             fail(f"{path.relative_to(ROOT)}:{line_number} has an invalid heading marker")
@@ -108,7 +147,7 @@ for path in ROOT.rglob("*.md"):
     if in_fence:
         fail(f"{path.relative_to(ROOT)} has an unclosed fenced block")
     version = re.search(r"^version: (.+)$", text, re.M)
-    if version and version.group(1) != "0.2.0":
+    if version and version.group(1) != RELEASE_VERSION:
         fail(f"{path.relative_to(ROOT)} has version {version.group(1)!r}")
 
 agent_configs = {}
@@ -120,6 +159,9 @@ for path in ROOT.rglob("*.toml"):
 
 policy_text = CODEX_POLICY.read_text()
 expected_agents = {}
+
+if f"baseline_id: {MODEL_BASELINE_ID}" not in policy_text:
+    fail(f"{CODEX_POLICY.relative_to(ROOT)} has no current model-policy baseline ID")
 
 for match in re.finditer(
     r"^\| ([^|]+) \| `([^`]+)` \| ([^|]+) \| `([^`]+)` \|$",
@@ -222,6 +264,11 @@ for path in (ROOT / "playbooks").glob("*.md"):
     maturity = re.search(r"^maturity: (.+)$", text, re.M)
     if not maturity or maturity.group(1) not in MATURITY:
         fail(f"{path.relative_to(ROOT)} has no valid maturity")
+    exercise_scope = re.search(r"^exercise_scope: (.+)$", text, re.M)
+    if not exercise_scope or any(value not in exercise_scope.group(1) for value in EXERCISE_COMBINATIONS):
+        fail(f"{path.relative_to(ROOT)} has incomplete exercise scope")
+    if not re.search(r"^validation_summary: .+$", text, re.M):
+        fail(f"{path.relative_to(ROOT)} has no validation summary")
 
 for path in TEMPLATES:
     text = path.read_text()
@@ -429,6 +476,8 @@ if "| User action |" not in work_record_template:
 for phrase in ("# Playbook Selection", "| Workflow execution |", "| Task outcome |"):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing outcome/classification field: {phrase}")
+if "| Model-policy baseline ID |" not in work_record_template:
+    fail("templates/work_record.md is missing the model-policy baseline ID")
 
 role_requirements = {
     "orchestrator.md": ("Delivery Activation Barrier", "does not implement", "An active worker status is not a handoff"),
@@ -452,6 +501,8 @@ workflow_evaluation = WORKFLOW_EVALUATION.read_text()
 for heading in ("# Workflow Evaluation", "## Pilot Method", "## Comparison Rules"):
     if heading not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing {heading}")
+if "recorded model-policy baseline" not in workflow_evaluation:
+    fail("frameworks/workflow_evaluation.md is missing baseline comparison control")
 if "# Workflow Evaluation" not in work_record_template:
     fail("templates/work_record.md is missing workflow evaluation")
 for phrase in (

@@ -1,6 +1,6 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21
@@ -36,7 +36,8 @@ only after fan-in, and requires explicit approval before remediation.
 ## Feature Delivery
 
 **Use for:** planned Jira features and improvements, including a capability moving into an independently operated
-destination. **State:** Exercising; planning exercised; remediation not yet validated.
+destination. **State:** Exercising; all profile/lifecycle combinations exercised; reliability, control fidelity, and
+efficiency remain under validation.
 
 The distinguishing seam is Jira Context Recovery: the ticket, its immediate parent and ancestor hierarchy, selected
 related siblings, linked decisions, and repository evidence establish scope. Parent and sibling context informs the
@@ -67,7 +68,8 @@ baseline, operations, coexistence or cutover, rollback, and ownership.
 ## TechOps Issue Remediation
 
 **Use for:** support- and operations-reported Jira issues, including Zendesk or Help Desk reports with attachments,
-logs, payloads, screenshots, or recordings. **State:** Exercising; first planning attempt incomplete; not validated.
+logs, payloads, screenshots, or recordings. **State:** Exercising; all profile/lifecycle combinations exercised;
+reliability, control fidelity, and efficiency remain under validation.
 
 ```mermaid
 flowchart TB
@@ -89,8 +91,8 @@ repository integration and independent planning review.
 
 ## Sentry Issue Remediation
 
-**Use for:** a Sentry issue that needs evidence-led diagnosis and a minimal fix. **State:** Exercising; Standard and
-Deep planning validated; remediation not yet validated.
+**Use for:** a Sentry issue that needs evidence-led diagnosis and a minimal fix. **State:** Exercising; all
+profile/lifecycle combinations exercised; reliability, control fidelity, and efficiency remain under validation.
 
 ```mermaid
 flowchart TB
@@ -112,8 +114,8 @@ asking the owner to choose.
 
 ## Vulnerability Investigation
 
-**Use for:** scanner findings, advisories, CVEs, secrets, or supply-chain risk. **State:** Exercising; planning
-exercised; remediation not yet validated.
+**Use for:** scanner findings, advisories, CVEs, secrets, or supply-chain risk. **State:** Exercising; all
+profile/lifecycle combinations exercised; reliability, control fidelity, and efficiency remain under validation.
 
 ```mermaid
 flowchart TB

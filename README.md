@@ -149,9 +149,10 @@ canonical run template.
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
 
-The current pilot set is frozen at these four playbooks while their remediation lifecycles are exercised. After that
-validation, add a playbook only when the existing stages, gates, and artifacts cannot express the scenario cleanly. See
-[PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and worker graphs.
+The four playbooks have been exercised across every profile/lifecycle combination. Current work evaluates reliability,
+efficiency, and control fidelity before expansion. Add a playbook only when the existing stages, gates, and artifacts
+cannot express the scenario cleanly. See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and worker
+graphs.
 
 ## Guides and examples
 
@@ -198,7 +199,7 @@ changes against real work items, then simplify. See [CONTRIBUTING.md](CONTRIBUTI
 
 ## Versioning
 
-All versioned framework documents are currently `0.2.0`. Ordinary pilot edits do not change a document version.
+All versioned framework documents are currently `0.3.0`. Ordinary pilot edits do not change a document version.
 A version changes only when an explicit named release or version update is requested.
 
 ## Status

@@ -1,7 +1,7 @@
 ---
 
 title: Implementer Role
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 category: Implementation
 produces_decisions: false

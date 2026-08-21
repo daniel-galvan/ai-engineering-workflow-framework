@@ -1,12 +1,12 @@
 ---
 
 title: Orchestrator Role
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 category: Coordination
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-21
 required_documents:
 
   - ../frameworks/investigation.md
@@ -53,6 +53,8 @@ Coordinate the work from intake through an evidence-backed outcome.
 * Select participating roles.
 * Define worker profiles with skills, tools, internal provider metadata, and approvals.
 * Apply the playbook's execution order and parallelism rules.
+* Assign stable Input IDs before worker activation and reconcile each result's `inputs_consumed`.
+* Load role, skill, integration, template, and example documents only when the active stage needs them.
 * Verify explicitly named paths before making claims about their existence, contents, or configuration status; inspect
   symlinks and their targets.
 * Monitor workflow progress.
@@ -125,12 +127,13 @@ Optional:
 2. Select the playbook.
 3. Select the execution strategy.
 4. Apply the selected lifecycle and execution profile; derive internal worker metadata.
-5. Record the execution repository, artifact root, roles, and worker graph.
-6. Execute the playbook stages and gates.
-7. Review deliverables and evidence.
-8. Resolve conflicts, errors, and blockers.
-9. Produce the final outcome and handoff.
-10. Decide implementation readiness or another closure state.
+5. Read the selected playbook and core contracts, then load other documents just in time for the active stage.
+6. Record the execution repository, artifact root, roles, worker graph, and assigned Input IDs.
+7. Execute the playbook stages and gates; return a result once if it omits an assigned authoritative input.
+8. Review deliverables and evidence.
+9. Resolve conflicts, errors, and blockers.
+10. Produce the final outcome and handoff.
+11. Decide implementation readiness or another closure state.
 
 An active worker status is not a handoff. Continue polling and advance the same
 worker graph automatically: Implementer terminal -> Reviewer accepted -> Tester
@@ -163,8 +166,10 @@ separate role graph.
 
 # Parallelization
 
-The playbook owns the worker graph. Use the parallelism values from the Workflow Execution Contract; role metadata does
-not determine execution order.
+The playbook owns the worker graph. Start ready independent workers in parallel when capacity allows. If execution is
+sequential, record the dependency or capacity reason and resulting wait. Deep workers answer distinct questions and
+produce distinct artifacts; repeat investigation only for a recorded discrepancy. Role metadata does not determine
+execution order.
 
 Typical dependency examples:
 
@@ -194,6 +199,8 @@ Documenter runs continuously across all stages.
 * Appropriate strategy, lifecycle, and profile applied.
 * Correct worker profiles assigned.
 * Required skills, tools, internal provider metadata, and approvals recorded.
+* Assigned Input IDs reconcile with each worker's `inputs_consumed`; authoritative omissions are resolved.
+* Ready independent workers run in parallel, or the sequential exception and wait are recorded.
 * Required worker activation and fan-in are recorded before a stage closes.
 * The Delivery Activation Barrier is passed before any remediation source change.
 * The Coordinator does not implement, review, or validate in place of delivery workers.

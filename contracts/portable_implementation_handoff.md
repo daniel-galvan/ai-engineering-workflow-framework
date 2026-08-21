@@ -1,6 +1,6 @@
 ---
 title: Portable Implementation Handoff Contract
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21

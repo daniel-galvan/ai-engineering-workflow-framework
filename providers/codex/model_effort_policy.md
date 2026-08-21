@@ -1,10 +1,11 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 provider: codex
 provider_independent_profiles: true
+baseline_id: codex-role-policy-v0.3.0-01
 owner: Engineering
 last_updated: 2026-08-21
 ---
@@ -16,10 +17,10 @@ Vulnerability Investigation, and Sentry Issue Remediation. It is advanced provid
 input. The role policy below is an initial hypothesis: an experimental baseline to validate against real runs, not a
 claim of optimal model selection.
 
-The experimental baseline is versioned and shared across Feature Delivery, Sentry, TechOps Issue Remediation, and
-Vulnerability Investigation. Profiles select which roles run; they do not change a role's model or reasoning effort.
-Record the requested and resolved values in the work record and revise this baseline only from comparable evaluation
-evidence.
+The experimental baseline is `codex-role-policy-v0.3.0-01` and is shared across Feature Delivery, Sentry, TechOps Issue
+Remediation, and Vulnerability Investigation. Profiles select which roles run; they do not change a role's model or
+reasoning effort. Record the baseline ID plus requested and resolved values in the work record, and revise it only from
+comparable evaluation evidence.
 
 Codex policy labels map to configuration values as follows:
 

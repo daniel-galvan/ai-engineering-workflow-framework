@@ -1,11 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 maturity: exercising
-validation_scope: planning exercised; remediation not yet validated
+exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
+validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-21
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md

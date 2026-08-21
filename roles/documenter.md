@@ -1,12 +1,12 @@
 ---
 
 title: Documenter Role
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-21
 required_documents:
 
   - ../frameworks/investigation.md
@@ -51,7 +51,10 @@ maintenance.
 
 * Create or recover the work record.
 * Maintain `work_record.md`.
-* Maintain the Input Register with each material input's source, classification, authority, and consumption status.
+* Maintain the Input Register with stable Input IDs and each material input's source, classification, authority,
+  assignment, and consumption status.
+* Record the active model-policy baseline ID and actual worker model and effort.
+* Record control-fidelity, elapsed-time, wait-time, and human-intervention evaluation measures.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.
 * Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook

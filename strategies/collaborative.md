@@ -1,10 +1,10 @@
 ---
 
 title: Collaborative Workflow Strategy
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-21
 depends_on:
 
   - ../frameworks/investigation.md
@@ -134,6 +134,10 @@ When is the role finished?
 The selected playbook owns the worker graph, dependencies, and execution order. The Documenter commonly runs
 continuously after initialization, but the playbook decides whether and how it is activated. Choose the smallest set of
 roles that provides sufficient confidence.
+
+Start ready independent workers in parallel when runtime capacity allows. If they run sequentially, record the
+dependency or capacity reason and resulting wait. Give Deep workers distinct questions and artifacts; repeat raw
+investigation only to resolve a recorded discrepancy.
 
 ---
 

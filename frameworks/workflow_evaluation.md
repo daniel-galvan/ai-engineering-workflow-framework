@@ -1,6 +1,6 @@
 ---
 title: Workflow Evaluation
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21
@@ -64,9 +64,9 @@ run did not expose enough evidence to assess the measure.
 
 ## Comparison Rules
 
-Compare runs only when their complexity tags, lifecycle, profile, and required evidence are sufficiently similar. Review
-at least five real runs before changing a role's model or effort policy. A policy change needs a documented quality
-gain, regression, or efficiency result—not a theoretical preference.
+Compare runs only when their complexity tags, lifecycle, profile, required evidence, and recorded model-policy baseline
+ID are sufficiently similar. Review at least five real runs before changing a role's model or effort policy. A policy
+change needs a documented quality gain, regression, or efficiency result—not a theoretical preference.
 
 The first pilot questions are:
 

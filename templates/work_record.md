@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.2.0
+version: 0.3.0
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21
@@ -99,6 +99,7 @@ An empty filtered search is not evidence that a path is absent.
 | --- | --- |
 | Run ID | |
 | Playbook | |
+| Model-policy baseline ID | Provider baseline ID or `Not applicable` |
 | Requested profile | `standard` / `deep` |
 | Activated profile | `standard` / `deep` / `None` |
 | Executed profile | `standard` / `deep` / `None` |
