@@ -16,7 +16,8 @@ This contract is the seam between the workflow definition and the platform that 
 the contract differently, but it must preserve the same inputs, outputs, evidence expectations, and completion
 semantics.
 
-The contract is intentionally small. It supports sequential, parallel, and conditional playbooks without requiring a
+The contract contains shared normative behavior. Stage-specific contracts and explanatory guidance remain in linked
+documents loaded only when needed. It supports sequential, parallel, and conditional playbooks without requiring a
 general orchestration backend or a live work-item connector.
 
 ## Normative Language
@@ -36,50 +37,20 @@ second specification.
 | Classification | Location | Purpose |
 | --- | --- | --- |
 | Normative core | Invariants, contract tables, lifecycle gates, state machine, artifact rules, extension rules, and conformance checklist | Defines required behavior and conformance. |
-| Implementation guidance | Rationale, examples, provider-flexibility explanations, and linked operating/provider guides | Explains how to satisfy the core without changing its required outcomes. |
-| Non-normative example | [Illustrative Worker Profile](#illustrative-worker-profile-non-normative) | Shows one representation; it does not introduce a configuration language or additional requirements. |
+| Implementation guidance | [Workflow Execution Guidance](workflow_execution_guidance.md) and linked operating/provider guides | Explains examples and provider flexibility without changing required outcomes. |
 | Normative checklist | [Pilot Conformance Checklist](#pilot-conformance-checklist) | Defines the minimum evidence required before a run may be called contract-compliant. |
+
+At initialization, the Coordinator MUST read the selected playbook, this contract, and the claims contract. Other
+frontmatter dependencies are maintenance or stage references, not an instruction to load the complete framework into
+the run context. Load a role, skill, strategy, integration, template, or example only when the active worker or stage
+needs it. Templates and examples MUST NOT override the selected playbook or contracts.
 
 ---
 
 # Vocabulary
 
-| Term              | Meaning                                                                                                                                               |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Work item         | The normalized request being handled, such as a Jira Story, bug, incident, or upgrade.                                                                |
-| Coordinator       | The active session or runtime responsible for activating workers, collecting results, completing fan-in, and closing the run.                          |
-| Workflow run      | One execution of a playbook for one work item.                                                                                                        |
-| Execution repository | Repository where the workflow session starts and where durable run artifacts are stored.                                                        |
-| Code repository   | Repository inspected or modified by the workflow. It may be the execution repository or an additional repository.                                  |
-| Playbook          | A scenario-specific workflow made of stages, roles, skills, gates, and outputs.                                                                       |
-| Stage             | A meaningful unit of work inside a playbook.                                                                                                          |
-| Role              | A reusable responsibility and reasoning boundary.                                                                                                     |
-| Skill             | A reusable capability required to perform work.                                                                                                       |
-| Tool              | A concrete operation available to a worker.                                                                                                           |
-| Capacity class | Internal provider-neutral reasoning-capacity metadata. |
-| Worker | One execution instance: role, skills, tools, metadata, and inputs. Human, AI, or session work. |
-| Artifact          | A durable output such as a map, decision, code change, test result, or handoff.                                                                       |
-| Evidence          | A source-backed observation used to support or challenge a claim.                                                                                     |
-| Claim             | A material statement derived from one or more evidence items, with an explicit confidence and uncertainty assessment.                                  |
-| Decision          | A selected option, scope boundary, or disposition based on claims.                                                                                      |
-| Action            | A concrete implementation, validation, documentation, or follow-up step derived from a decision.                                                       |
-| Gate              | A condition that must be satisfied before a stage or transition can proceed.                                                                          |
-| Adapter           | A provider-specific implementation at a defined seam, such as Jira, Git, or an AI platform.                                                           |
-| Execution profile | A named selection of worker graph, investigation depth, and validation scope.                                                                         |
-| Lifecycle         | How far a workflow run may proceed, such as planning or remediation.                                                                                  |
-| Engineering state | What has been established about the work item, independently of the current workflow run.                                                            |
-| Portable implementation handoff | A self-contained execution artifact that transfers an approved plan to another session or environment. |
-
-Skills describe what capability is needed. Tools describe how that capability is performed. Provider-neutral capacity
-classification describes requested reasoning capacity. These concepts must not be merged. They are internal worker
-metadata, not normal run inputs.
-
-The `orchestrator` is the reusable role that owns workflow coordination. The Coordinator is the active runtime
-performing that role. A provider may run the role in a dedicated worker, or the main session may act as both Coordinator
-and Orchestrator when nested delegation is unavailable.
-
-The canonical role ID is the role filename without `.md`, such as `current_state_investigator` or
-`repository_integrator`.
+Canonical terms are defined in the [Workflow Vocabulary](workflow_vocabulary.md). Load that contract only when a term
+needs clarification.
 
 ## Workflow Invariants
 
@@ -104,9 +75,9 @@ the source of truth.
 | `INV-14` | A current explicit user decision or constraint MUST be treated as authoritative, MUST override a historical worker conclusion, and MUST NOT be reopened as an unresolved decision. | [Authoritative Run Inputs](#authoritative-run-inputs) |
 | `INV-15` | Every material detail supplied by the user MUST be preserved, classified, and either used by the workflow or explicitly recorded as unavailable, conflicting, or out of scope. | [Context Preservation and Classification](#context-preservation-and-classification) |
 | `INV-16` | A worker wait timeout MUST NOT be treated as worker failure or authorize closing an active worker. | [Worker Wait and Termination Semantics](#worker-wait-and-termination-semantics) |
-| `INV-17` | A portable implementation handoff MUST be self-contained, approval-gated, and based on repository identity and revision rather than source-environment paths. | [Portable Implementation Handoff](#portable-implementation-handoff) |
+| `INV-17` | A portable implementation handoff MUST be self-contained, approval-gated, and based on repository identity and revision rather than source-environment paths. | [Portable Implementation Handoff Contract](portable_implementation_handoff.md) |
 | `INV-18` | Material delivery changes MUST pass a strict Code Review covering relevant behavior paths, boundaries, scope, and coverage before validation is accepted. | [Delivery Code Review Loop](#delivery-code-review-loop) |
-| `INV-19` | A portable implementation handoff MUST be created only for a cross-session or cross-environment transfer, or an explicit user request. | [Portable Implementation Handoff](#portable-implementation-handoff) |
+| `INV-19` | A portable implementation handoff MUST be created only for a cross-session or cross-environment transfer, or an explicit user request. | [Portable Implementation Handoff Contract](portable_implementation_handoff.md) |
 | `INV-20` | Diagnosis and fix-design MUST pass the gate before clarification. | [Gate](#evidence-to-hypothesis-gate) |
 | `INV-21` | Clarification MUST report executed checks. | [Gate](#evidence-to-hypothesis-gate) |
 | `INV-22` | Local reproduction informs the current-code fix. | [Parity](#production-parity-prioritization) |
@@ -114,6 +85,9 @@ the source of truth.
 | `INV-26` | Record why the playbook matches primary evidence and goal. | [Playbook Selection](#playbook-selection) |
 | `INV-24` | Barrier before edits. | [Barrier](#delivery-activation-and-completion-barrier) |
 | `INV-25` | Delivery gates and closure required. | [Barrier](#delivery-activation-and-completion-barrier) |
+| `INV-27` | Initialization MUST load only the selected playbook and core contracts; other framework documents are loaded only when needed. | [Document Classification](#document-classification) |
+| `INV-28` | Assigned worker inputs MUST be reconciled with `inputs_consumed` before accepting the result. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
+| `INV-29` | Ready independent workers MUST run in parallel when runtime capacity exists; duplicate investigation requires a recorded discrepancy. | [Parallelism Semantics](#parallelism-semantics) |
 
 ---
 
@@ -188,6 +162,24 @@ artifact is authoritative only when current user input or an explicitly identifi
 worker-created hypothesis may recommend a seam or action, but MUST NOT become a mandatory gate, approval, or user
 requirement without supporting evidence and a recorded decision.
 
+## Input Delivery and Consumption Gate
+
+Initialization MUST assign a stable Input ID to every material Input Register entry. Before activating a worker, the
+Coordinator MUST record the Input IDs relevant to that worker in its `inputs` and Worker Execution Ledger entry. This
+mapping is internal bookkeeping and does not require user approval.
+
+When recovering an older work record without Input IDs, assign IDs before activating new workers. Preserve existing IDs
+and never renumber them after a worker has referenced them.
+
+Every result envelope MUST reference the Input IDs actually used in `inputs_consumed`. Before accepting a terminal
+result, the Coordinator MUST reconcile assigned and consumed inputs. An assigned authoritative decision or constraint
+that is neither consumed nor explicitly recorded as unavailable, conflicting, or out of scope makes the result
+incomplete. Return the worker once with the missing Input IDs; never ask the user to repeat the underlying information.
+If the worker cannot consume them, preserve the partial result and record the concrete runtime or access limitation.
+
+Supporting inputs may be unused only when the worker records why they were irrelevant to its declared responsibility.
+The gate checks information flow; it does not require every worker to consume every run input.
+
 ## Evidence-to-Hypothesis Gate
 
 A diagnosis or fix-design worker MUST pass this gate before returning
@@ -253,22 +245,6 @@ These provider-neutral tool IDs cover the current pilot workflows. Providers map
 | `runtime_observe`    | Inspect runtime, deployment, logs, metrics, traces, or health signals.  |
 
 The tool list is an allowlist. A worker may not use an unlisted tool merely because the provider exposes it.
-
----
-
-# Internal Provider-Neutral Capacity Classifications
-
-These classifications describe intent and reasoning capacity without naming a provider-specific model. They are
-internal worker metadata. A user selects lifecycle and profile; the provider role policy resolves concrete model and
-reasoning effort.
-
-| Profile              | Meaning                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------- |
-| `standard_reasoning` | Normal analysis and execution for bounded work.                                        |
-| `deep_reasoning`     | Extended analysis for cross-repository, architectural, operational, or high-risk work. |
-
-Provider adapters map these profiles to available models and provider-specific effort settings. The mapping must be
-recorded when a worker runs.
 
 ---
 
@@ -342,7 +318,7 @@ Each worker must have a stable identifier and an explicit execution profile.
 | `skills`           | Yes                | Canonical skill identifiers selected for this worker.                                                                |
 | `tools`            | Yes                | Allowed concrete tool identifiers. An empty list means no tools are available.                                       |
 | `model_profile` | Yes for AI workers | Internal capacity class; not a normal run input. |
-| `inputs`           | Yes                | Artifacts or facts the worker may consume.                                                                           |
+| `inputs`           | Yes                | Input Register IDs and artifacts assigned before activation.                                                         |
 | `outputs`          | Yes                | Artifacts or decisions the worker must produce.                                                                      |
 | `depends_on`       | Yes                | Worker or gate dependencies. Use an empty list when none exist.                                                      |
 | `parallelism`      | Yes                | `sequential`, `parallel`, `conditional`, or `continuous`.                                                            |
@@ -350,41 +326,6 @@ Each worker must have a stable identifier and an explicit execution profile.
 | `exit_criteria`    | Yes                | Evidence-based condition for completion.                                                                             |
 | `failure_behavior` | Yes                | How errors, uncertainty, missing inputs, and blocked work are recorded.                                              |
 | `usage`            | Recommended        | Provider-reported execution usage, such as input/output tokens, duration, or credits. Unknown values remain unknown. |
-
-### Illustrative Worker Profile (Non-normative)
-
-```yaml
-worker:
-  id: source-understanding
-  role: current_state_investigator
-  mode: investigation
-  effort: deep
-  skills:
-    - work_item_context
-    - repository_exploration
-    - architecture_mapping
-  tools:
-    - repository_search
-    - repository_read
-    - history_read
-  model_profile: deep_reasoning
-  inputs:
-    - normalized_work_item
-    - source_repository
-  outputs:
-    - current_state_summary
-    - evidence_register
-    - unknowns
-  depends_on:
-    - initialize
-  parallelism: sequential
-  approval: none
-  exit_criteria: current state, evidence, and unknowns are documented
-  failure_behavior: record the error, preserve partial findings, and mark the worker blocked
-```
-
-This example illustrates the contract fields. It is not a required configuration format and does not introduce a
-configuration language.
 
 Provider-reported usage is observational metadata, not a worker input. A provider adapter may populate it after
 execution. Workers must not estimate credits when the provider does not expose them.
@@ -399,7 +340,7 @@ by the Orchestrator at fan-in.
 | `worker_id`        | Yes         | Worker that produced the result.                                |
 | `outcome`          | Yes         | One of the shared worker outcomes.                              |
 | `summary`          | Yes         | The worker's unique contribution in a few sentences.            |
-| `inputs_consumed`  | Yes         | Artifacts or facts actually used.                               |
+| `inputs_consumed`  | Yes         | Assigned Input IDs and artifacts used, with disposition for assigned inputs not used. |
 | `outputs_produced` | Yes         | Artifacts, decisions, or validation results produced.           |
 | `checks_performed` | Conditional | Checks actually run and results for diagnosis or fix design.    |
 | `checks_remaining` | Conditional | Unavailable or external checks and why they remain.             |
@@ -409,6 +350,7 @@ by the Orchestrator at fan-in.
 | `uncertainties`    | Yes         | Remaining unknowns, conflicts, or confidence limits.            |
 | `next_consumer`    | Recommended | Worker, gate, or human decision that should consume the result. |
 | `model_effort`     | Recommended | Actual model and reasoning effort, when exposed.                |
+| `timing`           | Recommended | Provider-reported or timestamp-derived elapsed and wait time, or `Unknown`. |
 | `usage`            | Recommended | Provider-reported tokens, duration, credits, or `Unknown`.      |
 | `errors_blockers`  | Yes         | Errors, blockers, or `None`.                                    |
 
@@ -421,35 +363,6 @@ not imply high confidence. Use `unknown` when the worker cannot make a defensibl
 conclusions should use the IDs from the [`Claims, Evidence, Decisions, and Actions Contract`](claims.md).
 
 ---
-
-# Internal Worker Metadata
-
-Mode, worker depth, and capacity classification are separate internal dimensions. They are recorded for provider
-adapters and auditability; users do not select them in canonical run prompts.
-
-## Modes
-
-| Mode            | Meaning                                                                           |
-| --------------- | --------------------------------------------------------------------------------- |
-| `discovery`     | Establish feasibility, scope, options, and risks. Implementation is not expected. |
-| `investigation` | Establish an evidence-backed understanding and recommendation.                    |
-| `delivery`      | Implement and validate an approved change.                                        |
-| `stabilization` | Reduce operational risk after extraction, migration, upgrade, or release.         |
-| `review`        | Independently assess correctness, risk, and readiness.                            |
-
-## Provider-Neutral Worker Depth
-
-| Effort     | Meaning                                                          |
-| ---------- | ---------------------------------------------------------------- |
-| `quick`    | Small scope, few dependencies, narrow validation.                |
-| `standard` | Normal sprint-sized work with bounded dependencies.              |
-| `deep`     | Cross-repository, architectural, operational, or high-risk work. |
-
-`discovery` is a mode, not an effort level. A discovery run may be quick, standard, or deep.
-
-Worker depth is separate from the execution profile and provider reasoning effort. The playbook selects the execution
-profile; the provider adapter applies the role's model and reasoning policy. A profile must not silently lower the
-quality policy of a role.
 
 ## Execution Profiles and Lifecycle
 
@@ -762,42 +675,6 @@ it is the suspected fault repository or appears first in the topology.
 The execution repository must be explicit in the canonical run prompt. If it is missing or ambiguous, stop with
 `blocked` and request the smallest missing path; do not infer it from the playbook location or code-repository list.
 
-## Portable Implementation Handoff
-
-When a planning run reaches `ready_for_implementation`, the Documenter MAY create `implementation_handoff.md` beside
-`implementation_plan.md` only when implementation will happen in another session or environment, or when the user
-explicitly requests a self-contained transfer file. Same-session implementation does not require a handoff. The
-implementation plan remains the canonical design artifact; the handoff is a derived, self-contained transfer artifact.
-
-The portable handoff MUST:
-
-* contain the work item, target repository identity, target branch and starting revision, scope, exclusions, evidence
-  summary, decisions, approval status, exact source changes, validation plan, environment preflight, stop conditions,
-  rollback, and final reporting requirements;
-* use repository identity, remote references, and commits instead of absolute paths from the source environment;
-* include enough evidence and reasoning to execute without chat history, framework-relative links, or the source
-  environment's work-record directory; and
-* state whether implementation approval is pending, approved, superseded, or complete.
-
-The receiving session MUST start at the root of the target Git repository, verify its identity and current branch, and
-run the environment preflight before changing source. For a monorepo, the session MUST remain at the repository root so
-the workflow can inspect sibling projects. A material repository, branch, or scope mismatch requires a recorded decision
-before implementation. The handoff MUST NOT be treated as approval when its approval status is pending. The user MAY
-give explicit approval in the receiving session; the session must record that approval before changing source and does
-not require the user to edit the handoff file manually.
-
-One implementation approval covers every in-scope step in the handoff. The receiving session MUST NOT ask for approval
-after each implementation slice. It MUST stop for a new decision only when new evidence changes the approved scope or
-design, an unapproved external or irreversible action is required, or a genuine environment, permission, review, or
-validation blocker prevents progress.
-
-The handoff can be executed without a framework checkout. If provider-specific agents or runtime delegation are not
-available, the session MUST record the actual model, effort, worker execution, review independence, and validation
-results. It MUST NOT claim framework-profile execution, independent review, fan-in, or provider settings that were not
-actually observed.
-
----
-
 # Parallelism Semantics
 
 | Value         | Meaning                                                                                                         |
@@ -809,6 +686,11 @@ actually observed.
 
 Dependencies describe readiness to start. Inputs describe artifacts consumed. A worker may consume outputs from another
 worker without being blocked from starting when the playbook explicitly supports incremental updates.
+
+Workers that share a completed dependency and do not depend on each other MUST start in parallel when runtime capacity
+exists. If they run sequentially, record the dependency, capacity, or provider limitation and its wait time.
+Deep does not authorize duplicated investigation: each worker owns a distinct question and artifact, consumes upstream
+outputs, and repeats evidence or repository analysis only for a named discrepancy recorded in its result envelope.
 
 # Stage Completion and Fan-In
 

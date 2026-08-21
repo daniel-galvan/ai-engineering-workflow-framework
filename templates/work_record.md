@@ -4,7 +4,7 @@ title: Engineering Work Record
 version: 0.2.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-21
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -75,9 +75,9 @@ plans, work records, and worker conclusions are supporting evidence unless the
 current run explicitly adopts them as a decision. Do not promote a hypothesis
 to an authority or approval gate.
 
-| Input or artifact | Source or path | Classification | Authority | Status / worker |
-| --- | --- | --- | --- | --- |
-| | | Decision / Constraint / Observation / Hypothesis / Artifact / Conflict | Current user decision / Approved decision / Supporting evidence | Consumed / Unavailable / Conflicting / Out of scope |
+| Input ID | Input or artifact | Source or path | Classification | Authority | Status / worker |
+| --- | --- | --- | --- | --- | --- |
+| IN-001 | | | Decision / Constraint / Observation / Hypothesis / Artifact / Conflict | Current user decision / Approved decision / Supporting evidence | Assigned / Consumed / Unavailable / Conflicting / Out of scope |
 
 ---
 
@@ -137,9 +137,9 @@ Lifecycle and Profile. Actual model and effort are observed provider values, not
 
 Record every worker or subagent that materially contributes to the work.
 
-| Worker | Role | Mode | Depth | Skills | Tools | Capacity | Model/effort | Usage | Depends on | Outcome | Confidence |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | | | | | |
+| Worker | Role | Assigned inputs | Mode | Depth | Skills | Tools | Capacity | Model/effort | Elapsed | Wait | Usage | Depends on | Outcome | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | IN-### | | | | | | | | | | | | |
 
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
 never estimate credit consumption.
@@ -148,14 +148,15 @@ never estimate credit consumption.
 
 For every stage that launches multiple workers, record the fan-in barrier.
 
-| Stage | Workers launched | Worker outcomes | Results summarized | Barrier status |
-| --- | --- | --- | --- | --- |
-| | | | Yes / No | Open / Passed |
+| Stage | Workers launched | Launch mode / exception | Worker outcomes | Results summarized | Barrier status |
+| --- | --- | --- | --- | --- | --- |
+| | | Parallel / Sequential: reason | | Yes / No | Open / Passed |
 
 The workflow cannot be marked complete while a required worker or barrier is still active.
 
-For each worker, record inputs consumed, outputs produced, approvals, and failure or blocked details in the timeline or
-relevant section below.
+Before activation, record each worker's assigned Input IDs. Reconcile them with the result envelope's
+`inputs_consumed`; an omitted authoritative input makes the result incomplete. Record outputs, approvals, and failure or
+blocked details in the timeline or relevant section below.
 
 # Delivery Activation Gate
 
@@ -242,9 +243,19 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Reruns | Count | |
 | Human review effort | Minutes | |
 
+| Control or timing measure | Measure | Evidence / reason |
+| --- | --- | --- |
+| Instruction violations | Count | |
+| Authoritative inputs ignored | Count | |
+| Supplied inputs not consumed | Count | |
+| Unapproved plan deviations | Count | |
+| Worker elapsed time | Per worker | Worker Execution Ledger |
+| Worker wait time | Per worker | Worker Execution Ledger |
+
 | Dimension | Rating | Evidence / notes |
 | --- | --- | --- |
 | Process quality | Met / Partial / Not met / Not applicable | |
+| Control fidelity | Met / Partial / Not met / Not applicable | |
 | Reasoning quality | Met / Partial / Not met / Not applicable | |
 | Engineering quality | Met / Partial / Not met / Not applicable | |
 | Efficiency | Met / Partial / Not met / Not applicable | |

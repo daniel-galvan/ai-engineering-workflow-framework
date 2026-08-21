@@ -139,6 +139,9 @@ after approval unless new evidence contradicts the approved plan or expands scop
 - `handoff` records all results, synchronization, model/effort, usage, credits, and next action in the durable work
   record.
 
+For `deep`, start `impact-analysis` and `repository-integration` in parallel after `feature-context`. Each consumes the
+context artifact and repeats upstream discovery only for a recorded discrepancy.
+
 ## Source-to-Destination Feature Delivery
 
 This source-to-destination feature delivery scenario uses `deep` for moving an existing capability from a source

@@ -18,6 +18,9 @@ TEMPLATES = list((ROOT / "templates").glob("*_run_prompt.md"))
 INVARIANT = "The shared contract and selected playbook own lifecycle, worker activation,"
 MATURITY = {"not_exercised", "exercising"}
 WORKFLOW_CONTRACT = ROOT / "contracts" / "workflow_execution.md"
+WORKFLOW_GUIDANCE = ROOT / "contracts" / "workflow_execution_guidance.md"
+WORKFLOW_VOCABULARY = ROOT / "contracts" / "workflow_vocabulary.md"
+PORTABLE_HANDOFF_CONTRACT = ROOT / "contracts" / "portable_implementation_handoff.md"
 CLAIMS_CONTRACT = ROOT / "contracts" / "claims.md"
 WORKFLOW_EVALUATION = ROOT / "frameworks" / "workflow_evaluation.md"
 CODEX_POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
@@ -229,7 +232,8 @@ for path in TEMPLATES:
     if "Additional supplied context (preserve and classify):" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the additional-context section")
     for phrase in (
-        "Before acting, read the selected playbook and every required dependency it names.",
+        "Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md`",
+        "templates and examples are not runtime instructions.",
         "Current explicit user decisions and constraints are authoritative",
         "Delivery Activation Barrier",
         "Never claim successful execution when the required graph is incomplete.",
@@ -247,6 +251,8 @@ for path in (ROOT / "playbooks").glob("*.md"):
         fail(f"{path.relative_to(ROOT)} is missing the canonical worker-result ledger")
     if "Human-Readable Handoff block" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the human-readable handoff block")
+    if "in parallel" not in text or not re.search(r"recorded\s+discrepancy", text):
+        fail(f"{path.relative_to(ROOT)} is missing Deep parallelism or non-duplication rules")
 
 vulnerability_playbook = (ROOT / "playbooks" / "vulnerability_investigation.md").read_text()
 for phrase in (
@@ -385,11 +391,22 @@ for phrase in (
     "coordinator_interrupted_after_wait_timeout",
     "activated_profile",
     "executed_profile",
-    "## Portable Implementation Handoff",
-    "self-contained transfer artifact",
+    "Portable Implementation Handoff Contract](portable_implementation_handoff.md)",
+    "Workflow Execution Guidance](workflow_execution_guidance.md)",
+    "## Input Delivery and Consumption Gate",
+    "Input IDs actually used in `inputs_consumed`",
+    "Workers that share a completed dependency and do not depend on each other MUST start in parallel",
+    "Deep does not authorize duplicated investigation",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing wait/profile semantics: {phrase}")
+for path in (WORKFLOW_GUIDANCE, WORKFLOW_VOCABULARY, PORTABLE_HANDOFF_CONTRACT):
+    if not path.exists():
+        fail(f"{path.relative_to(ROOT)} is missing")
+portable_handoff_contract = PORTABLE_HANDOFF_CONTRACT.read_text()
+for phrase in ("# Portable Implementation Handoff Contract", "The portable handoff MUST"):
+    if phrase not in portable_handoff_contract:
+        fail(f"{PORTABLE_HANDOFF_CONTRACT.relative_to(ROOT)} is missing: {phrase}")
 work_record_template = (ROOT / "templates" / "work_record.md").read_text()
 if "| Engineering state |" not in work_record_template:
     fail("templates/work_record.md is missing engineering state")
@@ -399,6 +416,8 @@ if "# Path Verification" not in work_record_template:
     fail("templates/work_record.md is missing path verification")
 if "# Input Register" not in work_record_template:
     fail("templates/work_record.md is missing input provenance")
+if "| Input ID |" not in work_record_template or "| Assigned inputs |" not in work_record_template:
+    fail("templates/work_record.md is missing input assignment tracking")
 if "# Delivery Activation Gate" not in work_record_template:
     fail("templates/work_record.md is missing the delivery activation gate")
 if "# Implementation Conformance Check" not in work_record_template:
@@ -442,6 +461,13 @@ for phrase in (
     "Manual corrections",
     "Reruns",
     "Human review effort",
+    "Control fidelity",
+    "Instruction violations",
+    "Authoritative inputs ignored",
+    "Supplied inputs not consumed",
+    "Unapproved plan deviations",
+    "Worker elapsed time",
+    "Worker wait time",
 ):
     if phrase not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing outcome/burden metric: {phrase}")

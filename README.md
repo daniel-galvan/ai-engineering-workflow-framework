@@ -86,9 +86,10 @@ model and effort values belong in the worker ledger, not in a first-use run prom
 
 Provider configuration is optional and used only when installed and verified.
 
-The shared rules are in [contracts/workflow_execution.md](contracts/workflow_execution.md). The evidence-to-action
-reasoning model is [contracts/claims.md](contracts/claims.md). The practical explanation is
-[OPERATING_GUIDE.md](OPERATING_GUIDE.md).
+The shared rules are in [contracts/workflow_execution.md](contracts/workflow_execution.md). Vocabulary,
+portable-handoff rules, and non-normative execution guidance are linked from that core and loaded only when needed. The
+evidence-to-action reasoning model is [contracts/claims.md](contracts/claims.md);
+[OPERATING_GUIDE.md](OPERATING_GUIDE.md) explains normal operation.
 
 ### Ask an AI agent to prepare a run prompt
 

@@ -4,6 +4,8 @@ version: 0.2.0
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
+depends_on:
+  - ../contracts/portable_implementation_handoff.md
 ---
 
 # Portable Implementation Handoff

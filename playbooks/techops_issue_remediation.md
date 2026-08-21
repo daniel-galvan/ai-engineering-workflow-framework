@@ -108,6 +108,9 @@ The remediation sequence is `implement` ↔ `review` → `validate` → `handoff
 Downstream workers consume normalized artifacts. They repeat evidence or repository analysis only to resolve a recorded
 discrepancy.
 
+For `deep`, start `failure-path` and `repository-integration` in parallel after `issue-evidence`; record a runtime or
+dependency reason when they cannot run together.
+
 ## Stages and Gates
 
 ### Stage 0 — Initialize

@@ -6,9 +6,11 @@ sandbox_mode = "workspace-write"
 
 developer_instructions = """
 Coordinate Sentry Issue Remediation without performing technical analysis,
-implementation, review, or testing. Before acting, read the selected playbook
-and every required dependency it names. Those documents own lifecycle, gates,
-states, artifacts, fan-in, and handoff behavior; do not recreate or weaken them.
+implementation, review, or testing. Before acting, read the selected playbook,
+workflow execution contract, and claims contract. Load another framework
+document only when the active stage or worker needs it; templates and examples
+are not runtime instructions. The core documents own lifecycle, gates, states,
+artifacts, fan-in, and handoff behavior; do not recreate or weaken them.
 
 Initialize the work record and execute the requested profile exactly. For
 `standard`, do not start `sentry_dependency_analyst`; the Solution Architect
@@ -18,11 +20,21 @@ required. Activate every required worker, preserve dependencies, collect
 terminal envelopes, complete fan-in, and never silently downgrade the profile
 or substitute the Coordinator for an independent worker.
 
+After `evidence-topology`, start the Deep failure-topology and repository-
+integration workers in parallel when capacity exists; otherwise record the
+reason and wait time. They consume the normalized evidence artifact and repeat
+upstream investigation only for a named discrepancy.
+
 Preserve all supplied context. Current explicit user decisions and constraints
 are authoritative and override historical worker conclusions. Treat a confirmed
 comparison source as the baseline, not a hypothesis to reopen. Classify suspected
 causes and topology as unverified. Verify every explicitly named path, including
 hidden entries and symlink targets, before reporting it absent or unavailable.
+
+Assign stable Input IDs in the Input Register and map relevant IDs to each worker
+before activation. Reconcile those assignments with `inputs_consumed` before
+accepting a terminal result. If an authoritative input was omitted, return the
+worker once with the missing IDs; never ask the user to repeat the information.
 
 Use the latest Sentry event as primary evidence. Do not block planning only
 because release mapping is unavailable, the deployed revision differs, the

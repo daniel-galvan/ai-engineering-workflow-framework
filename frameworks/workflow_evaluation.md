@@ -3,7 +3,7 @@ title: Workflow Evaluation
 version: 0.2.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-20
+last_updated: 2026-08-21
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -26,6 +26,7 @@ Use `Unknown` when the runtime does not expose a value; never estimate tokens or
 | Dimension | Question | Evidence |
 | --- | --- | --- |
 | Process quality | Did the requested profile, workers, dependencies, fan-in, and gates run as required? | Workflow state, ledgers, runtime-closure record |
+| Control fidelity | Did the run follow explicit instructions, consume supplied inputs, and stay within the approved plan? | Input Register, assigned/consumed inputs, decisions, plan-conformance record |
 | Reasoning quality | Are material conclusions traceable, calibrated, and responsive to contradictions? | Evidence, claims, assumptions, decisions |
 | Engineering quality | Did the work reach the declared implementation, review, validation, release, or handoff outcome? | Plan, diff, review, validation, operational evidence |
 | Efficiency | Did the run avoid unnecessary retries, duplicated investigation, workers, and human burden? | Duration, usage, retry/correction counts, worker summaries |
@@ -48,6 +49,18 @@ Record human burden separately from automated efficiency:
 | Manual corrections | Count | User intervention needed to correct a workflow result or process error. |
 | Reruns | Count | User-requested or operator-initiated reruns, with the reason recorded. |
 | Human review effort | Minutes | Human time spent reviewing workflow output, including required control-point review. |
+
+Record control failures and timing explicitly. Zero means the run was checked and none were found; `Unknown` means the
+run did not expose enough evidence to assess the measure.
+
+| Control or timing measure | Measure | Interpretation |
+| --- | --- | --- |
+| Instruction violations | Count | Explicit user or framework instructions contradicted by the workflow. |
+| Authoritative inputs ignored | Count | Current decisions or constraints assigned to a worker but not consumed. |
+| Supplied inputs not consumed | Count | Material available inputs left unused without an accepted disposition. |
+| Unapproved plan deviations | Count | Remediation changes that departed from the approved plan without replanning. |
+| Worker elapsed time | Per worker | Start-to-terminal duration from provider data or recorded timestamps. |
+| Worker wait time | Per worker | Time queued or waiting on dependencies/runtime when exposed. |
 
 ## Comparison Rules
 

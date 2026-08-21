@@ -266,6 +266,9 @@ Workers use the shared result envelope defined in the execution contract. Sentry
 - The Documenter records every worker result, blocker, synchronization state, model, effort, usage, and credits when
   available.
 
+For `deep`, start `failure-topology` and `repository-integration` in parallel after `evidence-topology`. Both consume
+the normalized evidence artifact and repeat raw queries only for a recorded discrepancy.
+
 Provider-specific model, effort, and agent mappings are supplied by the selected provider adapter.
 
 ## Effort Escalation

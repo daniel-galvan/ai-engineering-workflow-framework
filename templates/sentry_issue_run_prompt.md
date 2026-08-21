@@ -47,7 +47,9 @@ Continuation (omit this entire section for a new investigation):
 - Approval reference: <REQUIRED-FOR-REMEDIATION-OR-NONE>
 
 Runtime bootstrap:
-- Before acting, read the selected playbook and every required dependency it names.
+- Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md` from the
+  same framework checkout. Load another referenced framework document only when the active stage or worker needs it;
+  templates and examples are not runtime instructions.
 - The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
 - Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
   reopened or overridden by historical conclusions.
