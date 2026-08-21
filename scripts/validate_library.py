@@ -229,12 +229,13 @@ for path in TEMPLATES:
     if "Additional supplied context (preserve and classify):" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the additional-context section")
     for phrase in (
-        "The current session is Coordinator-only",
-        "Activation Barrier",
-        "Do not report remediation complete until",
+        "Before acting, read the selected playbook and every required dependency it names.",
+        "Current explicit user decisions and constraints are authoritative",
+        "Delivery Activation Barrier",
+        "Never claim successful execution when the required graph is incomplete.",
     ):
         if phrase not in text:
-            fail(f"{path.relative_to(ROOT)} is missing remediation safety rule: {phrase}")
+            fail(f"{path.relative_to(ROOT)} is missing runtime bootstrap rule: {phrase}")
 
 for path in (ROOT / "playbooks").glob("*.md"):
     text = path.read_text()

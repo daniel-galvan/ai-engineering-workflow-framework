@@ -11,27 +11,14 @@ depends_on:
 
 # TechOps Issue Remediation Run Prompt
 
-Use this format for every TechOps Issue Remediation session. For a first run, fill the work item, execution repository,
-profile, lifecycle, and scenario evidence only. The shared contract and selected playbook own worker selection,
-coordination, recovery, and fan-in.
-
-First-use summary:
-- Provide the work item, playbook, profile, lifecycle, execution repository, and optional scenario inputs.
-- The run initializes or recovers the work record, activates the required workers, and follows the playbook gates.
-- Planning is read-only; explicit implementation approval is required before remediation.
-- Results are stored under `<execution-repository>/.thoughts/<WORK-ITEM-ID>/`; create the implementation plan only after
-  planning fan-in.
-- The prompt-preparation step extracts and preserves all supplied context; the user does not need to repeat it in
-  canonical fields.
-- Put direct user decisions and non-negotiable constraints in the confirmed-input section; workers must not reopen them
-  as clarification questions.
+Fill only the run-specific fields. The shared contract and selected playbook own execution behavior. Prompt preparation
+must preserve all supplied context and place explicit decisions in the authoritative confirmed-input section.
 
 ```text
 Run the TechOps Issue Remediation playbook.
 
 Work item: <TECHOPS-JIRA-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
-Canonical run template: templates/techops_issue_run_prompt.md
 
 Execution profile: standard
 Lifecycle: planning
@@ -40,19 +27,8 @@ The selected execution profile is mandatory; do not silently downgrade it.
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
 
-Durable artifacts (derived; do not replace these paths):
-- Work record: <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
-- Implementation plan: create <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
-  only when the playbook reaches `ready_for_implementation`.
-
 Provider/runtime configuration (optional; omit if unavailable):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION>
-
-Coordination:
-- The current session is the Coordinator.
-- Use a configured Orchestrator agent only when the runtime supports nested
-  delegation. Otherwise, the current session activates workers and completes
-  fan-in directly.
 
 Continuation (omit this entire section for a new investigation):
 - Run type: Planning follow-up / Interrupted profile recovery / Remediation re-entry
@@ -60,21 +36,15 @@ Continuation (omit this entire section for a new investigation):
 - New evidence, decision, constraint, or recovery reason: <DESCRIPTION>
 - Approval reference: <REQUIRED-FOR-REMEDIATION-OR-NONE>
 
-Run invariants:
-- The shared contract and selected playbook own lifecycle, worker activation,
-  recovery, fan-in, and handoff behavior; do not redefine them here.
-- Verify every explicitly named path before reporting its existence or absence;
-  inspect hidden entries, regular files, symlinks, and symlink targets.
-- The active Coordinator activates required workers, collects result envelopes,
-  and reports blocked delegation without claiming profile success.
-- Planning is read-only. Remediation reuses planning artifacts, activates the
-  delivery graph before edits, and executes the approved plan end-to-end.
-- The current session is Coordinator-only and must not edit source or substitute
-  for the Implementer, Reviewer, or Tester. Before edits, record the Delivery
-  Activation Barrier; if it cannot pass, stop without changing source.
-- Do not report remediation complete until the Implementer, Reviewer, Tester,
-  and Documenter return the required terminal results and fan-in and runtime
-  closure are recorded.
+Runtime bootstrap:
+- Before acting, read the selected playbook and every required dependency it names.
+- The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
+- Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
+  reopened or overridden by historical conclusions.
+- The requested profile and lifecycle are mandatory. Planning is read-only; remediation requires explicit approval and
+  a passed Delivery Activation Barrier before edits.
+- The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
+  fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>
@@ -101,6 +71,5 @@ repository is already declared):
 Additional run-specific constraints or approvals:
 - <NONE-OR-ENTER-CONSTRAINT>
 
-Follow the shared execution contract, selected playbook profile, lifecycle,
-provider configuration, and handoff format.
+Follow the selected playbook and its required dependencies.
 ```
