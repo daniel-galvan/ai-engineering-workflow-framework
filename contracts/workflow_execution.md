@@ -4,7 +4,7 @@ version: 0.3.0
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-20
+last_updated: 2026-08-21
 ---
 
 # Workflow Execution Contract
@@ -257,7 +257,7 @@ input.
 | --------------------- | ----------- | ------------------------------------------------------------------------ |
 | `id`                  | Yes         | Stable identifier within the source system.                              |
 | `source_system`       | Yes         | Jira, GitHub Issues, Linear, Markdown, or another source.                |
-| `type`                | Yes         | Story, bug, task, incident, upgrade, migration, vulnerability, or other. |
+| `type`                | Yes         | Story, bug, task, incident, upgrade, vulnerability, or other.            |
 | `title`               | Yes         | Short statement of the requested outcome.                                |
 | `description`         | Yes         | Available problem or request context.                                    |
 | `acceptance_criteria` | Recommended | Conditions supplied by the requester.                                    |

@@ -6,7 +6,7 @@ status: Pilot
 category: Analysis
 provider_independent: true
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-08-21
 ---
 
 # Dependency Mapping
@@ -26,7 +26,7 @@ last_updated: 2026-07-24
 * Ownership map
 * Coupling classification
 * Impact assessment
-* Extraction or adaptation candidates
+* Adaptation candidates
 
 ## Completion Criteria
 

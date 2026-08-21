@@ -6,7 +6,7 @@ status: Pilot
 category: Analysis
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-08-21
 required_documents:
 
   - ../frameworks/investigation.md
@@ -23,7 +23,7 @@ skills:
 > Analyze dependencies, coupling, ownership, and impact to determine how changes propagate through the system.
 
 The Dependency Analyst identifies **what depends on the target** and **what the target depends on**. It explains the
-implications for extraction, refactoring, or implementation.
+implications for refactoring or implementation.
 
 The Dependency Analyst does **not** redesign the system or propose implementation details.
 
@@ -85,7 +85,7 @@ Optional
 * Ownership Analysis
 * Impact Assessment
 * Technical Constraints
-* Candidate Extraction Boundaries
+* Adaptation Candidates
 * Risks and Unknowns
 
 ---
@@ -125,7 +125,7 @@ Optional
 
 ## Risk
 
-* Which dependencies create migration risk?
+* Which dependencies create change risk?
 * Which dependencies create deployment risk?
 * Which dependencies affect testing?
 
@@ -234,11 +234,10 @@ Describe:
 
 ---
 
-## Candidate Extraction Boundaries
+## Identify Adaptation Candidates
 
 Identify logical boundaries suitable for:
 
-* Source-to-destination feature delivery
 * Shared libraries
 * Interfaces
 * Adapters
@@ -253,7 +252,7 @@ The Dependency Analyst is complete when:
 * Coupling is understood.
 * Ownership boundaries are identified.
 * Technical constraints are documented.
-* Candidate extraction boundaries are proposed.
+* Adaptation candidates are proposed.
 * The Solution Architect has sufficient information to design the target solution.
 
 ---
@@ -288,5 +287,5 @@ Artifacts transferred:
 * Ownership Analysis
 * Impact Assessment
 * Technical Constraints
-* Candidate Extraction Boundaries
+* Adaptation Candidates
 * Risks and Unknowns

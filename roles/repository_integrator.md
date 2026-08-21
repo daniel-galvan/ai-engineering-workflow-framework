@@ -6,7 +6,7 @@ status: Pilot
 category: Integration
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-21
 required_documents:
 
   - ../frameworks/investigation.md
@@ -29,11 +29,9 @@ design the solution itself.
 
 This role is particularly valuable for:
 
-* Source-to-destination feature delivery
-* Repository migration
 * Monolith decomposition
 * New services
-* Platform migrations
+* Platform integrations
 * Cross-team integrations
 
 ---
@@ -103,7 +101,7 @@ Optional
 * Integration Points
 * Required Adaptations
 * Operational Requirements
-* Migration Phases
+* Integration Phases
 * Integration Risks
 
 ---
@@ -143,11 +141,9 @@ Optional
 * Repository standards
 * Code organization
 
-## Migration
+## Delivery
 
-* Can the implementation be incremental?
-* Can old and new systems coexist?
-* Is dual execution required?
+* What can be integrated incrementally?
 * Is rollback straightforward?
 
 ---
@@ -192,7 +188,7 @@ Document:
 
 ---
 
-## Define Migration Phases
+## Define Integration Phases
 
 Describe a sequence of incremental milestones.
 
@@ -233,7 +229,7 @@ Summarize:
 
 ---
 
-## Migration Phases
+## Integration Phases
 
 Recommend an incremental rollout plan.
 
@@ -292,6 +288,6 @@ Artifacts transferred:
 * Repository Alignment Report
 * Integration Points
 * Required Adaptations
-* Migration Phases
+* Integration Phases
 * Operational Requirements
 * Integration Risks

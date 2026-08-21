@@ -6,7 +6,7 @@ status: Pilot
 category: Integration
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-21
 ---
 
 # Destination Integration
@@ -29,7 +29,7 @@ Optional inputs:
 * Destination build/test baseline result, or an explicit unavailable status
 * Integration points and required adaptations
 * Build, runtime, deployment, and configuration plan
-* Migration phases and integration risks
+* Integration phases and risks
 
 ## Completion Criteria
 

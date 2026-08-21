@@ -51,17 +51,6 @@ model or reasoning effort. The canonical mapping is in
 `mode`, provider-neutral worker depth, and provider-neutral capacity classification remain internal worker metadata.
 They support provider adapters and audit records; users do not select them in a canonical run prompt.
 
-## Source-to-destination Feature Delivery
-
-Use Feature Delivery with `deep + planning` when a feature moves an existing capability into an independently operated
-destination. The scenario requires source and destination evidence, a verified seam, dependency dispositions,
-destination baseline, coexistence or cutover, rollback, and ownership. Use the canonical
-[`feature_delivery_run_prompt.md`](templates/feature_delivery_run_prompt.md) to start or resume a run.
-
-The Documenter runs continuously. Explicit approval and `lifecycle: remediation` are required before source changes,
-review, validation, stabilization, or cutover. Preserve migrated behavior unless the approved feature explicitly changes
-it.
-
 ## Work records
 
 Every work item declares one execution repository. It is the checkout in which the session starts and the

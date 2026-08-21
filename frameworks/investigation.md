@@ -4,7 +4,7 @@ title: Engineering Work Framework
 version: 0.3.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-08-21
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -17,7 +17,7 @@ depends_on:
 This framework defines **how** engineering work should be understood, coordinated, validated, and recorded.
 
 It is intentionally domain-agnostic and serves as the shared kernel for playbooks covering security, bugs, upgrades,
-migrations, incidents, features, and future domains.
+incidents, features, and future domains.
 
 ---
 
@@ -214,7 +214,6 @@ Examples:
 * Bug
 * Vulnerability
 * Upgrade
-* Migration
 * Operational issue
 
 Define:

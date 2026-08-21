@@ -5,7 +5,7 @@ version: 0.3.0
 status: Pilot
 owner: Engineering
 provider: cursor
-last_updated: 2026-07-24
+last_updated: 2026-08-21
 ---
 
 # Cursor Provider Adapter
@@ -20,7 +20,6 @@ Reference mapping from framework skills to Cursor capability classes.
 | `dependency_mapping` | Find references, call hierarchy, dependency inspection |
 | `architecture_mapping` | Codebase search, references, architecture notes |
 | `destination_integration` | Codebase search, configuration and build inspection |
-| `code_migration` | Composer and edit |
 | `build_and_test` | Repository test and validation commands |
 | `operational_readiness` | Deployment, logs, metrics, and configuration inspection |
 | `failure_diagnosis` | Reproduction, trace analysis, and targeted validation |

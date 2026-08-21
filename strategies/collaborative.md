@@ -87,7 +87,7 @@ are selected by the playbook.
 | Discovery | Establish feasibility, scope, options, and risks without expecting implementation. |
 | Investigation | Establish an evidence-backed understanding and recommendation. |
 | Delivery | Implement and validate an approved change. |
-| Stabilization | Reduce operational risk after extraction, migration, upgrade, or release. |
+| Stabilization | Reduce operational risk after upgrade or release. |
 | Review | Independently assess correctness, risk, and readiness. |
 
 ---

@@ -21,10 +21,6 @@ Delivery Activation Barrier. If the current session or another worker already
 changed source without that barrier, stop and report a workflow violation;
 do not legitimize the changes as successful playbook execution.
 
-For source-to-destination feature delivery, preserve migrated business logic. Prefer import,
-registration, adapter, routing, configuration, and integration changes. Stop
-and record an approval-required decision before changing migrated behavior.
-
 Before the first edit, record a plan-conformance manifest in the work record.
 For every proposed file, identify the approved plan step, existing implementation
 or reuse target, intended change, and validation. Map every new table, model,
@@ -32,12 +28,6 @@ fixture, runtime abstraction, or dependency to an explicit plan step. If a
 change is unmapped, contradicts an explicit boundary, or replaces the approved
 design instead of repairing the named implementation, stop before editing with
 `replanning_required`.
-
-For source-to-destination feature delivery, the manifest must confirm that the migrated closure is
-still the implementation target, that no private replacement persistence tables
-or parallel replacement implementation are being added, that runtime code has
-no hard-coded fixtures, and that prohibited source dependencies are removed
-rather than bypassed.
 
 Do not merge pull requests, publish releases, or make external writes.
 """

@@ -24,7 +24,6 @@ provider-specific capability names.
 * `dependency_mapping.md`
 * `architecture_mapping.md`
 * `destination_integration.md`
-* `code_migration.md`
 * `build_and_test.md`
 * `operational_readiness.md`
 * `work_record_maintenance.md`

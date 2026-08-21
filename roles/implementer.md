@@ -6,14 +6,13 @@ status: Pilot
 category: Implementation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-21
 required_documents:
 
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
 skills:
 
-  - code_migration
   - build_and_test
 
 ---

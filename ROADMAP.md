@@ -9,7 +9,6 @@ playbooks. This file lists only planned evolution.
 - Measure control fidelity, authoritative-input consumption, human intervention, elapsed time, and wait time.
 - Reduce Deep elapsed and wait time without skipping required workers, gates, or fan-in.
 - Improve remediation completion reliability across all four playbooks.
-- Confirm source-to-destination Feature Delivery coverage under v0.3.0.
 - Perform a cross-playbook failure audit after collecting comparable v0.3.0 run evidence.
 
 ## Expansion freeze

@@ -3,7 +3,7 @@ title: Feature Delivery Run Prompt
 version: 0.3.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-21
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/feature_delivery.md
@@ -12,8 +12,7 @@ depends_on:
 # Feature Delivery Run Prompt
 
 Fill only the run-specific fields. The shared contract and selected playbook own execution behavior. Prompt preparation
-must preserve all supplied context and place explicit decisions in the authoritative confirmed-input section. A feature
-moving into an independently operated destination requires the source-to-destination fields and profile `deep`.
+must preserve all supplied context and place explicit decisions in the authoritative confirmed-input section.
 
 ```text
 Run the Feature Delivery playbook.
@@ -51,16 +50,6 @@ Runtime bootstrap:
 Additional repositories and working directories (optional; the execution
 repository is already declared):
 - <REPOSITORY-OR-DIRECTORY-OR-NONE>
-
-Source-to-destination feature scenario (omit for a normal feature; requires `deep`):
-- Source: <ABSOLUTE-PATH-OR-UNKNOWN>
-- Destination: <ABSOLUTE-PATH-OR-UNKNOWN>
-- Capability: <NAME-OR-UNKNOWN>
-- Desired destination seam: <DESCRIPTION-OR-UNKNOWN>
-- Known contracts, data, events, runtime, deployment, or ownership constraints: <DESCRIPTION-OR-NONE>
-
-Use `Unknown` only when unavailable. Missing source or destination information prevents implementation readiness, but
-does not prevent bounded planning discovery.
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>

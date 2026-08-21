@@ -122,7 +122,7 @@ descendants is not a successful execution of the selected profile.
 
 * Exploration, architecture, review, and documentation agents are read-only.
 * Implementation and test agents may write only within the approved workflow and must not make external writes.
-* Do not change migrated business logic without explicit approval.
+* Do not change existing business logic without explicit approval.
 * Do not treat model selection as evidence of correctness; validation remains required.
 
 ## Usage accounting

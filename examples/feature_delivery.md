@@ -3,7 +3,7 @@ title: Feature Delivery Example
 version: 0.3.0
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-21
 depends_on:
   - ../playbooks/feature_delivery.md
   - ../templates/feature_delivery_run_prompt.md
@@ -22,9 +22,6 @@ A Jira ticket requests a capability change but lacks enough local detail to impl
 immediate parent, ancestors, selected siblings, linked decisions, and repository evidence without treating that context
 as automatic scope.
 
-The same playbook also handles moving an existing capability into an independently operated destination. That scenario
-uses `deep` and requires source, destination, seam, dependency, ownership, validation, and rollback evidence.
-
 ## Example Inputs
 
 | Item | Example |
@@ -36,7 +33,6 @@ uses `deep` and requires source, destination, seam, dependency, ownership, valid
 | Related siblings or decisions | `<JIRA-URLS-OR-NONE>` |
 | Desired outcome | `<DESCRIPTION-OR-UNKNOWN>` |
 | Constraints and non-goals | `<DESCRIPTION-OR-NONE>` |
-| Source-to-destination scenario | Source and destination repositories, capability, destination seam, and operational constraints; omit for a normal feature |
 
 ## Run Format
 
@@ -51,7 +47,7 @@ Lifecycle: planning
 ```
 
 Use `deep` when ownership, repositories, public contracts, persistence, rollout, or acceptance criteria remain
-uncertain. It is required for source-to-destination delivery.
+uncertain.
 
 ## Expected Planning Outcome
 
@@ -87,6 +83,3 @@ only if evidence changes the scope or design, or a genuine blocker requires a de
 
 Report the verified scope, implementation-plan status, delivered changes, worker ledger, validation results, release or
 rollback considerations, residual risks, owner, and next action.
-
-For source-to-destination delivery, also report the verified seam, dependency dispositions, destination baseline,
-coexistence or cutover, rollback, and operational ownership.

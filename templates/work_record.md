@@ -29,7 +29,7 @@ It is intended to allow another engineer (or AI assistant) to resume the work wi
 | Identifier | |
 | Source system | Jira / GitHub Issues / Linear / Markdown / Manual |
 | Title | |
-| Type | Story / Bug / Task / Incident / Upgrade / Migration / Vulnerability / Other |
+| Type | Story / Bug / Task / Incident / Upgrade / Vulnerability / Other |
 | Execution repository | |
 | Source repository | |
 | Destination repository | |
@@ -59,7 +59,6 @@ Describe the desired outcome of the work.
 Examples:
 
 * Triage a reported issue.
-* Extract a service into a new repository.
 * Identify and fix the root cause of a production issue.
 * Deliver a new feature.
 * Assess a dependency, code, infrastructure, or data change.
@@ -193,7 +192,6 @@ explicit plan step.
 | --- | --- | --- |
 | Plan-conformance manifest | Files, plan steps, reuse targets, changes, validation | Pending / Passed / Blocked |
 | Boundary compliance | No unmapped or explicitly forbidden implementation pattern | Pending / Passed / Blocked |
-| Extraction | Migrated target; no private tables or prohibited deps | Pending / Passed / Blocked / Not applicable |
 
 If the manifest exposes an unmapped change, a contradictory boundary, or a
 replacement of the approved design, stop before editing with

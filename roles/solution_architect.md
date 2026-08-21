@@ -6,7 +6,7 @@ status: Pilot
 category: Design
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-18
+last_updated: 2026-08-21
 required_documents:
 
   - ../frameworks/investigation.md
@@ -195,12 +195,12 @@ Document:
 
 ---
 
-## Identify Incremental Migration Strategy
+## Identify Incremental Delivery Strategy
 
 Determine:
 
 * What can be delivered first?
-* What can be migrated independently?
+* What can be delivered independently?
 * Which changes require coordination?
 * Which changes can be deferred?
 
@@ -256,7 +256,7 @@ Before returning a clarification result, the Solution Architect must provide:
 
 A generic request for more information is not a complete role result.
 
-During planning, convert migration, dependency, test, environment, operations,
+During planning, convert implementation, dependency, test, environment, operations,
 and validation work into ordered plan steps when a feasible sequence exists.
 Do not treat a worker-created seam or adapter as a user requirement or approval
 gate. Preserve each material recommendation's authority and claim/decision

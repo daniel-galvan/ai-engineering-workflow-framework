@@ -5,7 +5,7 @@ version: 0.3.0
 status: Pilot
 owner: Engineering
 provider: claude
-last_updated: 2026-07-24
+last_updated: 2026-08-21
 ---
 
 # Claude Provider Adapter
@@ -20,7 +20,6 @@ Reference mapping from framework skills to Claude Code capability classes.
 | `dependency_mapping` | Symbol references, call hierarchy, dependency inspection |
 | `architecture_mapping` | Project search, symbol navigation, architecture notes |
 | `destination_integration` | Project search, configuration and build inspection |
-| `code_migration` | Edit and refactor |
 | `build_and_test` | Repository test and validation commands |
 | `operational_readiness` | Deployment, logs, metrics, and configuration inspection |
 | `failure_diagnosis` | Reproduction, trace analysis, and targeted validation |

@@ -40,8 +40,7 @@ Use it for work with meaningful uncertainty, dependencies, risk, or coordination
 
 - Jira features, improvements, bugs, and TechOps issues;
 - Sentry production failures;
-- vulnerability and scanner findings;
-- migrations and source-to-destination feature delivery; and
+- vulnerability and scanner findings; and
 - special workflows that need distinct stages or gates.
 
 Do not use the full worker graph for a trivial, well-bounded change. Use the smallest role and skill set that provides
@@ -144,7 +143,7 @@ canonical run template.
 
 | Playbook                                                                | Use for                                                                |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [Feature Delivery](playbooks/feature_delivery.md)                       | Jira features, improvements, and source-to-destination delivery        |
+| [Feature Delivery](playbooks/feature_delivery.md)                       | Jira features and improvements                                         |
 | [TechOps Issue Remediation](playbooks/techops_issue_remediation.md)     | Support- and operations-reported Jira issues                           |
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |

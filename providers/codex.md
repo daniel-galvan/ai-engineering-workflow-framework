@@ -5,7 +5,7 @@ version: 0.3.0
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-08-11
+last_updated: 2026-08-21
 ---
 
 # Codex Provider Adapter
@@ -50,7 +50,6 @@ Reference mapping from framework skills to Codex capabilities.
 | `dependency_mapping` | `codebase-analyzer`, `codebase-pattern-finder` |
 | `architecture_mapping` | `zoom-out`, `research-codebase` |
 | `destination_integration` | `research-codebase`, `codebase-pattern-finder` |
-| `code_migration` | `apply_patch`, `implement-plan` |
 | `build_and_test` | repository execution, `diagnose` |
 | `operational_readiness` | repository execution, `diagnose` |
 | `failure_diagnosis` | `diagnose`, repository execution |

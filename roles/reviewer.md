@@ -6,7 +6,7 @@ status: Pilot
 category: Review
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-21
 required_documents:
 
   - ../frameworks/investigation.md
@@ -225,12 +225,10 @@ unexecuted review cannot be recorded as accepted delivery review.
 Before reviewing behavior, compare the diff with the approved plan and the
 Implementer's plan-conformance manifest. Reject unmapped files, new tables,
 models, fixtures, runtime abstractions, or dependencies that are not explicitly
-mapped to the approved plan. For source-to-destination feature delivery, reject private replacement
-persistence, hard-coded runtime fixtures, parallel replacement implementations,
-and unresolved prohibited source dependencies.
+mapped to the approved plan.
 
 For planning review, challenge proposed seams against authoritative outcomes and
-evidence. Keep feasible migration, dependency, test, environment, and
+evidence. Keep feasible implementation, dependency, test, environment, and
 operational work in the plan or risk record. Do not promote a worker hypothesis
 into a required approval or reject plan readiness merely because that work
 remains.

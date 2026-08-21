@@ -334,18 +334,6 @@ for phrase in (
 if "Sentry evidence and repository revision are identified" in sentry_playbook:
     fail("playbooks/sentry_issue_remediation.md still blocks on exact revision identification")
 
-feature_delivery_playbook = (ROOT / "playbooks" / "feature_delivery.md").read_text()
-for phrase in (
-    "independently deployable vertical slice",
-    "unavailable baseline is not a planning blocker",
-    "source-to-destination feature delivery",
-    "always uses `deep`",
-    "source and destination revisions",
-    "private replacement persistence",
-):
-    if phrase not in feature_delivery_playbook:
-        fail(f"playbooks/feature_delivery.md is missing source-to-destination rule: {phrase}")
-
 planning_readiness_reference = (
     "[planning-readiness]: "
     "../contracts/workflow_execution.md#planning-readiness-and-implementation-work"

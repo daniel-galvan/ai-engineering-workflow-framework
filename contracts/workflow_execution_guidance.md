@@ -32,7 +32,7 @@ unavailable. Canonical role IDs use the role filename without `.md`.
 | `discovery` | Establish feasibility, scope, options, and risks. Implementation is not expected. |
 | `investigation` | Establish an evidence-backed understanding and recommendation. |
 | `delivery` | Implement and validate an approved change. |
-| `stabilization` | Reduce operational risk after migration, upgrade, or release. |
+| `stabilization` | Reduce operational risk after upgrade or release. |
 | `review` | Independently assess correctness, risk, and readiness. |
 
 ### Provider-Neutral Worker Depth

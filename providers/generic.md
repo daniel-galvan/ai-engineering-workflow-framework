@@ -5,7 +5,7 @@ version: 0.3.0
 status: Pilot
 owner: Engineering
 provider: generic
-last_updated: 2026-07-24
+last_updated: 2026-08-21
 ---
 
 # Generic Provider Adapter
@@ -20,7 +20,6 @@ Use equivalent repository, issue-tracker, editing, execution, and validation too
 | `dependency_mapping` | Build caller, dependency, and ownership maps |
 | `architecture_mapping` | Document current and target boundaries |
 | `destination_integration` | Inspect destination conventions and runtime |
-| `code_migration` | Edit, move, and adapt code safely |
 | `build_and_test` | Run repository-standard validation |
 | `operational_readiness` | Inspect deployment and observability requirements |
 | `failure_diagnosis` | Reproduce, minimize, and validate failure causes |

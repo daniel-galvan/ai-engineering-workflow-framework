@@ -32,7 +32,7 @@ channels when the primary evidence is the issue report, comments, attachments, l
 recordings.
 
 Do not use it when Sentry is the primary evidence source, the issue is a security finding, or the work is a planned
-feature within an initiative, including source-to-destination feature delivery. Use the more specialized playbook.
+feature within an initiative. Use the more specialized playbook.
 
 ## Inputs and Evidence
 

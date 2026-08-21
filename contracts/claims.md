@@ -4,7 +4,7 @@ version: 0.3.0
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-08-21
 ---
 
 # Claims, Evidence, Decisions, and Actions Contract
@@ -115,13 +115,13 @@ flowchart TB
 
 ```text
 evidence-001: package X imports package Y.
-claim-001: The extracted service has a runtime dependency on package Y.
+claim-001: Component X has a runtime dependency on package Y.
   evidence_refs: [evidence-001]
   confidence: high
-decision-001: Preserve package Y at the new service boundary.
+decision-001: Preserve package Y at the component boundary.
   claim_refs: [claim-001]
   approval: approved
-action-001: Add or preserve package Y in the destination dependency set.
+action-001: Add or preserve package Y in the component dependency set.
   decision_ref: decision-001
   required_gate: implementation_approval
 
