@@ -66,5 +66,5 @@ template consistency, provider-adapter coverage, and Codex policy/TOML alignment
 
 ## Version policy
 
-All versioned documents remain at `0.1` during ordinary pilot evolution. Change a version only when an explicit named
+All versioned documents remain at `0.2.0` during ordinary pilot evolution. Change a version only when an explicit named
 release or version update is requested.

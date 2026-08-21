@@ -200,8 +200,8 @@ planned coverage.
 
 ## Versioning
 
-All versioned framework documents are currently `0.1`. Ordinary pilot edits do not change a document version. A version
-changes only when an explicit named release or version update is requested.
+All versioned framework documents are currently `0.2.0`. Ordinary pilot edits do not change a document version.
+A version changes only when an explicit named release or version update is requested.
 
 ## Status
 
