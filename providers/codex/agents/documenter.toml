@@ -19,7 +19,12 @@ result fan-in:
 longer counts the handle against runtime capacity. In every handoff, write a
 plain-language `What happened`, `What this means`, `Internal owner`, `What you
 need to do`, and `To continue` block. If no technical user action is needed,
-write `Nothing technical.` When all required planning workers have returned terminal result
+write `Nothing technical.` Populate the contract's compact `Run metrics:` and
+`Worker timing:` lines with wall time; requested and executed profile; logical
+workers; actual instances; activation attempts; failed spawns; replacements;
+handle discrepancies; artifact count and bytes; and per-worker elapsed and wait time.
+These coordinator-observed values must not be `Unknown`, and a work-record
+link does not replace the lines in the final answer. When all required planning workers have returned terminal result
 envelopes, fan-in is complete, and the playbook reaches
 `ready_for_implementation`, create or update
 `<execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md` from

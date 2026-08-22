@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -350,13 +350,17 @@ by the Orchestrator at fan-in.
 | `uncertainties`    | Yes         | Remaining unknowns, conflicts, or confidence limits.            |
 | `next_consumer`    | Recommended | Worker, gate, or human decision that should consume the result. |
 | `model_effort`     | Recommended | Actual model and reasoning effort, when exposed.                |
-| `timing`           | Recommended | Provider-reported or timestamp-derived elapsed and wait time, or `Unknown`. |
+| `timing`           | Yes         | Coordinator-observed activation, start, terminal, elapsed, and wait timestamps; provider timing may supplement them. |
 | `usage`            | Recommended | Provider-reported tokens, duration, credits, or `Unknown`.      |
 | `errors_blockers`  | Yes         | Errors, blockers, or `None`.                                    |
 
 The summary must describe the worker's unique contribution, not repeat the entire input artifact. A downstream worker
 must consume the envelope and referenced artifacts rather than independently repeating the same investigation unless it
 is checking a stated discrepancy.
+
+Coordinator-observed activation and terminal timestamps are always available and MUST be recorded. When the provider
+does not expose a distinct start time or queue wait, use activation as start and record provider queue wait as
+`Unavailable`; elapsed wall time remains terminal minus activation and MUST NOT be `Unknown`.
 
 `confidence` must be explainable through the referenced evidence and recorded uncertainties. A `complete` outcome does
 not imply high confidence. Use `unknown` when the worker cannot make a defensible confidence assessment. Material
@@ -612,6 +616,11 @@ duplicate worker. If the replacement also has a confirmed runtime failure, stop 
 reason `<normalized-worker-id>_runtime_unavailable`. Do not create an implementation plan, invent a Coordinator-only
 review, or present a lower profile as completion of the requested profile.
 
+The Coordinator MUST store the provider-returned worker handle and pass that stored value to wait, follow-up, and close
+operations; it MUST NOT manually reproduce or edit the handle. A `not_found` result requires reconciliation against the
+activation ledger, original spawn result, durable artifacts, and provider status before replacement. Record every spawn
+attempt, handle discrepancy, replacement, and duplicated result.
+
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
 `not_executed`; do not substitute a generic workflow or claim success.
@@ -682,7 +691,7 @@ The execution repository must be explicit in the canonical run prompt. If it is 
 | `sequential`  | The worker starts only after declared dependencies complete.                                                    |
 | `parallel`    | The worker may run alongside independent workers after its dependencies complete.                               |
 | `conditional` | The worker may run in parallel only when the playbook or Orchestrator confirms that its inputs are independent. |
-| `continuous`  | The worker starts after initialization and consumes incremental artifacts throughout the run.                   |
+| `continuous`  | One worker identity starts after initialization, consumes incremental artifacts, and returns the final result.  |
 
 Dependencies describe readiness to start. Inputs describe artifacts consumed. A worker may consume outputs from another
 worker without being blocked from starting when the playbook explicitly supports incremental updates.
@@ -691,6 +700,10 @@ Workers that share a completed dependency and do not depend on each other MUST s
 exists. If they run sequentially, record the dependency, capacity, or provider limitation and its wait time.
 Deep does not authorize duplicated investigation: each worker owns a distinct question and artifact, consumes upstream
 outputs, and repeats evidence or repository analysis only for a named discrepancy recorded in its result envelope.
+
+A continuous worker MUST keep one worker identity and, when supported, one provider handle through finalization. Do not
+spawn a second final worker for the same role. If the provider cannot resume or update an active worker, activate one
+final worker after fan-in instead of reserving a continuous handle for the whole run.
 
 # Stage Completion and Fan-In
 
@@ -728,6 +741,17 @@ The handoff must explain internal runtime terms such as `fan-in`, terminal worke
 ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
 the agent runtime. If the user does not need to change code, configuration, or environment, say so explicitly. If the
 next step is a retry, give the exact short request, such as `Retry the planning run.`
+
+Every terminal or blocked handoff MUST include this compact run-metrics block, populated from the work record:
+
+```text
+Run metrics: <wall time>; <requested -> executed profile>; <logical workers>; <actual instances>;
+<activation attempts>; <failed spawns>; <replacements>; <handle discrepancies>; <artifact count and bytes>
+Worker timing: <worker: elapsed / wait, ...>
+```
+
+Provider token or credit usage remains optional when unavailable. Coordinator-observed wall time, worker elapsed time,
+instance counts, and activation outcomes MUST NOT be omitted or reported as `Unknown`.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It

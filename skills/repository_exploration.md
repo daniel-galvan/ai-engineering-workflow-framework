@@ -1,7 +1,7 @@
 ---
 
 title: Repository Exploration
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 category: Investigation
 provider_independent: true

@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -255,6 +255,8 @@ The Documenter is complete when:
 * Evidence is referenced.
 * Risks are recorded.
 * Worker result fan-in and runtime closure are both recorded.
+* The work record contains wall time, requested and executed profile, logical workers, actual instances, activation
+  attempts and outcomes, artifact volume, and per-worker elapsed and wait time for the final compact metrics block.
 * Handoff information is complete.
 * Another engineer can continue without reconstructing context.
 * A remediation handoff records terminal Implementer, accepted Reviewer, terminal Tester, fan-in, and runtime closure.

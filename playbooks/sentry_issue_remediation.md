@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -149,8 +149,8 @@ activation. The lifecycle controls how far the run may proceed.
 | `deep`            | Cross-repository uncertainty, unclear causality, concurrency, data or security risk, high impact, or disputed ownership | Adds independent failure-topology analysis, requires Repository Integrator, and produces stronger competing-hypothesis and validation planning. |
 
 `standard` is the default and covers normal triage as well as remediation planning. There is no separate `triage`
-profile. The Orchestrator may escalate from `standard` to `deep` when evidence meets the escalation criteria and must
-record that decision.
+profile. The requested profile is immutable for the run. A different profile requires a new explicit user request;
+uncertainty may increase one worker's effort without changing the run profile.
 
 | Lifecycle     | Behavior                                                                                                         |
 | ------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -283,7 +283,8 @@ Use the provider adapter's deep-effort setting for a worker when evidence shows:
 - rollback and operational validation are non-trivial.
 
 Do not choose high effort merely because the task involves code. Model capability and uncertainty determine the
-appropriate setting.
+appropriate setting. Worker effort escalation does not activate the `deep` graph or change requested, activated, or
+executed profile.
 
 ## Implementation Plan
 

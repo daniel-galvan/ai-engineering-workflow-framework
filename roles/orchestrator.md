@@ -1,7 +1,7 @@
 ---
 
 title: Orchestrator Role
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 category: Coordination
 produces_decisions: true
@@ -189,7 +189,8 @@ Implementer
 Reviewer
         └── Tester
 
-Documenter runs continuously across all stages.
+One Documenter identity runs across all stages, or one final Documenter runs after fan-in when the provider cannot
+maintain and finalize a continuous worker.
 ```
 
 ---
@@ -202,6 +203,11 @@ Documenter runs continuously across all stages.
 * Assigned Input IDs reconcile with each worker's `inputs_consumed`; authoritative omissions are resolved.
 * Ready independent workers run in parallel, or the sequential exception and wait are recorded.
 * Required worker activation and fan-in are recorded before a stage closes.
+* Exact provider-returned handles and coordinator-observed activation, terminal, and elapsed timestamps are recorded.
+* A `not_found` handle is reconciled against the activation ledger, spawn result, artifacts, and provider status before
+  any replacement worker starts.
+* The final handoff includes wall time, profile, worker/instance/activation counts, runtime failures, artifact volume,
+  and per-worker elapsed and wait time.
 * The Delivery Activation Barrier is passed before any remediation source change.
 * The Coordinator does not implement, review, or validate in place of delivery workers.
 * Completed worker handles are released and runtime closure is recorded before a run closes or a new lifecycle run

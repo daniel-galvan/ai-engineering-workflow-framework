@@ -1,6 +1,6 @@
 ---
 title: TechOps Issue Remediation Run Prompt
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-19
@@ -74,4 +74,7 @@ Additional run-specific constraints or approvals:
 - <NONE-OR-ENTER-CONSTRAINT>
 
 Follow the selected playbook and its required dependencies.
+
+At handoff, include the contract's compact `Run metrics:` and `Worker timing:` lines in the final answer; do not replace
+them with a work-record link or report coordinator-observed values as `Unknown`.
 ```

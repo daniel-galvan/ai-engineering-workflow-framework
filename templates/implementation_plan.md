@@ -1,6 +1,6 @@
 ---
 title: Engineering Implementation Plan
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -45,6 +45,7 @@ source-environment paths, and remains non-executable until its approval status i
 | Field | Value |
 | --- | --- |
 | Work item | |
+| Change set ID | One shared remediation identity; list all covered findings or work items |
 | Playbook | |
 | Requested profile | |
 | Executed profile | |

@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21
@@ -128,6 +128,13 @@ evidence, decision, and worker ledger.
 | --- | --- | --- | --- |
 | Implementation plan | [implementation_plan.md](implementation_plan.md) | Create only after required planning workers complete and before `ready_for_implementation`; otherwise do not create | Approved-scope implementation and validation instructions |
 
+For multiple findings, distinguish finding identity from remediation identity. Assign one `change_set_id` and one
+implementation plan when affected files, intended changes, validation, owner, rollout, and rollback are the same.
+
+| Change set ID | Findings / work items | Affected files | Intended change | Validation | Owner | Plan path |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | |
+
 ---
 
 # Worker Execution Ledger
@@ -143,6 +150,13 @@ Record every worker or subagent that materially contributes to the work.
 
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
 never estimate credit consumption.
+
+Coordinator-observed activation, start, terminal, and elapsed timestamps are required even when provider timing is not
+available. Use activation as start and `Unavailable` for provider queue time when the runtime exposes no separate value.
+
+| Worker | Provider handle | Activated | Started | Terminal | Elapsed | Queue / dependency wait | Spawn attempts | Replacement or duplicate reason |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | | |
 
 # Worker Synchronization
 
@@ -233,6 +247,14 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Complexity tags | Duration | Worker retries | Worker corrections | Review cycles | Validation failures |
 | --- | --- | --- | --- | --- | --- |
 | Bounded / Cross-repository / High-risk / Unknown | | | | | |
+
+| Logical workers | Actual instances | Activation attempts | Failed spawns | Handle discrepancies | Replacement workers | Artifacts count / bytes |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | |
+
+| Findings | Change sets | Plans | Duplicate plans |
+| --- | --- | --- | --- |
+| | | | |
 
 | Human interaction | Measure | Evidence / reason |
 | --- | --- | --- |

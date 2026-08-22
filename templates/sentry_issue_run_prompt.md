@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-19
@@ -99,4 +99,6 @@ Follow the selected playbook and its required dependencies.
 
 At handoff, report requested/executed profile, profile status,
 required-worker activation, fan-in status, and runtime-closure status.
+Include the contract's compact `Run metrics:` and `Worker timing:` lines in the final answer; do not replace them with
+a work-record link or report coordinator-observed values as `Unknown`.
 ```

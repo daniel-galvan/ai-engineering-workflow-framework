@@ -1,6 +1,6 @@
 ---
 title: Workflow Evaluation
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21
@@ -21,7 +21,9 @@ handoff, or deliberate pilot review. It evaluates the workflow; the work record 
 
 Use the Worker Execution Ledger and Worker Result Summary for per-worker role, model, effort, usage, outcome, and
 confidence. Do not copy that data into a second table. Add the aggregate metrics and rubric below to the work record.
-Use `Unknown` when the runtime does not expose a value; never estimate tokens or credits.
+Use `Unknown` when the runtime does not expose token or credit usage; never estimate it. Coordinator-observed
+activation, terminal, and elapsed timestamps are required. Use activation as start and `Unavailable` for provider queue
+time when the runtime exposes no separate value.
 
 | Dimension | Question | Evidence |
 | --- | --- | --- |
@@ -61,6 +63,19 @@ run did not expose enough evidence to assess the measure.
 | Unapproved plan deviations | Count | Remediation changes that departed from the approved plan without replanning. |
 | Worker elapsed time | Per worker | Start-to-terminal duration from provider data or recorded timestamps. |
 | Worker wait time | Per worker | Time queued or waiting on dependencies/runtime when exposed. |
+| Failed spawns | Count | Worker activations rejected before a handle was returned. |
+| Handle discrepancies | Count | Returned handles that did not match a later status or wait operation. |
+| Replacement workers | Count | Replacement activations, with the reconciliation evidence and reason. |
+| Artifact volume | Count and bytes | Durable artifacts produced by the run. |
+| Finding-to-plan ratio | Findings / change sets / plans | Whether distinct findings produced shared or duplicate remediation plans. |
+
+If coordinator-observed wall time, worker elapsed time, actual instances, activation attempts, or activation outcomes
+are missing, Process quality and Efficiency cannot be rated `met`. Record the missing-metrics control failure rather
+than treating unavailable provider telemetry as the reason.
+
+A duplicate plan has the same affected files, intended changes, validation, owner, rollout, and rollback as another
+plan. Different vulnerability identifiers, rules, functions, reachability, or risk do not by themselves require
+different remediation plans.
 
 ## Comparison Rules
 

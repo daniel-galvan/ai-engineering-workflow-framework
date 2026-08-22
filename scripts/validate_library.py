@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_VERSION = "0.3.0"
+RELEASE_VERSION = "0.3.1"
 MODEL_BASELINE_ID = "codex-role-policy-v0.3.0-01"
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
@@ -507,11 +507,56 @@ for phrase in (
     "Unapproved plan deviations",
     "Worker elapsed time",
     "Worker wait time",
+    "Failed spawns",
+    "Handle discrepancies",
+    "Replacement workers",
+    "Artifact volume",
+    "Finding-to-plan ratio",
 ):
     if phrase not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing outcome/burden metric: {phrase}")
-    if phrase not in work_record_template:
+    if phrase not in ("Artifact volume", "Finding-to-plan ratio") and phrase not in work_record_template:
         fail(f"templates/work_record.md is missing outcome/burden metric: {phrase}")
+
+for phrase in (
+    "MUST NOT manually reproduce or edit the handle",
+    "elapsed wall time remains terminal minus activation",
+    "one provider handle through finalization",
+    "Every terminal or blocked handoff MUST include this compact run-metrics block",
+):
+    if phrase not in workflow_contract:
+        fail(f"contracts/workflow_execution.md is missing runtime integrity rule: {phrase}")
+
+for prompt_template in TEMPLATES:
+    prompt_text = prompt_template.read_text()
+    for phrase in ("`Run metrics:`", "`Worker timing:`", "final answer"):
+        if phrase not in prompt_text:
+            fail(f"{prompt_template.relative_to(ROOT)} is missing final metrics instruction: {phrase}")
+
+documenter_role = (ROOT / "roles" / "documenter.md").read_text()
+documenter_agent = (CODEX_AGENT_DIR / "documenter.toml").read_text()
+for phrase in ("actual instances", "attempts and outcomes", "per-worker elapsed and wait time"):
+    if phrase not in documenter_role:
+        fail(f"Documenter role is missing final metrics field: {phrase}")
+for phrase in ("actual instances", "activation attempts", "per-worker elapsed and wait time"):
+    if phrase not in documenter_agent:
+        fail(f"Documenter instructions are missing final metrics field: {phrase}")
+
+vulnerability_playbook = (ROOT / "playbooks" / "vulnerability_investigation.md").read_text()
+for phrase in (
+    "### Bounded Dependency Route",
+    "shared `change_set_id`",
+    "pilot soft target",
+    "Routine dependency updates, upgrades, patches, and lockfile refreshes remain `standard`",
+    "requested profile is immutable for the run",
+    "Worker effort escalation does not activate the `deep` graph",
+):
+    if phrase not in vulnerability_playbook:
+        fail(f"playbooks/vulnerability_investigation.md is missing bounded-run control: {phrase}")
+
+sentry_playbook = (ROOT / "playbooks" / "sentry_issue_remediation.md").read_text()
+if "requested profile is immutable for the run" not in sentry_playbook:
+    fail("playbooks/sentry_issue_remediation.md is missing immutable-profile control")
 for phrase in (
     "initial hypothesis: an experimental baseline",
     "Orchestrator | `gpt-5.6-terra` | Medium | `medium`",

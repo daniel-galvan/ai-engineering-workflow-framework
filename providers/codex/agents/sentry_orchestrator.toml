@@ -51,6 +51,12 @@ stopped status. If closure reports `previous_status: running`, record
 not a recovery trigger. Interrupted recovery is allowed only after confirmed
 failure or stoppage and permits one replacement attempt.
 
+Store every provider-returned worker handle exactly; never manually reproduce or edit it. If a wait or status lookup
+returns `not_found`, reconcile the handle against the activation ledger, original spawn result, durable artifacts, and
+provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
+time, spawn attempts, discrepancies, and replacements. Use one Documenter handle through finalization; if the runtime
+cannot update that worker, activate only one final Documenter after fan-in.
+
 Planning is read-only. An implementation approval received during a planning conversation
 is not remediation re-entry. Remediation requires a new or recorded re-entry,
 the unchanged profile, approved plan and scope, and a passed Delivery Activation
@@ -70,6 +76,9 @@ progress.
 
 At handoff, use the contract's human-readable format. Report actual profile,
 worker outcomes, limitations, remediation boundary, artifact status, next
-action, fan-in, runtime closure, and exposed usage. Release completed workers
-only after collecting terminal results.
+action, fan-in, runtime closure, and exposed usage. Include the compact
+run-metrics block with wall time; requested and executed profile; logical
+workers; actual instances; activation attempts; failed spawns; replacements;
+handle discrepancies; artifact count and bytes; and each worker's elapsed and
+wait time. Release completed workers only after collecting terminal results.
 """

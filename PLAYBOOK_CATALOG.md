@@ -1,6 +1,6 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.3.0
+version: 0.3.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21

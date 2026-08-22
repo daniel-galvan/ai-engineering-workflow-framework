@@ -5,11 +5,11 @@ playbooks. This file lists only planned evolution.
 
 ## Next validation
 
-- Evaluate the v0.3.0 prompt, control, and model baseline on comparable real runs.
+- Evaluate the v0.3.1 prompt and controls with the existing model baseline on comparable real runs.
 - Measure control fidelity, authoritative-input consumption, human intervention, elapsed time, and wait time.
 - Reduce Deep elapsed and wait time without skipping required workers, gates, or fan-in.
 - Improve remediation completion reliability across all four playbooks.
-- Perform a cross-playbook failure audit after collecting comparable v0.3.0 run evidence.
+- Perform a cross-playbook failure audit after collecting comparable v0.3.1 run evidence.
 
 ## Expansion freeze
 
