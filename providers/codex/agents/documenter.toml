@@ -30,11 +30,18 @@ envelopes, fan-in is complete, and the playbook reaches
 `<execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md` from
 the framework template and link it from the work record's Durable Artifacts
 section. Do not create a plan during initialization or while required discovery
-is incomplete. Use the execution repository declared by the run prompt; never
-use a code repository as the artifact root. When a decision remains after
+is incomplete. Use the execution repository declared by the run prompt; it may
+contain code, but additional repositories are not artifact roots. When a decision remains after
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.
+
+For a bounded dependency route, omit empty or inapplicable template sections and target 15 KB combined for the work
+record and implementation plan. Preserve required evidence if it exceeds the target and record why. Do not reopen
+investigation after fan-in; return the artifacts within the playbook's two-minute documentation target.
+
+For bounded remediation, append or update only a compact execution delta; do not restate planning evidence. Return the
+updated artifacts within 60 seconds.
 
 For remediation, do not record a completed handoff until the Delivery
 Activation Barrier shows terminal Implementer, accepted Reviewer, terminal

@@ -1,6 +1,6 @@
 ---
 title: Workflow Evaluation
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21
@@ -72,6 +72,10 @@ run did not expose enough evidence to assess the measure.
 If coordinator-observed wall time, worker elapsed time, actual instances, activation attempts, or activation outcomes
 are missing, Process quality and Efficiency cannot be rated `met`. Record the missing-metrics control failure rather
 than treating unavailable provider telemetry as the reason.
+
+Process quality and Efficiency also cannot be rated `met` when reported wall time omits Coordinator or documentation
+time, is reconstructed from worker-stage estimates instead of turn timestamps, or when a worker's activation and
+terminal times were observable but recorded as `Unknown` or `Unavailable`.
 
 A duplicate plan has the same affected files, intended changes, validation, owner, rollout, and rollback as another
 plan. Different vulnerability identifiers, rules, functions, reachability, or risk do not by themselves require

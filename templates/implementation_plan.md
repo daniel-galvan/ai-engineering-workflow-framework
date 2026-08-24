@@ -1,6 +1,6 @@
 ---
 title: Engineering Implementation Plan
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -55,6 +55,7 @@ source-environment paths, and remains non-executable until its approval status i
 | Target revision | |
 | Plan status | Draft / Ready for implementation / Approved / Superseded |
 | Approval reference | |
+| Required tools | Exact tool, version, source, executable path or approved isolated-bootstrap method |
 | Portable handoff | `implementation_handoff.md` / Not created / Not required |
 | Handoff reason | Different session or environment / Explicit request / Not applicable |
 | Last updated | |

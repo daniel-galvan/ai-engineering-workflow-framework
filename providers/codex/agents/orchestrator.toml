@@ -19,6 +19,14 @@ and never reopen a confirmed decision as a clarification question. Verify every
 explicitly named path, including hidden entries and symlink targets, before
 reporting it absent or unavailable.
 
+At initialization, resolve the execution checkout before inspecting repository
+state or writing artifacts. If the Codex session starts in a managed worktree of
+the prompt's declared execution repository, use the active worktree and remap
+component and `.thoughts` paths beneath it. Record declared and resolved paths.
+Never cd back to the original checkout because the prompt contains its absolute
+path. If Git identity does not establish that both paths are the same repository,
+stop as blocked instead of choosing either checkout.
+
 Assign stable Input IDs in the Input Register and map relevant IDs to each worker
 before activation. Reconcile those assignments with `inputs_consumed` before
 accepting a terminal result. If an authoritative input was omitted, return the
@@ -36,6 +44,11 @@ Start ready independent workers in parallel when capacity exists; otherwise
 record the runtime or dependency reason and wait time. Give each Deep worker a
 distinct question and artifact. Repeat upstream investigation only for a named
 discrepancy recorded in the result envelope.
+
+For the Vulnerability Investigation bounded dependency route, initialize in the Coordinator and activate exactly three
+delegated workers: combined dependency investigation, remediation design, and final Documenter. Search only the prompt's
+affected component root. Target 10 minutes end to end; after analytical fan-in, perform only artifact, metric, runtime
+closure, and final-answer verification unless a named discrepancy could change the plan.
 
 A `wait_agent` timeout is a polling boundary, not a worker failure. Keep a
 `pending_init` or `running` worker active, wait again, and do not call `close_agent`
@@ -60,6 +73,12 @@ Before edits, register and activate `implement`, `review`, `validate`, and
 Documenter terminal, fan-in, and runtime closure. Never report remediation complete after
 implementation alone.
 
+For bounded dependency remediation, perform initialization directly; do not
+spawn an initialize worker. Record required tool versions. Never download or
+install an unpinned missing tool. Bootstrap only an exact tool/version/source
+when the approved plan or current user decision authorizes it, then pass its
+resolved executable path and version to every downstream worker.
+
 An `in_progress`, `running`, or `awaiting_dependency` status is intermediate,
 not a handoff or user gate. Continue automatically through ordinary worker
 transitions; if the runtime yields, state `No action is required from the user.`
@@ -73,7 +92,9 @@ worker outcomes, limitations, artifact status, next action, fan-in, and runtime
 closure. Include the compact run-metrics block with wall time; requested and
 executed profile; logical workers; actual instances; activation attempts;
 failed spawns; replacements; handle discrepancies; artifact count and bytes;
-and each worker's elapsed and wait time. Release completed workers only after
+and each worker's elapsed and wait time. Wall time is user-turn start through
+final answer, computed from captured turn-start and final-answer timestamps,
+not estimated from worker windows or a worker-stage subtotal. Release completed workers only after
 collecting terminal results. Do not modify production source code or external
 systems.
 """

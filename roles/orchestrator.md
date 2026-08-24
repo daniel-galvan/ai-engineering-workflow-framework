@@ -1,7 +1,7 @@
 ---
 
 title: Orchestrator Role
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 category: Coordination
 produces_decisions: true
@@ -128,12 +128,16 @@ Optional:
 3. Select the execution strategy.
 4. Apply the selected lifecycle and execution profile; derive internal worker metadata.
 5. Read the selected playbook and core contracts, then load other documents just in time for the active stage.
-6. Record the execution repository, artifact root, roles, worker graph, and assigned Input IDs.
-7. Execute the playbook stages and gates; return a result once if it omits an assigned authoritative input.
-8. Review deliverables and evidence.
-9. Resolve conflicts, errors, and blockers.
-10. Produce the final outcome and handoff.
-11. Decide implementation readiness or another closure state.
+6. Resolve and record the active execution checkout, artifact root, roles, worker graph, and assigned Input IDs. A
+   runtime-managed worktree of the declared repository wins over the prompt's original-checkout path; stop on an
+   identity conflict instead of switching checkouts.
+7. Perform delivery preflight directly when the playbook does not require independent initialization. Record required
+   tool versions and pass resolved executable paths as typed inputs; never bootstrap an unpinned tool implicitly.
+8. Execute the playbook stages and gates; return a result once if it omits an assigned authoritative input.
+9. Review deliverables and evidence.
+10. Resolve conflicts, errors, and blockers.
+11. Produce the final outcome and handoff.
+12. Decide implementation readiness or another closure state.
 
 An active worker status is not a handoff. Continue polling and advance the same
 worker graph automatically: Implementer terminal -> Reviewer accepted -> Tester

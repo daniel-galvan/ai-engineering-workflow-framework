@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -88,6 +88,7 @@ the source of truth.
 | `INV-27` | Initialization MUST load only the selected playbook and core contracts; other framework documents are loaded only when needed. | [Document Classification](#document-classification) |
 | `INV-28` | Assigned worker inputs MUST be reconciled with `inputs_consumed` before accepting the result. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 | `INV-29` | Ready independent workers MUST run in parallel when runtime capacity exists; duplicate investigation requires a recorded discrepancy. | [Parallelism Semantics](#parallelism-semantics) |
+| `INV-30` | When the runtime starts in a managed worktree of the declared execution repository, that worktree MUST be the resolved execution checkout for the run. | [Durable Artifact Root](#durable-artifact-root) |
 
 ---
 
@@ -508,6 +509,9 @@ required `implement → review → validate → handoff` path in the work record
 Implementer, Reviewer, or Tester. If the required remediation graph cannot be activated, do not edit source; stop with
 `profile_status: blocked` and reason `remediation_not_activated`.
 
+Initialization and delivery preflight are Coordinator responsibilities and do not require a delegated worker unless the
+selected playbook explicitly requires independent initialization analysis.
+
 ## Delivery Activation and Completion Barrier
 
 Implementation approval is necessary but not sufficient to start remediation. Before any source, configuration,
@@ -528,6 +532,11 @@ before source changes with `profile_status: blocked` and reason `remediation_not
 The Coordinator may inspect files to coordinate work and maintain durable artifacts, but it MUST NOT implement, review,
 or validate source changes. A source change made before the barrier is a workflow violation and invalidates any claim
 that the remediation run executed the selected playbook.
+
+Required implementation tools and versions MUST be recorded in the approved plan or resolved during preflight. A
+missing tool does not authorize downloading or installing an unpinned replacement. An isolated bootstrap is allowed only
+when the approved plan or current explicit user decision authorizes the exact tool, version, source, and isolation
+method. The resolved executable path and version become typed inputs inherited by every downstream worker.
 
 The remediation run remains `in_progress` until the Implementer returns a terminal result. It cannot enter `handoff` or
 `completed` until the Reviewer returns `accepted`, the Tester returns terminal
@@ -677,9 +686,27 @@ that run:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/
 ```
 
-The `work_record.md`, worker artifacts, and any implementation plan belong there. Code repositories listed for
-investigation are not artifact roots. A worker must not place durable workflow files in a code repository merely because
-it is the suspected fault repository or appears first in the topology.
+The `work_record.md`, worker artifacts, and any implementation plan belong there. Additional repositories listed for
+investigation are not artifact roots. The execution repository may itself contain code. A worker must not choose an
+artifact root merely because a repository is suspected or appears first in the topology.
+
+The prompt path identifies the intended repository, not permission to leave an active runtime-managed worktree. During
+initialization, resolve the execution checkout before any repository inspection or artifact write:
+
+* if the runtime starts inside a Git worktree of the declared execution repository, use that active worktree as the
+  execution checkout and remap component and `.thoughts` paths beneath it;
+* verify equivalence from Git identity, such as the shared common Git directory or matching canonical remote, rather
+  than path text alone;
+* record both the declared repository path and resolved execution-checkout path; and
+* if the paths refer to different repositories or equivalence cannot be established, stop with `blocked` instead of
+  changing directories to the declared path.
+
+Branch and revision evidence, scope checks, worker commands, and durable artifacts MUST come from the resolved execution
+checkout. A prompt's absolute component or artifact path MUST NOT override an equivalent active worktree.
+
+For a bounded dependency route, the execution repository is the in-scope repository that owns the affected dependency
+artifact unless the user explicitly selects a separate record repository. Never infer the framework checkout as the
+execution repository merely because it contains the selected playbook.
 
 The execution repository must be explicit in the canonical run prompt. If it is missing or ambiguous, stop with
 `blocked` and request the smallest missing path; do not infer it from the playbook location or code-repository list.
@@ -752,6 +779,15 @@ Worker timing: <worker: elapsed / wait, ...>
 
 Provider token or credit usage remains optional when unavailable. Coordinator-observed wall time, worker elapsed time,
 instance counts, and activation outcomes MUST NOT be omitted or reported as `Unknown`.
+
+Wall time starts when the user turn starts and ends when the final answer is produced. It includes initialization,
+Coordinator work, worker execution and waits, documentation, runtime closure, and final verification. Do not report a
+worker-stage subtotal as run wall time. Worker activation and terminal timestamps come from the Coordinator's own clock
+when the provider exposes no telemetry.
+
+The Coordinator MUST capture the run start timestamp at turn entry and compute final wall time directly from that start
+and the final-answer timestamp. It MUST NOT reconstruct wall time by adding worker durations or estimating stage
+windows.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It

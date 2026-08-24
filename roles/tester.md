@@ -1,7 +1,7 @@
 ---
 
 title: Tester Role
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 category: Validation
 produces_decisions: true
@@ -141,6 +141,14 @@ Select the appropriate level of validation:
 * Smoke Testing
 * Performance Testing
 * Security Validation
+
+For a bounded dependency change, run the smallest proving set first: complete dependency diff, exact resolved version,
+frozen dependency checks, and focused affected tests. Build an image only when it contains the affected dependency or
+the approved plan requires it. Keep external scanner/deployment closure separate from local proof. Treat unrelated
+repository-wide quality checks as informational unless the diff can affect them.
+
+Do not label a failure `pre-existing`, `legacy`, or unrelated without an unchanged-baseline comparison or cited verified
+evidence. Otherwise report that it appears unrelated to the diff and that baseline comparison was not performed.
 
 ---
 

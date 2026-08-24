@@ -1,6 +1,6 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21
@@ -110,8 +110,9 @@ asking the owner to choose.
 
 ## Vulnerability Investigation
 
-**Use for:** scanner findings, advisories, CVEs, secrets, or supply-chain risk. **State:** Exercising; all
-profile/lifecycle combinations exercised; reliability, control fidelity, and efficiency remain under validation.
+**Use for:** scanner findings, advisories, CVEs, secrets, or supply-chain risk. **State:** Exercising; recent bounded
+Standard planning and remediation runs work well after substantial improvements. More Deep planning and remediation
+scenarios are required before broader reliability or delivery-validation claims.
 
 ```mermaid
 flowchart TB

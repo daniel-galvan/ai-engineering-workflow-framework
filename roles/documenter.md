@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -208,8 +208,8 @@ Create the implementation plan only after required planning workers complete, fa
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The execution repository comes from the canonical run prompt. Code repositories are not artifact roots. The work record
-links to the plan before the workflow is marked `ready_for_implementation`.
+The execution repository comes from the canonical run prompt and may itself contain code. Additional repositories are
+not artifact roots. The work record links to the plan before the workflow is marked `ready_for_implementation`.
 
 ---
 
@@ -257,6 +257,10 @@ The Documenter is complete when:
 * Worker result fan-in and runtime closure are both recorded.
 * The work record contains wall time, requested and executed profile, logical workers, actual instances, activation
   attempts and outcomes, artifact volume, and per-worker elapsed and wait time for the final compact metrics block.
+* For a bounded dependency route, empty or inapplicable template sections are omitted and the two artifacts target
+  15 KB combined; evidence is never deleted merely to meet the target.
+* For bounded remediation, update the existing artifacts with a compact execution delta instead of restating planning
+  evidence, targeting completion within 60 seconds.
 * Handoff information is complete.
 * Another engineer can continue without reconstructing context.
 * A remediation handoff records terminal Implementer, accepted Reviewer, terminal Tester, fan-in, and runtime closure.

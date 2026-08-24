@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_VERSION = "0.3.1"
+RELEASE_VERSION = "0.3.2"
 MODEL_BASELINE_ID = "codex-role-policy-v0.3.0-01"
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
@@ -104,6 +104,8 @@ for path in ROOT.rglob("*.md"):
 
 
 for path in ROOT.rglob("*.md"):
+    if ".thoughts" in path.relative_to(ROOT).parts:
+        continue
     text = path.read_text()
     dependency_list = False
     for line in frontmatter(text):
@@ -550,9 +552,79 @@ for phrase in (
     "Routine dependency updates, upgrades, patches, and lockfile refreshes remain `standard`",
     "requested profile is immutable for the run",
     "Worker effort escalation does not activate the `deep` graph",
+    "this route uses three delegated workers",
+    "The Coordinator performs initialization directly",
+    "pilot soft target is 10 minutes end to end",
+    "combined pilot target is 15 KB",
+    "checkout is not the execution repository",
+    "Do not change back to the original checkout",
+    "identifier equality during fan-in",
+    "6-8 minutes end to end",
+    "Do not call a failure `pre-existing`",
 ):
     if phrase not in vulnerability_playbook:
         fail(f"playbooks/vulnerability_investigation.md is missing bounded-run control: {phrase}")
+
+vulnerability_prompt = (ROOT / "templates" / "vulnerability_issue_run_prompt.md").read_text()
+for phrase in (
+    "owns the affected artifact",
+    "Affected component root",
+    "three-worker graph",
+    "runtime-managed worktree",
+    "Coordinator performs preflight directly",
+):
+    if phrase not in vulnerability_prompt:
+        fail(f"templates/vulnerability_issue_run_prompt.md is missing bounded-run field: {phrase}")
+
+for phrase in (
+    "Wall time starts when the user turn starts",
+    "worker-stage subtotal as run wall time",
+    "The execution repository may itself contain code",
+    "Never infer the framework checkout as the",
+    "resolved execution-checkout path",
+    "MUST NOT override an equivalent active worktree",
+    "MUST NOT reconstruct wall time",
+    "missing tool does not authorize downloading",
+):
+    if phrase not in workflow_contract:
+        fail(f"contracts/workflow_execution.md is missing wall-time boundary: {phrase}")
+
+if "reported wall time omits Coordinator or documentation" not in workflow_evaluation:
+    fail("frameworks/workflow_evaluation.md is missing complete wall-time evaluation")
+if "reconstructed from worker-stage estimates" not in workflow_evaluation:
+    fail("frameworks/workflow_evaluation.md is missing direct wall-time evaluation")
+
+implementation_plan = (ROOT / "templates" / "implementation_plan.md").read_text()
+if "Exact tool, version, source, executable path or approved isolated-bootstrap method" not in implementation_plan:
+    fail("templates/implementation_plan.md is missing exact toolchain prerequisites")
+
+orchestrator_role = (ROOT / "roles" / "orchestrator.md").read_text()
+orchestrator_agent = (CODEX_AGENT_DIR / "orchestrator.toml").read_text()
+if "runtime-managed worktree" not in orchestrator_role:
+    fail("roles/orchestrator.md is missing managed-worktree resolution")
+for phrase in ("managed worktree", "Never cd back to the original checkout", "stop as blocked"):
+    if phrase not in orchestrator_agent:
+        fail(f"providers/codex/agents/orchestrator.toml is missing worktree control: {phrase}")
+
+for phrase in ("do not", "spawn an initialize worker", "captured turn-start"):
+    if phrase not in orchestrator_agent:
+        fail(f"providers/codex/agents/orchestrator.toml is missing bounded-remediation control: {phrase}")
+
+tester_role = (ROOT / "roles" / "tester.md").read_text()
+tester_agent = (CODEX_AGENT_DIR / "tester.toml").read_text()
+for phrase in ("smallest proving set", "baseline comparison was not performed"):
+    if phrase not in tester_role:
+        fail(f"roles/tester.md is missing bounded validation control: {phrase}")
+for phrase in ("required local proof first", "known-missing default executables"):
+    if phrase not in tester_agent:
+        fail(f"providers/codex/agents/tester.toml is missing bounded validation control: {phrase}")
+
+for text, label in (
+    (documenter_role, "roles/documenter.md"),
+    (documenter_agent, "providers/codex/agents/documenter.toml"),
+):
+    if "compact execution delta" not in text or "60 seconds" not in text:
+        fail(f"{label} is missing bounded remediation documentation control")
 
 sentry_playbook = (ROOT / "playbooks" / "sentry_issue_remediation.md").read_text()
 if "requested profile is immutable for the run" not in sentry_playbook:

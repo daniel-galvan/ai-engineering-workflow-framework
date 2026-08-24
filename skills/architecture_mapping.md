@@ -1,7 +1,7 @@
 ---
 
 title: Architecture Mapping
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 category: Design
 provider_independent: true

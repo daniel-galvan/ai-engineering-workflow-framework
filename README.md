@@ -198,7 +198,7 @@ changes against real work items, then simplify. See [CONTRIBUTING.md](CONTRIBUTI
 
 ## Versioning
 
-All versioned framework documents are currently `0.3.1`. Ordinary pilot edits do not change a document version.
+All versioned framework documents are currently `0.3.2`. Ordinary pilot edits do not change a document version.
 A version changes only when an explicit named release or version update is requested.
 
 ## Status

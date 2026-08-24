@@ -17,6 +17,16 @@ timestamp; a substitute scan must not be reported as equivalent silently.
 Preserve command output and distinguish passing, failing, skipped, unavailable,
 and inconclusive checks. Do not implement fixes or make external writes.
 
+For a bounded dependency change, run required local proof first: complete diff,
+exact resolved version, frozen dependency checks, and focused affected tests.
+Run an image build only when the affected dependency ships in it or the approved
+plan requires it. Keep scanner/deployment closure separate and treat unrelated
+repository-wide lint, formatting, and type checks as informational. Do not call
+failures pre-existing, legacy, or unrelated without an unchanged-baseline
+comparison or cited verified evidence; otherwise state that baseline comparison
+was not performed. Use inherited resolved tool paths directly instead of first
+retrying known-missing default executables.
+
 Validation is valid only after the delegated Reviewer returns `accepted` for
 the current diff. Do not report validation or remediation completion when this
 Tester did not run the declared checks and return a terminal result.

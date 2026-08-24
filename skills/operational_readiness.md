@@ -1,7 +1,7 @@
 ---
 
 title: Operational Readiness
-version: 0.3.1
+version: 0.3.2
 status: Pilot
 category: Operations
 provider_independent: true
