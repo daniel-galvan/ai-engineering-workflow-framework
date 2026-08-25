@@ -125,9 +125,10 @@ The default run uses:
 It performs evidence collection, failure analysis, diagnosis, fix design, and work-record maintenance, then stops at
 `ready_for_implementation`.
 
-`standard` is bounded by its worker graph and evidence rules. Its pilot target is 15-17 minutes for a cross-repository
-planning run. If provider latency or a worker runtime exceeds that target, record the duration and critical-path cause;
-do not compensate by skipping a required worker or claiming completion early.
+`standard` is bounded by its worker graph and evidence rules. Its pilot target is 10-12 minutes when triage ends
+`awaiting_input`, and 15-17 minutes when cross-repository analysis produces a complete implementation plan. If provider
+latency or a worker runtime exceeds the applicable target, record the duration and critical-path cause; do not
+compensate by skipping a required worker or claiming completion early.
 
 The `remediation` lifecycle continues through implementation, review, validation, and stabilization after explicit
 approval.
@@ -270,10 +271,10 @@ Workers use the shared result envelope defined in the execution contract. Sentry
 For `deep`, start `failure-topology` and `repository-integration` in parallel after `evidence-topology`. Both consume
 the normalized evidence artifact and repeat raw queries only for a recorded discrepancy.
 
-Provider-specific model, effort, and agent mappings are supplied by the selected provider adapter.
-
-The Orchestrator MUST activate the provider's named agent definitions without ad hoc model or reasoning-effort
-overrides. Record the configured and observed values; a mismatch is a control failure, not an adaptive escalation.
+Provider-specific model, effort, and agent mappings are supplied by the selected provider adapter. The Orchestrator
+MUST pass each named definition's exact model and reasoning effort when the runtime would otherwise inherit its own
+settings. This explicit configuration binding is required; a different value is an adaptive escalation and control
+failure.
 
 ## Effort Escalation
 
@@ -311,6 +312,9 @@ the proposed boundary, the work record owns decisions and execution state, and t
 gates, and validation. Reference material instead of repeating it; preserve required evidence if the target must be
 exceeded and record why.
 
+If either target is exceeded, the final handoff records the actual bytes and reason. The Documenter compacts repeated
+content before closure; it never deletes and recreates the work record merely to reformat it.
+
 ## Execution Flow
 
 ### Stage 0 — Initialize
@@ -322,6 +326,14 @@ delegation; in that case, the current main session owns the worker fan-out direc
 The Orchestrator creates the work record, selects the execution profile and lifecycle, declares worker dependencies,
 and records `profile_status: requested` before spawning the first investigation worker. It activates one final
 Documenter only after analytical fan-in.
+
+For a versioned evaluation run, verify the prompt's framework Git revision against the checkout containing this
+playbook before loading it. Stop with `framework_revision_mismatch` when HEAD differs or the framework worktree is
+dirty; regenerate the prompt from a clean revision instead of running against moving instructions.
+
+For Standard planning, initialization writes only a minimal work-record skeleton. The Coordinator keeps intermediate
+worker and timing ledgers in runtime state and passes them to the final Documenter; it does not progressively rewrite
+the record between analytical workers.
 
 Use the prompt's declared `Execution repository` as the durable-artifact root. Code repositories listed for Sentry
 investigation must not receive the work record or worker artifacts.
@@ -347,6 +359,8 @@ Record the repository/event topology and any optional supporting artifacts.
 The `evidence-topology` worker exclusively owns raw Sentry queries and initial repository topology for the run. The
 Orchestrator does not pre-query Sentry or duplicate repository exploration. Use MCP to inspect the issue and request
 only the latest event first (`limit: 1` when supported).
+Bound initial source mapping to the stack or culprit entry, direct handoff, and return boundary required by fix design;
+do not perform downstream diagnosis in this stage.
 Capture:
 
 - issue title, status, priority, occurrence count, and latest event;
@@ -395,6 +409,10 @@ In `deep`, the `failure-topology` worker owns independent diagnosis and reproduc
 Form competing hypotheses appropriate to the selected profile and reproduce or verify the failure with the smallest safe
 test or local scenario. The `tester` owns executable validation during the remediation lifecycle. Use Seer only as
 optional supporting evidence.
+
+The Solution Architect accepts source paths and citations already verified in normalized evidence. It does not remap
+that path without a named discrepancy. When missing indispensable evidence already selects `needs_input`, execute only
+the one smallest available check that could change that disposition before returning the gate result.
 
 Before requesting clarification, apply the shared
 [Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate).

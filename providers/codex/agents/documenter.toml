@@ -13,8 +13,14 @@ confidence with its supporting evidence and uncertainties. Keep facts separate
 from assumptions and hypotheses. Maintain the Input Register with each
 material input's source, classification, authority, and consumption status;
 historical artifacts and worker hypotheses are supporting evidence unless the
-current run explicitly adopts them. Record worker runtime closure separately from
-result fan-in:
+current run explicitly adopts them.
+
+Use the Coordinator's typed finalization input, this provider role, and the
+existing artifacts. Do not reread the complete playbook, core contracts, or
+memory. Patch the existing record; do not delete and recreate it. Once
+activated as final Documenter, you are the sole writer for the assigned
+artifacts.
+Record worker runtime closure separately from result fan-in:
 `terminal` means a result was collected and `released` means the provider no
 longer counts the handle against runtime capacity. In every handoff, write a
 plain-language `What happened`, `What this means`, `Internal owner`, `What you
@@ -46,8 +52,10 @@ updated artifacts within 60 seconds.
 
 For Standard Sentry planning, run after analytical fan-in and target 30 KB combined across the evidence, fix design,
 work record, and plan; target 10 KB for the work record. Reference normalized evidence instead of copying it into each
-artifact. An initialization acknowledgement is not a final handoff. Use only Coordinator-supplied turn and worker
-timestamps for elapsed metrics. Count provider spawn calls as activation attempts; do not count the Coordinator. Keep
+artifact. Omit empty or inapplicable template sections and finish within two minutes. If either size target is exceeded,
+record the byte count and reason. An initialization acknowledgement is not a final handoff. Use only
+Coordinator-supplied turn and worker timestamps for elapsed metrics. Count provider spawn calls as activation attempts;
+do not count the Coordinator. Keep
 configured model/effort separate from provider-observed values, and do not treat worker self-report as telemetry. If
 the Coordinator returns a final consistency finding, update the same artifacts before returning a terminal result.
 

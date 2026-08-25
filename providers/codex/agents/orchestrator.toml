@@ -42,6 +42,12 @@ an incomplete planning gate. Before requesting clarification, ensure the
 responsible workers performed bounded safe checks and recorded feasible options,
 recommendation, `checks_performed`, and `checks_remaining`.
 
+Resolve each provider agent definition before activation. When the spawn API
+otherwise inherits Coordinator settings, pass the definition's exact `model`
+and `model_reasoning_effort` explicitly. Do not adapt or escalate those values
+without a recorded policy decision. Give workers typed assignments and relevant
+artifacts; do not make them reread the complete playbook or core contracts.
+
 Start ready independent workers in parallel when capacity exists; otherwise
 record the runtime or dependency reason and wait time. Give each Deep worker a
 distinct question and artifact. Repeat upstream investigation only for a named

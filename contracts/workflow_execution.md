@@ -45,6 +45,10 @@ frontmatter dependencies are maintenance or stage references, not an instruction
 the run context. Load a role, skill, strategy, integration, template, or example only when the active worker or stage
 needs it. Templates and examples MUST NOT override the selected playbook or contracts.
 
+The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
+the complete playbook or core contracts by default; they load only their provider role instructions and the specific
+section or template needed to resolve an ambiguity in their assigned stage.
+
 ---
 
 # Vocabulary
@@ -90,6 +94,7 @@ the source of truth.
 | `INV-29` | Ready independent workers MUST run in parallel when runtime capacity exists; duplicate investigation requires a recorded discrepancy. | [Parallelism Semantics](#parallelism-semantics) |
 | `INV-30` | A managed worktree of the declared repository MUST be the source checkout, while durable artifacts remain under the declared repository path. | [Durable Artifact Root](#durable-artifact-root) |
 | `INV-31` | After delegation, the owning technical worker MUST perform the assigned investigation; the Coordinator may repeat it only for a recorded discrepancy. | [Stage Completion and Fan-In](#stage-completion-and-fan-in) |
+| `INV-32` | Provider-configured worker model and effort MUST be bound explicitly when the runtime otherwise inherits Coordinator settings. | [Profile Execution Semantics](#profile-execution-semantics) |
 
 ---
 
@@ -394,6 +399,11 @@ status.
 
 The Orchestrator must not silently downgrade a profile to a smaller worker graph. If required delegation is unavailable,
 the run is `not_executed` or `blocked`; it is not a successful execution of the requested profile.
+
+Before each AI-worker activation, resolve the provider agent definition and bind its configured model and reasoning
+effort. When the spawn API inherits the Coordinator by default, pass those exact values explicitly; this is
+configuration binding, not adaptive escalation. If the runtime cannot apply or verify them, record the mismatch and do
+not report policy conformance. Unrecorded model or effort substitution is prohibited.
 
 `requested` means the graph has not started, `in_progress` means required workers are active or awaiting fan-in, and
 `executed` means all required workers returned terminal envelopes and fan-in passed. `not_executed` means the graph
@@ -812,6 +822,10 @@ Coordinator work, worker execution and waits, documentation, runtime closure, an
 worker-stage subtotal as run wall time. Worker activation and terminal timestamps come from the Coordinator's own clock
 when the provider exposes no telemetry.
 
+Provider session timestamps take precedence over timestamps written by a worker inside an artifact. A worker-authored
+"completed at" value is not a provider terminal time. Before handoff, reconcile each reported duration with the
+provider session start and terminal event when available.
+
 The Coordinator MUST capture the run start timestamp at turn entry and compute final wall time directly from that start
 and the final-answer timestamp. It MUST NOT reconstruct wall time by adding worker durations or estimating stage
 windows.
@@ -819,6 +833,9 @@ windows.
 The final Documenter owns the finalized work record and implementation plan. If verification finds an inconsistency,
 the Coordinator MUST return it to that same Documenter before closure; the Coordinator MUST NOT edit a finalized
 Documenter artifact after its terminal result.
+
+Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes ledger
+and timing corrections as input and MUST NOT edit those files concurrently.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It

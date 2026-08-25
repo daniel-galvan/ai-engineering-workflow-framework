@@ -632,10 +632,15 @@ sentry_playbook = (ROOT / "playbooks" / "sentry_issue_remediation.md").read_text
 if "requested profile is immutable for the run" not in sentry_playbook:
     fail("playbooks/sentry_issue_remediation.md is missing immutable-profile control")
 for phrase in (
-    "pilot target is 15-17 minutes",
+    "pilot target is 10-12 minutes",
+    "15-17 minutes when cross-repository analysis",
     "one final `handoff` after",
     "initialization acknowledgement is not a final handoff",
-    "named agent definitions without ad hoc model",
+    "exact model and reasoning effort",
+    "framework_revision_mismatch",
+    "minimal work-record skeleton",
+    "never deletes and recreates",
+    "one smallest available check",
     "target 30 KB combined",
     "target 10 KB for the work record",
     "exclusively owns raw Sentry queries",
@@ -647,7 +652,12 @@ for phrase in (
 
 sentry_orchestrator = (CODEX_AGENT_DIR / "sentry_orchestrator.toml").read_text()
 for phrase in (
-    "Do not supply ad hoc model or effort overrides",
+    "Pass its exact",
+    "binds configuration",
+    "Do not instruct downstream workers to reread",
+    "minimal work-record skeleton",
+    "sole artifact writer",
+    "provider session start and terminal events",
     "one final Documenter after analytical fan-in",
     "must not write or promote the technical plan",
     "compute wall time",
@@ -661,12 +671,27 @@ for phrase in (
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
 
 sentry_architect = (CODEX_AGENT_DIR / "sentry_solution_architect.toml").read_text()
-if "Keep the plan `Draft`" not in sentry_architect:
-    fail("providers/codex/agents/sentry_solution_architect.toml is missing readiness ownership")
+for phrase in (
+    "Keep the plan `Draft`",
+    "Do not reread the complete playbook",
+    "do not remap them unless",
+    "one smallest check",
+):
+    if phrase not in sentry_architect:
+        fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
+
+sentry_investigator = (CODEX_AGENT_DIR / "sentry_current_state_investigator.toml").read_text()
+for phrase in ("Do not reread the complete playbook", "Bound repository mapping"):
+    if phrase not in sentry_investigator:
+        fail(f"providers/codex/agents/sentry_current_state_investigator.toml is missing bounded evidence control: {phrase}")
 
 sentry_prompt = (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text()
 for phrase in (
-    "configured model and effort",
+    "Framework revision",
+    "framework_revision_mismatch",
+    "exact configured model",
+    "provider session start and terminal events",
+    "sole artifact writer",
     "initialization acknowledgement",
     "token-based Sentry skill",
     "under the declared execution-repository path",
@@ -686,6 +711,10 @@ for text, label in (
     if "runtime-managed worktrees are not" not in text or "artifact roots unless" not in text:
         fail(f"{label} is missing durable artifact-root control")
 
+for phrase in ("do not delete and recreate", "finish within two minutes", "sole writer"):
+    if phrase not in documenter_agent:
+        fail(f"providers/codex/agents/documenter.toml is missing bounded finalization control: {phrase}")
+
 for phrase in (
     "MUST NOT change a technical worker's diagnosis",
     "mutually conditional candidate files",
@@ -693,6 +722,10 @@ for phrase in (
     "counts provider worker spawn calls only",
     "final Documenter owns the finalized work record",
     "Do not add a second generic outcome field",
+    "pass those exact values explicitly",
+    "Provider session timestamps take precedence",
+    "sole writer for its assigned artifacts",
+    "MUST NOT reread",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")
@@ -708,6 +741,8 @@ if "| Outcome | `in_progress`" in work_record_template:
 for phrase in ("Configured model/effort", "Provider-observed model/effort", "self-reported model"):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing model-observation distinction: {phrase}")
+if "Framework revision / status" not in work_record_template:
+    fail("templates/work_record.md is missing framework-revision provenance")
 for phrase in (
     "initial hypothesis: an experimental baseline",
     "Orchestrator | `gpt-5.6-terra` | Medium | `medium`",

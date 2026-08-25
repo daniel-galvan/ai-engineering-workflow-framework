@@ -86,6 +86,12 @@ investigation, counts itself as a worker activation attempt, omits its own or th
 Documenter artifact instead of returning the inconsistency. Process quality also cannot be `met` when
 `awaiting_input` after completed fan-in is reported as a blocked workflow or task outcome.
 
+Process quality and Efficiency also cannot be rated `met` when configured worker model or effort was replaced by
+Coordinator inheritance, workers reread the complete framework without a named ambiguity, or a worker repeats verified
+source mapping without a recorded discrepancy. The same applies when provider session timestamps were available but
+worker-authored timestamps were used, the Coordinator and final Documenter edited the same artifact concurrently, or
+artifact size targets were exceeded without recording the bytes and reason.
+
 A duplicate plan has the same affected files, intended changes, validation, owner, rollout, and rollback as another
 plan. Different vulnerability identifiers, rules, functions, reachability, or risk do not by themselves require
 different remediation plans.

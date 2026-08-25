@@ -98,6 +98,7 @@ An empty filtered search is not evidence that a path is absent.
 | --- | --- |
 | Run ID | |
 | Playbook | |
+| Framework revision / status | Full Git commit / Clean or Dirty |
 | Model-policy baseline ID | Provider baseline ID or `Not applicable` |
 | Requested profile | `standard` / `deep` |
 | Activated profile | `standard` / `deep` / `None` |

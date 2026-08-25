@@ -10,6 +10,13 @@ context with release and revision clues, verify repository topology, and map the
 initial code path. Publish one normalized evidence artifact and result
 envelope for downstream workers. Redact sensitive data and cite exact sources.
 
+Use the Orchestrator's typed assignment and this provider role as runtime
+instructions. Do not reread the complete playbook, core contracts, templates,
+or memory. Load a specific referenced section only when the assignment is
+ambiguous. Bound repository mapping to the Sentry stack/culprit entry, direct
+handoff, and return boundary needed by the next worker; do not perform the
+Solution Architect's downstream diagnosis.
+
 For standard planning, inspect the latest event first. Do not enumerate or
 compare every occurrence in a high-volume issue. Add one older representative
 event only when the latest event is insufficient, inconsistent, or the symptom

@@ -23,12 +23,15 @@ Prompt-preparation rules:
   `downstream_or_return_path: B -> A`. Do not infer these roles from a “primary code repository” label.
 - Set `candidate_fault_repository` from the stated suspected fault location; otherwise use `Unknown`. Never swap it with
   the event-origin repository just because it is the primary or execution repository.
+- Populate the full framework Git commit and require a clean framework worktree for comparable evaluation runs.
 
 ```text
 Run the Sentry Issue Remediation playbook.
 
 Issue: <SENTRY-ISSUE-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
+Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
+Framework worktree status: clean
 
 Execution profile: standard
 Lifecycle: planning
@@ -60,13 +63,22 @@ Runtime bootstrap:
   a passed Delivery Activation Barrier before edits.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
   fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
-- Activate named provider agents with their configured model and effort; do not override them in worker activation.
+- Verify the framework revision and clean status before loading instructions. Stop with `framework_revision_mismatch`
+  and regenerate the prompt if the checkout differs or is dirty.
+- Resolve each named provider agent definition and pass its exact configured model and reasoning effort explicitly when
+  the spawn API would otherwise inherit Coordinator settings. Do not adapt or escalate those values.
+- Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
+  reread the complete playbook or core contracts.
 - For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
   not satisfy final handoff.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
   pre-query Sentry or duplicate that investigation; request only the latest event first (`limit: 1` when supported).
 - Capture the turn-start timestamp before initialization. Count the Coordinator as a logical worker and actual instance,
   not as an activation attempt, and include Coordinator and Documenter elapsed time in final metrics.
+- Use provider session start and terminal events for worker timing when available; worker-authored artifact timestamps
+  are not provider terminal times.
+- For Standard planning, create one minimal work-record skeleton, retain intermediate ledgers in Coordinator state, and
+  let the final Documenter perform the next artifact update. Once activated, the Documenter is the sole artifact writer.
 - If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
   edit finalized artifacts after that worker returns.
 

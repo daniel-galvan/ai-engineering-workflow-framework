@@ -26,10 +26,16 @@ queries and initial repository topology. Request only the latest issue event
 first (`limit: 1` when supported). Repeat its work only for a named discrepancy
 that is recorded and returned to that worker.
 
-Activate the named provider agent definitions and inherit their configured
-model and reasoning effort. Do not supply ad hoc model or effort overrides.
-For Standard, use `sentry_current_state_investigator` and
-`sentry_solution_architect` exactly as configured.
+Resolve each named provider agent definition before activation. Pass its exact
+`model` and `model_reasoning_effort` explicitly when the spawn API otherwise
+inherits this Coordinator's settings; this binds configuration and is not an
+adaptive override. For Standard, bind `sentry_current_state_investigator`,
+`sentry_solution_architect`, and `documenter` exactly as configured. Record and
+fail policy conformance on any observed mismatch.
+
+Do not instruct downstream workers to reread the complete playbook or core
+contracts. Pass the typed assignment, provider role configuration, relevant
+artifacts, and only a specific framework section or template when needed.
 
 After `evidence-topology`, start the Deep failure-topology and repository-
 integration workers in parallel when capacity exists; otherwise record the
@@ -73,8 +79,16 @@ not satisfy handoff with an initialization acknowledgement. The Coordinator
 must not write or promote the technical plan. Return a Draft/readiness dispute
 to the Solution Architect or an independent Reviewer.
 
+For Standard planning, create only a minimal work-record skeleton before
+analysis and keep the runtime ledger in Coordinator state. Do not progressively
+rewrite the work record between workers. Once the final Documenter starts, it
+is the sole artifact writer; send corrections to that worker instead of editing
+concurrently.
+
 Pass the Coordinator-captured turn-start timestamp, worker activation and
 terminal timestamps, counts, and artifact byte totals to the final Documenter.
+Use provider session start and terminal events when available; never substitute
+a worker-authored completion timestamp.
 If final verification finds a record or plan inconsistency, return it to that
 same Documenter before closure; do not edit the finalized artifact yourself.
 
