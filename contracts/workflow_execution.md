@@ -218,6 +218,11 @@ A diagnosis or fix-design worker MUST pass this gate before returning
 One supported hypothesis is sufficient for a simple issue. Record ranked
 alternatives when the evidence supports more than one credible explanation.
 
+During planning, run a unit or integration test only when an existing focused command can confirm or reject a leading
+hypothesis, identify the owning boundary, or change plan readiness. Do not repair the test environment, install tools,
+or run a broader suite for triage. Put reproduction, regression, focused-suite, and broader-suite checks in the
+implementation plan instead. A source or artifact comparison may satisfy the planning feedback loop.
+
 The Coordinator MUST reject an incomplete clarification result. A result is
 incomplete when it only asks for more data, says that the root cause is unknown,
 repeats `Unknown` without explaining why, or gives an internal instruction
@@ -780,6 +785,7 @@ Workflow execution: <completed | incomplete | blocked>
 Task outcome: <solved | partially_solved | plan_only | blocked | incorrect>
 What happened: <plain-language result>
 What this means: <why the run stopped or what is ready>
+Best current explanations: <up to three hypotheses with confidence and one-line evidence, or “None”>
 Internal owner: <runtime, team, worker, or person responsible>
 What you need to do: <user action, or “Nothing technical.”>
 To continue: “<exact phrase or action the user can provide>”
@@ -799,6 +805,11 @@ The handoff must explain internal runtime terms such as `fan-in`, terminal worke
 ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
 the agent runtime. If the user does not need to change code, configuration, or environment, say so explicitly. If the
 next step is a retry, give the exact short request, such as `Retry the planning run.`
+
+If an analytical worker returned hypotheses, the final summary MUST show the strongest one and up to two credible
+alternatives. Use short sentences, confidence labels, and the evidence for each. Show a rejected hypothesis only when it
+helps explain why the run did not choose an expected fix. Never reduce a useful hypothesis result to only “root cause
+unknown.”
 
 Every terminal or blocked handoff MUST include this compact run-metrics block, populated from the work record:
 

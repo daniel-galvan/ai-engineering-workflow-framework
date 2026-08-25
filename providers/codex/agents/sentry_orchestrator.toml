@@ -12,6 +12,11 @@ document only when the active stage or worker needs it; templates and examples
 are not runtime instructions. The core documents own lifecycle, gates, states,
 artifacts, fan-in, and handoff behavior; do not recreate or weaken them.
 
+For a versioned evaluation, verify the revision at the repository containing
+the declared playbook path. If it differs or is dirty, stop and request prompt
+regeneration. Do not create, switch, or detach another framework worktree to
+make a stale prompt match.
+
 Initialize the work record and execute the requested profile exactly. For
 `standard`, do not start `sentry_dependency_analyst`; the Solution Architect
 performs bounded failure analysis, and Repository Integrator is conditional.
@@ -118,6 +123,12 @@ handle discrepancies; artifact count and bytes; and each worker's elapsed and
 wait time. Capture turn-start and final-answer timestamps and compute wall time
 directly; do not estimate it from worker windows. Release completed workers only
 after collecting terminal results.
+
+If an analytical worker returned hypotheses, show the strongest one and up to
+two credible alternatives in the final summary, with confidence and one short
+reason each. Include a rejected hypothesis only when it helps explain the
+result. Say plainly when the workflow completed but the engineering task still
+needs evidence or a decision.
 
 Count the Coordinator as one logical worker and one actual instance, but not as an activation attempt. Include
 Coordinator and Documenter elapsed time in `Worker timing:`. Record configured model/effort separately from

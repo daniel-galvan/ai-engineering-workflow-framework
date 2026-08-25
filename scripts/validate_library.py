@@ -638,9 +638,12 @@ for phrase in (
     "initialization acknowledgement is not a final handoff",
     "exact model and reasoning effort",
     "framework_revision_mismatch",
+    "make a stale prompt match",
     "minimal work-record skeleton",
     "never deletes and recreates",
     "one smallest available check",
+    "do not run unit or integration tests merely",
+    "Best current explanations",
     "target 30 KB combined",
     "target 10 KB for the work record",
     "exclusively owns raw Sentry queries",
@@ -666,6 +669,8 @@ for phrase in (
     "Do not query Sentry",
     "not as an activation attempt",
     "same Documenter before closure",
+    "If an analytical worker returned hypotheses",
+    "make a stale prompt match",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -676,6 +681,7 @@ for phrase in (
     "Do not reread the complete playbook",
     "do not remap them unless",
     "one smallest check",
+    "During planning, run a unit or integration test only",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
@@ -689,6 +695,7 @@ sentry_prompt = (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text()
 for phrase in (
     "Framework revision",
     "framework_revision_mismatch",
+    "make a stale prompt match",
     "exact configured model",
     "provider session start and terminal events",
     "sole artifact writer",
@@ -698,6 +705,7 @@ for phrase in (
     "evidence worker exclusively owns raw Sentry queries",
     "not as an activation attempt",
     "same Documenter",
+    "Best current explanations",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
@@ -711,7 +719,7 @@ for text, label in (
     if "runtime-managed worktrees are not" not in text or "artifact roots unless" not in text:
         fail(f"{label} is missing durable artifact-root control")
 
-for phrase in ("do not delete and recreate", "finish within two minutes", "sole writer"):
+for phrase in ("do not delete and recreate", "finish within two minutes", "sole writer", "Best current explanations"):
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing bounded finalization control: {phrase}")
 
@@ -726,6 +734,8 @@ for phrase in (
     "Provider session timestamps take precedence",
     "sole writer for its assigned artifacts",
     "MUST NOT reread",
+    "Never reduce a useful hypothesis result",
+    "During planning, run a unit or integration test only",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")
@@ -735,6 +745,12 @@ if "Coordinator changes a technical worker's diagnosis" not in workflow_evaluati
 for phrase in ("duplicates delegated technical", "counts itself as a worker activation attempt", "reported as a blocked workflow"):
     if phrase not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing run-quality control: {phrase}")
+if "planning runs unit or integration tests that cannot change" not in workflow_evaluation:
+    fail("frameworks/workflow_evaluation.md is missing planning-test efficiency control")
+
+for phrase in ("Planning normally designs these checks", "focused regression that reproduces the verified failure"):
+    if phrase not in implementation_plan:
+        fail(f"templates/implementation_plan.md is missing test-first execution control: {phrase}")
 
 if "| Outcome | `in_progress`" in work_record_template:
     fail("templates/work_record.md must not duplicate workflow execution and task outcome with a generic outcome field")

@@ -329,7 +329,8 @@ Documenter only after analytical fan-in.
 
 For a versioned evaluation run, verify the prompt's framework Git revision against the checkout containing this
 playbook before loading it. Stop with `framework_revision_mismatch` when HEAD differs or the framework worktree is
-dirty; regenerate the prompt from a clean revision instead of running against moving instructions.
+dirty; regenerate the prompt from a clean revision instead of running against moving instructions. Do not create,
+switch, or detach another framework worktree to make a stale prompt match.
 
 For Standard planning, initialization writes only a minimal work-record skeleton. The Coordinator keeps intermediate
 worker and timing ledgers in runtime state and passes them to the final Documenter; it does not progressively rewrite
@@ -409,6 +410,11 @@ In `deep`, the `failure-topology` worker owns independent diagnosis and reproduc
 Form competing hypotheses appropriate to the selected profile and reproduce or verify the failure with the smallest safe
 test or local scenario. The `tester` owns executable validation during the remediation lifecycle. Use Seer only as
 optional supporting evidence.
+
+In planning, do not run unit or integration tests merely to establish a baseline. Run one existing focused test only
+when its result can confirm or reject a leading hypothesis, identify the owning repository, or change readiness. Do not
+repair environments, install missing test tools, or run broad suites. Put the focused regression and remaining suites in
+the implementation plan for remediation.
 
 The Solution Architect accepts source paths and citations already verified in normalized evidence. It does not remap
 that path without a named discrepancy. When missing indispensable evidence already selects `needs_input`, execute only
@@ -536,6 +542,9 @@ The final handoff is ordered as follows:
    next action. Explain the next action in plain language, name its owner, identify the file or system where it is
    performed, and state what completion looks like. Do not use unexplained phrases such as “select the remediation
    boundary.”
+   When the cause remains uncertain, include `Best current explanations` with the strongest hypothesis and no more than
+   two alternatives, each with confidence and a short reason. Include a rejected hypothesis only when it clarifies the
+   result.
 2. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
    using the shared contract's ledger fields.
 3. Profile, gate, and synchronization status: distinguish requested, activated, and executed profile, then confirm that

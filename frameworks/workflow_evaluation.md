@@ -92,6 +92,9 @@ source mapping without a recorded discrepancy. The same applies when provider se
 worker-authored timestamps were used, the Coordinator and final Documenter edited the same artifact concurrently, or
 artifact size targets were exceeded without recording the bytes and reason.
 
+Efficiency cannot be rated `met` when planning runs unit or integration tests that cannot change the diagnosis,
+ownership, or readiness, or spends time repairing a test environment that remediation can validate later.
+
 A duplicate plan has the same affected files, intended changes, validation, owner, rollout, and rollback as another
 plan. Different vulnerability identifiers, rules, functions, reachability, or risk do not by themselves require
 different remediation plans.

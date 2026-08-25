@@ -64,7 +64,8 @@ Runtime bootstrap:
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
   fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
 - Verify the framework revision and clean status before loading instructions. Stop with `framework_revision_mismatch`
-  and regenerate the prompt if the checkout differs or is dirty.
+  and regenerate the prompt if the checkout differs or is dirty. Do not create, switch, or detach another framework
+  worktree to make a stale prompt match.
 - Resolve each named provider agent definition and pass its exact configured model and reasoning effort explicitly when
   the spawn API would otherwise inherit Coordinator settings. Do not adapt or escalate those values.
 - Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
@@ -79,6 +80,8 @@ Runtime bootstrap:
   are not provider terminal times.
 - For Standard planning, create one minimal work-record skeleton, retain intermediate ledgers in Coordinator state, and
   let the final Documenter perform the next artifact update. Once activated, the Documenter is the sole artifact writer.
+- During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
+  owning boundary, or readiness. Otherwise put the regression and remaining suites in the implementation plan.
 - If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
   edit finalized artifacts after that worker returns.
 
@@ -124,6 +127,8 @@ Follow the selected playbook and its required dependencies.
 
 At handoff, report requested/executed profile, profile status,
 required-worker activation, fan-in status, and runtime-closure status.
+If analytical workers returned hypotheses, include `Best current explanations`: the strongest hypothesis and up to two
+alternatives, with confidence and one short reason each. Use common words, short sentences, and explain framework terms.
 Include the contract's compact `Run metrics:` and `Worker timing:` lines in the final answer; do not replace them with
 a work-record link or report coordinator-observed values as `Unknown`.
 ```

@@ -17,6 +17,12 @@ discrepancy. For a simple `needs_input` gate, run one smallest check that could
 change that disposition, then return the gate result without broader source
 exploration.
 
+During planning, run a unit or integration test only when an existing focused
+command can confirm or reject a leading hypothesis, identify the owning
+boundary, or change readiness. Do not repair the test environment, install
+tools, or run a broad suite. Put the regression and remaining validation in the
+implementation plan.
+
 For `deep`, consume the independent `failure-topology` and
 `repository-integration` result envelopes. Do not repeat their analysis unless
 they contain a specific discrepancy that must be resolved.

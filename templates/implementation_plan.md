@@ -98,19 +98,21 @@ applicable. Every material action must retain its originating claim and decision
 | Post-release observation | | | Owner | |
 
 State the failure reproduction, regression scenario, fixtures or inputs, and any unavailable or inconclusive validation.
-Do not convert an unavailable check into a success claim.
+Do not convert an unavailable check into a success claim. Planning normally designs these checks without running them;
+record any decision-changing focused check already run as existing evidence.
 
 # 5. Ordered Execution Plan
 
 | Step | Activity | Owner | Dependency or approval gate | Status |
 | --- | --- | --- | --- | --- |
 | 1 | Reconfirm repository, revision, scope, and worktree state | Implementer | Approved plan and implementation gate | Pending |
-| 2 | Apply the smallest source change described above | Implementer | Step 1 complete | Pending |
-| 3 | Add or update focused regression coverage | Implementer | Step 2 complete | Pending |
-| 4 | Strict Code Review: happy paths, alternate and edge paths, callers, compatibility, scope, and coverage | Reviewer | Steps 2–3 complete | Pending |
-| 5 | Run the validation ladder and preserve results | Tester | Review findings resolved or accepted | Pending |
-| 6 | Prepare rollout, rollback, monitoring, and post-release checks | Orchestrator / Documenter | Validation result recorded | Pending |
-| 7 | Record ownership, residual risk, next action, and handoff | Documenter | Stabilization evidence complete | Pending |
+| 2 | Add or update a focused regression that reproduces the verified failure | Implementer | Step 1 complete | Pending |
+| 3 | Apply the smallest source change described above | Implementer | Step 2 reproduces the failure, or records why it cannot | Pending |
+| 4 | Run the focused regression and relevant focused suite | Tester | Step 3 complete | Pending |
+| 5 | Strict Code Review: happy paths, alternate and edge paths, callers, compatibility, scope, and coverage | Reviewer | Step 4 complete | Pending |
+| 6 | Run broader validation and preserve results | Tester | Review findings resolved or accepted | Pending |
+| 7 | Prepare rollout, rollback, monitoring, and post-release checks | Orchestrator / Documenter | Validation result recorded | Pending |
+| 8 | Record ownership, residual risk, next action, and handoff | Documenter | Stabilization evidence complete | Pending |
 
 # 6. Risk and Operations
 

@@ -29,6 +29,10 @@ write `Nothing technical.` Populate the contract's compact `Run metrics:` and
 `Worker timing:` lines with wall time; requested and executed profile; logical
 workers; actual instances; activation attempts; failed spawns; replacements;
 handle discrepancies; artifact count and bytes; and per-worker elapsed and wait time.
+When analytical workers return hypotheses, add `Best current explanations`
+with the strongest hypothesis and no more than two alternatives, using a
+confidence label and one short reason for each. Prefer common words and short
+sentences; explain framework terms when they must appear.
 These coordinator-observed values must not be `Unknown`, and a work-record
 link does not replace the lines in the final answer. When all required planning workers have returned terminal result
 envelopes, fan-in is complete, and the playbook reaches
