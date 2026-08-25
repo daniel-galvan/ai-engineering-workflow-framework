@@ -8,13 +8,15 @@ developer_instructions = """
 For `deep`, run after the evidence stage even when the initial topology appears
 sufficient. For `standard`, run only when repository ownership, release
 mapping, monorepo boundaries, or deployment responsibility remain uncertain and
-the typed assignment records one question with both
-`answerable_by_local_source: true` and `decision_expected_to_change: true`.
+the typed assignment records one concrete question, the local evidence that can
+answer it, the exact ownership/readiness/scope disposition that will change, and
+both `answerable_by_local_source: true` and `decision_expected_to_change: true`.
 Missing production state, persistence contents, callback provenance, or timing
 that local source cannot establish fails this gate.
-If normalized evidence already answered the assigned question, return
-`not_applicable` without repeating it. Record `decision_changed` and the exact
-ownership, readiness, or scope disposition that changed or remained unchanged.
+If the expected disposition cannot be stated before activation, return
+`not_applicable` without inspecting another repository. If the result does not
+change the recorded disposition, report `decision_changed: false` and mark the
+activation as a low-value integration check for efficiency evaluation.
 Verify which repository and component should change. Inspect build and test
 conventions, runtime configuration, event contracts, and deployment paths. Do
 not expand scope because adjacent projects exist.

@@ -374,7 +374,7 @@ for phrase in (
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 27):
+for invariant_id in range(1, 36):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
@@ -388,6 +388,8 @@ for heading in (
     "## Worker Wait and Termination Semantics",
     "## Stop Conditions",
     "## Explicit Path Verification",
+    "## Concurrent Run Isolation",
+    "## Final Handoff Reconciliation",
 ):
     if heading not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing {heading}")
@@ -447,6 +449,11 @@ for phrase in (
     "Input IDs actually used in `inputs_consumed`",
     "Workers that share a completed dependency and do not depend on each other MUST start in parallel",
     "Deep does not authorize duplicated investigation",
+    "A final handoff MUST reconcile durable artifact state",
+    "A remediation run sharing an execution repository",
+    "Every worker activation MUST include a compact value/source/authority manifest",
+    "All Coordinator and provider timestamps MUST use RFC 3339 format",
+    "run_already_active",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing wait/profile semantics: {phrase}")
@@ -483,6 +490,15 @@ for phrase in ("# Playbook Selection", "| Workflow execution |", "| Task outcome
         fail(f"templates/work_record.md is missing outcome/classification field: {phrase}")
 if "| Model-policy baseline ID |" not in work_record_template:
     fail("templates/work_record.md is missing the model-policy baseline ID")
+for phrase in (
+    "# Run Isolation and Finalization",
+    "Concurrent-run decision",
+    "Final reconciliation",
+    "compact manifest for every assigned Input ID",
+    "RFC 3339 timestamps",
+):
+    if phrase not in work_record_template:
+        fail(f"templates/work_record.md is missing run-isolation/finalization control: {phrase}")
 
 role_requirements = {
     "orchestrator.md": ("Delivery Activation Barrier", "does not implement", "An active worker status is not a handoff"),
@@ -631,6 +647,14 @@ for phrase in ("coordination errors", "handoff revisions", "metrics status", "re
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing final-metrics control: {phrase}")
 for phrase in (
+    "concurrent-run decision",
+    "IDs without values are not delivered",
+    "final artifact and answer",
+    "Return stale `pending` or",
+):
+    if phrase not in orchestrator_agent:
+        fail(f"providers/codex/agents/orchestrator.toml is missing run-integrity control: {phrase}")
+for phrase in (
     "prompt_conformance",
     "run_prompt_nonconformant",
     "evidence_eligibility",
@@ -684,6 +708,8 @@ for phrase in (
     "keep the plan `Draft`",
     "finalization budgets",
     "one explicit cross-repository question",
+    "canonical durable artifacts",
+    "run_already_active",
     "event emitter, comparison owner, baseline producer",
     "initialization is limited",
 ):
@@ -720,6 +746,11 @@ for phrase in (
     "answerable_by_local_source",
     "implementation_plan_action",
     "provider_configuration_unavailable",
+    "concurrent-run decision",
+    "IDs without values are not delivered",
+    "final artifact and answer",
+    "All timestamps in the record must be RFC 3339",
+    "run_already_active",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -771,6 +802,11 @@ for phrase in (
     "provider_configuration_unavailable",
     "Quarantine any provider-required memory pass",
     "implementation_plan_action",
+    "concurrent-run decision",
+    "without its value is not a delivered input",
+    "final artifact and answer",
+    "RFC 3339",
+    "canonical Sentry artifacts",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
@@ -827,9 +863,12 @@ sentry_repository_integrator_agent = (CODEX_AGENT_DIR / "sentry_repository_integ
 for phrase in (
     "answerable_by_local_source: true",
     "decision_expected_to_change: true",
+    "concrete question",
+    "expected disposition",
     "quarantine it",
     "Check runner availability",
     "decision_changed",
+    "low-value integration check",
 ):
     if phrase not in sentry_repository_integrator_agent:
         fail(f"providers/codex/agents/sentry_repository_integrator.toml is missing Standard activation/test control: {phrase}")

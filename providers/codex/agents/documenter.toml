@@ -67,11 +67,19 @@ already exceed 30 KB, compact them before creating another artifact; never add a
 Exceed a budget only when further compaction would remove required evidence; record the byte count and reason after
 that attempt, and do not rate Process quality or Efficiency `met`. Omit empty or
 inapplicable template sections and finish within two minutes. An initialization acknowledgement is not a final handoff.
+For Sentry planning, use the canonical artifact names: `normalized_evidence.md`
+and, when the result is `awaiting_input`, `clarification_brief.md`.
 Use only the Coordinator's finalized packet for timestamps, handles/outcomes, counts, exact current artifact bytes,
 outcomes, hypotheses, owners, and completion condition; do not reconstruct them. Count provider spawn calls as activation attempts;
 do not count the Coordinator. Keep
 configured model/effort separate from provider-observed values, and do not treat worker self-report as telemetry. If
 the Coordinator returns a final consistency finding, update the same artifacts before returning a terminal result.
+Before returning terminal, reconcile the durable record with the Coordinator's
+final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
+pending` values after the packet says the barrier passed. The final record,
+artifact list, counts, plan action, workflow/task outcome, runtime closure, and
+metrics validity must agree with the final packet. Use RFC 3339 timestamps only;
+do not invent or normalize provider timestamps.
 Use `partially_solved` when no usable implementation plan exists; reserve `plan_only` for a run that produced one.
 Use engineering state `understood` when behavior, first divergence, and material uncertainty are evidence-backed;
 reserve `unknown` for an unestablished problem or scope.

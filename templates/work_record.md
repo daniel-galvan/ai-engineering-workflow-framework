@@ -129,6 +129,15 @@ production, or current-main behavior.
 | User action | What the user needs to do, or `Nothing technical.` |
 | Next action | |
 
+# Run Isolation and Finalization
+
+| Field | Value |
+| --- | --- |
+| Concurrent-run decision | Read-only shared revision / Isolated managed worktree / `run_already_active` / Not applicable |
+| Active related run or work item | None / ID and artifact root |
+| Durable artifact root | `.thoughts/<WORK-ITEM-ID>/` |
+| Final reconciliation | Pending / Passed / Failed; state, counts, bytes, runtime closure, and metrics agree |
+
 Use the lifecycle, workflow-state, engineering-state, workflow-execution, and task-outcome terms from
 `../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
 `awaiting_input`, workflow execution `completed`, and task outcome `partially_solved`; it is not `blocked`. Use
@@ -170,6 +179,8 @@ never estimate credit consumption.
 Coordinator-observed activation, start, terminal, and elapsed timestamps are required even when provider timing is not
 available. Use activation as start and `Unavailable` for provider queue time when the runtime exposes no separate value.
 A worker's self-reported model or effort may be noted, but it does not replace provider-observed telemetry.
+Use RFC 3339 timestamps with `Z` or a numeric offset. Malformed timestamps invalidate the metrics row; do not guess or
+normalize them.
 
 | Worker | Provider handle | Activated | Started | Terminal | Elapsed | Queue / dependency wait | Spawn attempts | Replacement or duplicate reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -188,6 +199,9 @@ The workflow cannot be marked complete while a required worker or barrier is sti
 Before activation, record each worker's assigned Input IDs. Reconcile them with the result envelope's
 `inputs_consumed`; an omitted authoritative input makes the result incomplete. Record outputs, approvals, and failure or
 blocked details in the timeline or relevant section below.
+
+Each activation packet must include a compact manifest for every assigned Input ID: short value, source, authority, and
+expected use. An ID without its value is not delivered context.
 
 # Delivery Activation Gate
 

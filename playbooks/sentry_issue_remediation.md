@@ -372,6 +372,11 @@ has not been created and give the recovery or decision needed.
 
 Record the issue, repository, revision, scope, owner, acceptance criteria, unknowns, and safety constraints.
 
+Before worker activation, record whether another run uses the same execution repository or work item. Standard planning
+may share a clean read-only revision. When another run is active, remediation or any run with source or artifact writers
+requires a separate managed worktree and durable run root. A concurrent run for the same Sentry issue stops with
+`run_already_active` unless this is an explicit continuation or recovery run.
+
 Record the repository/event topology and any optional supporting artifacts.
 
 ### Stage 1 — Collect Sentry Evidence
@@ -394,10 +399,11 @@ Use an older representative event only when the latest event is insufficient, in
 occurrence. Do not inspect every event in a high-volume issue by default. Record the selected event IDs and the reason
 for any additional sample.
 
-Publish one normalized evidence artifact containing the Sentry facts, latest event as the primary occurrence, any
-justified representative sample, initial repository/revision mapping, initial topology, code-path entry point, source
-references, and unresolved boundary questions. Downstream workers consume this artifact instead of repeating the same
-Sentry queries.
+Publish one canonical `normalized_evidence.md` artifact containing the Sentry
+facts, latest event as the primary occurrence, any justified representative
+sample, initial repository/revision mapping, initial topology, code-path entry
+point, source references, and unresolved boundary questions. Downstream workers
+consume this artifact instead of repeating the same Sentry queries.
 
 The Orchestrator also records each prompt-supplied artifact and material
 context as consumed, unavailable, conflicting, or out of scope. The original
@@ -416,10 +422,13 @@ In `standard`, there is no standalone failure-topology worker. The `solution_arc
 analysis after the evidence stage and records only the topology needed to design the approved-scope fix.
 
 For `deep`, activate `repository-integration` after Stage 1 regardless of whether the initial evidence appears
-sufficient. For `standard`, activate it only when one explicit cross-repository question remains, repository evidence
-can answer it, and the answer can change ownership, readiness, or the proposed fix. Record that question and expected
-decision before activation as `answerable_by_local_source` and `decision_expected_to_change`; both must be true. If
-normalized evidence already answered the question, skip Repository Integrator instead of repeating it.
+sufficient. For `standard`, activate it only when one explicit cross-repository question remains, the typed assignment
+names the local evidence that can answer it, and the answer can change a named
+ownership, readiness, or scope disposition.
+Record the question and expected disposition before activation as `answerable_by_local_source` and
+`decision_expected_to_change`; both must be true. If the disposition cannot be stated or the remaining question
+requires production state that local source cannot provide, skip Repository Integrator. If normalized evidence already
+answered the question, skip Repository Integrator instead of repeating it.
 A local/deployed revision mismatch, a Sentry release lookup failure, or missing production state that local source
 cannot supply does not require this worker. Its result is an additional input to fix design, not a second copy of the
 entire investigation. Its result envelope records `decision_changed` and the exact changed or unchanged disposition.
@@ -589,6 +598,13 @@ For a retryable worker runtime failure, `To continue` should give the exact requ
 
 When missing evidence keeps the plan Draft, name the internal owner, next-action owner, system, artifact, and completion
 condition. Do not say `Nothing technical.` if the user must supply evidence, authorize access, or make a decision.
+
+For Standard Sentry planning, use these canonical durable artifacts when applicable:
+
+- `.thoughts/<SENTRY-ISSUE-ID>/work_record.md`
+- `.thoughts/<SENTRY-ISSUE-ID>/normalized_evidence.md`
+- `.thoughts/<SENTRY-ISSUE-ID>/clarification_brief.md` when the result is `awaiting_input`
+- `.thoughts/<SENTRY-ISSUE-ID>/implementation_plan.md` only when `plan_readiness=ready_for_implementation`
 
 The handoff must not imply that implementation or validation completed when the workflow stopped at an approval or
 unavailable-environment gate.

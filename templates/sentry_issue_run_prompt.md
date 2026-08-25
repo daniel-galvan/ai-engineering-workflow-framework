@@ -3,7 +3,7 @@ title: Sentry Issue Remediation Run Prompt
 version: 0.3.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -85,18 +85,26 @@ Runtime bootstrap:
   Do not search candidate source, history, tests, or Sentry during initialization.
 - Capture the turn-start timestamp before initialization. Count the Coordinator as a logical worker and actual instance,
   not as an activation attempt, and include Coordinator and Documenter elapsed time in final metrics.
+- Before worker activation, record the concurrent-run decision. Read-only planning may share a clean revision. When
+  another run is active, remediation or any writer requires a separate managed worktree and artifact root. Stop with
+  `run_already_active` for the same work item unless this is an explicit continuation or recovery run.
+- Every activation packet must include each assigned Input ID's short value, source, authority, and expected use. An ID
+  without its value is not a delivered input; reconcile all assigned IDs with `inputs_consumed`.
 - Count every successful worker activation, including the final Documenter. Treat a malformed call rejected before
   activation as a coordination error. Invalid metrics still report every authoritative duration that is available.
 - Use provider session start and terminal events for worker timing when available; worker-authored artifact timestamps
   are not provider terminal times.
+- Use RFC 3339 timestamps with `Z` or a numeric offset. Do not invent or normalize malformed provider timestamps; mark
+  metrics invalid and name the missing or unreconciled field.
 - For Standard planning, create one minimal work-record skeleton, retain intermediate ledgers in Coordinator state, and
   let the final Documenter perform the next artifact update. Once activated, the Documenter is the sole artifact writer.
 - During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
   owning boundary, or readiness. First record the hypothesis, discriminating outcomes, disposition change, and runner
   availability. Otherwise put the regression and remaining suites in the implementation plan.
-- For Standard, activate Repository Integrator only for one recorded cross-repository question that local repository
-  evidence can answer and whose result can change ownership, readiness, or the proposed fix. Record both gate answers;
-  missing production state that local source cannot supply fails the gate.
+- For Standard, activate Repository Integrator only for one recorded cross-repository question, the local evidence that
+  can answer it, and the exact ownership, readiness, or scope disposition that will change. If that disposition cannot
+  be stated or the question requires production state, skip it. Record both gate answers; missing production state that
+  local source cannot supply fails the gate.
 - Before any repository becomes evidence, record its role, branch, full revision, clean status, selected ref, release
   mapping, and evidence eligibility. Reject undeclared feature-branch behavior as baseline or production evidence.
 - Quarantine any provider-required memory pass. Reject a worker result when unassigned memory or historical material
@@ -107,6 +115,11 @@ Runtime bootstrap:
   edit finalized artifacts after that worker returns.
 - Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to
   that same handle and close it only after the revised terminal result passes.
+- Before release, reconcile the final artifact and answer with the runtime ledger. Workflow state, profile status,
+  workflow/task outcome, plan action, worker outcomes, active handles, counts, artifact bytes, runtime closure, and
+  metrics validity must agree; return stale `pending` or `active` values to the same Documenter for correction.
+- Use canonical Sentry artifacts: `normalized_evidence.md`, and `clarification_brief.md` when the result is
+  `awaiting_input`; create `implementation_plan.md` only when the readiness gate allows it.
 - The fix-design result must set `plan_readiness` and `implementation_plan_action`. `awaiting_input` means `omit` and
   produces a Clarification Brief; only `ready_for_implementation` permits the Documenter to create a plan.
 

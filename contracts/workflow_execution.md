@@ -99,6 +99,9 @@ the source of truth.
 | `INV-30` | A managed worktree of the declared repository MUST be the source checkout, while durable artifacts remain under the declared repository path. | [Durable Artifact Root](#durable-artifact-root) |
 | `INV-31` | After delegation, the owning technical worker MUST perform the assigned investigation; the Coordinator may repeat it only for a recorded discrepancy. | [Stage Completion and Fan-In](#stage-completion-and-fan-in) |
 | `INV-32` | Provider-configured worker model and effort MUST be bound explicitly when the runtime otherwise inherits Coordinator settings. | [Profile Execution Semantics](#profile-execution-semantics) |
+| `INV-33` | A final handoff MUST reconcile durable artifact state with fan-in, runtime closure, counts, timing, and task outcome before release. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
+| `INV-34` | A remediation run sharing an execution repository with another active run MUST use an isolated managed worktree and run artifact root. | [Concurrent Run Isolation](#concurrent-run-isolation) |
+| `INV-35` | Every worker activation MUST include a compact value/source/authority manifest for its assigned Input IDs. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 
 ---
 
@@ -198,6 +201,11 @@ its results remain quarantined and every material conclusion is independently su
 evidence. Return a contaminated worker once with the same typed inputs and require removal or current-run
 reverification. If clean isolation cannot be enforced, preserve the partial result as contaminated evidence, record the
 control failure, and stop at an incomplete outcome. Worker self-attestation alone does not pass this gate.
+
+Every activation packet MUST include a compact input manifest for each assigned Input ID: the short value or fact, its
+source, its authority classification, and the expected use or disposition. Assigning an ID without passing its value is
+not input delivery. A worker may record an assigned input as unavailable or out of scope only when the packet includes
+the input and the worker records the concrete reason it could not use it.
 
 ## Evidence-to-Hypothesis Gate
 
@@ -798,6 +806,15 @@ A continuous worker MUST keep one worker identity and, when supported, one provi
 spawn a second final worker for the same role. If the provider cannot resume or update an active worker, activate one
 final worker after fan-in instead of reserving a continuous handle for the whole run.
 
+## Concurrent Run Isolation
+
+Different read-only planning runs may inspect the same clean, immutable source revision. They MUST still use distinct
+work-item artifact roots and record the shared repository and revision in each run. A run that can write source,
+lockfiles, tests, generated files, or external work-item state MUST NOT share a checkout with another active run; it
+requires a separate managed worktree and a distinct durable artifact root. A second run for the same work item MUST stop
+with `run_already_active` until the prior run's handles and artifact writers are released, or it must use an explicit
+continuation or recovery identity. The Coordinator records the isolation decision before worker activation.
+
 # Stage Completion and Fan-In
 
 A stage that launches multiple workers has a fan-in barrier. The Orchestrator must wait for every required worker to
@@ -892,6 +909,9 @@ Provider session timestamps take precedence over timestamps written by a worker 
 "completed at" value is not a provider terminal time. Before handoff, reconcile each reported duration with the
 provider session start and terminal event when available.
 
+All Coordinator and provider timestamps MUST use RFC 3339 format with an explicit `Z` or numeric offset. A malformed
+timestamp invalidates metrics and MUST be recorded as the missing or unreconciled field; do not normalize or guess it.
+
 The Coordinator MUST capture the run start timestamp at turn entry and compute final wall time directly from that start
 and the final-answer timestamp. It MUST NOT reconstruct wall time by adding worker durations or estimating stage
 windows.
@@ -912,6 +932,16 @@ conformance failure even when the corrected text is accurate.
 
 Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes ledger
 and timing corrections as input and MUST NOT edit those files concurrently.
+
+## Final Handoff Reconciliation
+
+Before releasing the final Documenter, the Coordinator MUST compare the final artifact and final answer with the runtime
+ledger. The following values must agree: workflow state, profile status, workflow execution, task outcome, plan action,
+worker outcomes, remaining active handles, activation/error/revision counts, artifact paths and bytes, runtime closure,
+and metrics validity. A released handoff MUST contain no stale `pending`, `active`, `in_progress`, or `closure pending`
+value for a completed barrier. Return any mismatch to the same Documenter, increment `handoff revisions`, collect the
+revised terminal result, and repeat the comparison before release. A final answer that contradicts the durable record is
+a handoff conformance failure even when the worker graph itself completed.
 
 Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing the turn and
 provider timestamps, worker handles and outcomes, activation and coordination counts, exact current artifact bytes,
@@ -959,6 +989,11 @@ After result envelopes and artifacts are persisted, the Orchestrator must:
    run;
 3. verify that no required worker from that run remains active; and
 4. record the closure status before marking the run complete or starting a new lifecycle run.
+
+Before starting another lifecycle or remediation run, apply the [Concurrent Run Isolation](#concurrent-run-isolation)
+gate. A clean read-only planning run may remain concurrent; any run with a writer
+or shared artifact writer must wait for release or use an isolated worktree and
+artifact root.
 
 Never close a worker before collecting its terminal result envelope unless the provider has explicitly confirmed a
 terminal failure or that the worker is no longer running. A later run reuses durable artifacts, not live worker handles

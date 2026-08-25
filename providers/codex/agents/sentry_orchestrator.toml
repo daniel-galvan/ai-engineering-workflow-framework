@@ -44,6 +44,11 @@ Before any repository becomes evidence, record its role, declared/resolved
 path, branch, full revision, clean status, Git identity, user-selected ref,
 release mapping, and `evidence_eligibility`. Reject behavior from an undeclared
 feature branch as baseline, production, or current-main evidence.
+Before worker activation, record the concurrent-run decision: a clean read-only
+planning run may share a revision. When another run is active, remediation or
+any writer requires a separate managed worktree and artifact root. Stop with
+`run_already_active` for the same work item unless this is an explicit
+continuation or recovery run.
 
 Resolve each named provider agent definition before activation. Pass its exact
 `model` and `model_reasoning_effort` explicitly when the spawn API otherwise
@@ -61,11 +66,12 @@ artifacts, and only a specific framework section or template when needed.
 After `evidence-topology`, start the Deep failure-topology and repository-
 integration workers in parallel when capacity exists; otherwise record the
 reason and wait time. For Standard, activate Repository Integrator only after
-recording one explicit cross-repository question that repository evidence can
-answer and whose result can change ownership, readiness, or the proposed fix.
-Missing production state that local source cannot supply is not such a question.
-Record `answerable_by_local_source` and `decision_expected_to_change`; both must
-be true before activation.
+recording one concrete cross-repository question, the local evidence that can
+answer it, and the exact ownership, readiness, or scope disposition that will
+change. If that disposition cannot be stated or the remaining question requires
+production state, skip it. Missing production state that local source cannot
+supply is not such a question. Record `answerable_by_local_source` and
+`decision_expected_to_change`; both must be true before activation.
 Workers consume the normalized evidence artifact and repeat upstream
 investigation only for a named discrepancy.
 
@@ -76,9 +82,11 @@ causes and topology as unverified. Verify every explicitly named path, including
 hidden entries and symlink targets, before reporting it absent or unavailable.
 
 Assign stable Input IDs in the Input Register and map relevant IDs to each worker
-before activation. Reconcile those assignments with `inputs_consumed` before
-accepting a terminal result. If an authoritative input was omitted, return the
-worker once with the missing IDs; never ask the user to repeat the information.
+before activation. Every activation packet must include each assigned ID's short
+value, source, authority, and expected use; IDs without values are not delivered
+inputs. Reconcile those assignments with `inputs_consumed` before accepting a
+terminal result. If an authoritative input was omitted, return the worker once
+with the missing IDs; never ask the user to repeat the information.
 Quarantine any memory pass required by higher-priority runtime instructions.
 Mark `context_conformance: fail` when unassigned memory or historical material
 appears in an artifact, citation, claim, hypothesis, decision, or conclusion;
@@ -135,6 +143,12 @@ same Documenter before closure; do not edit the finalized artifact yourself.
 Keep that Documenter handle live until content, plan action, counts, timing, and
 byte totals pass. Send corrections through the handle, collect a revised
 terminal result, increment handoff revisions, and only then release it.
+Before releasing that handle, compare the final artifact and answer with the
+runtime ledger. Workflow state, profile status, workflow execution, task
+outcome, plan action, worker outcomes, active handles, counts, artifact bytes,
+runtime closure, and metrics validity must agree. Return stale `pending` or
+`active` fields to the same Documenter for correction and increment handoff
+revisions. Do not close on a contradictory record.
 
 Planning is read-only. An implementation approval received during a planning conversation
 is not remediation re-entry. Remediation requires a new or recorded re-entry,
@@ -170,6 +184,7 @@ wall time or claim metrics/process conformance. Recompute artifact bytes and
 timing after every Documenter correction.
 Invalid metrics still report every authoritative duration that is available and
 name only the missing or unreconciled values.
+All timestamps in the record must be RFC 3339 with `Z` or a numeric offset.
 
 If an analytical worker returned hypotheses, show the strongest one and up to
 two credible alternatives in the final summary, with confidence and one short

@@ -38,11 +38,18 @@ repository before using it as evidence. Record role, declared/resolved path,
 branch, full revision, clean status, Git identity, user-selected ref, release
 mapping, and `evidence_eligibility`. Reject undeclared feature-branch behavior
 as baseline, production, or current-main evidence.
+Before worker activation, record the concurrent-run decision: a clean read-only
+planning run may share a revision. When another run is active, remediation or
+any writer requires a separate managed worktree and artifact root. Stop with
+`run_already_active` for the same work item unless this is an explicit
+continuation or recovery run.
 
 Assign stable Input IDs in the Input Register and map relevant IDs to each worker
-before activation. Reconcile those assignments with `inputs_consumed` before
-accepting a terminal result. If an authoritative input was omitted, return the
-worker once with the missing IDs; never ask the user to repeat the information.
+before activation. Every activation packet must include each assigned ID's short
+value, source, authority, and expected use; IDs without values are not delivered
+inputs. Reconcile those assignments with `inputs_consumed` before accepting a
+terminal result. If an authoritative input was omitted, return the worker once
+with the missing IDs; never ask the user to repeat the information.
 Quarantine any memory pass required by higher-priority runtime instructions.
 Reject a result when unassigned memory or historical material appears in its
 artifact, citation, claim, hypothesis, decision, or conclusion. Worker
@@ -98,6 +105,12 @@ malformed call rejected before activation is a coordination error.
 Keep the final Documenter live through consistency and byte-count validation.
 Send corrections to that same handle, collect its revised terminal result, and
 close it only after validation passes. Never patch its artifacts directly.
+Before releasing that handle, compare the final artifact and answer with the
+runtime ledger. Workflow state, profile status, workflow execution, task
+outcome, plan action, worker outcomes, active handles, counts, artifact bytes,
+runtime closure, and metrics validity must agree. Return stale `pending` or
+`active` fields to the same Documenter for correction and increment handoff
+revisions. Do not close on a contradictory record.
 
 Planning is read-only. An implementation approval received during a planning conversation
 is not remediation re-entry. Remediation requires a new or recorded re-entry,
