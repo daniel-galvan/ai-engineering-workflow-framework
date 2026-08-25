@@ -4,7 +4,7 @@ version: 0.3.2
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-24
 ---
 
 # Workflow Execution Contract
@@ -188,6 +188,12 @@ If the worker cannot consume them, preserve the partial result and record the co
 Supporting inputs may be unused only when the worker records why they were irrelevant to its declared responsibility.
 The gate checks information flow; it does not require every worker to consume every run input.
 
+The Coordinator MUST also reconcile the worker's activity with its assigned context. A worker that searches memory,
+historical work records, prior issue artifacts, or other prohibited context fails `context_conformance`; its result MUST
+NOT enter fan-in. Return that worker once with the same typed inputs and isolated context. If isolation cannot be
+enforced, preserve the partial result as contaminated evidence, record the control failure, and stop at an incomplete
+outcome. Repeating the prohibition in prose does not make a contaminated result acceptable.
+
 ## Evidence-to-Hypothesis Gate
 
 A diagnosis or fix-design worker MUST pass this gate before returning
@@ -366,6 +372,10 @@ by the Orchestrator at fan-in.
 | `uncertainties`    | Yes         | Remaining unknowns, conflicts, or confidence limits.            |
 | `next_consumer`    | Recommended | Worker, gate, or human decision that should consume the result. |
 | `model_effort`     | Recommended | Actual model and reasoning effort, when exposed.                |
+| `configuration_conformance` | Yes | Configured and provider-observed model/effort, or the exact unavailable/mismatch reason. |
+| `context_conformance` | Yes | `pass` only when the worker used assigned current-run context and no prohibited historical source. |
+| `plan_readiness`   | Conditional | Fix-design disposition: `ready_for_implementation` or `awaiting_input`. |
+| `implementation_plan_action` | Conditional | Fix-design instruction to `create` or `omit` the implementation plan. |
 | `timing`           | Yes         | Coordinator-observed activation, start, terminal, elapsed, and wait timestamps; provider timing may supplement them. |
 | `usage`            | Recommended | Provider-reported tokens, duration, credits, or `Unknown`.      |
 | `errors_blockers`  | Yes         | Errors, blockers, or `None`.                                    |
@@ -412,7 +422,8 @@ the run is `not_executed` or `blocked`; it is not a successful execution of the 
 Before each AI-worker activation, resolve the provider agent definition and bind its configured model and reasoning
 effort. When the spawn API inherits the Coordinator by default, pass those exact values explicitly; this is
 configuration binding, not adaptive escalation. If the runtime cannot apply or verify them, record the mismatch and do
-not report policy conformance. Unrecorded model or effort substitution is prohibited.
+not activate the worker. Unrecorded or accepted model/effort substitution is prohibited. A run whose required worker
+cannot be bound stops with `provider_configuration_unavailable`; it does not continue on inherited defaults.
 
 `requested` means the graph has not started, `in_progress` means required workers are active or awaiting fan-in, and
 `executed` means all required workers returned terminal envelopes and fan-in passed. `not_executed` means the graph
@@ -476,6 +487,9 @@ a feasible implementation scope.
 
 The Coordinator may reconcile envelopes and enforce gates, but MUST NOT change a technical worker's diagnosis, proposed
 boundary, or plan-readiness disposition. Return a disputed result to the owning worker or an independent Reviewer.
+The final Documenter MUST follow the owning fix-design worker's `implementation_plan_action`. When readiness is
+`awaiting_input`, the action is `omit`; record a Clarification Brief and do not create a conditional implementation
+plan. Only `ready_for_implementation` permits `create`.
 
 ## Production-Parity Prioritization
 
@@ -839,6 +853,10 @@ provider-observed values; a worker's self-report is not provider telemetry.
 are not provider spawn failures. `Handoff revisions` counts returns to the same final Documenter after its first
 terminal result. Both counts are zero only when checked. `Metrics status` is `valid` only after timestamp, count, and
 artifact-byte reconciliation passes.
+
+If provider session timestamps or another authoritative timestamp covering the complete user turn are unavailable,
+set `metrics status: invalid`. Never substitute artifact timestamps, a worker-stage subtotal, or an “at least” duration
+and then report complete or valid metrics.
 
 Wall time starts when the user turn starts and ends when the final answer is produced. It includes initialization,
 Coordinator work, worker execution and waits, documentation, runtime closure, and final verification. Do not report a

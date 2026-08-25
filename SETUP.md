@@ -3,7 +3,7 @@ title: AI-assisted Software Engineering Workflow Framework Setup
 version: 0.3.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-24
 ---
 
 # Setup
@@ -120,13 +120,14 @@ For a new run, fill only:
 - execution profile and lifecycle;
 - execution repository;
 - playbook and its matching canonical template path;
-- provider/runtime configuration when the execution repository's `.codex/agents/` directory is installed and verified;
+- provider/runtime configuration when the execution repository's `.codex/agents/` directory is installed and verified
+  (required for versioned Codex evaluation runs);
 - playbook-specific context and evidence; and
 - additional repositories or constraints when applicable.
 
 Omit the continuation section for a new run. The current session is the Coordinator by default, so there is normally no
 Coordinator field to fill in. Use the execution repository's `.codex/agents/` path only when it has been installed and
-verified.
+verified. If it is unavailable, stop a versioned Codex evaluation instead of inheriting worker settings.
 
 Start with `planning` for investigation, diagnosis, design, and a proposed implementation plan. Use `remediation` only
 after the plan exists and explicit implementation approval has been given.

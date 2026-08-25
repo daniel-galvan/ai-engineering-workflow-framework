@@ -67,6 +67,10 @@ Keep the plan `Draft` when missing evidence could select among materially
 different causes, owning repositories, source boundaries, or fixes. An evidence
 gate may verify a supported change, but it must not defer diagnosis or fix
 selection into remediation. Return a Clarification Brief in that case.
+Set `plan_readiness: awaiting_input` and `implementation_plan_action: omit`.
+Set `plan_readiness: ready_for_implementation` and
+`implementation_plan_action: create` only when one evidence-supported
+remediation boundary and intended change have been selected.
 
 If the run declares a comparison source of truth, preserve it as the expected
 baseline. Design the correction for the system that differs from that baseline;

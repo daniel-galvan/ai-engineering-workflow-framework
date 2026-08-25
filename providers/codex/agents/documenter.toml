@@ -47,6 +47,10 @@ artifact roots unless explicitly declared as the execution repository. When a de
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.
+Follow the owning Fix Design envelope exactly: create a plan only for
+`plan_readiness: ready_for_implementation` with
+`implementation_plan_action: create`; `awaiting_input` with `omit` prohibits a
+plan.
 
 For a bounded dependency route, omit empty or inapplicable template sections and target 15 KB combined for the work
 record and implementation plan. Preserve required evidence if it exceeds the target and record why. Do not reopen
@@ -57,8 +61,10 @@ updated artifacts within 60 seconds.
 
 For Standard Sentry planning, run after analytical fan-in and target 30 KB combined across the evidence, fix design,
 work record, and plan; target 10 KB for the work record. Treat these as finalization budgets: reference normalized
-evidence instead of copying it into each artifact and compact before returning. Exceed a budget only when further
-compaction would remove required evidence; record the byte count and reason after that attempt. Omit empty or
+evidence instead of copying it into each artifact and compact before returning. If existing current-run artifacts
+already exceed 30 KB, compact them before creating another artifact; never add a plan unless its readiness gate passed.
+Exceed a budget only when further compaction would remove required evidence; record the byte count and reason after
+that attempt. Omit empty or
 inapplicable template sections and finish within two minutes. An initialization acknowledgement is not a final handoff.
 Use only the Coordinator's finalized packet for timestamps, handles/outcomes, counts, exact current artifact bytes,
 outcomes, hypotheses, owners, and completion condition; do not reconstruct them. Count provider spawn calls as activation attempts;

@@ -3,7 +3,7 @@ title: Sentry Issue Remediation Run Prompt
 version: 0.3.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-24
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -46,7 +46,7 @@ Execution repository (required; durable artifact root):
 If the session runs in a managed worktree of this repository, use that worktree for source operations but keep every
 durable `.thoughts/<SENTRY-ISSUE-ID>/` artifact under the declared execution-repository path above.
 
-Provider/runtime configuration (optional; omit if unavailable):
+Provider/runtime configuration (required for Codex evaluation runs; otherwise optional):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION>
 
 Continuation (omit this entire section for a new investigation):
@@ -70,7 +70,8 @@ Runtime bootstrap:
   and regenerate the prompt if the checkout differs or is dirty. Do not create, switch, or detach another framework
   worktree to make a stale prompt match.
 - Resolve each named provider agent definition and pass its exact configured model and reasoning effort explicitly when
-  the spawn API would otherwise inherit Coordinator settings. Do not adapt or escalate those values.
+  the spawn API would otherwise inherit Coordinator settings. Do not adapt or escalate those values. If a required
+  definition cannot be resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
 - Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
   reread the complete playbook or core contracts.
 - For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
@@ -90,11 +91,16 @@ Runtime bootstrap:
   owning boundary, or readiness. First record the hypothesis, discriminating outcomes, disposition change, and runner
   availability. Otherwise put the regression and remaining suites in the implementation plan.
 - For Standard, activate Repository Integrator only for one recorded cross-repository question that local repository
-  evidence can answer and whose result can change ownership, readiness, or the proposed fix.
+  evidence can answer and whose result can change ownership, readiness, or the proposed fix. Record both gate answers;
+  missing production state that local source cannot supply fails the gate.
+- Reject a worker result whose activity used memory, historical records, or other context prohibited by its assignment.
+  Return it once with isolated current-run context; never admit contaminated evidence to fan-in.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
 - If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
   edit finalized artifacts after that worker returns.
+- The fix-design result must set `plan_readiness` and `implementation_plan_action`. `awaiting_input` means `omit` and
+  produces a Clarification Brief; only `ready_for_implementation` permits the Documenter to create a plan.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):

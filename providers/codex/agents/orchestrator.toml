@@ -33,6 +33,11 @@ Assign stable Input IDs in the Input Register and map relevant IDs to each worke
 before activation. Reconcile those assignments with `inputs_consumed` before
 accepting a terminal result. If an authoritative input was omitted, return the
 worker once with the missing IDs; never ask the user to repeat the information.
+Reject a result whose provider-visible activity used memory, historical work
+records, prior issue artifacts, or other context prohibited by its assignment.
+Mark `context_conformance: fail`, exclude it from fan-in, and return the worker
+once with isolated current-run context. If isolation is unavailable, stop with
+the contaminated result recorded only as invalid partial evidence.
 
 Execute the requested profile and lifecycle exactly. Activate each required
 worker, preserve dependencies, collect terminal result envelopes, complete
@@ -45,8 +50,14 @@ recommendation, `checks_performed`, and `checks_remaining`.
 Resolve each provider agent definition before activation. When the spawn API
 otherwise inherits Coordinator settings, pass the definition's exact `model`
 and `model_reasoning_effort` explicitly. Do not adapt or escalate those values
-without a recorded policy decision. Give workers typed assignments and relevant
+without a recorded policy decision. If the definition cannot be resolved or
+bound, stop with `provider_configuration_unavailable`; do not activate inherited
+defaults or accept a mismatch. Give workers typed assignments and relevant
 artifacts; do not make them reread the complete playbook or core contracts.
+
+Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
+the Documenter: `awaiting_input` requires `omit`; only
+`ready_for_implementation` permits `create`.
 
 Start ready independent workers in parallel when capacity exists; otherwise
 record the runtime or dependency reason and wait time. Give each Deep worker a

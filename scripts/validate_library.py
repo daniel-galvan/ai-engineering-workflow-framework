@@ -630,6 +630,9 @@ for phrase in ("do not", "spawn an initialize worker", "captured turn-start"):
 for phrase in ("coordination errors", "handoff revisions", "metrics status", "report metrics as invalid"):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing final-metrics control: {phrase}")
+for phrase in ("context_conformance: fail", "provider_configuration_unavailable", "implementation_plan_action"):
+    if phrase not in orchestrator_agent:
+        fail(f"providers/codex/agents/orchestrator.toml is missing conformance gate: {phrase}")
 for phrase in ("coordination errors", "handoff revisions", "metrics validity", "next-action ownership"):
     if phrase not in orchestrator_role.lower():
         fail(f"roles/orchestrator.md is missing final-metrics ownership: {phrase}")
@@ -700,6 +703,10 @@ for phrase in (
     "one finalized packet",
     "coordination errors",
     "report metrics as invalid",
+    "context_conformance: fail",
+    "answerable_by_local_source",
+    "implementation_plan_action",
+    "provider_configuration_unavailable",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -713,6 +720,7 @@ for phrase in (
     "During planning, run a unit or integration test only",
     "expected discriminating outcomes",
     "event emitter, comparison owner, baseline producer",
+    "implementation_plan_action: omit",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
@@ -746,9 +754,16 @@ for phrase in (
     "Repository Integrator only for one recorded cross-repository question",
     "confirmed defect owner",
     "handoff revisions",
+    "provider_configuration_unavailable",
+    "contaminated evidence",
+    "implementation_plan_action",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
+
+for path in sorted((ROOT / "templates").glob("*_run_prompt.md")):
+    if "required for Codex evaluation runs" not in path.read_text():
+        fail(f"{path.relative_to(ROOT)} is missing required evaluation provider configuration")
 
 for text, label in (
     (documenter_role, "roles/documenter.md"),
@@ -786,6 +801,16 @@ for phrase in ("hypothesis, discriminating outcomes", "Check runner", "defer the
     if phrase not in repository_integrator_agent:
         fail(f"providers/codex/agents/repository_integrator.toml is missing planning-test gating: {phrase}")
 
+sentry_repository_integrator_agent = (CODEX_AGENT_DIR / "sentry_repository_integrator.toml").read_text()
+for phrase in (
+    "answerable_by_local_source: true",
+    "decision_expected_to_change: true",
+    "Do not search memory",
+    "Check runner availability",
+):
+    if phrase not in sentry_repository_integrator_agent:
+        fail(f"providers/codex/agents/sentry_repository_integrator.toml is missing Standard activation/test control: {phrase}")
+
 solution_architect_agent = (CODEX_AGENT_DIR / "solution_architect.toml").read_text()
 for phrase in ("run a unit or integration test only", "discriminating outcomes", "runner availability"):
     if phrase not in solution_architect_agent:
@@ -810,6 +835,10 @@ for phrase in (
     "Reserve `plan_only`",
     "one finalized packet",
     "Coordination errors",
+    "context_conformance",
+    "configuration_conformance",
+    "implementation_plan_action",
+    "provider_configuration_unavailable",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")
@@ -824,6 +853,9 @@ if "planning runs unit or integration tests that cannot change" not in workflow_
 for phrase in ("Coordination errors", "Handoff revisions", "required metrics are", "`plan_only` is reported"):
     if phrase not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing metrics-validity control: {phrase}")
+for phrase in ("failed `context_conformance`", "provider configuration could not be resolved", "implementation_plan_action: omit", "local-source answerability"):
+    if phrase not in workflow_evaluation:
+        fail(f"frameworks/workflow_evaluation.md is missing conformance evaluation: {phrase}")
 
 for phrase in ("Planning normally designs these checks", "focused regression that reproduces the verified failure"):
     if phrase not in implementation_plan:

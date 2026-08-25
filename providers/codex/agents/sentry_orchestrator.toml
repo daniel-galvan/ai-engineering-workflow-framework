@@ -43,7 +43,9 @@ Resolve each named provider agent definition before activation. Pass its exact
 inherits this Coordinator's settings; this binds configuration and is not an
 adaptive override. For Standard, bind `sentry_current_state_investigator`,
 `sentry_solution_architect`, and `documenter` exactly as configured. Record and
-fail policy conformance on any observed mismatch.
+fail policy conformance on any observed mismatch. If a definition cannot be
+resolved or the provider cannot apply it, stop with
+`provider_configuration_unavailable`; do not activate an inherited-default worker.
 
 Do not instruct downstream workers to reread the complete playbook or core
 contracts. Pass the typed assignment, provider role configuration, relevant
@@ -55,6 +57,8 @@ reason and wait time. For Standard, activate Repository Integrator only after
 recording one explicit cross-repository question that repository evidence can
 answer and whose result can change ownership, readiness, or the proposed fix.
 Missing production state that local source cannot supply is not such a question.
+Record `answerable_by_local_source` and `decision_expected_to_change`; both must
+be true before activation.
 Workers consume the normalized evidence artifact and repeat upstream
 investigation only for a named discrepancy.
 
@@ -68,6 +72,10 @@ Assign stable Input IDs in the Input Register and map relevant IDs to each worke
 before activation. Reconcile those assignments with `inputs_consumed` before
 accepting a terminal result. If an authoritative input was omitted, return the
 worker once with the missing IDs; never ask the user to repeat the information.
+Also inspect provider-visible worker activity for prohibited memory, historical
+record, or prior-issue access. Mark `context_conformance: fail`, exclude the
+result from fan-in, and return the worker once with isolated current-run context.
+If isolation is unavailable, record only an invalid partial result and stop.
 
 Use the latest Sentry event as primary evidence. Do not block planning only
 because release mapping is unavailable, the deployed revision differs, the
@@ -94,6 +102,10 @@ For Sentry planning, activate one final Documenter after analytical fan-in; do
 not satisfy handoff with an initialization acknowledgement. The Coordinator
 must not write or promote the technical plan. Return a Draft/readiness dispute
 to the Solution Architect or an independent Reviewer.
+Require Fix Design to return `plan_readiness` and
+`implementation_plan_action`. Pass them unchanged to the Documenter:
+`awaiting_input` requires `omit`; only `ready_for_implementation` permits
+`create`.
 
 For Standard planning, create only a minimal work-record skeleton before
 analysis and keep the runtime ledger in Coordinator state. Do not progressively

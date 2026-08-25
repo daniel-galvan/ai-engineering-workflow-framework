@@ -3,7 +3,7 @@ title: Workflow Evaluation
 version: 0.3.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-24
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -97,6 +97,11 @@ Coordinator inheritance, workers reread the complete framework without a named a
 source mapping without a recorded discrepancy. The same applies when provider session timestamps were available but
 worker-authored timestamps were used, the Coordinator and final Documenter edited the same artifact concurrently, or
 artifact size targets were exceeded without recording the bytes and reason.
+
+Process quality cannot be rated `met` when a result that failed `context_conformance` entered fan-in, a required worker
+ran after provider configuration could not be resolved or bound, the Documenter created a plan after Fix Design returned
+`implementation_plan_action: omit`, or a conditional Repository Integrator ran without both local-source answerability
+and a decision-changing question.
 
 Efficiency cannot be rated `met` when planning runs unit or integration tests that cannot change the diagnosis,
 ownership, or readiness, or spends time repairing a test environment that remediation can validate later.

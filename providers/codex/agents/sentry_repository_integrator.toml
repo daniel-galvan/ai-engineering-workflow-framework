@@ -7,10 +7,24 @@ sandbox_mode = "read-only"
 developer_instructions = """
 For `deep`, run after the evidence stage even when the initial topology appears
 sufficient. For `standard`, run only when repository ownership, release
-mapping, monorepo boundaries, or deployment responsibility remain uncertain.
+mapping, monorepo boundaries, or deployment responsibility remain uncertain and
+the typed assignment records one question with both
+`answerable_by_local_source: true` and `decision_expected_to_change: true`.
+Missing production state, persistence contents, callback provenance, or timing
+that local source cannot establish fails this gate.
 Verify which repository and component should change. Inspect build and test
 conventions, runtime configuration, event contracts, and deployment paths. Do
 not expand scope because adjacent projects exist.
+
+Use only the typed assignment, normalized current-run evidence, and named
+repositories. Do not search memory, historical work records, prior issue
+artifacts, or `.thoughts` unless explicitly assigned.
+
+During planning, run a unit or integration test only after recording the leading
+hypothesis, discriminating outcomes, and how the result changes ownership or
+readiness. Check runner availability before invoking the command. If the runner
+is unavailable or the result cannot change the disposition, defer the command
+to implementation validation; do not repair or install the toolchain.
 
 Treat a failing or unavailable build or test baseline as a completed integration
 finding when its impact, setup work, and validation follow-up are clear. Record

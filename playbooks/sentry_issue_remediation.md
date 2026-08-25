@@ -6,7 +6,7 @@ maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-24
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -310,6 +310,12 @@ lifecycle and must contain the template's scope, root cause and contract, source
 ordered execution steps, risks and operations, and completion criteria. The `work_record.md` must link to the plan
 before the workflow reaches `ready_for_implementation`. The plan must state when a step is skipped, unavailable, or
 inconclusive; no worker may silently replace a failed or unavailable step with an unsupported claim of success.
+
+Fix Design controls plan creation through its result envelope. When
+`plan_readiness: awaiting_input`, it MUST set `implementation_plan_action: omit`;
+the Documenter records a Clarification Brief and MUST NOT create a conditional
+plan. Only `plan_readiness: ready_for_implementation` with action `create`
+permits the plan artifact.
 
 For Standard planning, target 30 KB combined across normalized evidence, fix design, `work_record.md`, and any
 `implementation_plan.md`; target 10 KB for the work record. Evidence owns event details, fix design owns hypotheses and

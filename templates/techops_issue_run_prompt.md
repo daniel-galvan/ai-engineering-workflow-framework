@@ -3,7 +3,7 @@ title: TechOps Issue Remediation Run Prompt
 version: 0.3.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-19
+last_updated: 2026-08-24
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/techops_issue_remediation.md
@@ -30,7 +30,7 @@ The selected execution profile is mandatory; do not silently downgrade it.
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
 
-Provider/runtime configuration (optional; omit if unavailable):
+Provider/runtime configuration (required for Codex evaluation runs; otherwise optional):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION>
 
 Continuation (omit this entire section for a new investigation):

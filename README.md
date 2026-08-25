@@ -83,7 +83,8 @@ Users normally make only two execution choices:
 The selected playbook and provider role policy derive workers, skills, tools, models, and reasoning effort. Actual
 model and effort values belong in the worker ledger, not in a first-use run prompt.
 
-Provider configuration is optional and used only when installed and verified.
+Provider configuration is optional for ordinary runs and required for versioned Codex evaluation runs. Use it only
+when installed and verified; otherwise stop the evaluation instead of inheriting unverified worker settings.
 
 The shared rules are in [contracts/workflow_execution.md](contracts/workflow_execution.md). Vocabulary,
 portable-handoff rules, and non-normative execution guidance are linked from that core and loaded only when needed. The
