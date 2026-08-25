@@ -1,7 +1,7 @@
 ---
 
 title: Orchestrator Role
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 category: Coordination
 produces_decisions: true
@@ -214,6 +214,8 @@ maintain and finalize a continuous worker.
   any replacement worker starts.
 * The final handoff includes coordination errors, handoff revisions, metrics validity, wall time, profile,
   worker/instance/activation counts, runtime failures, artifact volume, and per-worker elapsed and wait time.
+* The terminal record retains the required finalization fields and playbook artifact set; canonical state fields agree
+  with the final answer, and post-closure polls are included in coordination errors.
 * The Delivery Activation Barrier is passed before any remediation source change.
 * The Coordinator does not implement, review, or validate in place of delivery workers.
 * Completed worker handles are released and runtime closure is recorded before a run closes or a new lifecycle run

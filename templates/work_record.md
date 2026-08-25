@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-24
@@ -135,8 +135,10 @@ production, or current-main behavior.
 | --- | --- |
 | Concurrent-run decision | Read-only shared revision / Isolated managed worktree / `run_already_active` / Not applicable |
 | Active related run or work item | None / ID and artifact root |
+| Related-run check | Provider-visible tasks and sibling artifact roots; method, RFC 3339 timestamp, and result / Detection unavailable |
 | Durable artifact root | `.thoughts/<WORK-ITEM-ID>/` |
 | Final reconciliation | Pending / Passed / Failed; state, counts, bytes, runtime closure, and metrics agree |
+| Finalization schema | Pending / Passed / Failed; required terminal fields and playbook artifact set are present |
 
 Use the lifecycle, workflow-state, engineering-state, workflow-execution, and task-outcome terms from
 `../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
@@ -304,6 +306,7 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Worker elapsed time | Per worker | Worker Execution Ledger |
 | Worker wait time | Per worker | Worker Execution Ledger |
 | Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries |
+| Post-closure polls | Count | Wait or status calls issued after the corresponding handle was released; included in coordination errors |
 | Handoff revisions | Count | Returns to the final Documenter after its first terminal result |
 | Post-finalization Coordinator edits | Count | Must be zero; direct edits after Documenter terminal are control failures |
 | Metrics status | Valid / Invalid | Timestamp, count, timing, and artifact-byte reconciliation |

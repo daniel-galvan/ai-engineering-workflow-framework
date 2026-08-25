@@ -1,6 +1,6 @@
 ---
 title: Workflow Evaluation
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-24
@@ -67,6 +67,7 @@ run did not expose enough evidence to assess the measure.
 | Handle discrepancies | Count | Returned handles that did not match a later status or wait operation. |
 | Replacement workers | Count | Replacement activations, with the reconciliation evidence and reason. |
 | Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries. |
+| Post-closure polls | Count | Wait or status calls after the corresponding handle was released; included in coordination errors. |
 | Handoff revisions | Count | Returns to the same final Documenter after its first terminal result. |
 | Post-finalization Coordinator edits | Count | Direct Coordinator edits after Documenter terminal; must be zero. |
 | Prompt conformance | Pass / Fail | Canonical template revision and missing or altered required fields. |
@@ -111,6 +112,10 @@ Process quality cannot be rated `met` when a versioned run used a nonconformant 
 established baseline/production/current-main behavior, unassigned memory material entered an artifact or citation, a
 successful Documenter activation was omitted from activation attempts, or the Coordinator edited an artifact after
 Documenter terminal. Invalid metrics must still report every authoritative measurement that is available.
+
+Process quality cannot be rated `met` when the terminal record omits a required finalization field or playbook artifact,
+the final answer substitutes one canonical state field for another, or a post-closure poll is omitted from coordination
+errors.
 
 Efficiency cannot be rated `met` when Evidence and Repository Integration answer the same question without a recorded
 discrepancy, or when Repository Integration runs after normalized evidence already answered its activation question.

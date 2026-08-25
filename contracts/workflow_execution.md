@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -102,6 +102,7 @@ the source of truth.
 | `INV-33` | A final handoff MUST reconcile durable artifact state with fan-in, runtime closure, counts, timing, and task outcome before release. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-34` | A remediation run sharing an execution repository with another active run MUST use an isolated managed worktree and run artifact root. | [Concurrent Run Isolation](#concurrent-run-isolation) |
 | `INV-35` | Every worker activation MUST include a compact value/source/authority manifest for its assigned Input IDs. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
+| `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 
 ---
 
@@ -815,6 +816,11 @@ requires a separate managed worktree and a distinct durable artifact root. A sec
 with `run_already_active` until the prior run's handles and artifact writers are released, or it must use an explicit
 continuation or recovery identity. The Coordinator records the isolation decision before worker activation.
 
+Before recording `None` for an active related run, the Coordinator MUST check available provider tasks and sibling
+work-item artifact roots, then record the method and timestamp. When neither can be checked, record
+`Unknown; detection unavailable`, not `None`. A stale artifact root is not proof of an active writer, and a read-only
+related run need not stop when its revision and artifact root are distinct.
+
 # Stage Completion and Fan-In
 
 A stage that launches multiple workers has a fan-in barrier. The Orchestrator must wait for every required worker to
@@ -890,9 +896,11 @@ Record configured provider model/effort separately from provider-observed values
 telemetry.
 
 `Coordination errors` counts pre-provider command, quoting, routing, ledger, or orchestration failures and retries that
-are not provider spawn failures. `Handoff revisions` counts returns to the same final Documenter after its first
-terminal result. Both counts are zero only when checked. `Metrics status` is `valid` only after timestamp, count, and
-artifact-byte reconciliation passes.
+are not provider spawn failures. A wait or status call issued after the corresponding handle was released is a
+coordination error and MUST also be reported as a `post-closure poll`; do not silently discard it because it happened
+after fan-in. `Handoff revisions` counts returns to the same final Documenter after its first terminal result. These
+counts are zero only when checked. `Metrics status` is `valid` only after timestamp, count, and artifact-byte
+reconciliation passes.
 
 If provider session timestamps or another authoritative timestamp covering the complete user turn are unavailable,
 set `metrics status: invalid`. Never substitute artifact timestamps, a worker-stage subtotal, or an “at least” duration
@@ -948,6 +956,19 @@ provider timestamps, worker handles and outcomes, activation and coordination co
 workflow and task outcomes, displayed hypotheses, internal owner, next-action owner, and completion condition. The
 Documenter formats these values; it does not reconstruct them. After any correction, recompute artifact bytes and
 timing before handoff.
+
+The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
+`engineering_state`, `workflow_execution`, and `task_outcome`; run-isolation decision and related-run check; durable
+artifact paths and required artifact-set disposition; worker activation/timing and result summaries; fan-in and runtime
+closure; metrics validity; displayed hypotheses; ownership; next action; and final reconciliation. Empty explanatory
+sections MAY be omitted. A
+smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
+fails the applicable artifact budget unless the recorded exception is valid.
+
+The final answer MUST copy `state`, `engineering_state`, `workflow_execution`, and `task_outcome` from the reconciled
+record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise substitute
+one vocabulary value for another. The selected playbook's required artifact set is part of reconciliation: an artifact
+count is not sufficient when a required artifact is absent.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It

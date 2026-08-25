@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -88,10 +88,13 @@ Runtime bootstrap:
 - Before worker activation, record the concurrent-run decision. Read-only planning may share a clean revision. When
   another run is active, remediation or any writer requires a separate managed worktree and artifact root. Stop with
   `run_already_active` for the same work item unless this is an explicit continuation or recovery run.
+- Before recording no active related run, check provider-visible active tasks and sibling work-item artifact roots.
+  Record the method and timestamp; when neither is available, record `Unknown; detection unavailable`, not `None`.
 - Every activation packet must include each assigned Input ID's short value, source, authority, and expected use. An ID
   without its value is not a delivered input; reconcile all assigned IDs with `inputs_consumed`.
 - Count every successful worker activation, including the final Documenter. Treat a malformed call rejected before
   activation as a coordination error. Invalid metrics still report every authoritative duration that is available.
+- Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
 - Use provider session start and terminal events for worker timing when available; worker-authored artifact timestamps
   are not provider terminal times.
 - Use RFC 3339 timestamps with `Z` or a numeric offset. Do not invent or normalize malformed provider timestamps; mark
@@ -118,6 +121,9 @@ Runtime bootstrap:
 - Before release, reconcile the final artifact and answer with the runtime ledger. Workflow state, profile status,
   workflow/task outcome, plan action, worker outcomes, active handles, counts, artifact bytes, runtime closure, and
   metrics validity must agree; return stale `pending` or `active` values to the same Documenter for correction.
+- Finalization must retain the contract's required terminal fields and playbook artifact set. Keep `state`,
+  `engineering_state`, `workflow_execution`, and `task_outcome` distinct and copy their exact values to the final
+  answer; matching artifact counts alone do not pass.
 - Use canonical Sentry artifacts: `normalized_evidence.md`, and `clarification_brief.md` when the result is
   `awaiting_input`; create `implementation_plan.md` only when the readiness gate allows it.
 - The fix-design result must set `plan_readiness` and `implementation_plan_action`. `awaiting_input` means `omit` and

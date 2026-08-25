@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -57,6 +57,9 @@ maintenance.
 * Record control-fidelity, elapsed-time, wait-time, and human-intervention evaluation measures.
 * Record coordination errors, handoff revisions, metrics validity, and exact artifact bytes from the Coordinator's
   finalized packet; do not reconstruct timing or counts.
+* Retain the contract's required terminal fields while compacting, validate the playbook's required artifact set, and
+  keep `state`, `engineering_state`, `workflow_execution`, and `task_outcome` distinct.
+* Record the related-run check and post-closure polls from the Coordinator's finalized packet.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.
 * Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook

@@ -40,6 +40,8 @@ authoritative inputs; resolve the durable-artifact root; create the minimal
 work-record skeleton; resolve the evidence-worker configuration; and activate
 it. Candidate-source searches, history searches, tests, Sentry queries, and
 technical diagnosis before activation are control failures.
+Target evidence-worker activation within 60 seconds of turn start. If the target is missed, continue the required graph
+and record the critical-path cause; do not add compensating analysis.
 Before any repository becomes evidence, record its role, declared/resolved
 path, branch, full revision, clean status, Git identity, user-selected ref,
 release mapping, and `evidence_eligibility`. Reject behavior from an undeclared
@@ -49,6 +51,9 @@ planning run may share a revision. When another run is active, remediation or
 any writer requires a separate managed worktree and artifact root. Stop with
 `run_already_active` for the same work item unless this is an explicit
 continuation or recovery run.
+Before recording no active related run, check provider-visible active tasks and sibling work-item artifact roots and
+record the method and RFC 3339 timestamp. If neither can be checked, record `Unknown; detection unavailable`, not
+`None`. Do not treat a stale artifact directory as proof of an active writer.
 
 Resolve each named provider agent definition before activation. Pass its exact
 `model` and `model_reasoning_effort` explicitly when the spawn API otherwise
@@ -115,6 +120,8 @@ time, spawn attempts, discrepancies, and replacements. Use one Documenter handle
 cannot update that worker, activate only one final Documenter after fan-in.
 Count every successful activation, including the final Documenter. Treat a
 malformed call rejected before activation as a coordination error.
+Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
+post-closure poll.
 
 For Sentry planning, activate one final Documenter after analytical fan-in; do
 not satisfy handoff with an initialization acknowledgement. The Coordinator
@@ -124,6 +131,8 @@ Require Fix Design to return `plan_readiness` and
 `implementation_plan_action`. Pass them unchanged to the Documenter:
 `awaiting_input` requires `omit`; only `ready_for_implementation` permits
 `create`.
+After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded
+discrepancy or required conditional gate remains unresolved.
 
 For Standard planning, create only a minimal work-record skeleton before
 analysis and keep the runtime ledger in Coordinator state. Do not progressively
@@ -136,6 +145,8 @@ terminal timestamps, handles and outcomes, activation and coordination counts,
 exact current artifact byte totals, final workflow/task outcomes, displayed
 hypotheses, internal owner, next-action owner, and completion condition to the
 final Documenter as one finalized packet.
+Include the related-run check, post-closure-poll count, required terminal-field checklist, and required artifact-set
+disposition in that packet.
 Use provider session start and terminal events when available; never substitute
 a worker-authored completion timestamp.
 If final verification finds a record or plan inconsistency, return it to that
@@ -149,6 +160,9 @@ outcome, plan action, worker outcomes, active handles, counts, artifact bytes,
 runtime closure, and metrics validity must agree. Return stale `pending` or
 `active` fields to the same Documenter for correction and increment handoff
 revisions. Do not close on a contradictory record.
+Require the terminal record to pass the contract's finalization schema. Compare `state`, `engineering_state`,
+`workflow_execution`, and `task_outcome` as separate canonical values, and copy those exact values into the final
+answer. For `awaiting_input`, require the canonical `clarification_brief.md`; matching counts alone do not pass.
 
 Planning is read-only. An implementation approval received during a planning conversation
 is not remediation re-entry. Remediation requires a new or recorded re-entry,

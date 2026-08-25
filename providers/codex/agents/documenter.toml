@@ -80,6 +80,10 @@ pending` values after the packet says the barrier passed. The final record,
 artifact list, counts, plan action, workflow/task outcome, runtime closure, and
 metrics validity must agree with the final packet. Use RFC 3339 timestamps only;
 do not invent or normalize provider timestamps.
+Retain every terminal field required by the contract even when compacting. Record the related-run check,
+post-closure-poll count, finalization-schema result, and required artifact-set disposition from the finalized packet.
+Copy `state`, `engineering_state`, `workflow_execution`, and `task_outcome` exactly and keep them distinct. Validate the
+required artifact set by name; matching counts alone do not pass finalization.
 Use `partially_solved` when no usable implementation plan exists; reserve `plan_only` for a run that produced one.
 Use engineering state `understood` when behavior, first divergence, and material uncertainty are evidence-backed;
 reserve `unknown` for an unestablished problem or scope.

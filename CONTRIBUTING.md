@@ -1,6 +1,6 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 owner: Engineering
 ---
@@ -66,5 +66,5 @@ template consistency, provider-adapter coverage, and Codex policy/TOML alignment
 
 ## Version policy
 
-All versioned documents remain at `0.3.2` during ordinary pilot evolution. Change a version only when an explicit named
+All versioned documents remain at `0.3.3` during ordinary pilot evolution. Change a version only when an explicit named
 release or version update is requested.

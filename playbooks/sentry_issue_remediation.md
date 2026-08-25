@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -134,6 +134,10 @@ It performs evidence collection, failure analysis, diagnosis, fix design, and wo
 `awaiting_input`, and 15-17 minutes when cross-repository analysis produces a complete implementation plan. If provider
 latency or a worker runtime exceeds the applicable target, record the duration and critical-path cause; do not
 compensate by skipping a required worker or claiming completion early.
+
+For Standard, target evidence-worker activation within 60 seconds of turn start. After Fix Design returns
+`awaiting_input` with `implementation_plan_action: omit`, proceed directly to the final Documenter; do not activate an
+additional technical worker unless a recorded discrepancy or required conditional gate remains unresolved.
 
 The `remediation` lifecycle continues through implementation, review, validation, and stabilization after explicit
 approval.
@@ -605,6 +609,9 @@ For Standard Sentry planning, use these canonical durable artifacts when applica
 - `.thoughts/<SENTRY-ISSUE-ID>/normalized_evidence.md`
 - `.thoughts/<SENTRY-ISSUE-ID>/clarification_brief.md` when the result is `awaiting_input`
 - `.thoughts/<SENTRY-ISSUE-ID>/implementation_plan.md` only when `plan_readiness=ready_for_implementation`
+
+Final reconciliation validates this artifact set by name and disposition. An `awaiting_input` result without
+`clarification_brief.md` fails finalization even when the artifact count and byte total otherwise reconcile.
 
 The handoff must not imply that implementation or validation completed when the workflow stopped at an approval or
 unavailable-environment gate.

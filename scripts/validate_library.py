@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_VERSION = "0.3.2"
+RELEASE_VERSION = "0.3.3"
 MODEL_BASELINE_ID = "codex-role-policy-v0.3.0-01"
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
@@ -493,7 +493,10 @@ if "| Model-policy baseline ID |" not in work_record_template:
 for phrase in (
     "# Run Isolation and Finalization",
     "Concurrent-run decision",
+    "Related-run check",
     "Final reconciliation",
+    "Finalization schema",
+    "Post-closure polls",
     "compact manifest for every assigned Input ID",
     "RFC 3339 timestamps",
 ):
@@ -643,7 +646,14 @@ for phrase in ("do not", "spawn an initialize worker", "captured turn-start"):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing bounded-remediation control: {phrase}")
 
-for phrase in ("coordination errors", "handoff revisions", "metrics status", "report metrics as invalid"):
+for phrase in (
+    "coordination errors",
+    "handoff revisions",
+    "metrics status",
+    "report metrics as invalid",
+    "post-closure poll",
+    "required finalization fields",
+):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing final-metrics control: {phrase}")
 for phrase in (
@@ -665,7 +675,14 @@ for phrase in (
 ):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing conformance gate: {phrase}")
-for phrase in ("coordination errors", "handoff revisions", "metrics validity", "next-action ownership"):
+for phrase in (
+    "coordination errors",
+    "handoff revisions",
+    "metrics validity",
+    "next-action ownership",
+    "required finalization fields",
+    "post-closure polls",
+):
     if phrase not in orchestrator_role.lower():
         fail(f"roles/orchestrator.md is missing final-metrics ownership: {phrase}")
 
@@ -751,6 +768,9 @@ for phrase in (
     "final artifact and answer",
     "All timestamps in the record must be RFC 3339",
     "run_already_active",
+    "post-closure poll",
+    "required terminal-field checklist",
+    "clarification_brief.md",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -839,6 +859,10 @@ for phrase in ("do not delete and recreate", "finish within two minutes", "sole 
 for phrase in ("finalization budgets", "finalized packet", "handoff revisions", "reserve `plan_only`"):
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing final-metrics control: {phrase}")
+
+for phrase in ("finalization-schema result", "post-closure-poll count", "required artifact set by name"):
+    if phrase not in documenter_agent:
+        fail(f"providers/codex/agents/documenter.toml is missing terminal-schema control: {phrase}")
 
 for phrase in ("coordination errors", "handoff revisions", "next-action owner"):
     if phrase not in documenter_role.lower():

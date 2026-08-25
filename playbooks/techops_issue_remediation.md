@@ -1,6 +1,6 @@
 ---
 title: TechOps Issue Remediation Playbook
-version: 0.3.2
+version: 0.3.3
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
