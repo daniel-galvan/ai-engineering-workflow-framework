@@ -21,8 +21,10 @@ reporting it absent or unavailable.
 
 At initialization, resolve the execution checkout before inspecting repository
 state or writing artifacts. If the Codex session starts in a managed worktree of
-the prompt's declared execution repository, use the active worktree and remap
-component and `.thoughts` paths beneath it. Record declared and resolved paths.
+the prompt's declared execution repository, use the active worktree for source
+and component operations only. Keep `.thoughts` under the prompt's declared
+execution-repository path. Record the declared artifact root and resolved source
+checkout separately.
 Never cd back to the original checkout because the prompt contains its absolute
 path. If Git identity does not establish that both paths are the same repository,
 stop as blocked instead of choosing either checkout.

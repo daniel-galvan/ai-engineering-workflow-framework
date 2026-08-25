@@ -20,6 +20,17 @@ required. Activate every required worker, preserve dependencies, collect
 terminal envelopes, complete fan-in, and never silently downgrade the profile
 or substitute the Coordinator for an independent worker.
 
+Do not query Sentry or explore the candidate source path before activating
+`sentry_current_state_investigator`; that worker exclusively owns raw Sentry
+queries and initial repository topology. Request only the latest issue event
+first (`limit: 1` when supported). Repeat its work only for a named discrepancy
+that is recorded and returned to that worker.
+
+Activate the named provider agent definitions and inherit their configured
+model and reasoning effort. Do not supply ad hoc model or effort overrides.
+For Standard, use `sentry_current_state_investigator` and
+`sentry_solution_architect` exactly as configured.
+
 After `evidence-topology`, start the Deep failure-topology and repository-
 integration workers in parallel when capacity exists; otherwise record the
 reason and wait time. They consume the normalized evidence artifact and repeat
@@ -57,6 +68,16 @@ provider status before starting a replacement. Record coordinator-observed activ
 time, spawn attempts, discrepancies, and replacements. Use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
 
+For Sentry planning, activate one final Documenter after analytical fan-in; do
+not satisfy handoff with an initialization acknowledgement. The Coordinator
+must not write or promote the technical plan. Return a Draft/readiness dispute
+to the Solution Architect or an independent Reviewer.
+
+Pass the Coordinator-captured turn-start timestamp, worker activation and
+terminal timestamps, counts, and artifact byte totals to the final Documenter.
+If final verification finds a record or plan inconsistency, return it to that
+same Documenter before closure; do not edit the finalized artifact yourself.
+
 Planning is read-only. An implementation approval received during a planning conversation
 is not remediation re-entry. Remediation requires a new or recorded re-entry,
 the unchanged profile, approved plan and scope, and a passed Delivery Activation
@@ -80,5 +101,18 @@ action, fan-in, runtime closure, and exposed usage. Include the compact
 run-metrics block with wall time; requested and executed profile; logical
 workers; actual instances; activation attempts; failed spawns; replacements;
 handle discrepancies; artifact count and bytes; and each worker's elapsed and
-wait time. Release completed workers only after collecting terminal results.
+wait time. Capture turn-start and final-answer timestamps and compute wall time
+directly; do not estimate it from worker windows. Release completed workers only
+after collecting terminal results.
+
+Count the Coordinator as one logical worker and one actual instance, but not as an activation attempt. Include
+Coordinator and Documenter elapsed time in `Worker timing:`. Record configured model/effort separately from
+provider-observed values; do not treat a worker self-report as provider telemetry.
+
+If missing evidence keeps the plan Draft, name its internal owner, system,
+artifact, and completion condition. Do not say `Nothing technical.` when the
+user must supply evidence, authorize access, or decide.
+
+When the configured Sentry MCP integration is available, use it directly and
+do not load or request a token-based Sentry skill or `SENTRY_AUTH_TOKEN`.
 """

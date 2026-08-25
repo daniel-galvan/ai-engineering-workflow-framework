@@ -37,6 +37,9 @@ The selected execution profile is mandatory; do not silently downgrade it.
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
 
+If the session runs in a managed worktree of this repository, use that worktree for source operations but keep every
+durable `.thoughts/<SENTRY-ISSUE-ID>/` artifact under the declared execution-repository path above.
+
 Provider/runtime configuration (optional; omit if unavailable):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION>
 
@@ -57,6 +60,15 @@ Runtime bootstrap:
   a passed Delivery Activation Barrier before edits.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
   fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
+- Activate named provider agents with their configured model and effort; do not override them in worker activation.
+- For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
+  not satisfy final handoff.
+- The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
+  pre-query Sentry or duplicate that investigation; request only the latest event first (`limit: 1` when supported).
+- Capture the turn-start timestamp before initialization. Count the Coordinator as a logical worker and actual instance,
+  not as an activation attempt, and include Coordinator and Documenter elapsed time in final metrics.
+- If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
+  edit finalized artifacts after that worker returns.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):
@@ -87,6 +99,7 @@ Optional supporting artifacts:
 Integration:
 - Use the playbook's configured Sentry MCP integration.
 - Do not request or use SENTRY_AUTH_TOKEN.
+- Do not load a token-based Sentry skill when the configured MCP integration is available.
 
 Additional run-specific constraints or approvals:
 - For `planning`: no source or external-system changes.

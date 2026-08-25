@@ -125,9 +125,9 @@ The default run uses:
 It performs evidence collection, failure analysis, diagnosis, fix design, and work-record maintenance, then stops at
 `ready_for_implementation`.
 
-`standard` is bounded by its worker graph and evidence rules, not by a wall-clock guarantee. If provider latency or a
-worker runtime makes the run unusually long, record the duration and runtime cause; do not compensate by skipping a
-required worker or claiming completion early.
+`standard` is bounded by its worker graph and evidence rules. Its pilot target is 15-17 minutes for a cross-repository
+planning run. If provider latency or a worker runtime exceeds that target, record the duration and critical-path cause;
+do not compensate by skipping a required worker or claiming completion early.
 
 The `remediation` lifecycle continues through implementation, review, validation, and stabilization after explicit
 approval.
@@ -208,8 +208,8 @@ successful profile execution.
 
 Required worker sets are explicit:
 
-- `standard + planning`: `initialize`, `evidence-topology`, `fix-design`, and continuous `handoff`. The `fix-design`
-  worker performs bounded failure analysis before designing the fix.
+- `standard + planning`: Coordinator initialization, `evidence-topology`, `fix-design`, and one final `handoff` after
+  analytical fan-in. The `fix-design` worker performs bounded failure analysis before designing the fix.
 - `deep + planning`: all standard planning workers plus `failure-topology` and mandatory `repository-integration`.
 - `standard + remediation`: reuse completed standard planning artifacts, then activate `implement`, `review`,
   `validate`, and `handoff` after approval.
@@ -228,7 +228,7 @@ The shared execution contract defines profile execution, fan-in, and no-downgrad
 
 ## Worker Profiles
 
-The standard planning profile has two active analytical roles plus continuous documentation. The Solution Architect
+The standard planning profile has two active analytical roles plus final documentation. The Solution Architect
 performs bounded failure analysis and fix design in that profile. Deep adds an independent Failure Topology Analyst and
 mandatory Repository Integrator. Repository Integrator remains conditional for standard.
 
@@ -242,7 +242,7 @@ mandatory Repository Integrator. Repository Integrator remains conditional for s
 | `implement`              | `implementer`                | delivery      | standard       | `failure_diagnosis`, `build_and_test`                                                                                 | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write`                           | Approval plus `fix-design`                                                 |
 | `review`                 | `reviewer`                   | review        | standard       | `architecture_mapping`, `build_and_test`, `operational_readiness`                                                     | `repository_read`, `diff_review`, `test_run`, `artifact_write`                                                | `implement`                                                                |
 | `validate`               | `tester`                     | review        | standard       | `build_and_test`, `operational_readiness`                                                                             | `build_run`, `test_run`, `runtime_observe`, `artifact_write`                                                  | `review`                                                                   |
-| `handoff`                | `documenter`                 | stabilization | quick          | `work_record_maintenance`                                                                                             | `work_record_read`, `work_record_write`, `artifact_write`                                                     | Continuous; initialized first                                              |
+| `handoff`                | `documenter`                 | stabilization | quick          | `work_record_maintenance`                                                                                             | `work_record_read`, `work_record_write`, `artifact_write`                                                     | Required once after analytical fan-in                                      |
 
 The delivery profile is `implement` ↔ `review` → `validate`. No additional discovery workers are started after approval
 unless new evidence contradicts the diagnosis or expands the approved scope.
@@ -250,7 +250,8 @@ unless new evidence contradicts the diagnosis or expands the approved scope.
 This delivery sequence is valid only inside an explicitly activated `remediation` run. The presence of an existing
 `implementation_plan.md` is not evidence that remediation workers ran in the current run.
 
-The Documenter runs continuously and records provider-reported model, effort, usage, and credits when available.
+Activate one final Documenter after analytical fan-in. An initialization acknowledgement is not a final handoff. The
+Documenter records provider-reported model, effort, usage, and credits when available.
 
 When workers run in parallel, the Orchestrator follows the shared contract's fan-in semantics: it waits for all required
 workers, collects their result envelopes, and summarizes them before the stage or workflow can finish. Active worker
@@ -270,6 +271,9 @@ For `deep`, start `failure-topology` and `repository-integration` in parallel af
 the normalized evidence artifact and repeat raw queries only for a recorded discrepancy.
 
 Provider-specific model, effort, and agent mappings are supplied by the selected provider adapter.
+
+The Orchestrator MUST activate the provider's named agent definitions without ad hoc model or reasoning-effort
+overrides. Record the configured and observed values; a mismatch is a control failure, not an adaptive escalation.
 
 ## Effort Escalation
 
@@ -301,6 +305,12 @@ ordered execution steps, risks and operations, and completion criteria. The `wor
 before the workflow reaches `ready_for_implementation`. The plan must state when a step is skipped, unavailable, or
 inconclusive; no worker may silently replace a failed or unavailable step with an unsupported claim of success.
 
+For Standard planning, target 30 KB combined across normalized evidence, fix design, `work_record.md`, and any
+`implementation_plan.md`; target 10 KB for the work record. Evidence owns event details, fix design owns hypotheses and
+the proposed boundary, the work record owns decisions and execution state, and the plan owns only the selected change,
+gates, and validation. Reference material instead of repeating it; preserve required evidence if the target must be
+exceeded and record why.
+
 ## Execution Flow
 
 ### Stage 0 — Initialize
@@ -309,8 +319,9 @@ The active Orchestrator runs first. It may be the current main session or a prov
 worker-delegation capability. A provider coordinator child must not be used when the runtime does not support nested
 delegation; in that case, the current main session owns the worker fan-out directly.
 
-The Orchestrator creates the work record, selects the execution profile and lifecycle, declares worker dependencies, and
-starts the continuous Documenter. It records `profile_status: requested` before spawning the first investigation worker.
+The Orchestrator creates the work record, selects the execution profile and lifecycle, declares worker dependencies,
+and records `profile_status: requested` before spawning the first investigation worker. It activates one final
+Documenter only after analytical fan-in.
 
 Use the prompt's declared `Execution repository` as the durable-artifact root. Code repositories listed for Sentry
 investigation must not receive the work record or worker artifacts.
@@ -333,7 +344,9 @@ Record the repository/event topology and any optional supporting artifacts.
 
 ### Stage 1 — Collect Sentry Evidence
 
-The `evidence-topology` worker owns raw Sentry queries for the run. Use MCP to inspect the issue and latest event first.
+The `evidence-topology` worker exclusively owns raw Sentry queries and initial repository topology for the run. The
+Orchestrator does not pre-query Sentry or duplicate repository exploration. Use MCP to inspect the issue and request
+only the latest event first (`limit: 1` when supported).
 Capture:
 
 - issue title, status, priority, occurrence count, and latest event;
@@ -477,6 +490,10 @@ status is a separate human-approved action through the MCP integration.
 | Validation ready     | Review findings are resolved or accepted                               |
 | Handoff ready        | Validation, rollout, monitoring, ownership, and follow-up are explicit |
 
+`Implementation ready` requires an evidence-supported owning boundary and intended change. When missing same-item,
+runtime, or contract evidence could select among different causes, repositories, or fixes, keep the plan `Draft` and
+return a Clarification Brief. Do not promote a plan merely because evidence collection can be written as step 1.
+
 ## Success Criteria
 
 The workflow succeeds when:
@@ -511,6 +528,9 @@ The final handoff is ordered as follows:
 Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
 `What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
 For a retryable worker runtime failure, `To continue` should give the exact request: `Retry the planning run.`
+
+When missing evidence keeps the plan Draft, name the internal owner, system, artifact, and completion condition. Do not
+say `Nothing technical.` if the user must supply evidence, authorize access, or make a decision.
 
 The handoff must not imply that implementation or validation completed when the workflow stopped at an approval or
 unavailable-environment gate.

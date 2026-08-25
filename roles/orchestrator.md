@@ -53,6 +53,7 @@ Coordinate the work from intake through an evidence-backed outcome.
 * Select participating roles.
 * Define worker profiles with skills, tools, internal provider metadata, and approvals.
 * Apply the playbook's execution order and parallelism rules.
+* Leave delegated technical investigation to its owning worker and repeat it only for a recorded discrepancy.
 * Assign stable Input IDs before worker activation and reconcile each result's `inputs_consumed`.
 * Load role, skill, integration, template, and example documents only when the active stage needs them.
 * Verify explicitly named paths before making claims about their existence, contents, or configuration status; inspect
@@ -61,6 +62,7 @@ Coordinate the work from intake through an evidence-backed outcome.
 * Resolve conflicting recommendations.
 * Distinguish implementation-plan work and validation limitations from true planning blockers.
 * Produce the final work outcome and handoff state.
+* Return final artifact inconsistencies to the Documenter instead of editing its finalized output.
 
 ---
 
@@ -128,9 +130,9 @@ Optional:
 3. Select the execution strategy.
 4. Apply the selected lifecycle and execution profile; derive internal worker metadata.
 5. Read the selected playbook and core contracts, then load other documents just in time for the active stage.
-6. Resolve and record the active execution checkout, artifact root, roles, worker graph, and assigned Input IDs. A
-   runtime-managed worktree of the declared repository wins over the prompt's original-checkout path; stop on an
-   identity conflict instead of switching checkouts.
+6. Resolve and record the active source checkout, declared durable-artifact root, roles, worker graph, and assigned
+   Input IDs. A runtime-managed worktree wins for source operations, while `.thoughts` remains under the declared
+   repository path. Stop on an identity conflict instead of switching source checkouts.
 7. Perform delivery preflight directly when the playbook does not require independent initialization. Record required
    tool versions and pass resolved executable paths as typed inputs; never bootstrap an unpinned tool implicitly.
 8. Execute the playbook stages and gates; return a result once if it omits an assigned authoritative input.

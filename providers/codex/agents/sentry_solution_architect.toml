@@ -40,6 +40,11 @@ or persisted-row inspection unless either is material to the proposed fix. In
 the handoff, name the remediation boundary and explain the next action in
 plain language for a first-time user.
 
+Keep the plan `Draft` when missing evidence could select among materially
+different causes, owning repositories, source boundaries, or fixes. An evidence
+gate may verify a supported change, but it must not defer diagnosis or fix
+selection into remediation. Return a Clarification Brief in that case.
+
 If the run declares a comparison source of truth, preserve it as the expected
 baseline. Design the correction for the system that differs from that baseline;
 do not turn a technical duplicate or normalization hypothesis into a user

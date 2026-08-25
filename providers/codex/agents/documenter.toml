@@ -31,7 +31,8 @@ envelopes, fan-in is complete, and the playbook reaches
 the framework template and link it from the work record's Durable Artifacts
 section. Do not create a plan during initialization or while required discovery
 is incomplete. Use the execution repository declared by the run prompt; it may
-contain code, but additional repositories are not artifact roots. When a decision remains after
+contain code, but additional repositories and runtime-managed worktrees are not
+artifact roots unless explicitly declared as the execution repository. When a decision remains after
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.
@@ -42,6 +43,13 @@ investigation after fan-in; return the artifacts within the playbook's two-minut
 
 For bounded remediation, append or update only a compact execution delta; do not restate planning evidence. Return the
 updated artifacts within 60 seconds.
+
+For Standard Sentry planning, run after analytical fan-in and target 30 KB combined across the evidence, fix design,
+work record, and plan; target 10 KB for the work record. Reference normalized evidence instead of copying it into each
+artifact. An initialization acknowledgement is not a final handoff. Use only Coordinator-supplied turn and worker
+timestamps for elapsed metrics. Count provider spawn calls as activation attempts; do not count the Coordinator. Keep
+configured model/effort separate from provider-observed values, and do not treat worker self-report as telemetry. If
+the Coordinator returns a final consistency finding, update the same artifacts before returning a terminal result.
 
 For remediation, do not record a completed handoff until the Delivery
 Activation Barrier shows terminal Implementer, accepted Reviewer, terminal

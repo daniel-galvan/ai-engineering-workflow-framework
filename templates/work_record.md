@@ -108,7 +108,6 @@ An empty filtered search is not evidence that a path is absent.
 | Internal depth | `quick` / `standard` / `deep`; not a run input |
 | State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |
 | Engineering state | `unknown` / `understood` / `designed` / `approved` / `implemented` / `validated` / `released` / `stabilized` / `not_applicable` |
-| Outcome | `in_progress` / `completed` / `closed_no_action` / `closed_duplicate` / `closed_not_a_bug` / `deferred` / `blocked` |
 | Workflow execution | `completed` / `incomplete` / `blocked`; process result, not engineering correctness |
 | Task outcome | `solved` / `partially_solved` / `plan_only` / `blocked` / `incorrect` |
 | Current stage | |
@@ -116,7 +115,10 @@ An empty filtered search is not evidence that a path is absent.
 | User action | What the user needs to do, or `Nothing technical.` |
 | Next action | |
 
-Use the lifecycle, workflow-state, engineering-state, and outcome terms from `../contracts/workflow_execution.md`.
+Use the lifecycle, workflow-state, engineering-state, workflow-execution, and task-outcome terms from
+`../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
+`awaiting_input`, workflow execution `completed`, and task outcome `plan_only` or `partially_solved`; it is not
+`blocked`.
 
 # Durable Artifacts
 
@@ -140,19 +142,20 @@ implementation plan when affected files, intended changes, validation, owner, ro
 # Worker Execution Ledger
 
 `Mode`, `Worker depth`, and `Capacity classification` are internal audit metadata. The user-facing run choices are
-Lifecycle and Profile. Actual model and effort are observed provider values, not requested global settings.
+Lifecycle and Profile. Keep configured model and effort separate from provider-observed values.
 
 Record every worker or subagent that materially contributes to the work.
 
-| Worker | Role | Assigned inputs | Mode | Depth | Skills | Tools | Capacity | Model/effort | Elapsed | Wait | Usage | Depends on | Outcome | Confidence |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | IN-### | | | | | | | | | | | | |
+| Worker | Role | Assigned inputs | Mode | Depth | Skills | Tools | Capacity | Configured model/effort | Provider-observed model/effort | Elapsed | Wait | Usage | Depends on | Outcome | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | IN-### | | | | | | | | | | | | | |
 
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
 never estimate credit consumption.
 
 Coordinator-observed activation, start, terminal, and elapsed timestamps are required even when provider timing is not
 available. Use activation as start and `Unavailable` for provider queue time when the runtime exposes no separate value.
+A worker's self-reported model or effort may be noted, but it does not replace provider-observed telemetry.
 
 | Worker | Provider handle | Activated | Started | Terminal | Elapsed | Queue / dependency wait | Spawn attempts | Replacement or duplicate reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

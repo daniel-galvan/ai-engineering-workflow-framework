@@ -77,6 +77,15 @@ Process quality and Efficiency also cannot be rated `met` when reported wall tim
 time, is reconstructed from worker-stage estimates instead of turn timestamps, or when a worker's activation and
 terminal times were observable but recorded as `Unknown` or `Unavailable`.
 
+Process quality cannot be rated `met` when the Coordinator changes a technical worker's diagnosis, remediation
+boundary, or readiness disposition without returning it for technical review, or when a handoff worker completed before
+final fan-in and was not updated afterward.
+
+Process quality and Efficiency cannot be rated `met` when the Coordinator duplicates delegated technical
+investigation, counts itself as a worker activation attempt, omits its own or the Documenter's timing, or edits a final
+Documenter artifact instead of returning the inconsistency. Process quality also cannot be `met` when
+`awaiting_input` after completed fan-in is reported as a blocked workflow or task outcome.
+
 A duplicate plan has the same affected files, intended changes, validation, owner, rollout, and rollback as another
 plan. Different vulnerability identifiers, rules, functions, reachability, or risk do not by themselves require
 different remediation plans.

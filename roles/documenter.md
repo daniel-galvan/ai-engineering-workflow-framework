@@ -208,8 +208,9 @@ Create the implementation plan only after required planning workers complete, fa
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The execution repository comes from the canonical run prompt and may itself contain code. Additional repositories are
-not artifact roots. The work record links to the plan before the workflow is marked `ready_for_implementation`.
+The execution repository comes from the canonical run prompt and may itself contain code. Additional repositories and
+runtime-managed worktrees are not artifact roots unless explicitly declared as the execution repository. The work record
+links to the plan before the workflow is marked `ready_for_implementation`.
 
 ---
 
@@ -261,6 +262,10 @@ The Documenter is complete when:
   15 KB combined; evidence is never deleted merely to meet the target.
 * For bounded remediation, update the existing artifacts with a compact execution delta instead of restating planning
   evidence, targeting completion within 60 seconds.
+* For Standard Sentry planning, run after analytical fan-in and target 30 KB combined across evidence, fix design, work
+  record, and plan, with a 10 KB work-record target. Reference evidence instead of copying it into every artifact.
+* Resolve final consistency findings returned by the Coordinator before terminal handoff; the Coordinator does not edit
+  the finalized artifacts.
 * Handoff information is complete.
 * Another engineer can continue without reconstructing context.
 * A remediation handoff records terminal Implementer, accepted Reviewer, terminal Tester, fan-in, and runtime closure.

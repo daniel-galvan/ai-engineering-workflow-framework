@@ -557,7 +557,7 @@ for phrase in (
     "pilot soft target is 10 minutes end to end",
     "combined pilot target is 15 KB",
     "checkout is not the execution repository",
-    "Do not change back to the original checkout",
+    "not change source operations back to the original checkout",
     "identifier equality during fan-in",
     "6-8 minutes end to end",
     "Do not call a failure `pre-existing`",
@@ -581,8 +581,10 @@ for phrase in (
     "worker-stage subtotal as run wall time",
     "The execution repository may itself contain code",
     "Never infer the framework checkout as the",
-    "resolved execution-checkout path",
+    "resolved source-checkout path",
     "MUST NOT override an equivalent active worktree",
+    "Durable artifacts MUST remain under the",
+    "never under an ephemeral managed-worktree path",
     "MUST NOT reconstruct wall time",
     "missing tool does not authorize downloading",
 ):
@@ -629,6 +631,83 @@ for text, label in (
 sentry_playbook = (ROOT / "playbooks" / "sentry_issue_remediation.md").read_text()
 if "requested profile is immutable for the run" not in sentry_playbook:
     fail("playbooks/sentry_issue_remediation.md is missing immutable-profile control")
+for phrase in (
+    "pilot target is 15-17 minutes",
+    "one final `handoff` after",
+    "initialization acknowledgement is not a final handoff",
+    "named agent definitions without ad hoc model",
+    "target 30 KB combined",
+    "target 10 KB for the work record",
+    "exclusively owns raw Sentry queries",
+    "`limit: 1` when supported",
+    "keep the plan `Draft`",
+):
+    if phrase not in sentry_playbook:
+        fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
+
+sentry_orchestrator = (CODEX_AGENT_DIR / "sentry_orchestrator.toml").read_text()
+for phrase in (
+    "Do not supply ad hoc model or effort overrides",
+    "one final Documenter after analytical fan-in",
+    "must not write or promote the technical plan",
+    "compute wall time",
+    "token-based Sentry skill",
+    "Do not say `Nothing technical.`",
+    "Do not query Sentry",
+    "not as an activation attempt",
+    "same Documenter before closure",
+):
+    if phrase not in sentry_orchestrator:
+        fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
+
+sentry_architect = (CODEX_AGENT_DIR / "sentry_solution_architect.toml").read_text()
+if "Keep the plan `Draft`" not in sentry_architect:
+    fail("providers/codex/agents/sentry_solution_architect.toml is missing readiness ownership")
+
+sentry_prompt = (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text()
+for phrase in (
+    "configured model and effort",
+    "initialization acknowledgement",
+    "token-based Sentry skill",
+    "under the declared execution-repository path",
+    "evidence worker exclusively owns raw Sentry queries",
+    "not as an activation attempt",
+    "same Documenter",
+):
+    if phrase not in sentry_prompt:
+        fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
+
+for text, label in (
+    (documenter_role, "roles/documenter.md"),
+    (documenter_agent, "providers/codex/agents/documenter.toml"),
+):
+    if "Standard Sentry planning" not in text or "30 KB combined" not in text or "10 KB" not in text:
+        fail(f"{label} is missing Standard Sentry artifact control")
+    if "runtime-managed worktrees are not" not in text or "artifact roots unless" not in text:
+        fail(f"{label} is missing durable artifact-root control")
+
+for phrase in (
+    "MUST NOT change a technical worker's diagnosis",
+    "mutually conditional candidate files",
+    "owning technical worker MUST perform the assigned investigation",
+    "counts provider worker spawn calls only",
+    "final Documenter owns the finalized work record",
+    "Do not add a second generic outcome field",
+):
+    if phrase not in workflow_contract:
+        fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")
+
+if "Coordinator changes a technical worker's diagnosis" not in workflow_evaluation:
+    fail("frameworks/workflow_evaluation.md is missing coordinator-authority evaluation")
+for phrase in ("duplicates delegated technical", "counts itself as a worker activation attempt", "reported as a blocked workflow"):
+    if phrase not in workflow_evaluation:
+        fail(f"frameworks/workflow_evaluation.md is missing run-quality control: {phrase}")
+
+if "| Outcome | `in_progress`" in work_record_template:
+    fail("templates/work_record.md must not duplicate workflow execution and task outcome with a generic outcome field")
+for phrase in ("Configured model/effort", "Provider-observed model/effort", "self-reported model"):
+    if phrase not in work_record_template:
+        fail(f"templates/work_record.md is missing model-observation distinction: {phrase}")
 for phrase in (
     "initial hypothesis: an experimental baseline",
     "Orchestrator | `gpt-5.6-terra` | Medium | `medium`",

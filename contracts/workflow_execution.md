@@ -88,7 +88,8 @@ the source of truth.
 | `INV-27` | Initialization MUST load only the selected playbook and core contracts; other framework documents are loaded only when needed. | [Document Classification](#document-classification) |
 | `INV-28` | Assigned worker inputs MUST be reconciled with `inputs_consumed` before accepting the result. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 | `INV-29` | Ready independent workers MUST run in parallel when runtime capacity exists; duplicate investigation requires a recorded discrepancy. | [Parallelism Semantics](#parallelism-semantics) |
-| `INV-30` | When the runtime starts in a managed worktree of the declared execution repository, that worktree MUST be the resolved execution checkout for the run. | [Durable Artifact Root](#durable-artifact-root) |
+| `INV-30` | A managed worktree of the declared repository MUST be the source checkout, while durable artifacts remain under the declared repository path. | [Durable Artifact Root](#durable-artifact-root) |
+| `INV-31` | After delegation, the owning technical worker MUST perform the assigned investigation; the Coordinator may repeat it only for a recorded discrepancy. | [Stage Completion and Fan-In](#stage-completion-and-fan-in) |
 
 ---
 
@@ -448,6 +449,15 @@ scope, validation strategy, risks, and explicit prerequisites. It does not requi
 available local tooling, provisioned infrastructure, or release approval. Implementation approval remains the gate for
 performing those steps.
 
+A prerequisite may verify an already supported change, but it MUST NOT be used to defer diagnosis or fix selection into
+remediation. If missing evidence could select among materially different causes, owning repositories, source boundaries,
+or fixes, the plan remains `draft` and the workflow returns a Clarification Brief. `ready_for_implementation` requires
+an evidence-supported remediation boundary and intended change; a list of mutually conditional candidate files is not
+a feasible implementation scope.
+
+The Coordinator may reconcile envelopes and enforce gates, but MUST NOT change a technical worker's diagnosis, proposed
+boundary, or plan-readiness disposition. Return a disputed result to the owning worker or an independent Reviewer.
+
 ## Production-Parity Prioritization
 
 When a production symptom is reproduced locally with supplied production input
@@ -690,19 +700,21 @@ The `work_record.md`, worker artifacts, and any implementation plan belong there
 investigation are not artifact roots. The execution repository may itself contain code. A worker must not choose an
 artifact root merely because a repository is suspected or appears first in the topology.
 
-The prompt path identifies the intended repository, not permission to leave an active runtime-managed worktree. During
-initialization, resolve the execution checkout before any repository inspection or artifact write:
+The prompt path identifies both the intended repository and its durable-artifact root. During initialization, resolve a
+separate source checkout before repository inspection:
 
 * if the runtime starts inside a Git worktree of the declared execution repository, use that active worktree as the
-  execution checkout and remap component and `.thoughts` paths beneath it;
+  source checkout and remap source/component paths beneath it;
 * verify equivalence from Git identity, such as the shared common Git directory or matching canonical remote, rather
   than path text alone;
-* record both the declared repository path and resolved execution-checkout path; and
+* record the declared durable-artifact root and resolved source-checkout path separately; and
 * if the paths refer to different repositories or equivalence cannot be established, stop with `blocked` instead of
   changing directories to the declared path.
 
-Branch and revision evidence, scope checks, worker commands, and durable artifacts MUST come from the resolved execution
-checkout. A prompt's absolute component or artifact path MUST NOT override an equivalent active worktree.
+Branch and revision evidence, scope checks, and source commands MUST come from the resolved source checkout. A prompt's
+absolute source/component path MUST NOT override an equivalent active worktree. Durable artifacts MUST remain under the
+prompt's declared execution repository, never under an ephemeral managed-worktree path unless that exact worktree was
+explicitly declared as the execution repository.
 
 For a bounded dependency route, the execution repository is the in-scope repository that owns the affected dependency
 artifact unless the user explicitly selects a separate record repository. Never infer the framework checkout as the
@@ -741,6 +753,10 @@ The Orchestrator must preserve each worker's result, error, blocker, and usage m
 in the durable work record; distinguish all worker outcomes; and keep the parent workflow `in_progress` while any
 required worker is still active.
 
+After activating a technical worker, the Coordinator MUST NOT perform that worker's repository, runtime, issue-system,
+or evidence investigation. It may perform minimal initialization and verify the returned artifact, and may repeat a
+technical check only when a named discrepancy is recorded and returned to the owning worker.
+
 The final workflow handoff contains both a shared outcome summary and a compact worker-result ledger. The shared summary
 answers what should happen next. The worker ledger makes each contribution, outcome, limitation, and usage visible
 without requiring the reader to reconstruct parallel execution from logs.
@@ -764,6 +780,11 @@ recorded. It does not prove the diagnosis, implementation, or release was correc
 the engineering work item: a plan can be produced while the task remains unsolved, and a completed workflow can reveal a
 wrong direction.
 
+When analytical fan-in and runtime closure complete but the run needs a decision or evidence, use state
+`awaiting_input`, `Workflow execution: completed`, and `Task outcome: plan_only` or `partially_solved`. Use
+`Task outcome: blocked` only when an environment, permission, runtime, or indispensable-evidence failure prevented the
+selected workflow from completing. Do not add a second generic outcome field that contradicts these values.
+
 The handoff must explain internal runtime terms such as `fan-in`, terminal worker envelope, and runtime closure in
 ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
 the agent runtime. If the user does not need to change code, configuration, or environment, say so explicitly. If the
@@ -780,6 +801,12 @@ Worker timing: <worker: elapsed / wait, ...>
 Provider token or credit usage remains optional when unavailable. Coordinator-observed wall time, worker elapsed time,
 instance counts, and activation outcomes MUST NOT be omitted or reported as `Unknown`.
 
+`Logical workers` includes the Coordinator and each required or conditionally activated role. `Actual instances`
+includes the Coordinator plus every provider worker instance that materially contributed. `Activation attempts`
+counts provider worker spawn calls only; it excludes the already-running Coordinator. Worker timing MUST include the
+Coordinator and final Documenter as well as technical workers. Record configured provider model/effort separately from
+provider-observed values; a worker's self-report is not provider telemetry.
+
 Wall time starts when the user turn starts and ends when the final answer is produced. It includes initialization,
 Coordinator work, worker execution and waits, documentation, runtime closure, and final verification. Do not report a
 worker-stage subtotal as run wall time. Worker activation and terminal timestamps come from the Coordinator's own clock
@@ -788,6 +815,10 @@ when the provider exposes no telemetry.
 The Coordinator MUST capture the run start timestamp at turn entry and compute final wall time directly from that start
 and the final-answer timestamp. It MUST NOT reconstruct wall time by adding worker durations or estimating stage
 windows.
+
+The final Documenter owns the finalized work record and implementation plan. If verification finds an inconsistency,
+the Coordinator MUST return it to that same Documenter before closure; the Coordinator MUST NOT edit a finalized
+Documenter artifact after its terminal result.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It
