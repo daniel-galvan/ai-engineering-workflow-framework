@@ -66,6 +66,8 @@ run did not expose enough evidence to assess the measure.
 | Failed spawns | Count | Worker activations rejected before a handle was returned. |
 | Handle discrepancies | Count | Returned handles that did not match a later status or wait operation. |
 | Replacement workers | Count | Replacement activations, with the reconciliation evidence and reason. |
+| Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries. |
+| Handoff revisions | Count | Returns to the same final Documenter after its first terminal result. |
 | Artifact volume | Count and bytes | Durable artifacts produced by the run. |
 | Finding-to-plan ratio | Findings / change sets / plans | Whether distinct findings produced shared or duplicate remediation plans. |
 
@@ -76,6 +78,10 @@ than treating unavailable provider telemetry as the reason.
 Process quality and Efficiency also cannot be rated `met` when reported wall time omits Coordinator or documentation
 time, is reconstructed from worker-stage estimates instead of turn timestamps, or when a worker's activation and
 terminal times were observable but recorded as `Unknown` or `Unavailable`.
+
+When the turn-start timestamp is missing and no provider timestamp covers the complete turn, required metrics are
+`invalid`. A shortened stage window must not be reported as wall time, and the run cannot claim metrics or process
+conformance. Artifact bytes must be recomputed after the final handoff revision.
 
 Process quality cannot be rated `met` when the Coordinator changes a technical worker's diagnosis, remediation
 boundary, or readiness disposition without returning it for technical review, or when a handoff worker completed before
@@ -94,6 +100,9 @@ artifact size targets were exceeded without recording the bytes and reason.
 
 Efficiency cannot be rated `met` when planning runs unit or integration tests that cannot change the diagnosis,
 ownership, or readiness, or spends time repairing a test environment that remediation can validate later.
+
+Process quality cannot be rated `met` when `plan_only` is reported without a usable implementation plan, or when the
+named next-action owner cannot access or perform the requested action.
 
 A duplicate plan has the same affected files, intended changes, validation, owner, rollout, and rollback as another
 plan. Different vulnerability identifiers, rules, functions, reachability, or risk do not by themselves require

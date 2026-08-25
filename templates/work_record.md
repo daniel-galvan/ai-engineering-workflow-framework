@@ -112,14 +112,15 @@ An empty filtered search is not evidence that a path is absent.
 | Workflow execution | `completed` / `incomplete` / `blocked`; process result, not engineering correctness |
 | Task outcome | `solved` / `partially_solved` / `plan_only` / `blocked` / `incorrect` |
 | Current stage | |
-| Internal owner | Person, team, worker, or runtime responsible for the current state |
+| Internal owner | Person, team, worker, or runtime responsible for the workflow state |
+| Next-action owner | Person, team, worker, or operator able to complete the next action |
 | User action | What the user needs to do, or `Nothing technical.` |
 | Next action | |
 
 Use the lifecycle, workflow-state, engineering-state, workflow-execution, and task-outcome terms from
 `../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
-`awaiting_input`, workflow execution `completed`, and task outcome `plan_only` or `partially_solved`; it is not
-`blocked`.
+`awaiting_input`, workflow execution `completed`, and task outcome `partially_solved`; it is not `blocked`. Use
+`plan_only` only when the run produced a usable implementation plan.
 
 # Durable Artifacts
 
@@ -276,6 +277,9 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Unapproved plan deviations | Count | |
 | Worker elapsed time | Per worker | Worker Execution Ledger |
 | Worker wait time | Per worker | Worker Execution Ledger |
+| Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries |
+| Handoff revisions | Count | Returns to the final Documenter after its first terminal result |
+| Metrics status | Valid / Invalid | Timestamp, count, timing, and artifact-byte reconciliation |
 
 | Dimension | Rating | Evidence / notes |
 | --- | --- | --- |

@@ -12,6 +12,10 @@ work, and document alternatives, risks, gates, and validation. Link material
 recommendations to evidence and claims, record confidence and uncertainties,
 and link implementation actions to their decisions.
 
+Use only the typed assignment, supplied artifacts, and explicitly referenced
+context. Do not search memory or historical work records that the current run
+did not assign.
+
 Before requesting clarification or returning `needs_input` or `blocked`, read
 all supplied context and supporting artifacts. Execute the smallest safe local
 or repository check that can narrow the cause. Return the inputs consumed,
@@ -21,6 +25,11 @@ check and result in `checks_performed`, unavailable checks in
 next action. A simple issue needs one supported hypothesis; record alternatives
 when the evidence supports more than one credible explanation. Do not return a
 generic request for more information or defer a runnable local check.
+
+During planning, run a unit or integration test only when its result can change
+the diagnosis, owning boundary, or readiness. Record the hypothesis,
+discriminating outcomes, disposition change, and runner availability first;
+otherwise defer the test to the implementation plan.
 
 During planning, convert expected implementation, dependency, test, environment,
 operations, and validation work into ordered implementation-plan steps. Do not

@@ -55,6 +55,8 @@ maintenance.
   assignment, and consumption status.
 * Record the active model-policy baseline ID and actual worker model and effort.
 * Record control-fidelity, elapsed-time, wait-time, and human-intervention evaluation measures.
+* Record coordination errors, handoff revisions, metrics validity, and exact artifact bytes from the Coordinator's
+  finalized packet; do not reconstruct timing or counts.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.
 * Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook
@@ -67,6 +69,8 @@ maintenance.
 * Maintain the decision log.
 * Record open questions and follow-up work.
 * Prepare the final work summary.
+* Distinguish the internal workflow owner from the next-action owner who can perform the requested evidence or
+  engineering action.
 
 ---
 
@@ -230,6 +234,7 @@ Include:
 * What happened, in plain language
 * What this means
 * Internal owner
+* Next-action owner
 * What the user needs to do, or `Nothing technical.`
 * Exact continuation request, when applicable
 * Confidence level

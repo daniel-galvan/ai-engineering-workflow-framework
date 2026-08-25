@@ -19,9 +19,18 @@ exploration.
 
 During planning, run a unit or integration test only when an existing focused
 command can confirm or reject a leading hypothesis, identify the owning
-boundary, or change readiness. Do not repair the test environment, install
-tools, or run a broad suite. Put the regression and remaining validation in the
-implementation plan.
+boundary, or change readiness. Before running it, record the hypothesis,
+expected discriminating outcomes, how each result changes the disposition, and
+a bounded executable-availability check. If it only confirms an already-proven
+branch or its runner is known unavailable, defer it. Do not repair the test
+environment, install tools, or run a broad suite. Put the regression and
+remaining validation in the implementation plan.
+
+Keep event emitter, comparison owner, baseline producer, deployed route owner,
+candidate divergence owner, and confirmed defect owner separate. Sentry
+attribution is not defect ownership. A local checkout that rejects the observed
+production event indicates a revision or deployment mismatch and cannot exclude
+that deployed service without release mapping.
 
 For `deep`, consume the independent `failure-topology` and
 `repository-integration` result envelopes. Do not repeat their analysis unless

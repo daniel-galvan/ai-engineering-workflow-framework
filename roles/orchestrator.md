@@ -212,8 +212,8 @@ maintain and finalize a continuous worker.
 * Exact provider-returned handles and coordinator-observed activation, terminal, and elapsed timestamps are recorded.
 * A `not_found` handle is reconciled against the activation ledger, spawn result, artifacts, and provider status before
   any replacement worker starts.
-* The final handoff includes wall time, profile, worker/instance/activation counts, runtime failures, artifact volume,
-  and per-worker elapsed and wait time.
+* The final handoff includes coordination errors, handoff revisions, metrics validity, wall time, profile,
+  worker/instance/activation counts, runtime failures, artifact volume, and per-worker elapsed and wait time.
 * The Delivery Activation Barrier is passed before any remediation source change.
 * The Coordinator does not implement, review, or validate in place of delivery workers.
 * Completed worker handles are released and runtime closure is recorded before a run closes or a new lifecycle run
@@ -223,7 +223,7 @@ maintain and finalize a continuous worker.
 * Workflow completed or explicitly closed with another outcome.
 * Deliverables reviewed.
 * Evidence and decisions documented.
-* Next action and ownership explicitly stated.
+* Internal workflow ownership and next-action ownership explicitly stated.
 
 ---
 

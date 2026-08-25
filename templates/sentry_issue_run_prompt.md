@@ -12,6 +12,9 @@ depends_on:
 
 Fill only the run-specific fields. The shared contract and selected playbook own execution behavior. Prompt preparation
 must preserve all supplied context and place explicit decisions in the authoritative confirmed-input section.
+Populate the prompt only from the current user request, references explicitly named for this run, and facts retrieved
+from those references. Do not search for or add memory-derived facts, related tickets, past plans, historical work
+records, or `.thoughts` paths unless the user explicitly asks to include them. Use `None` for unused optional fields.
 
 Prompt-preparation rules:
 
@@ -74,6 +77,9 @@ Runtime bootstrap:
   not satisfy final handoff.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
   pre-query Sentry or duplicate that investigation; request only the latest event first (`limit: 1` when supported).
+- Before that worker starts, Standard initialization is limited to turn-start capture, framework/repository/path
+  verification, authoritative-input registration, the minimal work-record skeleton, and worker configuration/activation.
+  Do not search candidate source, history, tests, or Sentry during initialization.
 - Capture the turn-start timestamp before initialization. Count the Coordinator as a logical worker and actual instance,
   not as an activation attempt, and include Coordinator and Documenter elapsed time in final metrics.
 - Use provider session start and terminal events for worker timing when available; worker-authored artifact timestamps
@@ -81,7 +87,12 @@ Runtime bootstrap:
 - For Standard planning, create one minimal work-record skeleton, retain intermediate ledgers in Coordinator state, and
   let the final Documenter perform the next artifact update. Once activated, the Documenter is the sole artifact writer.
 - During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
-  owning boundary, or readiness. Otherwise put the regression and remaining suites in the implementation plan.
+  owning boundary, or readiness. First record the hypothesis, discriminating outcomes, disposition change, and runner
+  availability. Otherwise put the regression and remaining suites in the implementation plan.
+- For Standard, activate Repository Integrator only for one recorded cross-repository question that local repository
+  evidence can answer and whose result can change ownership, readiness, or the proposed fix.
+- Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
+  confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
 - If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
   edit finalized artifacts after that worker returns.
 
@@ -130,5 +141,7 @@ required-worker activation, fan-in status, and runtime-closure status.
 If analytical workers returned hypotheses, include `Best current explanations`: the strongest hypothesis and up to two
 alternatives, with confidence and one short reason each. Use common words, short sentences, and explain framework terms.
 Include the contract's compact `Run metrics:` and `Worker timing:` lines in the final answer; do not replace them with
-a work-record link or report coordinator-observed values as `Unknown`.
+a work-record link or report coordinator-observed values as `Unknown`. Include coordination errors, handoff revisions,
+artifact bytes after the last correction, and metrics validity. Reserve `plan_only` for a run that produced a usable
+implementation plan; otherwise use `partially_solved` for useful incomplete diagnosis.
 ```

@@ -31,6 +31,13 @@ queries and initial repository topology. Request only the latest issue event
 first (`limit: 1` when supported). Repeat its work only for a named discrepancy
 that is recorded and returned to that worker.
 
+For Standard initialization, do only these actions before that activation:
+capture turn start; verify framework and repository identity/status; register
+authoritative inputs; resolve the durable-artifact root; create the minimal
+work-record skeleton; resolve the evidence-worker configuration; and activate
+it. Candidate-source searches, history searches, tests, Sentry queries, and
+technical diagnosis before activation are control failures.
+
 Resolve each named provider agent definition before activation. Pass its exact
 `model` and `model_reasoning_effort` explicitly when the spawn API otherwise
 inherits this Coordinator's settings; this binds configuration and is not an
@@ -44,8 +51,12 @@ artifacts, and only a specific framework section or template when needed.
 
 After `evidence-topology`, start the Deep failure-topology and repository-
 integration workers in parallel when capacity exists; otherwise record the
-reason and wait time. They consume the normalized evidence artifact and repeat
-upstream investigation only for a named discrepancy.
+reason and wait time. For Standard, activate Repository Integrator only after
+recording one explicit cross-repository question that repository evidence can
+answer and whose result can change ownership, readiness, or the proposed fix.
+Missing production state that local source cannot supply is not such a question.
+Workers consume the normalized evidence artifact and repeat upstream
+investigation only for a named discrepancy.
 
 Preserve all supplied context. Current explicit user decisions and constraints
 are authoritative and override historical worker conclusions. Treat a confirmed
@@ -91,7 +102,10 @@ is the sole artifact writer; send corrections to that worker instead of editing
 concurrently.
 
 Pass the Coordinator-captured turn-start timestamp, worker activation and
-terminal timestamps, counts, and artifact byte totals to the final Documenter.
+terminal timestamps, handles and outcomes, activation and coordination counts,
+exact current artifact byte totals, final workflow/task outcomes, displayed
+hypotheses, internal owner, next-action owner, and completion condition to the
+final Documenter as one finalized packet.
 Use provider session start and terminal events when available; never substitute
 a worker-authored completion timestamp.
 If final verification finds a record or plan inconsistency, return it to that
@@ -119,10 +133,16 @@ worker outcomes, limitations, remediation boundary, artifact status, next
 action, fan-in, runtime closure, and exposed usage. Include the compact
 run-metrics block with wall time; requested and executed profile; logical
 workers; actual instances; activation attempts; failed spawns; replacements;
-handle discrepancies; artifact count and bytes; and each worker's elapsed and
-wait time. Capture turn-start and final-answer timestamps and compute wall time
+handle discrepancies; coordination errors; handoff revisions; artifact count
+and bytes; metrics status; and each worker's elapsed and wait time. Capture
+turn-start and final-answer timestamps and compute wall time
 directly; do not estimate it from worker windows. Release completed workers only
 after collecting terminal results.
+
+If turn start was not captured and no provider task timestamp covers the whole
+turn, report metrics as invalid and do not present a shortened stage window as
+wall time or claim metrics/process conformance. Recompute artifact bytes and
+timing after every Documenter correction.
 
 If an analytical worker returned hypotheses, show the strongest one and up to
 two credible alternatives in the final summary, with confidence and one short
@@ -135,7 +155,9 @@ Coordinator and Documenter elapsed time in `Worker timing:`. Record configured m
 provider-observed values; do not treat a worker self-report as provider telemetry.
 
 If missing evidence keeps the plan Draft, name its internal owner, system,
-artifact, and completion condition. Do not say `Nothing technical.` when the
+next-action owner, artifact, and completion condition. Use `partially_solved`
+when no usable implementation plan exists; reserve `plan_only` for a run that
+produced one. Do not say `Nothing technical.` when the
 user must supply evidence, authorize access, or decide.
 
 When the configured Sentry MCP integration is available, use it directly and

@@ -281,11 +281,22 @@ for path in TEMPLATES:
     if "Additional supplied context (preserve and classify):" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the additional-context section")
     for phrase in (
+        "Do not search for or add memory-derived facts",
+        "`.thoughts` paths",
+        "Use `None` for unused optional fields",
+    ):
+        if phrase not in text:
+            fail(f"{path.relative_to(ROOT)} is missing explicit prompt-input admission: {phrase}")
+    for phrase in (
         "Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md`",
         "templates and examples are not runtime instructions.",
         "Current explicit user decisions and constraints are authoritative",
         "Delivery Activation Barrier",
         "Never claim successful execution when the required graph is incomplete.",
+        "coordination errors",
+        "handoff revisions",
+        "metrics validity",
+        "Reserve `plan_only`",
     ):
         if phrase not in text:
             fail(f"{path.relative_to(ROOT)} is missing runtime bootstrap rule: {phrase}")
@@ -300,6 +311,8 @@ for path in (ROOT / "playbooks").glob("*.md"):
         fail(f"{path.relative_to(ROOT)} is missing the canonical worker-result ledger")
     if "Human-Readable Handoff block" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the human-readable handoff block")
+    if "`Next-action owner`" not in text:
+        fail(f"{path.relative_to(ROOT)} is missing next-action-owner handoff guidance")
     if "in parallel" not in text or not re.search(r"recorded\s+discrepancy", text):
         fail(f"{path.relative_to(ROOT)} is missing Deep parallelism or non-duplication rules")
 
@@ -461,6 +474,8 @@ if "# Implementation Conformance Check" not in work_record_template:
     fail("templates/work_record.md is missing implementation conformance")
 if "| Internal owner |" not in work_record_template:
     fail("templates/work_record.md is missing internal-owner handoff guidance")
+if "| Next-action owner |" not in work_record_template:
+    fail("templates/work_record.md is missing next-action-owner handoff guidance")
 if "| User action |" not in work_record_template:
     fail("templates/work_record.md is missing user-action handoff guidance")
 for phrase in ("# Playbook Selection", "| Workflow execution |", "| Task outcome |"):
@@ -612,6 +627,13 @@ for phrase in ("do not", "spawn an initialize worker", "captured turn-start"):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing bounded-remediation control: {phrase}")
 
+for phrase in ("coordination errors", "handoff revisions", "metrics status", "report metrics as invalid"):
+    if phrase not in orchestrator_agent:
+        fail(f"providers/codex/agents/orchestrator.toml is missing final-metrics control: {phrase}")
+for phrase in ("coordination errors", "handoff revisions", "metrics validity", "next-action ownership"):
+    if phrase not in orchestrator_role.lower():
+        fail(f"roles/orchestrator.md is missing final-metrics ownership: {phrase}")
+
 tester_role = (ROOT / "roles" / "tester.md").read_text()
 tester_agent = (CODEX_AGENT_DIR / "tester.toml").read_text()
 for phrase in ("smallest proving set", "baseline comparison was not performed"):
@@ -649,6 +671,10 @@ for phrase in (
     "exclusively owns raw Sentry queries",
     "`limit: 1` when supported",
     "keep the plan `Draft`",
+    "finalization budgets",
+    "one explicit cross-repository question",
+    "event emitter, comparison owner, baseline producer",
+    "initialization is limited",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
@@ -671,6 +697,9 @@ for phrase in (
     "same Documenter before closure",
     "If an analytical worker returned hypotheses",
     "make a stale prompt match",
+    "one finalized packet",
+    "coordination errors",
+    "report metrics as invalid",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -682,12 +711,19 @@ for phrase in (
     "do not remap them unless",
     "one smallest check",
     "During planning, run a unit or integration test only",
+    "expected discriminating outcomes",
+    "event emitter, comparison owner, baseline producer",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
 
 sentry_investigator = (CODEX_AGENT_DIR / "sentry_current_state_investigator.toml").read_text()
-for phrase in ("Do not reread the complete playbook", "Bound repository mapping"):
+for phrase in (
+    "Do not reread the complete playbook",
+    "Bound repository mapping",
+    "event emitter, comparison owner, baseline producer",
+    "do not exclude that service from the deployed path",
+):
     if phrase not in sentry_investigator:
         fail(f"providers/codex/agents/sentry_current_state_investigator.toml is missing bounded evidence control: {phrase}")
 
@@ -706,6 +742,10 @@ for phrase in (
     "not as an activation attempt",
     "same Documenter",
     "Best current explanations",
+    "Standard initialization is limited",
+    "Repository Integrator only for one recorded cross-repository question",
+    "confirmed defect owner",
+    "handoff revisions",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
@@ -723,6 +763,34 @@ for phrase in ("do not delete and recreate", "finish within two minutes", "sole 
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing bounded finalization control: {phrase}")
 
+for phrase in ("finalization budgets", "finalized packet", "handoff revisions", "reserve `plan_only`"):
+    if phrase not in documenter_agent:
+        fail(f"providers/codex/agents/documenter.toml is missing final-metrics control: {phrase}")
+
+for phrase in ("coordination errors", "handoff revisions", "next-action owner"):
+    if phrase not in documenter_role.lower():
+        fail(f"roles/documenter.md is missing final-metrics ownership: {phrase}")
+
+for name in (
+    "current_state_investigator.toml",
+    "dependency_analyst.toml",
+    "repository_integrator.toml",
+    "solution_architect.toml",
+):
+    text = (CODEX_AGENT_DIR / name).read_text()
+    if "Do not search memory or historical work records" not in text:
+        fail(f"providers/codex/agents/{name} is missing assigned-context isolation")
+
+repository_integrator_agent = (CODEX_AGENT_DIR / "repository_integrator.toml").read_text()
+for phrase in ("hypothesis, discriminating outcomes", "Check runner", "defer the command"):
+    if phrase not in repository_integrator_agent:
+        fail(f"providers/codex/agents/repository_integrator.toml is missing planning-test gating: {phrase}")
+
+solution_architect_agent = (CODEX_AGENT_DIR / "solution_architect.toml").read_text()
+for phrase in ("run a unit or integration test only", "discriminating outcomes", "runner availability"):
+    if phrase not in solution_architect_agent:
+        fail(f"providers/codex/agents/solution_architect.toml is missing planning-test gating: {phrase}")
+
 for phrase in (
     "MUST NOT change a technical worker's diagnosis",
     "mutually conditional candidate files",
@@ -734,8 +802,14 @@ for phrase in (
     "Provider session timestamps take precedence",
     "sole writer for its assigned artifacts",
     "MUST NOT reread",
+    "MUST NOT search memory or historical",
     "Never reduce a useful hypothesis result",
     "During planning, run a unit or integration test only",
+    "Next-action owner",
+    "metrics status: invalid",
+    "Reserve `plan_only`",
+    "one finalized packet",
+    "Coordination errors",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")
@@ -747,6 +821,9 @@ for phrase in ("duplicates delegated technical", "counts itself as a worker acti
         fail(f"frameworks/workflow_evaluation.md is missing run-quality control: {phrase}")
 if "planning runs unit or integration tests that cannot change" not in workflow_evaluation:
     fail("frameworks/workflow_evaluation.md is missing planning-test efficiency control")
+for phrase in ("Coordination errors", "Handoff revisions", "required metrics are", "`plan_only` is reported"):
+    if phrase not in workflow_evaluation:
+        fail(f"frameworks/workflow_evaluation.md is missing metrics-validity control: {phrase}")
 
 for phrase in ("Planning normally designs these checks", "focused regression that reproduces the verified failure"):
     if phrase not in implementation_plan:

@@ -24,6 +24,13 @@ may vary by occurrence, and record why that sample was selected. Treat a
 production/local revision mismatch as a traceability finding, not a blocker to
 candidate diagnosis or plan creation.
 
+Distinguish event emitter, comparison owner, baseline producer, deployed route
+owner, candidate divergence owner, and confirmed defect owner. Sentry
+attribution proves the emission point, not the underlying defect owner. If a
+local checkout rejects the observed production event, record a revision or
+deployment mismatch; do not exclude that service from the deployed path until
+release or deployment mapping is verified.
+
 When the run declares a comparison source of truth, record its observed result
 as the expected baseline and state the direction of the discrepancy. Do not
 reinterpret a larger baseline result set as duplicates without evidence.

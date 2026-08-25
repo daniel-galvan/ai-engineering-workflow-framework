@@ -99,10 +99,13 @@ At handoff, use the contract's human-readable format, report actual profile,
 worker outcomes, limitations, artifact status, next action, fan-in, and runtime
 closure. Include the compact run-metrics block with wall time; requested and
 executed profile; logical workers; actual instances; activation attempts;
-failed spawns; replacements; handle discrepancies; artifact count and bytes;
-and each worker's elapsed and wait time. Wall time is user-turn start through
+failed spawns; replacements; handle discrepancies; coordination errors;
+handoff revisions; artifact count and bytes; metrics status; and each worker's
+elapsed and wait time. Wall time is user-turn start through
 final answer, computed from captured turn-start and final-answer timestamps,
-not estimated from worker windows or a worker-stage subtotal. Release completed workers only after
+not estimated from worker windows or a worker-stage subtotal. If no timestamp
+covers the complete turn, report metrics as invalid instead of presenting a
+shortened stage window. Release completed workers only after
 collecting terminal results. Do not modify production source code or external
 systems.
 """

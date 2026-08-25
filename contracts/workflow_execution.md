@@ -47,7 +47,8 @@ needs it. Templates and examples MUST NOT override the selected playbook or cont
 
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
-section or template needed to resolve an ambiguity in their assigned stage.
+section or template needed to resolve an ambiguity in their assigned stage. They MUST NOT search memory or historical
+work records that the current run did not assign or explicitly reference.
 
 ---
 
@@ -219,9 +220,12 @@ One supported hypothesis is sufficient for a simple issue. Record ranked
 alternatives when the evidence supports more than one credible explanation.
 
 During planning, run a unit or integration test only when an existing focused command can confirm or reject a leading
-hypothesis, identify the owning boundary, or change plan readiness. Do not repair the test environment, install tools,
-or run a broader suite for triage. Put reproduction, regression, focused-suite, and broader-suite checks in the
-implementation plan instead. A source or artifact comparison may satisfy the planning feedback loop.
+hypothesis, identify the owning boundary, or change plan readiness. Before running it, record the hypothesis, the
+expected discriminating outcomes, how each outcome changes the disposition, and a bounded executable-availability
+check. If the command only confirms behavior already established by source or event evidence, or its required runner is
+known to be unavailable, defer it to the implementation plan. Do not repair the test environment, install tools, or run
+a broader suite for triage. Put reproduction, regression, focused-suite, and broader-suite checks in the implementation
+plan instead. A source or artifact comparison may satisfy the planning feedback loop.
 
 The Coordinator MUST reject an incomplete clarification result. A result is
 incomplete when it only asks for more data, says that the root cause is unknown,
@@ -786,7 +790,8 @@ Task outcome: <solved | partially_solved | plan_only | blocked | incorrect>
 What happened: <plain-language result>
 What this means: <why the run stopped or what is ready>
 Best current explanations: <up to three hypotheses with confidence and one-line evidence, or “None”>
-Internal owner: <runtime, team, worker, or person responsible>
+Internal owner: <runtime, team, worker, or person responsible for the workflow state>
+Next-action owner: <team, worker, operator, or person able to complete the next action>
 What you need to do: <user action, or “Nothing technical.”>
 To continue: “<exact phrase or action the user can provide>”
 ```
@@ -797,7 +802,8 @@ the engineering work item: a plan can be produced while the task remains unsolve
 wrong direction.
 
 When analytical fan-in and runtime closure complete but the run needs a decision or evidence, use state
-`awaiting_input`, `Workflow execution: completed`, and `Task outcome: plan_only` or `partially_solved`. Use
+`awaiting_input`, `Workflow execution: completed`, and `Task outcome: partially_solved`. Reserve `plan_only` for a run
+that produced a usable implementation plan but did not implement it. Use
 `Task outcome: blocked` only when an environment, permission, runtime, or indispensable-evidence failure prevented the
 selected workflow from completing. Do not add a second generic outcome field that contradicts these values.
 
@@ -815,7 +821,8 @@ Every terminal or blocked handoff MUST include this compact run-metrics block, p
 
 ```text
 Run metrics: <wall time>; <requested -> executed profile>; <logical workers>; <actual instances>;
-<activation attempts>; <failed spawns>; <replacements>; <handle discrepancies>; <artifact count and bytes>
+<activation attempts>; <failed spawns>; <replacements>; <handle discrepancies>; <coordination errors>;
+<handoff revisions>; <artifact count and bytes>; <metrics status>
 Worker timing: <worker: elapsed / wait, ...>
 ```
 
@@ -827,6 +834,11 @@ includes the Coordinator plus every provider worker instance that materially con
 counts provider worker spawn calls only; it excludes the already-running Coordinator. Worker timing MUST include the
 Coordinator and final Documenter as well as technical workers. Record configured provider model/effort separately from
 provider-observed values; a worker's self-report is not provider telemetry.
+
+`Coordination errors` counts pre-provider command, quoting, routing, ledger, or orchestration failures and retries that
+are not provider spawn failures. `Handoff revisions` counts returns to the same final Documenter after its first
+terminal result. Both counts are zero only when checked. `Metrics status` is `valid` only after timestamp, count, and
+artifact-byte reconciliation passes.
 
 Wall time starts when the user turn starts and ends when the final answer is produced. It includes initialization,
 Coordinator work, worker execution and waits, documentation, runtime closure, and final verification. Do not report a
@@ -841,12 +853,23 @@ The Coordinator MUST capture the run start timestamp at turn entry and compute f
 and the final-answer timestamp. It MUST NOT reconstruct wall time by adding worker durations or estimating stage
 windows.
 
+If the turn-start timestamp was not captured, use a provider task start timestamp only when it represents the complete
+user turn. Otherwise report `metrics status: invalid` and the exact missing datum; do not present a shortened worker or
+stage window as run wall time. A run with invalid required metrics may finish its worker graph, but it MUST NOT claim
+metrics or process conformance.
+
 The final Documenter owns the finalized work record and implementation plan. If verification finds an inconsistency,
 the Coordinator MUST return it to that same Documenter before closure; the Coordinator MUST NOT edit a finalized
 Documenter artifact after its terminal result.
 
 Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes ledger
 and timing corrections as input and MUST NOT edit those files concurrently.
+
+Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing the turn and
+provider timestamps, worker handles and outcomes, activation and coordination counts, exact current artifact bytes,
+workflow and task outcomes, displayed hypotheses, internal owner, next-action owner, and completion condition. The
+Documenter formats these values; it does not reconstruct them. After any correction, recompute artifact bytes and
+timing before handoff.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It

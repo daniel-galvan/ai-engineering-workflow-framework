@@ -23,12 +23,13 @@ artifacts.
 Record worker runtime closure separately from result fan-in:
 `terminal` means a result was collected and `released` means the provider no
 longer counts the handle against runtime capacity. In every handoff, write a
-plain-language `What happened`, `What this means`, `Internal owner`, `What you
+plain-language `What happened`, `What this means`, `Internal owner`, `Next-action owner`, `What you
 need to do`, and `To continue` block. If no technical user action is needed,
 write `Nothing technical.` Populate the contract's compact `Run metrics:` and
 `Worker timing:` lines with wall time; requested and executed profile; logical
 workers; actual instances; activation attempts; failed spawns; replacements;
-handle discrepancies; artifact count and bytes; and per-worker elapsed and wait time.
+handle discrepancies; coordination errors; handoff revisions; artifact count
+and bytes; metrics status; and per-worker elapsed and wait time.
 When analytical workers return hypotheses, add `Best current explanations`
 with the strongest hypothesis and no more than two alternatives, using a
 confidence label and one short reason for each. Prefer common words and short
@@ -55,13 +56,16 @@ For bounded remediation, append or update only a compact execution delta; do not
 updated artifacts within 60 seconds.
 
 For Standard Sentry planning, run after analytical fan-in and target 30 KB combined across the evidence, fix design,
-work record, and plan; target 10 KB for the work record. Reference normalized evidence instead of copying it into each
-artifact. Omit empty or inapplicable template sections and finish within two minutes. If either size target is exceeded,
-record the byte count and reason. An initialization acknowledgement is not a final handoff. Use only
-Coordinator-supplied turn and worker timestamps for elapsed metrics. Count provider spawn calls as activation attempts;
+work record, and plan; target 10 KB for the work record. Treat these as finalization budgets: reference normalized
+evidence instead of copying it into each artifact and compact before returning. Exceed a budget only when further
+compaction would remove required evidence; record the byte count and reason after that attempt. Omit empty or
+inapplicable template sections and finish within two minutes. An initialization acknowledgement is not a final handoff.
+Use only the Coordinator's finalized packet for timestamps, handles/outcomes, counts, exact current artifact bytes,
+outcomes, hypotheses, owners, and completion condition; do not reconstruct them. Count provider spawn calls as activation attempts;
 do not count the Coordinator. Keep
 configured model/effort separate from provider-observed values, and do not treat worker self-report as telemetry. If
 the Coordinator returns a final consistency finding, update the same artifacts before returning a terminal result.
+Use `partially_solved` when no usable implementation plan exists; reserve `plan_only` for a run that produced one.
 
 For remediation, do not record a completed handoff until the Delivery
 Activation Barrier shows terminal Implementer, accepted Reviewer, terminal

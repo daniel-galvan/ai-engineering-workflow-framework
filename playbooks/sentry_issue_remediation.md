@@ -91,6 +91,11 @@ The reporting repository is not necessarily the fault repository. Record these r
 | `candidate_fault_component`  | Package, service, or subsystem suspected          |
 | `downstream_or_return_path`  | Later systems or callbacks affected by the result |
 
+Also distinguish the event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence
+owner, and confirmed defect owner. Sentry attribution proves the event-emission point, not the underlying defect owner.
+A local checkout that rejects the observed production event establishes a revision or deployment mismatch; it does not
+exclude that service from the deployed path until release or deployment mapping is verified.
+
 The initial topology is a hypothesis unless the run prompt explicitly records a confirmed topology decision. Verify
 hypotheses with Sentry evidence, release metadata, repository history, event payloads, queues, callbacks, and tests. Do
 not infer event origin or candidate fault ownership from a field named “primary code repository.” Do not inspect or
@@ -309,8 +314,9 @@ inconclusive; no worker may silently replace a failed or unavailable step with a
 For Standard planning, target 30 KB combined across normalized evidence, fix design, `work_record.md`, and any
 `implementation_plan.md`; target 10 KB for the work record. Evidence owns event details, fix design owns hypotheses and
 the proposed boundary, the work record owns decisions and execution state, and the plan owns only the selected change,
-gates, and validation. Reference material instead of repeating it; preserve required evidence if the target must be
-exceeded and record why.
+gates, and validation. Treat these as finalization budgets: reference material instead of repeating it, and compact
+before handoff. Exceed a budget only when further compaction would remove required evidence; recording a reason does not
+replace the compaction attempt.
 
 If either target is exceeded, the final handoff records the actual bytes and reason. The Documenter compacts repeated
 content before closure; it never deletes and recreates the work record merely to reformat it.
@@ -322,6 +328,11 @@ content before closure; it never deletes and recreates the work record merely to
 The active Orchestrator runs first. It may be the current main session or a provider-specific coordinator agent with
 worker-delegation capability. A provider coordinator child must not be used when the runtime does not support nested
 delegation; in that case, the current main session owns the worker fan-out directly.
+
+For Standard Sentry planning, initialization is limited to capturing turn start, verifying framework and repository
+identity/status, registering authoritative inputs, resolving the durable-artifact root, creating the minimal work-record
+skeleton, resolving the evidence worker configuration, and activating that worker. Candidate-source searches, history
+searches, tests, Sentry queries, and technical diagnosis before activation are control failures.
 
 The Orchestrator creates the work record, selects the execution profile and lifecycle, declares worker dependencies,
 and records `profile_status: requested` before spawning the first investigation worker. It activates one final
@@ -396,10 +407,11 @@ In `standard`, there is no standalone failure-topology worker. The `solution_arc
 analysis after the evidence stage and records only the topology needed to design the approved-scope fix.
 
 For `deep`, activate `repository-integration` after Stage 1 regardless of whether the initial evidence appears
-sufficient. For `standard`, activate it only if repository ownership, monorepo boundaries, deployment responsibility, or
-the approved change scope remains uncertain. A local/deployed revision mismatch or a Sentry release lookup failure alone
-does not require this worker. Its result is an additional input to fix design, not a second copy of the entire
-investigation.
+sufficient. For `standard`, activate it only when one explicit cross-repository question remains, repository evidence
+can answer it, and the answer can change ownership, readiness, or the proposed fix. Record that question and expected
+decision before activation. A local/deployed revision mismatch, a Sentry release lookup failure, or missing production
+state that local source cannot supply does not require this worker. Its result is an additional input to fix design, not
+a second copy of the entire investigation.
 
 Do not require the user to repeat repository or revision information already present in the Sentry context.
 
@@ -412,9 +424,11 @@ test or local scenario. The `tester` owns executable validation during the remed
 optional supporting evidence.
 
 In planning, do not run unit or integration tests merely to establish a baseline. Run one existing focused test only
-when its result can confirm or reject a leading hypothesis, identify the owning repository, or change readiness. Do not
-repair environments, install missing test tools, or run broad suites. Put the focused regression and remaining suites in
-the implementation plan for remediation.
+when its result can confirm or reject a leading hypothesis, identify the owning repository, or change readiness. Before
+running it, record the hypothesis, expected discriminating outcomes, disposition change, and a bounded executable
+preflight. If it only confirms an already-proven branch or its runner is known to be unavailable, defer it. Do not
+repair environments, install missing test tools, or run broad suites. Put the focused regression and remaining suites
+in the implementation plan for remediation.
 
 The Solution Architect accepts source paths and citations already verified in normalized evidence. It does not remap
 that path without a named discrepancy. When missing indispensable evidence already selects `needs_input`, execute only
@@ -553,11 +567,13 @@ The final handoff is ordered as follows:
 4. Remaining risks, blockers, clarification brief when input is required, and ownership.
 
 Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
-`What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
+`Next-action owner`, `What you need to do`, and `To continue`. The internal owner manages workflow state; the
+next-action owner must be able to access and complete the named evidence or engineering action. If no technical user
+action is needed, say `Nothing technical.`
 For a retryable worker runtime failure, `To continue` should give the exact request: `Retry the planning run.`
 
-When missing evidence keeps the plan Draft, name the internal owner, system, artifact, and completion condition. Do not
-say `Nothing technical.` if the user must supply evidence, authorize access, or make a decision.
+When missing evidence keeps the plan Draft, name the internal owner, next-action owner, system, artifact, and completion
+condition. Do not say `Nothing technical.` if the user must supply evidence, authorize access, or make a decision.
 
 The handoff must not imply that implementation or validation completed when the workflow stopped at an approval or
 unavailable-environment gate.

@@ -274,7 +274,8 @@ The final handoff reports:
 5. remaining risks, blockers, owner, and follow-up work.
 
 Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
-`What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
+`Next-action owner`, `What you need to do`, and `To continue`. If no technical user action is needed, say
+`Nothing technical.`
 
 Do not imply that implementation, validation, or release completed when the workflow stopped at a planning,
 clarification, approval, environment, or worker gate.

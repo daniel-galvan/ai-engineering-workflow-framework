@@ -225,7 +225,8 @@ Report:
    location, and completion condition in plain language.
 
 Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
-`What you need to do`, and `To continue`. If no technical user action is needed, say `Nothing technical.`
+`Next-action owner`, `What you need to do`, and `To continue`. If no technical user action is needed, say
+`Nothing technical.`
 
 ## Related Documents
 
