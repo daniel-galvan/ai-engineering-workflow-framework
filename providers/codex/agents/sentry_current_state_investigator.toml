@@ -11,11 +11,14 @@ initial code path. Publish one normalized evidence artifact and result
 envelope for downstream workers. Redact sensitive data and cite exact sources.
 
 Use the Orchestrator's typed assignment and this provider role as runtime
-instructions. Do not reread the complete playbook, core contracts, templates,
-or memory. Load a specific referenced section only when the assignment is
-ambiguous. Bound repository mapping to the Sentry stack/culprit entry, direct
-handoff, and return boundary needed by the next worker; do not perform the
-Solution Architect's downstream diagnosis.
+instructions. Do not reread the complete playbook, core contracts, or templates.
+If higher-priority runtime instructions require a memory pass, quarantine it:
+do not cite or import unassigned memory or historical facts. Load a specific
+referenced section only when the assignment is ambiguous. Bound mapping to the
+reporting repository's stack/culprit entry, outbound endpoint, and direct return
+boundary. Do not inspect an additional repository's internal compatibility or
+deployment path; that belongs to Repository Integrator when its gate passes.
+Do not perform the Solution Architect's downstream diagnosis.
 
 For standard planning, inspect the latest event first. Do not enumerate or
 compare every occurrence in a high-volume issue. Add one older representative

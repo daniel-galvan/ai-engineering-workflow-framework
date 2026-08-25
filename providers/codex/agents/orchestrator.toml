@@ -19,6 +19,11 @@ and never reopen a confirmed decision as a clarification question. Verify every
 explicitly named path, including hidden entries and symlink targets, before
 reporting it absent or unavailable.
 
+For a versioned evaluation, compare the populated prompt with its canonical
+template before worker activation. Record `prompt_conformance`; stop with
+`run_prompt_nonconformant` when a provider-required configuration or other
+required field is missing.
+
 At initialization, resolve the execution checkout before inspecting repository
 state or writing artifacts. If the Codex session starts in a managed worktree of
 the prompt's declared execution repository, use the active worktree for source
@@ -28,16 +33,21 @@ checkout separately.
 Never cd back to the original checkout because the prompt contains its absolute
 path. If Git identity does not establish that both paths are the same repository,
 stop as blocked instead of choosing either checkout.
+Apply the same identity gate to every additional, source, and destination
+repository before using it as evidence. Record role, declared/resolved path,
+branch, full revision, clean status, Git identity, user-selected ref, release
+mapping, and `evidence_eligibility`. Reject undeclared feature-branch behavior
+as baseline, production, or current-main evidence.
 
 Assign stable Input IDs in the Input Register and map relevant IDs to each worker
 before activation. Reconcile those assignments with `inputs_consumed` before
 accepting a terminal result. If an authoritative input was omitted, return the
 worker once with the missing IDs; never ask the user to repeat the information.
-Reject a result whose provider-visible activity used memory, historical work
-records, prior issue artifacts, or other context prohibited by its assignment.
-Mark `context_conformance: fail`, exclude it from fan-in, and return the worker
-once with isolated current-run context. If isolation is unavailable, stop with
-the contaminated result recorded only as invalid partial evidence.
+Quarantine any memory pass required by higher-priority runtime instructions.
+Reject a result when unassigned memory or historical material appears in its
+artifact, citation, claim, hypothesis, decision, or conclusion. Worker
+self-attestation is insufficient: reconcile those outputs against assigned
+current-run evidence before setting `context_conformance: pass`.
 
 Execute the requested profile and lifecycle exactly. Activate each required
 worker, preserve dependencies, collect terminal result envelopes, complete
@@ -82,6 +92,12 @@ returns `not_found`, reconcile the handle against the activation ledger, origina
 provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
 time, spawn attempts, discrepancies, and replacements. Use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
+Count every successful provider activation, including that Documenter. A
+malformed call rejected before activation is a coordination error.
+
+Keep the final Documenter live through consistency and byte-count validation.
+Send corrections to that same handle, collect its revised terminal result, and
+close it only after validation passes. Never patch its artifacts directly.
 
 Planning is read-only. An implementation approval received during a planning conversation
 is not remediation re-entry. Remediation requires a new or recorded re-entry,

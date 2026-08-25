@@ -13,8 +13,9 @@ recommendations to evidence and claims, record confidence and uncertainties,
 and link implementation actions to their decisions.
 
 Use only the typed assignment, supplied artifacts, and explicitly referenced
-context. Do not search memory or historical work records that the current run
-did not assign.
+context. If higher-priority runtime instructions require a memory pass,
+quarantine it: do not cite or import unassigned memory or historical facts, and
+independently establish every material conclusion from current-run evidence.
 
 Before requesting clarification or returning `needs_input` or `blocked`, read
 all supplied context and supporting artifacts. Execute the smallest safe local

@@ -4,7 +4,7 @@ title: Engineering Work Record
 version: 0.3.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-24
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -92,6 +92,17 @@ An empty filtered search is not evidence that a path is absent.
 
 ---
 
+# Repository Evidence Eligibility
+
+Record every checkout before using its contents as evidence. An undeclared feature branch cannot establish baseline,
+production, or current-main behavior.
+
+| Repository role | Declared path | Resolved path | Branch / detached | Full revision | Clean status | Git identity | User-selected ref | Release mapping | Evidence eligibility |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Execution / Primary / Additional / Source / Destination | | | | | Clean / Dirty | | Yes / No | Verified / Unknown / Mismatch | Accepted / Caveated / Rejected |
+
+---
+
 # Workflow State
 
 | Field | Value |
@@ -99,6 +110,7 @@ An empty filtered search is not evidence that a path is absent.
 | Run ID | |
 | Playbook | |
 | Framework revision / status | Full Git commit / Clean or Dirty |
+| Prompt conformance | `pass` / `fail`; canonical template revision and missing required fields |
 | Model-policy baseline ID | Provider baseline ID or `Not applicable` |
 | Requested profile | `standard` / `deep` |
 | Activated profile | `standard` / `deep` / `None` |
@@ -279,6 +291,7 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Worker wait time | Per worker | Worker Execution Ledger |
 | Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries |
 | Handoff revisions | Count | Returns to the final Documenter after its first terminal result |
+| Post-finalization Coordinator edits | Count | Must be zero; direct edits after Documenter terminal are control failures |
 | Metrics status | Valid / Invalid | Timestamp, count, timing, and artifact-byte reconciliation |
 
 | Dimension | Rating | Evidence / notes |

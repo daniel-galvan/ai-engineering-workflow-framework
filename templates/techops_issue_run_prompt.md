@@ -22,6 +22,8 @@ Run the TechOps Issue Remediation playbook.
 
 Work item: <TECHOPS-JIRA-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
+Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
+Framework worktree status: clean
 
 Execution profile: standard
 Lifecycle: planning
@@ -40,6 +42,8 @@ Continuation (omit this entire section for a new investigation):
 - Approval reference: <REQUIRED-FOR-REMEDIATION-OR-NONE>
 
 Runtime bootstrap:
+- For a versioned evaluation, compare this populated prompt with the canonical template. Record `prompt_conformance` and
+  stop with `run_prompt_nonconformant` when a required field is missing or altered.
 - Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md` from the
   same framework checkout. Load another referenced framework document only when the active stage or worker needs it;
   templates and examples are not runtime instructions.
@@ -71,7 +75,8 @@ Additional supplied context (preserve and classify):
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):
-- <REPOSITORY-OR-DIRECTORY-OR-NONE>
+- Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
+  Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
 
 Additional run-specific constraints or approvals:
 - <NONE-OR-ENTER-CONSTRAINT>

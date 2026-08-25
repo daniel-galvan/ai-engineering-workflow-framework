@@ -630,7 +630,15 @@ for phrase in ("do not", "spawn an initialize worker", "captured turn-start"):
 for phrase in ("coordination errors", "handoff revisions", "metrics status", "report metrics as invalid"):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing final-metrics control: {phrase}")
-for phrase in ("context_conformance: fail", "provider_configuration_unavailable", "implementation_plan_action"):
+for phrase in (
+    "prompt_conformance",
+    "run_prompt_nonconformant",
+    "evidence_eligibility",
+    "including that Documenter",
+    "Never patch its artifacts directly",
+    "provider_configuration_unavailable",
+    "implementation_plan_action",
+):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing conformance gate: {phrase}")
 for phrase in ("coordination errors", "handoff revisions", "metrics validity", "next-action ownership"):
@@ -703,7 +711,12 @@ for phrase in (
     "one finalized packet",
     "coordination errors",
     "report metrics as invalid",
-    "context_conformance: fail",
+    "prompt_conformance",
+    "run_prompt_nonconformant",
+    "evidence_eligibility",
+    "including the final Documenter",
+    "Keep that Documenter handle live",
+    "Invalid metrics still report",
     "answerable_by_local_source",
     "implementation_plan_action",
     "provider_configuration_unavailable",
@@ -728,7 +741,8 @@ for phrase in (
 sentry_investigator = (CODEX_AGENT_DIR / "sentry_current_state_investigator.toml").read_text()
 for phrase in (
     "Do not reread the complete playbook",
-    "Bound repository mapping",
+    "reporting repository's stack/culprit entry",
+    "Do not inspect an additional repository",
     "event emitter, comparison owner, baseline producer",
     "do not exclude that service from the deployed path",
 ):
@@ -755,15 +769,23 @@ for phrase in (
     "confirmed defect owner",
     "handoff revisions",
     "provider_configuration_unavailable",
-    "contaminated evidence",
+    "Quarantine any provider-required memory pass",
     "implementation_plan_action",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
 
 for path in sorted((ROOT / "templates").glob("*_run_prompt.md")):
-    if "required for Codex evaluation runs" not in path.read_text():
-        fail(f"{path.relative_to(ROOT)} is missing required evaluation provider configuration")
+    text = path.read_text()
+    for phrase in (
+        "Framework revision (required for evaluation runs)",
+        "Framework worktree status: clean",
+        "required for Codex evaluation runs",
+        "prompt_conformance",
+        "Intended ref:",
+    ):
+        if phrase not in text:
+            fail(f"{path.relative_to(ROOT)} is missing run-prompt conformance control: {phrase}")
 
 for text, label in (
     (documenter_role, "roles/documenter.md"),
@@ -793,7 +815,7 @@ for name in (
     "solution_architect.toml",
 ):
     text = (CODEX_AGENT_DIR / name).read_text()
-    if "Do not search memory or historical work records" not in text:
+    if "quarantine it" not in text or "do not cite or import unassigned memory" not in text:
         fail(f"providers/codex/agents/{name} is missing assigned-context isolation")
 
 repository_integrator_agent = (CODEX_AGENT_DIR / "repository_integrator.toml").read_text()
@@ -805,8 +827,9 @@ sentry_repository_integrator_agent = (CODEX_AGENT_DIR / "sentry_repository_integ
 for phrase in (
     "answerable_by_local_source: true",
     "decision_expected_to_change: true",
-    "Do not search memory",
+    "quarantine it",
     "Check runner availability",
+    "decision_changed",
 ):
     if phrase not in sentry_repository_integrator_agent:
         fail(f"providers/codex/agents/sentry_repository_integrator.toml is missing Standard activation/test control: {phrase}")
@@ -820,14 +843,14 @@ for phrase in (
     "MUST NOT change a technical worker's diagnosis",
     "mutually conditional candidate files",
     "owning technical worker MUST perform the assigned investigation",
-    "counts provider worker spawn calls only",
+    "counts every provider-accepted worker spawn call",
     "final Documenter owns the finalized work record",
     "Do not add a second generic outcome field",
     "pass those exact values explicitly",
     "Provider session timestamps take precedence",
     "sole writer for its assigned artifacts",
     "MUST NOT reread",
-    "MUST NOT search memory or historical",
+    "Provider-required memory remains quarantined",
     "Never reduce a useful hypothesis result",
     "During planning, run a unit or integration test only",
     "Next-action owner",
@@ -837,6 +860,11 @@ for phrase in (
     "Coordination errors",
     "context_conformance",
     "configuration_conformance",
+    "run_prompt_nonconformant",
+    "evidence_eligibility",
+    "including the final Documenter",
+    "Invalid metrics do not erase",
+    "Keep the final Documenter handle live",
     "implementation_plan_action",
     "provider_configuration_unavailable",
 ):
@@ -853,7 +881,17 @@ if "planning runs unit or integration tests that cannot change" not in workflow_
 for phrase in ("Coordination errors", "Handoff revisions", "required metrics are", "`plan_only` is reported"):
     if phrase not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing metrics-validity control: {phrase}")
-for phrase in ("failed `context_conformance`", "provider configuration could not be resolved", "implementation_plan_action: omit", "local-source answerability"):
+for phrase in (
+    "failed `context_conformance`",
+    "provider configuration could not be resolved",
+    "implementation_plan_action: omit",
+    "local-source answerability",
+    "nonconformant prompt",
+    "undeclared feature branch",
+    "unassigned memory material",
+    "successful Documenter activation",
+    "Invalid metrics must still report",
+):
     if phrase not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing conformance evaluation: {phrase}")
 
@@ -868,6 +906,9 @@ for phrase in ("Configured model/effort", "Provider-observed model/effort", "sel
         fail(f"templates/work_record.md is missing model-observation distinction: {phrase}")
 if "Framework revision / status" not in work_record_template:
     fail("templates/work_record.md is missing framework-revision provenance")
+for phrase in ("Repository Evidence Eligibility", "Prompt conformance", "Post-finalization Coordinator edits"):
+    if phrase not in work_record_template:
+        fail(f"templates/work_record.md is missing run-control evidence: {phrase}")
 for phrase in (
     "initial hypothesis: an experimental baseline",
     "Orchestrator | `gpt-5.6-terra` | Medium | `medium`",

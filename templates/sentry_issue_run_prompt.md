@@ -56,6 +56,8 @@ Continuation (omit this entire section for a new investigation):
 - Approval reference: <REQUIRED-FOR-REMEDIATION-OR-NONE>
 
 Runtime bootstrap:
+- Compare this populated prompt with the canonical template. Record `prompt_conformance` and stop with
+  `run_prompt_nonconformant` when a required field is missing or altered.
 - Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md` from the
   same framework checkout. Load another referenced framework document only when the active stage or worker needs it;
   templates and examples are not runtime instructions.
@@ -83,6 +85,8 @@ Runtime bootstrap:
   Do not search candidate source, history, tests, or Sentry during initialization.
 - Capture the turn-start timestamp before initialization. Count the Coordinator as a logical worker and actual instance,
   not as an activation attempt, and include Coordinator and Documenter elapsed time in final metrics.
+- Count every successful worker activation, including the final Documenter. Treat a malformed call rejected before
+  activation as a coordination error. Invalid metrics still report every authoritative duration that is available.
 - Use provider session start and terminal events for worker timing when available; worker-authored artifact timestamps
   are not provider terminal times.
 - For Standard planning, create one minimal work-record skeleton, retain intermediate ledgers in Coordinator state, and
@@ -93,18 +97,23 @@ Runtime bootstrap:
 - For Standard, activate Repository Integrator only for one recorded cross-repository question that local repository
   evidence can answer and whose result can change ownership, readiness, or the proposed fix. Record both gate answers;
   missing production state that local source cannot supply fails the gate.
-- Reject a worker result whose activity used memory, historical records, or other context prohibited by its assignment.
-  Return it once with isolated current-run context; never admit contaminated evidence to fan-in.
+- Before any repository becomes evidence, record its role, branch, full revision, clean status, selected ref, release
+  mapping, and evidence eligibility. Reject undeclared feature-branch behavior as baseline or production evidence.
+- Quarantine any provider-required memory pass. Reject a worker result when unassigned memory or historical material
+  appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
 - If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
   edit finalized artifacts after that worker returns.
+- Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to
+  that same handle and close it only after the revised terminal result passes.
 - The fix-design result must set `plan_readiness` and `implementation_plan_action`. `awaiting_input` means `omit` and
   produces a Clarification Brief; only `ready_for_implementation` permits the Documenter to create a plan.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):
-- <REPOSITORY-OR-DIRECTORY-OR-NONE>
+- Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
+  Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>

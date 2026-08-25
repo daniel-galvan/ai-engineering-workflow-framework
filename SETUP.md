@@ -125,6 +125,9 @@ For a new run, fill only:
 - playbook-specific context and evidence; and
 - additional repositories or constraints when applicable.
 
+For every code repository, include the intended branch, revision, or stable ref when known. A path alone does not
+authorize using whichever feature branch happens to be checked out as baseline, production, or current-main evidence.
+
 Omit the continuation section for a new run. The current session is the Coordinator by default, so there is normally no
 Coordinator field to fill in. Use the execution repository's `.codex/agents/` path only when it has been installed and
 verified. If it is unavailable, stop a versioned Codex evaluation instead of inheriting worker settings.

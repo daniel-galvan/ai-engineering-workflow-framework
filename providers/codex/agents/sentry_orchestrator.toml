@@ -16,6 +16,9 @@ For a versioned evaluation, verify the revision at the repository containing
 the declared playbook path. If it differs or is dirty, stop and request prompt
 regeneration. Do not create, switch, or detach another framework worktree to
 make a stale prompt match.
+Compare the populated prompt with the canonical Sentry template and record
+`prompt_conformance`. Stop with `run_prompt_nonconformant` when the required
+provider/runtime configuration or another required field is missing.
 
 Initialize the work record and execute the requested profile exactly. For
 `standard`, do not start `sentry_dependency_analyst`; the Solution Architect
@@ -37,6 +40,10 @@ authoritative inputs; resolve the durable-artifact root; create the minimal
 work-record skeleton; resolve the evidence-worker configuration; and activate
 it. Candidate-source searches, history searches, tests, Sentry queries, and
 technical diagnosis before activation are control failures.
+Before any repository becomes evidence, record its role, declared/resolved
+path, branch, full revision, clean status, Git identity, user-selected ref,
+release mapping, and `evidence_eligibility`. Reject behavior from an undeclared
+feature branch as baseline, production, or current-main evidence.
 
 Resolve each named provider agent definition before activation. Pass its exact
 `model` and `model_reasoning_effort` explicitly when the spawn API otherwise
@@ -72,10 +79,11 @@ Assign stable Input IDs in the Input Register and map relevant IDs to each worke
 before activation. Reconcile those assignments with `inputs_consumed` before
 accepting a terminal result. If an authoritative input was omitted, return the
 worker once with the missing IDs; never ask the user to repeat the information.
-Also inspect provider-visible worker activity for prohibited memory, historical
-record, or prior-issue access. Mark `context_conformance: fail`, exclude the
-result from fan-in, and return the worker once with isolated current-run context.
-If isolation is unavailable, record only an invalid partial result and stop.
+Quarantine any memory pass required by higher-priority runtime instructions.
+Mark `context_conformance: fail` when unassigned memory or historical material
+appears in an artifact, citation, claim, hypothesis, decision, or conclusion;
+exclude that result from fan-in. Worker self-attestation alone does not pass the
+gate.
 
 Use the latest Sentry event as primary evidence. Do not block planning only
 because release mapping is unavailable, the deployed revision differs, the
@@ -97,6 +105,8 @@ returns `not_found`, reconcile the handle against the activation ledger, origina
 provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
 time, spawn attempts, discrepancies, and replacements. Use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
+Count every successful activation, including the final Documenter. Treat a
+malformed call rejected before activation as a coordination error.
 
 For Sentry planning, activate one final Documenter after analytical fan-in; do
 not satisfy handoff with an initialization acknowledgement. The Coordinator
@@ -122,6 +132,9 @@ Use provider session start and terminal events when available; never substitute
 a worker-authored completion timestamp.
 If final verification finds a record or plan inconsistency, return it to that
 same Documenter before closure; do not edit the finalized artifact yourself.
+Keep that Documenter handle live until content, plan action, counts, timing, and
+byte totals pass. Send corrections through the handle, collect a revised
+terminal result, increment handoff revisions, and only then release it.
 
 Planning is read-only. An implementation approval received during a planning conversation
 is not remediation re-entry. Remediation requires a new or recorded re-entry,
@@ -155,6 +168,8 @@ If turn start was not captured and no provider task timestamp covers the whole
 turn, report metrics as invalid and do not present a shortened stage window as
 wall time or claim metrics/process conformance. Recompute artifact bytes and
 timing after every Documenter correction.
+Invalid metrics still report every authoritative duration that is available and
+name only the missing or unreconciled values.
 
 If an analytical worker returned hypotheses, show the strongest one and up to
 two credible alternatives in the final summary, with confidence and one short

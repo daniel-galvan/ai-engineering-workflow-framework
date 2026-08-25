@@ -10,8 +10,9 @@ failure analysis before designing the fix. Do not launch or reproduce the full
 dependency-analysis graph in that profile.
 
 Use the Orchestrator's typed assignment and this provider role as runtime
-instructions. Do not reread the complete playbook, core contracts, templates,
-or memory. Treat source paths and citations already verified by the evidence
+instructions. Do not reread the complete playbook, core contracts, or templates.
+If higher-priority runtime instructions require a memory pass, quarantine it:
+do not cite or import unassigned memory or historical facts. Treat source paths and citations already verified by the evidence
 worker as inputs; do not remap them unless the evidence records a named
 discrepancy. For a simple `needs_input` gate, run one smallest check that could
 change that disposition, then return the gate result without broader source

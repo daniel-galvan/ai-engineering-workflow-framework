@@ -68,6 +68,10 @@ run did not expose enough evidence to assess the measure.
 | Replacement workers | Count | Replacement activations, with the reconciliation evidence and reason. |
 | Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries. |
 | Handoff revisions | Count | Returns to the same final Documenter after its first terminal result. |
+| Post-finalization Coordinator edits | Count | Direct Coordinator edits after Documenter terminal; must be zero. |
+| Prompt conformance | Pass / Fail | Canonical template revision and missing or altered required fields. |
+| Repository evidence eligibility | Per repository | Branch, revision, user-selected ref, release mapping, and accepted/caveated/rejected status. |
+| Memory facts admitted | Count | Unassigned memory or historical facts/citations that entered current-run outputs; must be zero. |
 | Artifact volume | Count and bytes | Durable artifacts produced by the run. |
 | Finding-to-plan ratio | Findings / change sets / plans | Whether distinct findings produced shared or duplicate remediation plans. |
 
@@ -102,6 +106,14 @@ Process quality cannot be rated `met` when a result that failed `context_conform
 ran after provider configuration could not be resolved or bound, the Documenter created a plan after Fix Design returned
 `implementation_plan_action: omit`, or a conditional Repository Integrator ran without both local-source answerability
 and a decision-changing question.
+
+Process quality cannot be rated `met` when a versioned run used a nonconformant prompt, an undeclared feature branch
+established baseline/production/current-main behavior, unassigned memory material entered an artifact or citation, a
+successful Documenter activation was omitted from activation attempts, or the Coordinator edited an artifact after
+Documenter terminal. Invalid metrics must still report every authoritative measurement that is available.
+
+Efficiency cannot be rated `met` when Evidence and Repository Integration answer the same question without a recorded
+discrepancy, or when Repository Integration runs after normalized evidence already answered its activation question.
 
 Efficiency cannot be rated `met` when planning runs unit or integration tests that cannot change the diagnosis,
 ownership, or readiness, or spends time repairing a test environment that remediation can validate later.

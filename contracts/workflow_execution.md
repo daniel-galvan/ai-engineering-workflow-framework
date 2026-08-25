@@ -48,7 +48,10 @@ needs it. Templates and examples MUST NOT override the selected playbook or cont
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
 section or template needed to resolve an ambiguity in their assigned stage. They MUST NOT search memory or historical
-work records that the current run did not assign or explicitly reference.
+work records that the current run did not assign or explicitly reference unless higher-priority provider instructions
+require a memory pass. Provider-required memory remains quarantined: no memory-derived fact, citation, ticket, path,
+hypothesis, or conclusion may enter run evidence or influence a decision until current-run evidence independently
+establishes it.
 
 ---
 
@@ -188,11 +191,13 @@ If the worker cannot consume them, preserve the partial result and record the co
 Supporting inputs may be unused only when the worker records why they were irrelevant to its declared responsibility.
 The gate checks information flow; it does not require every worker to consume every run input.
 
-The Coordinator MUST also reconcile the worker's activity with its assigned context. A worker that searches memory,
-historical work records, prior issue artifacts, or other prohibited context fails `context_conformance`; its result MUST
-NOT enter fan-in. Return that worker once with the same typed inputs and isolated context. If isolation cannot be
-enforced, preserve the partial result as contaminated evidence, record the control failure, and stop at an incomplete
-outcome. Repeating the prohibition in prose does not make a contaminated result acceptable.
+The Coordinator MUST also reconcile the worker's activity with its assigned context. Unassigned memory or historical
+material that appears in an artifact, citation, claim, hypothesis, decision, or result envelope fails
+`context_conformance`; that result MUST NOT enter fan-in. A provider-required memory pass does not fail conformance when
+its results remain quarantined and every material conclusion is independently supported by assigned current-run
+evidence. Return a contaminated worker once with the same typed inputs and require removal or current-run
+reverification. If clean isolation cannot be enforced, preserve the partial result as contaminated evidence, record the
+control failure, and stop at an incomplete outcome. Worker self-attestation alone does not pass this gate.
 
 ## Evidence-to-Hypothesis Gate
 
@@ -411,6 +416,12 @@ Every profile must preserve the shared safety, evidence, work-record, approval, 
 adapters apply the provider role policy without changing lifecycle gates or the role-quality policy.
 
 ## Profile Execution Semantics
+
+For a versioned evaluation, initialization MUST compare the populated run prompt with the selected canonical template.
+Record `prompt_conformance`, the template revision, and any missing or altered required fields. A missing framework
+revision, execution repository, provider/runtime configuration required by that provider, profile, lifecycle, or
+authoritative-input section stops the run with `run_prompt_nonconformant`; claiming the expected revision does not make
+a structurally incomplete prompt conformant.
 
 The requested profile is an execution requirement, not descriptive metadata. At initialization, the Orchestrator records
 the requested profile and its required workers. Before completing the run, it records the executed profile and profile
@@ -749,6 +760,16 @@ absolute source/component path MUST NOT override an equivalent active worktree. 
 prompt's declared execution repository, never under an ephemeral managed-worktree path unless that exact worktree was
 explicitly declared as the execution repository.
 
+Before using any execution, primary, additional, source, or destination repository as evidence, record its declared and
+resolved path, repository role, branch or detached state, full revision, clean status, canonical Git identity, and
+release/production mapping when relevant. Also record whether the current user or run prompt selected that branch or
+revision and set `evidence_eligibility` to `accepted`, `caveated`, or `rejected`.
+
+An undeclared feature branch MUST NOT establish baseline, production, or current-main behavior. Use a user-declared
+clean checkout or an explicit stable ref through a read-only Git operation; otherwise reject that repository state as
+behavioral evidence and record the required checkout or revision. Preserve unrelated dirty work and never switch or
+reset the user's checkout merely to pass this gate.
+
 For a bounded dependency route, the execution repository is the in-scope repository that owns the affected dependency
 artifact unless the user explicitly selects a separate record repository. Never infer the framework checkout as the
 execution repository merely because it contains the selected playbook.
@@ -845,9 +866,11 @@ instance counts, and activation outcomes MUST NOT be omitted or reported as `Unk
 
 `Logical workers` includes the Coordinator and each required or conditionally activated role. `Actual instances`
 includes the Coordinator plus every provider worker instance that materially contributed. `Activation attempts`
-counts provider worker spawn calls only; it excludes the already-running Coordinator. Worker timing MUST include the
-Coordinator and final Documenter as well as technical workers. Record configured provider model/effort separately from
-provider-observed values; a worker's self-report is not provider telemetry.
+counts every provider-accepted worker spawn call, including the final Documenter; it excludes the already-running
+Coordinator. A malformed request rejected before provider activation is a coordination error, not an instance or
+provider activation. Worker timing MUST include the Coordinator and final Documenter as well as technical workers.
+Record configured provider model/effort separately from provider-observed values; a worker's self-report is not provider
+telemetry.
 
 `Coordination errors` counts pre-provider command, quoting, routing, ledger, or orchestration failures and retries that
 are not provider spawn failures. `Handoff revisions` counts returns to the same final Documenter after its first
@@ -857,6 +880,8 @@ artifact-byte reconciliation passes.
 If provider session timestamps or another authoritative timestamp covering the complete user turn are unavailable,
 set `metrics status: invalid`. Never substitute artifact timestamps, a worker-stage subtotal, or an “at least” duration
 and then report complete or valid metrics.
+Invalid metrics do not erase measurements that are available: report every authoritative wall-time or worker duration
+and name only the missing or unreconciled fields.
 
 Wall time starts when the user turn starts and ends when the final answer is produced. It includes initialization,
 Coordinator work, worker execution and waits, documentation, runtime closure, and final verification. Do not report a
@@ -879,6 +904,11 @@ metrics or process conformance.
 The final Documenter owns the finalized work record and implementation plan. If verification finds an inconsistency,
 the Coordinator MUST return it to that same Documenter before closure; the Coordinator MUST NOT edit a finalized
 Documenter artifact after its terminal result.
+
+Keep the final Documenter handle live until artifact content, plan action, counts, timing, and byte totals pass final
+verification. Send every correction to that same handle, collect the revised terminal result, increment handoff
+revisions, and only then release it. A post-terminal Coordinator artifact edit is a coordination error and process
+conformance failure even when the corrected text is accurate.
 
 Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes ledger
 and timing corrections as input and MUST NOT edit those files concurrently.

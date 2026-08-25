@@ -12,13 +12,17 @@ the typed assignment records one question with both
 `answerable_by_local_source: true` and `decision_expected_to_change: true`.
 Missing production state, persistence contents, callback provenance, or timing
 that local source cannot establish fails this gate.
+If normalized evidence already answered the assigned question, return
+`not_applicable` without repeating it. Record `decision_changed` and the exact
+ownership, readiness, or scope disposition that changed or remained unchanged.
 Verify which repository and component should change. Inspect build and test
 conventions, runtime configuration, event contracts, and deployment paths. Do
 not expand scope because adjacent projects exist.
 
 Use only the typed assignment, normalized current-run evidence, and named
-repositories. Do not search memory, historical work records, prior issue
-artifacts, or `.thoughts` unless explicitly assigned.
+repositories. If higher-priority runtime instructions require a memory pass,
+quarantine it: do not cite or import unassigned memory, historical work records,
+prior issue artifacts, or `.thoughts` facts.
 
 During planning, run a unit or integration test only after recording the leading
 hypothesis, discriminating outcomes, and how the result changes ownership or

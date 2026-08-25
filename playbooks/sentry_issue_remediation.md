@@ -324,8 +324,10 @@ gates, and validation. Treat these as finalization budgets: reference material i
 before handoff. Exceed a budget only when further compaction would remove required evidence; recording a reason does not
 replace the compaction attempt.
 
-If either target is exceeded, the final handoff records the actual bytes and reason. The Documenter compacts repeated
-content before closure; it never deletes and recreates the work record merely to reformat it.
+Measure current artifacts before final Documenter activation. If either target is exceeded, the Documenter MUST compact
+repeated content before creating another artifact. A remaining exception must name the indispensable evidence, actual
+bytes, and reason; Process quality and Efficiency are not `met`. The Documenter never deletes and recreates the work
+record merely to reformat it.
 
 ## Execution Flow
 
@@ -377,8 +379,9 @@ Record the repository/event topology and any optional supporting artifacts.
 The `evidence-topology` worker exclusively owns raw Sentry queries and initial repository topology for the run. The
 Orchestrator does not pre-query Sentry or duplicate repository exploration. Use MCP to inspect the issue and request
 only the latest event first (`limit: 1` when supported).
-Bound initial source mapping to the stack or culprit entry, direct handoff, and return boundary required by fix design;
-do not perform downstream diagnosis in this stage.
+Bound initial source mapping to the reporting repository's stack or culprit entry, outbound endpoint, and direct return
+boundary required by fix design. Do not inspect an additional repository's internal compatibility or deployment path in
+this stage; that belongs to Repository Integrator when its activation gate passes.
 Capture:
 
 - issue title, status, priority, occurrence count, and latest event;
@@ -415,9 +418,11 @@ analysis after the evidence stage and records only the topology needed to design
 For `deep`, activate `repository-integration` after Stage 1 regardless of whether the initial evidence appears
 sufficient. For `standard`, activate it only when one explicit cross-repository question remains, repository evidence
 can answer it, and the answer can change ownership, readiness, or the proposed fix. Record that question and expected
-decision before activation. A local/deployed revision mismatch, a Sentry release lookup failure, or missing production
-state that local source cannot supply does not require this worker. Its result is an additional input to fix design, not
-a second copy of the entire investigation.
+decision before activation as `answerable_by_local_source` and `decision_expected_to_change`; both must be true. If
+normalized evidence already answered the question, skip Repository Integrator instead of repeating it.
+A local/deployed revision mismatch, a Sentry release lookup failure, or missing production state that local source
+cannot supply does not require this worker. Its result is an additional input to fix design, not a second copy of the
+entire investigation. Its result envelope records `decision_changed` and the exact changed or unchanged disposition.
 
 Do not require the user to repeat repository or revision information already present in the Sentry context.
 
@@ -450,6 +455,10 @@ plain-language next action. Missing production payloads, release mapping, or
 older events are uncertainties unless they are indispensable to a safe
 decision. Do not ask for production evidence before running an available local
 replay or source-level check.
+
+Use engineering state `understood` when the current behavior, first observable divergence, and material uncertainty are
+evidence-backed even though causal ownership remains unknown. Reserve `unknown` for a run that has not established the
+current behavior or material problem scope.
 
 The stage must conclude with:
 
