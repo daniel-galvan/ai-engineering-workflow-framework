@@ -954,6 +954,7 @@ for phrase in (
     "elapsed wall time remains terminal minus activation",
     "one provider handle through finalization",
     "Normal runs MUST NOT include `Run metrics` or `Worker timing`",
+    "Provenance: plugin <package and version, or Not applicable>",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing runtime integrity rule: {phrase}")
@@ -966,7 +967,7 @@ for prompt_template in TEMPLATES:
 
 documenter_role = (ROOT / "roles" / "documenter.md").read_text()
 documenter_agent = (CODEX_AGENT_DIR / "documenter.toml").read_text()
-for phrase in ("canonical human-readable", "evaluation or benchmark run"):
+for phrase in ("canonical human-readable", "evaluation or benchmark run", "Provenance:"):
     if phrase not in documenter_role:
         fail(f"Documenter role is missing conditional handoff rule: {phrase}")
     if phrase not in documenter_agent:

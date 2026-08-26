@@ -38,6 +38,9 @@ conditional explanations, next-action owner/action/completion condition,
 artifacts, and one compact execution-status line. Do not add Run Metrics or
 Worker Timing unless the Coordinator identifies an explicit evaluation or
 benchmark run.
+End the summary with one `Provenance:` line containing plugin package/version,
+framework Git revision/status, and playbook name/version. Use `Not applicable`
+for a manual run's plugin package.
 When analytical workers return hypotheses, add `Best current explanations`
 with the strongest hypothesis and no more than two alternatives, using a
 confidence label and one short reason for each. Prefer common words and short

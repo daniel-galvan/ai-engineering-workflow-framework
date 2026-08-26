@@ -182,8 +182,9 @@ progress.
 
 At handoff, use the contract's canonical human-readable format. Do not include
 Run Metrics or Worker Timing unless the request explicitly declares an
-evaluation or benchmark run. Release completed workers only after collecting
-terminal results. Copy artifact paths exactly from the final packet.
+evaluation or benchmark run. Include the required `Provenance:` line from the
+finalized packet. Release completed workers only after collecting terminal
+results. Copy artifact paths exactly from the final packet.
 
 If an analytical worker returned hypotheses, show the strongest one and up to
 two credible alternatives in the final summary, with confidence and one short

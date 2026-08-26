@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.4.1
+version: 0.4.2
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -55,6 +55,8 @@ maintenance.
   assignment, and consumption status.
 * Record run ID, framework commit, prompt and playbook versions, provider, relevant repository revisions, actual worker
   model and effort, and the provider/runtime configuration path or `Not provided`.
+* End the canonical final summary with one `Provenance:` line containing plugin package/version, framework Git
+  revision/status, and playbook name/version. Use `Not applicable` for a manual run's plugin package.
 * Record the resolved provider-configuration source and status separately from the optional execution-repository runtime
   view; an absent runtime view is not an unresolved provider definition.
 * For an explicit evaluation or benchmark run only, record evaluation identity, role-policy baseline, provider-observed

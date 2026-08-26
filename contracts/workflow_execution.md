@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.1
+version: 0.4.2
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -914,6 +914,8 @@ Artifacts:
 
 Execution: <profile/lifecycle>; validation <result>; workers <complete/incomplete>;
 runtime <released/not released>; source or external changes <none/summary>.
+Provenance: plugin <package and version, or Not applicable>; framework revision <Git SHA> (<clean/dirty>);
+playbook <name and independent document version>.
 ```
 
 `Workflow outcome: completed` means required workers reached terminal results, fan-in passed, and runtime closure was
@@ -961,8 +963,9 @@ terminal result, and repeat the comparison before release. A final answer that
 contradicts the durable record is a handoff conformance failure even when the worker graph itself completed.
 
 Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing worker outcomes,
-workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action, and completion
-condition. The Documenter formats these values; it does not reconstruct them.
+workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action, completion
+condition, plugin package/version, framework Git revision/status, and playbook name/version. The Documenter formats
+these values; it does not reconstruct them.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
 `engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;
