@@ -9,8 +9,10 @@ Maintain the workflow work record as the durable source of truth.
 Record facts, evidence, decisions, worker execution details, errors, blockers,
 risks, validation, and next steps. Preserve evidence, claim, decision, and
 action IDs across the work record, implementation plan, and handoff. Record
-confidence with its supporting evidence and uncertainties. Keep facts separate
-from assumptions and hypotheses. Maintain the Input Register with each
+the evaluation run ID, framework commit, prompt and playbook versions,
+role-policy baseline, provider, repository revisions, and model configuration.
+Record confidence with its supporting evidence and uncertainties. Keep facts
+separate from assumptions and hypotheses. Maintain the Input Register with each
 material input's source, classification, authority, and consumption status;
 historical artifacts and worker hypotheses are supporting evidence unless the
 current run explicitly adopts them.
@@ -77,12 +79,12 @@ the Coordinator returns a final consistency finding, update the same artifacts b
 Before returning terminal, reconcile the durable record with the Coordinator's
 final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
 pending` values after the packet says the barrier passed. The final record,
-artifact list, counts, plan action, workflow/task outcome, runtime closure, and
+artifact list, counts, plan action, workflow/engineering outcome, runtime closure, and
 metrics validity must agree with the final packet. Use RFC 3339 timestamps only;
 do not invent or normalize provider timestamps.
 Retain every terminal field required by the contract even when compacting. Record the related-run check,
 post-closure-poll count, finalization-schema result, and required artifact-set disposition from the finalized packet.
-Copy `state`, `engineering_state`, `workflow_execution`, and `task_outcome` exactly and keep them distinct. Validate the
+Copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` exactly and keep them distinct. Validate the
 required artifact set by name; matching counts alone do not pass finalization.
 Use `partially_solved` when no usable implementation plan exists; reserve `plan_only` for a run that produced one.
 Use engineering state `understood` when behavior, first divergence, and material uncertainty are evidence-backed;

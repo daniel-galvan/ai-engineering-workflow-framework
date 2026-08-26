@@ -1,12 +1,12 @@
 ---
 title: TechOps Issue Remediation Playbook
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -205,7 +205,7 @@ only after terminal envelopes and artifacts are preserved.
 | Failure path understood | Reproduction status and first concrete divergence are supported or explicitly unavailable. |
 | Ownership reconciled | Owning repository/system and affected surface are supported. |
 | Fix design ready | The recommended fix explains the evidence and includes regression and validation strategy. |
-| Implementation ready | Required planning fan-in passed and `implementation_plan.md` exists. |
+| Implementation ready | Shared semantic readiness threshold and planning fan-in passed; `implementation_plan.md` exists. |
 | Approval ready | Explicit implementation approval and remediation re-entry are recorded. |
 | Validation ready | Code Review is accepted and declared validation results are preserved. |
 | Handoff ready | Release, rollback, monitoring, ownership, residual risk, and next action are explicit. |
@@ -224,7 +224,8 @@ Report:
 6. residual risks, owner, and next action. The next action must name the owner,
    location, and completion condition in plain language.
 
-Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
+Also include the shared Human-Readable Handoff block with distinct `Workflow outcome` and `Engineering outcome` fields,
+followed by `What happened`, `What this means`, `Internal owner`,
 `Next-action owner`, `What you need to do`, and `To continue`. If no technical user action is needed, say
 `Nothing technical.`
 

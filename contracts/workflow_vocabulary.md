@@ -1,9 +1,9 @@
 ---
 title: Workflow Vocabulary
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 ---
 
 # Workflow Vocabulary
@@ -32,4 +32,6 @@ last_updated: 2026-08-21
 | Execution profile | A named selection of worker graph, investigation depth, and validation scope. |
 | Lifecycle | How far a workflow run may proceed, such as planning or remediation. |
 | Engineering state | What has been established about the work item independently of the workflow run. |
+| Workflow outcome | Whether the selected worker graph and required gates completed: `completed`, `incomplete`, or `blocked`. |
+| Engineering outcome | Value delivered to the work item: `solved`, `partially_solved`, `plan_only`, `blocked`, or `incorrect`. |
 | Portable implementation handoff | A self-contained artifact transferring an approved plan to another session or environment. |

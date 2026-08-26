@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Record
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -103,15 +103,17 @@ production, or current-main behavior.
 
 ---
 
-# Workflow State
+# Run and Evaluation Identity
 
 | Field | Value |
 | --- | --- |
 | Run ID | |
-| Playbook | |
-| Framework revision / status | Full Git commit / Clean or Dirty |
-| Prompt conformance | `pass` / `fail`; canonical template revision and missing required fields |
-| Model-policy baseline ID | Provider baseline ID or `Not applicable` |
+| Evaluation run ID | |
+| Playbook / version | Canonical playbook path / independent document version |
+| Framework commit / status | Full Git commit / Clean or Dirty |
+| Prompt template / revision / conformance | Canonical path / independent document version / `pass` or `fail` with missing required fields |
+| Role-policy baseline ID | Provider baseline ID or `Not applicable` |
+| Provider / model configuration | Provider name / Worker Execution Ledger |
 | Requested profile | `standard` / `deep` |
 | Activated profile | `standard` / `deep` / `None` |
 | Executed profile | `standard` / `deep` / `None` |
@@ -121,8 +123,8 @@ production, or current-main behavior.
 | Internal depth | `quick` / `standard` / `deep`; not a run input |
 | State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |
 | Engineering state | `unknown` / `understood` / `designed` / `approved` / `implemented` / `validated` / `released` / `stabilized` / `not_applicable` |
-| Workflow execution | `completed` / `incomplete` / `blocked`; process result, not engineering correctness |
-| Task outcome | `solved` / `partially_solved` / `plan_only` / `blocked` / `incorrect` |
+| Workflow outcome | `completed` / `incomplete` / `blocked`; process result, not engineering correctness |
+| Engineering outcome | `solved` / `partially_solved` / `plan_only` / `blocked` / `incorrect` |
 | Current stage | |
 | Internal owner | Person, team, worker, or runtime responsible for the workflow state |
 | Next-action owner | Person, team, worker, or operator able to complete the next action |
@@ -140,9 +142,9 @@ production, or current-main behavior.
 | Final reconciliation | Pending / Passed / Failed; state, counts, bytes, runtime closure, and metrics agree |
 | Finalization schema | Pending / Passed / Failed; required terminal fields and playbook artifact set are present |
 
-Use the lifecycle, workflow-state, engineering-state, workflow-execution, and task-outcome terms from
+Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engineering-outcome terms from
 `../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
-`awaiting_input`, workflow execution `completed`, and task outcome `partially_solved`; it is not `blocked`. Use
+`awaiting_input`, workflow outcome `completed`, and engineering outcome `partially_solved`; it is not `blocked`. Use
 `plan_only` only when the run produced a usable implementation plan.
 
 # Durable Artifacts
@@ -318,7 +320,7 @@ duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/
 | Reasoning quality | Met / Partial / Not met / Not applicable | |
 | Engineering quality | Met / Partial / Not met / Not applicable | |
 | Efficiency | Met / Partial / Not met / Not applicable | |
-| Task outcome | Solved / Partially Solved / Plan Only / Blocked / Incorrect | |
+| Engineering outcome | Solved / Partially Solved / Plan Only / Blocked / Incorrect | |
 
 Record the smallest improvement or policy question only when this run provides evidence for it. Do not tune model or
 effort from one run alone.

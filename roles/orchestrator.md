@@ -1,12 +1,12 @@
 ---
 
 title: Orchestrator Role
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 category: Coordination
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 required_documents:
 
   - ../frameworks/investigation.md
@@ -138,7 +138,7 @@ Optional:
 8. Execute the playbook stages and gates; return a result once if it omits an assigned authoritative input.
 9. Review deliverables and evidence.
 10. Resolve conflicts, errors, and blockers.
-11. Produce the final outcome and handoff.
+11. Produce distinct workflow and engineering outcomes in the final handoff.
 12. Decide implementation readiness or another closure state.
 
 An active worker status is not a handoff. Continue polling and advance the same

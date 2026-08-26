@@ -142,7 +142,7 @@ concurrently.
 
 Pass the Coordinator-captured turn-start timestamp, worker activation and
 terminal timestamps, handles and outcomes, activation and coordination counts,
-exact current artifact byte totals, final workflow/task outcomes, displayed
+exact current artifact byte totals, final workflow/engineering outcomes, displayed
 hypotheses, internal owner, next-action owner, and completion condition to the
 final Documenter as one finalized packet.
 Include the related-run check, post-closure-poll count, required terminal-field checklist, and required artifact-set
@@ -155,13 +155,13 @@ Keep that Documenter handle live until content, plan action, counts, timing, and
 byte totals pass. Send corrections through the handle, collect a revised
 terminal result, increment handoff revisions, and only then release it.
 Before releasing that handle, compare the final artifact and answer with the
-runtime ledger. Workflow state, profile status, workflow execution, task
+runtime ledger. Workflow state, profile status, workflow outcome, engineering
 outcome, plan action, worker outcomes, active handles, counts, artifact bytes,
 runtime closure, and metrics validity must agree. Return stale `pending` or
 `active` fields to the same Documenter for correction and increment handoff
 revisions. Do not close on a contradictory record.
 Require the terminal record to pass the contract's finalization schema. Compare `state`, `engineering_state`,
-`workflow_execution`, and `task_outcome` as separate canonical values, and copy those exact values into the final
+`workflow_outcome`, and `engineering_outcome` as separate canonical values, and copy those exact values into the final
 answer. For `awaiting_input`, require the canonical `clarification_brief.md`; matching counts alone do not pass.
 
 Planning is read-only. An implementation approval received during a planning conversation

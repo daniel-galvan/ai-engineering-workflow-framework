@@ -108,13 +108,13 @@ Keep the final Documenter live through consistency and byte-count validation.
 Send corrections to that same handle, collect its revised terminal result, and
 close it only after validation passes. Never patch its artifacts directly.
 Before releasing that handle, compare the final artifact and answer with the
-runtime ledger. Workflow state, profile status, workflow execution, task
+runtime ledger. Workflow state, profile status, workflow outcome, engineering
 outcome, plan action, worker outcomes, active handles, counts, artifact bytes,
 runtime closure, and metrics validity must agree. Return stale `pending` or
 `active` fields to the same Documenter for correction and increment handoff
 revisions. Do not close on a contradictory record.
 Require the terminal record to retain the contract's required finalization fields and the selected playbook's artifact
-set. Compare `state`, `engineering_state`, `workflow_execution`, and `task_outcome` as separate canonical values and
+set. Compare `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` as separate canonical values and
 copy those exact values into the final answer; matching counts alone do not pass finalization.
 
 Planning is read-only. An implementation approval received during a planning conversation

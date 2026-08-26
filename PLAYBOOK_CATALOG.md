@@ -1,9 +1,9 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 ---
 
 # Playbook Architecture Catalog
@@ -146,3 +146,5 @@ the engineer's judgment.
 
 Use the most specialized playbook with the evidence already available. See [ROADMAP.md](ROADMAP.md) for validation and
 expansion policy.
+
+Service Extraction is retired. Its playbook, prompt, and example were removed; do not select it as a current workflow.

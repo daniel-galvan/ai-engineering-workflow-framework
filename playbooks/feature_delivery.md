@@ -1,12 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -255,7 +255,7 @@ When created, the plan must include:
 | Planning context sufficient | Outcome, affected surface, and observable acceptance conditions are supported. |
 | Impact understood | Relevant code, dependencies, contracts, tests, and operational implications are known or explicitly blocked. |
 | Design ready | Smallest feature slice and acceptance traceability are documented. |
-| Implementation ready | Required planning fan-in passed and `implementation_plan.md` exists. |
+| Implementation ready | Shared semantic readiness threshold and planning fan-in passed; `implementation_plan.md` exists. |
 | Approval ready | Explicit implementation approval and remediation re-entry are recorded. |
 | Validation ready | Review findings are resolved or accepted and validation results are preserved. |
 | Handoff ready | Release, rollback, monitoring, ownership, residual risk, and next action are explicit. |
@@ -273,7 +273,8 @@ The final handoff reports:
    runtime-closure status; and
 5. remaining risks, blockers, owner, and follow-up work.
 
-Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
+Also include the shared Human-Readable Handoff block with distinct `Workflow outcome` and `Engineering outcome` fields,
+followed by `What happened`, `What this means`, `Internal owner`,
 `Next-action owner`, `What you need to do`, and `To continue`. If no technical user action is needed, say
 `Nothing technical.`
 

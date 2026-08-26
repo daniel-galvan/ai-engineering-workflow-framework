@@ -1,10 +1,10 @@
 ---
 
 title: AI-assisted Software Engineering Workflow Framework Operating Guide
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 ---
 
 # AI-assisted Software Engineering Workflow Framework Operating Guide
@@ -67,10 +67,9 @@ The work record and implementation plan are derived paths, not additional user c
 The record contains scope, facts, assumptions, unknowns, evidence, decisions, risks, errors, blockers, worker history,
 validation, next actions, and handoff state. It is the durable source of truth for resuming work.
 
-The work record distinguishes workflow state from engineering state. Workflow state says what the run is doing, such as
-`in_progress` or `blocked`. Engineering state says what is established about the work item, such as `designed`,
-`approved`, or `validated`. A blocked run can therefore preserve an approved plan without falsely implying that
-remediation completed.
+The work record distinguishes workflow state from engineering state, and workflow outcome from engineering outcome.
+State says what is happening or established; outcome says whether the graph completed and what value reached the work
+item. A blocked run can therefore preserve an approved plan without falsely implying that remediation completed.
 
 The [human control model](contracts/workflow_execution.md#human-control-model) defines scope, design, implementation,
 and release approvals. Its [stop conditions](contracts/workflow_execution.md#stop-conditions) distinguish when the

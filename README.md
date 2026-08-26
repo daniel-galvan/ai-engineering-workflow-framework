@@ -10,6 +10,9 @@ engineering.
 The framework turns a work item into a traceable workflow with investigation, design, implementation, independent
 review, validation, durable context, and an honest, human-readable handoff.
 
+Every terminal handoff reports the workflow outcome—whether the selected graph completed—and the engineering outcome—
+what value the run delivered to the work item—as separate fields.
+
 ## Core promise
 
 AI-assisted engineering where every material conclusion is traceable from [evidence](contracts/claims.md) to claim,
@@ -192,15 +195,20 @@ Run the framework validator after changes:
 
 ```bash
 python3 scripts/validate_library.py
+python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 ```
+
+The optional path validates a terminal work record's identity, playbook-selection evidence, repository revisions, and
+evidence-to-action references.
 
 Document facts, limitations, and [workflow evaluation](frameworks/workflow_evaluation.md) in the work record. Exercise
 changes against real work items, then simplify. See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
 
 ## Versioning
 
-All versioned framework documents are currently `0.3.3`. Ordinary pilot edits do not change a document version.
-A version changes only when an explicit named release or version update is requested.
+Versioned framework documents use independent semantic versions. Change a document's version when its contract or
+required behavior changes; related documents do not need matching versions. Git revisions identify the exact framework
+snapshot used by a run.
 
 ## Status
 

@@ -1,12 +1,12 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -552,7 +552,7 @@ status is a separate human-approved action through the MCP integration.
 | -------------------- | ---------------------------------------------------------------------- |
 | Investigation ready  | Sentry evidence and a candidate source path are identified; exact production-to-checkout mapping may remain an explicit uncertainty |
 | Diagnosis ready      | Root cause or best-supported hypothesis is recorded with evidence and residual uncertainty |
-| Implementation ready | Fix scope, tests, risks, and rollback are approved                     |
+| Implementation ready | Shared semantic readiness threshold and planning fan-in passed; plan exists |
 | Validation ready     | Review findings are resolved or accepted                               |
 | Handoff ready        | Validation, rollout, monitoring, ownership, and follow-up are explicit |
 
@@ -594,7 +594,8 @@ The final handoff is ordered as follows:
    released.
 4. Remaining risks, blockers, clarification brief when input is required, and ownership.
 
-Also include the shared Human-Readable Handoff block: `What happened`, `What this means`, `Internal owner`,
+Also include the shared Human-Readable Handoff block with distinct `Workflow outcome` and `Engineering outcome` fields,
+followed by `What happened`, `What this means`, `Internal owner`,
 `Next-action owner`, `What you need to do`, and `To continue`. The internal owner manages workflow state; the
 next-action owner must be able to access and complete the named evidence or engineering action. If no technical user
 action is needed, say `Nothing technical.`

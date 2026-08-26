@@ -1,9 +1,9 @@
 ---
 title: Feature Delivery Run Prompt
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/feature_delivery.md
@@ -89,5 +89,6 @@ Follow the selected playbook and its required dependencies.
 At handoff, include the contract's compact `Run metrics:` and `Worker timing:` lines in the final answer; do not replace
 them with a work-record link or report coordinator-observed values as `Unknown`. Include coordination errors and
 handoff revisions, artifact bytes after the last correction, and metrics validity. Reserve `plan_only` for a run that produced
-a usable implementation plan; otherwise use `partially_solved` for useful incomplete planning.
+a usable implementation plan; otherwise use `partially_solved` for useful incomplete planning. Report distinct
+`Workflow outcome` and `Engineering outcome` fields.
 ```

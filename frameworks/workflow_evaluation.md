@@ -1,9 +1,9 @@
 ---
 title: Workflow Evaluation
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -25,6 +25,10 @@ Use `Unknown` when the runtime does not expose token or credit usage; never esti
 activation, terminal, and elapsed timestamps are required. Use activation as start and `Unavailable` for provider queue
 time when the runtime exposes no separate value.
 
+Every evaluation MUST identify its evaluation run ID, framework commit, prompt template revision, playbook version,
+role-policy baseline, requested and executed profile, lifecycle, provider/model configuration, and relevant repository
+revisions. Missing reproducibility identity makes Process quality and Efficiency no better than `partial`.
+
 | Dimension | Question | Evidence |
 | --- | --- | --- |
 | Process quality | Did the requested profile, workers, dependencies, fan-in, and gates run as required? | Workflow state, ledgers, runtime-closure record |
@@ -32,15 +36,15 @@ time when the runtime exposes no separate value.
 | Reasoning quality | Are material conclusions traceable, calibrated, and responsive to contradictions? | Evidence, claims, assumptions, decisions |
 | Engineering quality | Did the work reach the declared implementation, review, validation, release, or handoff outcome? | Plan, diff, review, validation, operational evidence |
 | Efficiency | Did the run avoid unnecessary retries, duplicated investigation, workers, and human burden? | Duration, usage, retry/correction counts, worker summaries |
-| Task outcome | Did the run move the work item forward? | Solved / Partially Solved / Plan Only / Blocked / Incorrect |
+| Engineering outcome | Did the run move the work item forward? | Solved / Partially Solved / Plan Only / Blocked / Incorrect |
 
 Rate each dimension `met`, `partial`, `not_met`, or `not_applicable`. A low cost or short run is not a quality result by
 itself. A completed worker graph does not prove the diagnosis, implementation, or release was correct.
 
-Record `workflow_execution` and `task_outcome` separately at every terminal or blocked handoff. Workflow execution is
-`completed`, `incomplete`, or `blocked`; it measures whether the selected graph finished. Task outcome is exactly one
-of `solved`, `partially_solved`, `plan_only`, `blocked`, or `incorrect`; it measures the engineering value delivered to
-the work item. Do not use a numeric score: the named outcome is clearer and auditable.
+Record `workflow_outcome` and `engineering_outcome` separately at every terminal or blocked handoff. Workflow outcome is
+`completed`, `incomplete`, or `blocked`; it measures whether the selected graph finished. Engineering outcome is exactly
+one of `solved`, `partially_solved`, `plan_only`, `blocked`, or `incorrect`; it measures the engineering value delivered
+to the work item. Do not use a numeric score: the named outcome is clearer and auditable.
 
 Record human burden separately from automated efficiency:
 
@@ -95,7 +99,7 @@ final fan-in and was not updated afterward.
 Process quality and Efficiency cannot be rated `met` when the Coordinator duplicates delegated technical
 investigation, counts itself as a worker activation attempt, omits its own or the Documenter's timing, or edits a final
 Documenter artifact instead of returning the inconsistency. Process quality also cannot be `met` when
-`awaiting_input` after completed fan-in is reported as a blocked workflow or task outcome.
+`awaiting_input` after completed fan-in is reported as a blocked workflow or engineering outcome.
 
 Process quality and Efficiency also cannot be rated `met` when configured worker model or effort was replaced by
 Coordinator inheritance, workers reread the complete framework without a named ambiguity, or a worker repeats verified
@@ -132,7 +136,7 @@ different remediation plans.
 
 ## Comparison Rules
 
-Compare runs only when their complexity tags, lifecycle, profile, required evidence, and recorded model-policy baseline
+Compare runs only when their complexity tags, lifecycle, profile, required evidence, and recorded role-policy baseline
 ID are sufficiently similar. Review at least five real runs before changing a role's model or effort policy. A policy
 change needs a documented quality gain, regression, or efficiency result—not a theoretical preference.
 

@@ -1,6 +1,6 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
 ---
@@ -59,12 +59,15 @@ From the repository root, run:
 
 ```bash
 python3 scripts/validate_library.py
+python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 ```
 
-The validator checks document versions, Markdown prose width and table structure, TOML syntax, playbook maturity,
-template consistency, provider-adapter coverage, and Codex policy/TOML alignment.
+The optional path performs terminal work-record identity and referential-integrity validation.
+
+The validator checks document semantic versions, Markdown prose width and table structure, TOML syntax, playbook
+maturity, template consistency, provider-adapter coverage, and Codex policy/TOML alignment.
 
 ## Version policy
 
-All versioned documents remain at `0.3.3` during ordinary pilot evolution. Change a version only when an explicit named
-release or version update is requested.
+Versioned documents evolve independently. Increment a document's semantic version when its contract or required
+behavior changes; do not change unrelated document versions merely to keep them aligned.

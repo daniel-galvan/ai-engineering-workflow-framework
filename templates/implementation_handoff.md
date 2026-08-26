@@ -1,6 +1,6 @@
 ---
 title: Portable Implementation Handoff
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -182,6 +182,7 @@ Do not hide a skipped, unavailable, failed, or inconclusive check behind a succe
 
 Return a concise report containing:
 
+- distinct workflow and engineering outcomes;
 - changes made and files modified;
 - strict Code Review dimensions covered, findings, gaps, and dispositions;
 - every validation command and its result;

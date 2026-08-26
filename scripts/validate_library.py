@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
 import tomllib
+from collections import Counter
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_VERSION = "0.3.3"
+SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
 MODEL_BASELINE_ID = "codex-role-policy-v0.3.0-01"
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
@@ -70,6 +73,192 @@ def frontmatter(text: str) -> list[str]:
         return lines[1 : lines.index("---", 1)]
     except ValueError:
         return []
+
+
+def markdown_table(text: str, heading: str) -> list[dict[str, str]]:
+    lines = text.splitlines()
+    try:
+        start = lines.index(heading) + 1
+    except ValueError:
+        return []
+    while start < len(lines) and not is_table_row(lines[start]):
+        if lines[start].startswith("#"):
+            return []
+        start += 1
+    if start + 1 >= len(lines):
+        return []
+    headers = table_cells(lines[start])
+    separator = table_cells(lines[start + 1])
+    if len(headers) != len(separator) or not all("-" in cell for cell in separator):
+        return []
+    rows = []
+    for line in lines[start + 2 :]:
+        if not is_table_row(line):
+            break
+        cells = table_cells(line)
+        if len(headers) != len(cells):
+            return []
+        rows.append(dict(zip(headers, cells, strict=True)))
+    return rows
+
+
+def reasoning_record_errors(text: str) -> list[str]:
+    errors = []
+    tables = (
+        ("evidence", "# Evidence", "Evidence ID"),
+        ("claim", "# Claims", "Claim ID"),
+        ("decision", "# Decision Log", "Decision ID"),
+        ("action", "# Action Log", "Action ID"),
+    )
+    records = {}
+    for label, heading, key in tables:
+        rows = markdown_table(text, heading)
+        ids = [row.get(key, "") for row in rows if row.get(key, "")]
+        for duplicate in sorted(value for value, count in Counter(ids).items() if count > 1):
+            errors.append(f"duplicate {label} {duplicate}")
+        records[label] = {row.get(key, ""): row for row in rows if row.get(key, "")}
+    evidence, claims, decisions, actions = (records[label] for label, _, _ in tables)
+
+    if not all((evidence, claims, decisions, actions)):
+        errors.append("must contain populated Evidence, Claims, Decision Log, and Action Log tables")
+        return errors
+
+    evidence_used = set()
+    claims_used = set()
+    decisions_used = set()
+    for evidence_id, row in evidence.items():
+        if not row.get("Source") or row["Source"] in {"Unknown", "None"}:
+            errors.append(f"{evidence_id} has no source")
+    for claim_id, row in claims.items():
+        refs = set(REFERENCE_ID.findall(row.get("Evidence refs", "")))
+        if not refs:
+            errors.append(f"{claim_id} has no evidence refs")
+        for ref in refs:
+            if ref not in evidence:
+                errors.append(f"{claim_id} references missing evidence {ref}")
+            else:
+                evidence_used.add(ref)
+    for decision_id, row in decisions.items():
+        refs = set(REFERENCE_ID.findall(row.get("Claim refs", "")))
+        if not refs:
+            errors.append(f"{decision_id} has no claim refs")
+        for ref in refs:
+            if ref not in claims:
+                errors.append(f"{decision_id} references missing claim {ref}")
+            else:
+                claims_used.add(ref)
+    for action_id, row in actions.items():
+        refs = set(REFERENCE_ID.findall(row.get("Decision ref", "")))
+        if len(refs) != 1:
+            errors.append(f"{action_id} must reference exactly one decision")
+        for ref in refs:
+            if ref not in decisions:
+                errors.append(f"{action_id} references missing decision {ref}")
+            else:
+                decisions_used.add(ref)
+
+    for label, records, used in (
+        ("evidence", evidence, evidence_used),
+        ("claim", claims, claims_used),
+        ("decision", decisions, decisions_used),
+    ):
+        for orphan in sorted(set(records) - used):
+            errors.append(f"orphaned {label} {orphan}")
+    return errors
+
+
+def validate_work_record(path: Path, require_terminal: bool = False) -> None:
+    if not path.is_file():
+        fail(f"work record does not exist: {path}")
+    text = path.read_text()
+    identity = {
+        row.get("Field", ""): row.get("Value", "")
+        for row in markdown_table(text, "# Run and Evaluation Identity")
+    }
+    if identity.get("State") not in {"awaiting_input", "blocked", "ready_for_implementation", "completed"}:
+        if require_terminal:
+            fail(f"{path}: work record is not terminal or lacks Run and Evaluation Identity")
+        return
+    for error in reasoning_record_errors(text):
+        fail(f"{path}: {error}")
+    selection = markdown_table(text, "# Playbook Selection")
+    if not selection or any(not value for value in selection[0].values()):
+        fail(f"{path}: Playbook Selection must record the selected playbook, closest alternative, and rationale")
+    required_identity = (
+        "Run ID",
+        "Evaluation run ID",
+        "Playbook / version",
+        "Framework commit / status",
+        "Prompt template / revision / conformance",
+        "Role-policy baseline ID",
+        "Provider / model configuration",
+        "Requested profile",
+        "Executed profile",
+        "Lifecycle",
+        "State",
+        "Engineering state",
+        "Workflow outcome",
+        "Engineering outcome",
+    )
+    missing = [field for field in required_identity if not identity.get(field)]
+    if missing:
+        fail(f"{path}: missing evaluation identity: {', '.join(missing)}")
+    repositories = markdown_table(text, "# Repository Evidence Eligibility")
+    if not repositories or any(not row.get("Full revision") for row in repositories):
+        fail(f"{path}: every relevant repository must record its full revision")
+
+
+def self_test_reasoning_records() -> None:
+    valid = """# Playbook Selection
+| Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
+| --- | --- | --- | --- | --- |
+| Review comments | Improve controls | Feature Delivery | TechOps | Planned framework improvement |
+# Repository Evidence Eligibility
+| Repository role | Full revision |
+| --- | --- |
+| Execution | abcdef123456 |
+# Run and Evaluation Identity
+| Field | Value |
+| --- | --- |
+| Run ID | run-001 |
+| Evaluation run ID | evaluation-001 |
+| Playbook / version | playbooks/feature_delivery.md / 0.3.4 |
+| Framework commit / status | abcdef123456 / Dirty |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.3.4 / pass |
+| Role-policy baseline ID | codex-role-policy-v0.3.0-01 |
+| Provider / model configuration | Codex / Worker Execution Ledger |
+| Requested profile | standard |
+| Executed profile | standard |
+| Lifecycle | remediation |
+| State | completed |
+| Engineering state | validated |
+| Workflow outcome | completed |
+| Engineering outcome | solved |
+# Evidence
+| Evidence ID | Source |
+| --- | --- |
+| evidence-001 | test.log |
+# Claims
+| Claim ID | Evidence refs |
+| --- | --- |
+| claim-001 | evidence-001 |
+# Decision Log
+| Decision ID | Claim refs |
+| --- | --- |
+| decision-001 | claim-001 |
+# Action Log
+| Action ID | Decision ref |
+| --- | --- |
+| action-001 | decision-001 |
+"""
+    assert reasoning_record_errors(valid) == []
+    invalid = valid.replace("| claim-001 | evidence-001 |", "| claim-001 | evidence-999 |")
+    assert "claim-001 references missing evidence evidence-999" in reasoning_record_errors(invalid)
+    assert "orphaned evidence evidence-001" in reasoning_record_errors(invalid)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "work_record.md"
+        path.write_text(valid)
+        validate_work_record(path, require_terminal=True)
 
 
 for path in ROOT.rglob("*.md"):
@@ -149,8 +338,8 @@ for path in ROOT.rglob("*.md"):
     if in_fence:
         fail(f"{path.relative_to(ROOT)} has an unclosed fenced block")
     version = re.search(r"^version: (.+)$", text, re.M)
-    if version and version.group(1) != RELEASE_VERSION:
-        fail(f"{path.relative_to(ROOT)} has version {version.group(1)!r}")
+    if version and not SEMVER.fullmatch(version.group(1)):
+        fail(f"{path.relative_to(ROOT)} has invalid semantic version {version.group(1)!r}")
 
 agent_configs = {}
 for path in ROOT.rglob("*.toml"):
@@ -374,7 +563,7 @@ for phrase in (
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 36):
+for invariant_id in range(1, 37):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
@@ -401,6 +590,10 @@ for phrase in (
     "## Planning Readiness and Implementation Work",
     "Implementation-plan work includes",
     "A true planning blocker exists only",
+    "required claims established by source-backed evidence",
+    "critical assumptions supported, contradicted, or explicitly accepted",
+    "acceptance criteria recovered or an approved equivalent recorded",
+    "no blocking unknown",
     "## Delivery Activation and Completion Barrier",
     "active delegated `implement` worker",
     "A source change made before the barrier",
@@ -415,8 +608,8 @@ for phrase in (
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing planning-readiness rule: {phrase}")
 for phrase in (
-    "Workflow execution: <completed | incomplete | blocked>",
-    "Task outcome: <solved | partially_solved | plan_only | blocked | incorrect>",
+    "Workflow outcome: <completed | incomplete | blocked>",
+    "Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing handoff result: {phrase}")
@@ -430,6 +623,14 @@ for field in ("`assumption_owner`", "`impact_if_wrong`", "`validation_method`"):
         fail(f"contracts/claims.md is missing assumption field {field}")
 if "`approval_type`" not in claims_contract:
     fail("contracts/claims.md is missing approval-type semantics")
+for phrase in (
+    "## Referential Integrity",
+    "every action references an existing decision",
+    "every evidence record names a source",
+    "no evidence, claim, or decision record is orphaned",
+):
+    if phrase not in claims_contract:
+        fail(f"contracts/claims.md is missing referential-integrity control: {phrase}")
 if "Claims, Evidence, Decisions, and Actions Contract" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the claims contract reference")
 if "| `confidence`       | Yes" not in workflow_contract:
@@ -485,11 +686,25 @@ if "| Next-action owner |" not in work_record_template:
     fail("templates/work_record.md is missing next-action-owner handoff guidance")
 if "| User action |" not in work_record_template:
     fail("templates/work_record.md is missing user-action handoff guidance")
-for phrase in ("# Playbook Selection", "| Workflow execution |", "| Task outcome |"):
+for phrase in (
+    "# Playbook Selection",
+    "| Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |",
+    "| Workflow outcome |",
+    "| Engineering outcome |",
+):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing outcome/classification field: {phrase}")
-if "| Model-policy baseline ID |" not in work_record_template:
-    fail("templates/work_record.md is missing the model-policy baseline ID")
+for phrase in (
+    "# Run and Evaluation Identity",
+    "| Evaluation run ID |",
+    "| Playbook / version |",
+    "| Framework commit / status |",
+    "| Prompt template / revision / conformance |",
+    "| Role-policy baseline ID |",
+    "| Provider / model configuration |",
+):
+    if phrase not in work_record_template:
+        fail(f"templates/work_record.md is missing evaluation identity: {phrase}")
 for phrase in (
     "# Run Isolation and Finalization",
     "Concurrent-run decision",
@@ -525,12 +740,12 @@ workflow_evaluation = WORKFLOW_EVALUATION.read_text()
 for heading in ("# Workflow Evaluation", "## Pilot Method", "## Comparison Rules"):
     if heading not in workflow_evaluation:
         fail(f"frameworks/workflow_evaluation.md is missing {heading}")
-if "recorded model-policy baseline" not in workflow_evaluation:
+if "recorded role-policy baseline" not in workflow_evaluation:
     fail("frameworks/workflow_evaluation.md is missing baseline comparison control")
 if "# Workflow Evaluation" not in work_record_template:
     fail("templates/work_record.md is missing workflow evaluation")
 for phrase in (
-    "Task outcome",
+    "Engineering outcome",
     "Clarifications",
     "Approvals",
     "Manual corrections",
@@ -839,6 +1054,8 @@ for path in sorted((ROOT / "templates").glob("*_run_prompt.md")):
         "required for Codex evaluation runs",
         "prompt_conformance",
         "Intended ref:",
+        "Workflow outcome",
+        "Engineering outcome",
     ):
         if phrase not in text:
             fail(f"{path.relative_to(ROOT)} is missing run-prompt conformance control: {phrase}")
@@ -963,13 +1180,17 @@ for phrase in ("Planning normally designs these checks", "focused regression tha
         fail(f"templates/implementation_plan.md is missing test-first execution control: {phrase}")
 
 if "| Outcome | `in_progress`" in work_record_template:
-    fail("templates/work_record.md must not duplicate workflow execution and task outcome with a generic outcome field")
+    fail("templates/work_record.md must not duplicate canonical workflow and engineering outcomes")
 for phrase in ("Configured model/effort", "Provider-observed model/effort", "self-reported model"):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing model-observation distinction: {phrase}")
-if "Framework revision / status" not in work_record_template:
+if "Framework commit / status" not in work_record_template:
     fail("templates/work_record.md is missing framework-revision provenance")
-for phrase in ("Repository Evidence Eligibility", "Prompt conformance", "Post-finalization Coordinator edits"):
+for phrase in (
+    "Repository Evidence Eligibility",
+    "Prompt template / revision / conformance",
+    "Post-finalization Coordinator edits",
+):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing run-control evidence: {phrase}")
 for phrase in (
@@ -1036,5 +1257,12 @@ for name in ("generic.md", "claude.md", "cursor.md", "codex.md"):
     missing = [skill for skill in sorted(SKILLS) if f"`{skill}`" not in text]
     if missing:
         fail(f"providers/{name} is missing skill mappings: {', '.join(missing)}")
+
+if "--self-test" in sys.argv:
+    self_test_reasoning_records()
+for argument in (value for value in sys.argv[1:] if value != "--self-test"):
+    validate_work_record(Path(argument).resolve(), require_terminal=True)
+for work_record in sorted(ROOT.glob(".thoughts/*/work_record.md")):
+    validate_work_record(work_record)
 
 print("Workflow-framework validation: passed")

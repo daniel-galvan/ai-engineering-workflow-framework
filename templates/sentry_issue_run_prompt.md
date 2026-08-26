@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -119,11 +119,11 @@ Runtime bootstrap:
 - Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to
   that same handle and close it only after the revised terminal result passes.
 - Before release, reconcile the final artifact and answer with the runtime ledger. Workflow state, profile status,
-  workflow/task outcome, plan action, worker outcomes, active handles, counts, artifact bytes, runtime closure, and
+  workflow/engineering outcome, plan action, worker outcomes, active handles, counts, artifact bytes, runtime closure, and
   metrics validity must agree; return stale `pending` or `active` values to the same Documenter for correction.
 - Finalization must retain the contract's required terminal fields and playbook artifact set. Keep `state`,
-  `engineering_state`, `workflow_execution`, and `task_outcome` distinct and copy their exact values to the final
-  answer; matching artifact counts alone do not pass.
+  `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct and copy their exact values to the final
+  answer as `Workflow outcome` and `Engineering outcome`; matching artifact counts alone do not pass.
 - Use canonical Sentry artifacts: `normalized_evidence.md`, and `clarification_brief.md` when the result is
   `awaiting_input`; create `implementation_plan.md` only when the readiness gate allows it.
 - The fix-design result must set `plan_readiness` and `implementation_plan_action`. `awaiting_input` means `omit` and

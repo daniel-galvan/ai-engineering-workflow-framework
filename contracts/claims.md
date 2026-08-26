@@ -1,10 +1,10 @@
 ---
 title: Claims, Evidence, Decisions, and Actions Contract
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 ---
 
 # Claims, Evidence, Decisions, and Actions Contract
@@ -37,6 +37,19 @@ flowchart TB
 | Material assumption | A claim with `status: assumed`: a necessary but unverified working premise that has an owner, impact, and validation method. |
 | Decision | A selected option, scope boundary, or disposition based on claims. A decision identifies its owner and approval status. |
 | Action | A concrete implementation, validation, documentation, or follow-up step derived from a decision. |
+
+## Referential Integrity
+
+A terminal work record MUST form a complete reasoning chain:
+
+- every action references an existing decision;
+- every decision references one or more existing claims;
+- every claim references one or more existing evidence records;
+- every evidence record names a source; and
+- no evidence, claim, or decision record is orphaned from the chain that reaches an action.
+
+The framework validator checks these relationships for populated work records. Draft records may be incomplete while a
+run is active, but they MUST pass before terminal handoff.
 
 ## Required fields
 

@@ -1,12 +1,12 @@
 ---
 
 title: Documenter Role
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-25
 required_documents:
 
   - ../frameworks/investigation.md
@@ -53,12 +53,13 @@ maintenance.
 * Maintain `work_record.md`.
 * Maintain the Input Register with stable Input IDs and each material input's source, classification, authority,
   assignment, and consumption status.
-* Record the active model-policy baseline ID and actual worker model and effort.
+* Record the evaluation run ID, framework commit, prompt and playbook versions, role-policy baseline, provider, relevant
+  repository revisions, and actual worker model and effort.
 * Record control-fidelity, elapsed-time, wait-time, and human-intervention evaluation measures.
 * Record coordination errors, handoff revisions, metrics validity, and exact artifact bytes from the Coordinator's
   finalized packet; do not reconstruct timing or counts.
 * Retain the contract's required terminal fields while compacting, validate the playbook's required artifact set, and
-  keep `state`, `engineering_state`, `workflow_execution`, and `task_outcome` distinct.
+  keep `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct.
 * Record the related-run check and post-closure polls from the Coordinator's finalized packet.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.
@@ -232,6 +233,8 @@ Chronological list of engineering decisions.
 Include:
 
 * Current status
+* Workflow outcome
+* Engineering outcome
 * Remaining work
 * Risks
 * What happened, in plain language

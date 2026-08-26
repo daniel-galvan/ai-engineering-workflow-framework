@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 ---
 
 # Workflow Execution Contract
@@ -99,7 +99,7 @@ the source of truth.
 | `INV-30` | A managed worktree of the declared repository MUST be the source checkout, while durable artifacts remain under the declared repository path. | [Durable Artifact Root](#durable-artifact-root) |
 | `INV-31` | After delegation, the owning technical worker MUST perform the assigned investigation; the Coordinator may repeat it only for a recorded discrepancy. | [Stage Completion and Fan-In](#stage-completion-and-fan-in) |
 | `INV-32` | Provider-configured worker model and effort MUST be bound explicitly when the runtime otherwise inherits Coordinator settings. | [Profile Execution Semantics](#profile-execution-semantics) |
-| `INV-33` | A final handoff MUST reconcile durable artifact state with fan-in, runtime closure, counts, timing, and task outcome before release. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
+| `INV-33` | A final handoff MUST reconcile durable artifact state with fan-in, runtime closure, counts, timing, and engineering outcome before release. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-34` | A remediation run sharing an execution repository with another active run MUST use an isolated managed worktree and run artifact root. | [Concurrent Run Isolation](#concurrent-run-isolation) |
 | `INV-35` | Every worker activation MUST include a compact value/source/authority manifest for its assigned Input IDs. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 | `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
@@ -320,8 +320,14 @@ Each run records:
 | Field          | Description                                                                          |
 | -------------- | ------------------------------------------------------------------------------------ |
 | `run_id`       | Unique identifier for this execution.                                                |
+| `evaluation_run_id` | Unique experiment identity for comparing this evaluated run.                 |
 | `work_item_id` | Identifier of the normalized work item.                                              |
 | `playbook`     | Canonical playbook identifier.                                                       |
+| `playbook_version` | Version from the selected playbook's front matter.                              |
+| `framework_commit` | Full framework Git commit and clean or dirty status.                             |
+| `prompt_template_revision` | Canonical prompt template path, version, and conformance result.          |
+| `role_policy_baseline` | Provider role-policy baseline ID or `Not applicable`.                         |
+| `provider`     | Execution provider and provider/model configuration reference.                       |
 | `profile`      | Requested execution profile selected for this run.                                  |
 | `lifecycle`    | Maximum run scope, such as `planning` or `remediation`.                              |
 | `activated_profile` | Profile whose worker graph actually started; `None` if no graph started.          |
@@ -330,9 +336,9 @@ Each run records:
 | `mode`         | Discovery, investigation, delivery, stabilization, review, or another declared mode. |
 | `effort`       | Quick, standard, or deep.                                                            |
 | `state`        | Current workflow lifecycle state.                                                    |
-| `engineering_state` | What has been established about the work item, independently of workflow execution. |
-| `workflow_execution` | `completed`, `incomplete`, or `blocked`; whether the selected graph actually finished. |
-| `task_outcome` | `solved`, `partially_solved`, `plan_only`, `blocked`, or `incorrect`. |
+| `engineering_state` | What has been established about the work item, independently of workflow outcome. |
+| `workflow_outcome` | `completed`, `incomplete`, or `blocked`; whether the selected graph actually finished. |
+| `engineering_outcome` | `solved`, `partially_solved`, `plan_only`, `blocked`, or `incorrect`. |
 | `workers`      | Selected workers and their dependencies.                                             |
 | `gates`        | Required conditions and their status.                                                |
 | `artifacts`    | Durable outputs produced during the run.                                             |
@@ -396,7 +402,8 @@ by the Orchestrator at fan-in.
 
 The summary must describe the worker's unique contribution, not repeat the entire input artifact. A downstream worker
 must consume the envelope and referenced artifacts rather than independently repeating the same investigation unless it
-is checking a stated discrepancy.
+is checking a stated discrepancy. The envelope's `outcome` is a worker outcome; it does not replace the run-level
+`workflow_outcome` or `engineering_outcome`.
 
 Coordinator-observed activation and terminal timestamps are always available and MUST be recorded. When the provider
 does not expose a distinct start time or queue wait, use activation as start and record provider queue wait as
@@ -494,10 +501,18 @@ ownership, or incompatible-alternatives decision remains after bounded discovery
 return a terminal result. A worker whose investigation is complete MUST return `complete` with recorded limitations,
 not `blocked`, merely because implementation or validation work remains.
 
-`ready_for_implementation` requires terminal planning fan-in and an implementation plan with a feasible sequence,
-scope, validation strategy, risks, and explicit prerequisites. It does not require source changes, passing tests,
-available local tooling, provisioned infrastructure, or release approval. Implementation approval remains the gate for
-performing those steps.
+`ready_for_implementation` requires terminal planning fan-in and an implementation plan with:
+
+- required claims established by source-backed evidence;
+- critical assumptions supported, contradicted, or explicitly accepted as implementation risk;
+- implementation scope and exclusions defined;
+- acceptance criteria recovered or an approved equivalent recorded;
+- a validation plan defined; and
+- no blocking unknown that could select a materially different cause, boundary, or fix.
+
+The plan must also provide a feasible sequence, risks, and explicit prerequisites. Readiness does not require source
+changes, passing tests, available local tooling, provisioned infrastructure, or release approval. Implementation
+approval remains the gate for performing those steps.
 
 A prerequisite may verify an already supported change, but it MUST NOT be used to defer diagnosis or fix selection into
 remediation. If missing evidence could select among materially different causes, owning repositories, source boundaries,
@@ -843,8 +858,8 @@ without requiring the reader to reconstruct parallel execution from logs.
 Every playbook handoff must include this short block, especially when the run is blocked, incomplete, or awaiting input:
 
 ```text
-Workflow execution: <completed | incomplete | blocked>
-Task outcome: <solved | partially_solved | plan_only | blocked | incorrect>
+Workflow outcome: <completed | incomplete | blocked>
+Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>
 What happened: <plain-language result>
 What this means: <why the run stopped or what is ready>
 Best current explanations: <up to three hypotheses with confidence and one-line evidence, or “None”>
@@ -854,16 +869,17 @@ What you need to do: <user action, or “Nothing technical.”>
 To continue: “<exact phrase or action the user can provide>”
 ```
 
-`Workflow execution: completed` means required workers reached terminal results, fan-in passed, and runtime closure was
-recorded. It does not prove the diagnosis, implementation, or release was correct. `Task outcome` reports the value to
-the engineering work item: a plan can be produced while the task remains unsolved, and a completed workflow can reveal a
-wrong direction.
+`Workflow outcome: completed` means required workers reached terminal results, fan-in passed, and runtime closure was
+recorded. It does not prove the diagnosis, implementation, or release was correct. `Engineering outcome` reports the
+value to the engineering work item: a plan can be produced while the task remains unsolved, and a completed workflow can
+reveal a wrong direction.
 
 When analytical fan-in and runtime closure complete but the run needs a decision or evidence, use state
-`awaiting_input`, `Workflow execution: completed`, and `Task outcome: partially_solved`. Reserve `plan_only` for a run
-that produced a usable implementation plan but did not implement it. Use
-`Task outcome: blocked` only when an environment, permission, runtime, or indispensable-evidence failure prevented the
-selected workflow from completing. Do not add a second generic outcome field that contradicts these values.
+`awaiting_input`, `Workflow outcome: completed`, and `Engineering outcome: partially_solved`. Reserve `plan_only` for a
+run that produced a usable implementation plan but did not implement it. Use
+`Engineering outcome: blocked` only when an environment, permission, runtime, or indispensable-evidence failure
+prevented the selected workflow from completing. Do not add a second generic outcome field that contradicts these
+values.
 
 The handoff must explain internal runtime terms such as `fan-in`, terminal worker envelope, and runtime closure in
 ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
@@ -944,31 +960,31 @@ and timing corrections as input and MUST NOT edit those files concurrently.
 ## Final Handoff Reconciliation
 
 Before releasing the final Documenter, the Coordinator MUST compare the final artifact and final answer with the runtime
-ledger. The following values must agree: workflow state, profile status, workflow execution, task outcome, plan action,
-worker outcomes, remaining active handles, activation/error/revision counts, artifact paths and bytes, runtime closure,
-and metrics validity. A released handoff MUST contain no stale `pending`, `active`, `in_progress`, or `closure pending`
-value for a completed barrier. Return any mismatch to the same Documenter, increment `handoff revisions`, collect the
-revised terminal result, and repeat the comparison before release. A final answer that contradicts the durable record is
-a handoff conformance failure even when the worker graph itself completed.
+ledger. The following values must agree: workflow state, profile status, workflow outcome, engineering outcome, plan
+action, worker outcomes, remaining active handles, activation/error/revision counts, artifact paths and bytes, runtime
+closure, and metrics validity. A released handoff MUST contain no stale `pending`, `active`, `in_progress`, or
+`closure pending` value for a completed barrier. Return any mismatch to the same Documenter, increment
+`handoff revisions`, collect the revised terminal result, and repeat the comparison before release. A final answer that
+contradicts the durable record is a handoff conformance failure even when the worker graph itself completed.
 
 Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing the turn and
 provider timestamps, worker handles and outcomes, activation and coordination counts, exact current artifact bytes,
-workflow and task outcomes, displayed hypotheses, internal owner, next-action owner, and completion condition. The
-Documenter formats these values; it does not reconstruct them. After any correction, recompute artifact bytes and
+workflow and engineering outcomes, displayed hypotheses, internal owner, next-action owner, and completion condition.
+The Documenter formats these values; it does not reconstruct them. After any correction, recompute artifact bytes and
 timing before handoff.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
-`engineering_state`, `workflow_execution`, and `task_outcome`; run-isolation decision and related-run check; durable
-artifact paths and required artifact-set disposition; worker activation/timing and result summaries; fan-in and runtime
-closure; metrics validity; displayed hypotheses; ownership; next action; and final reconciliation. Empty explanatory
-sections MAY be omitted. A
+`engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;
+durable artifact paths and required artifact-set disposition; worker activation/timing and result summaries; fan-in and
+runtime closure; metrics validity; displayed hypotheses; ownership; next action; and final reconciliation. Empty
+explanatory sections MAY be omitted. A
 smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
 fails the applicable artifact budget unless the recorded exception is valid.
 
-The final answer MUST copy `state`, `engineering_state`, `workflow_execution`, and `task_outcome` from the reconciled
-record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise substitute
-one vocabulary value for another. The selected playbook's required artifact set is part of reconciliation: an artifact
-count is not sufficient when a required artifact is absent.
+The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
+reconciled record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise
+substitute one vocabulary value for another. The selected playbook's required artifact set is part of reconciliation:
+an artifact count is not sufficient when a required artifact is absent.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It
@@ -1158,6 +1174,7 @@ A pilot run MUST NOT be called contract-compliant unless its work record can ans
 - What was each worker's unique result, outcome, and limitation?
 - Did every required fan-in barrier pass before completion?
 - What evidence supports the current understanding?
+- Does every action, decision, claim, and evidence reference resolve to a source-backed chain without orphans?
 - Which gates passed or failed?
 - What errors, blockers, and unknowns occurred?
 - Were all explicitly named paths verified, including symlink targets where applicable?
