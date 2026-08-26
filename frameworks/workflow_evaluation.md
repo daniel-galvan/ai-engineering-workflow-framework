@@ -1,9 +1,9 @@
 ---
 title: Workflow Evaluation
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -25,9 +25,10 @@ Use `Unknown` when the runtime does not expose token or credit usage; never esti
 activation, terminal, and elapsed timestamps are required. Use activation as start and `Unavailable` for provider queue
 time when the runtime exposes no separate value.
 
-Every evaluation MUST identify its evaluation run ID, framework commit, prompt template revision, playbook version,
-role-policy baseline, requested and executed profile, lifecycle, provider/model configuration, and relevant repository
-revisions. Plugin-backed evaluations MUST also record the installed plugin name and version; manual runs record
+Every evaluation MUST identify its evaluation run ID, framework commit, prompt template revision, playbook version, and
+role-policy baseline ID. It must also record requested and executed profile, lifecycle, provider/model configuration,
+and relevant repository revisions. Use the provider run ID when no independent experiment ID was supplied.
+Plugin-backed evaluations MUST record the installed plugin name and version; manual runs record
 `Not applicable`. The execution-repository `.codex/agents/` runtime view is optional, but the resolved provider
 configuration source and status are mandatory. Missing reproducibility identity makes Process quality and Efficiency no
 better than `partial`.
@@ -82,6 +83,11 @@ run did not expose enough evidence to assess the measure.
 | Memory facts admitted | Count | Unassigned memory or historical facts/citations that entered current-run outputs; must be zero. |
 | Artifact volume | Count and bytes | Durable artifacts produced by the run. |
 | Finding-to-plan ratio | Findings / change sets / plans | Whether distinct findings produced shared or duplicate remediation plans. |
+
+Derive instance, activation, error, and revision counts from the chronological activation ledger. A successful `spawn`
+is one activation attempt. A `resume` or `send` on an existing handle is not another instance or attempt; a rejected
+provider action is a coordination error, even if the retry succeeds. Every continuation adds a chronological row with
+its new inputs and trigger. Do not retroactively assign continuation inputs to earlier activations.
 
 If coordinator-observed wall time, worker elapsed time, actual instances, activation attempts, or activation outcomes
 are missing, Process quality and Efficiency cannot be rated `met`. Record the missing-metrics control failure rather

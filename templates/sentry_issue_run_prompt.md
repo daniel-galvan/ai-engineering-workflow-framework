@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -35,6 +35,8 @@ Issue: <SENTRY-ISSUE-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
 Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
+Evaluation run ID (required; use Codex Run ID when no separate experiment ID is supplied): <RUN-ID>
+Role-policy baseline ID: <BASELINE-ID>
 
 Execution profile: standard
 Lifecycle: planning
@@ -94,8 +96,13 @@ Runtime bootstrap:
   Record the method and timestamp; when neither is available, record `Unknown; detection unavailable`, not `None`.
 - Every activation packet must include each assigned Input ID's short value, source, authority, and expected use. An ID
   without its value is not a delivered input; reconcile all assigned IDs with `inputs_consumed`.
+- When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
+  the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
 - Count every successful worker activation, including the final Documenter. Treat a malformed call rejected before
   activation as a coordination error. Invalid metrics still report every authoritative duration that is available.
+- Record every provider action in the activation ledger. A `resume` or `send` on the same handle is not a new instance;
+  a rejected provider action is a coordination error even if recovery succeeds. Add a continuation-ledger row and update
+  `Last Updated` for every follow-up that adds evidence, constraints, or worker activity.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
 - Use provider session start and terminal events for worker timing when available; worker-authored artifact timestamps
   are not provider terminal times.
@@ -180,4 +187,6 @@ Include the contract's compact `Run metrics:` and `Worker timing:` lines in the 
 a work-record link or report coordinator-observed values as `Unknown`. Include coordination errors, handoff revisions,
 artifact bytes after the last correction, and metrics validity. Reserve `plan_only` for a run that produced a usable
 implementation plan; otherwise use `partially_solved` for useful incomplete diagnosis.
+Copy artifact paths exactly from the final packet. For portable byte verification, use `wc -c`; do not use GNU-only
+`find -printf`.
 ```

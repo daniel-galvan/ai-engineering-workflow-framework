@@ -17,6 +17,10 @@ worker as inputs; do not remap them unless the evidence records a named
 discrepancy. For a simple `needs_input` gate, run one smallest check that could
 change that disposition, then return the gate result without broader source
 exploration.
+When an assigned input preserves a relative framework reference and a verified
+canonical path, use the canonical path and retain the original reference in the
+result envelope. Do not report the input unavailable solely because it was
+originally relative.
 
 During planning, run a unit or integration test only when an existing focused
 command can confirm or reject a leading hypothesis, identify the owning

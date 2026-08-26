@@ -1,12 +1,12 @@
 ---
 
 title: Documenter Role
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 required_documents:
 
   - ../frameworks/investigation.md
@@ -53,13 +53,17 @@ maintenance.
 * Maintain `work_record.md`.
 * Maintain the Input Register with stable Input IDs and each material input's source, classification, authority,
   assignment, and consumption status.
-* Record the evaluation run ID, framework commit, prompt and playbook versions, role-policy baseline, provider, relevant
-  repository revisions, actual worker model and effort, and the provider/runtime configuration path or `Not provided`.
+* Record a non-empty evaluation run ID, framework commit, prompt and playbook versions, role-policy baseline ID,
+  provider, relevant repository revisions, actual worker model and effort, and the provider/runtime configuration path
+  or `Not provided`.
 * Record the resolved provider-configuration source and status separately from the optional execution-repository runtime
   view; an absent runtime view is not an unresolved provider definition.
 * Record control-fidelity, elapsed-time, wait-time, and human-intervention evaluation measures.
 * Record coordination errors, handoff revisions, metrics validity, and exact artifact bytes from the Coordinator's
   finalized packet; do not reconstruct timing or counts.
+* Record chronological continuation and provider-activation ledgers from the Coordinator's packet. A rejected provider
+  action is a coordination error; a `resume` or `send` on an existing handle is not a new instance or attempt.
+* Update `Last Updated` after every durable change, and copy artifact paths exactly from the final packet.
 * Retain the contract's required terminal fields while compacting, validate the playbook's required artifact set, and
   keep `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct.
 * Preserve the canonical `Playbook Selection`, `Run and Evaluation Identity`, `Evidence`, `Claims`, `Decision Log`, and

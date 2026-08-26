@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 ---
 
 # Workflow Execution Contract
@@ -113,6 +113,7 @@ the source of truth.
 | `INV-35` | Every worker activation MUST include a compact value/source/authority manifest for its assigned Input IDs. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 | `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-37` | A terminal work record MUST pass the packaged framework validator before the handoff is released. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
+| `INV-38` | A run and every continuation MUST record reproducible identity and chronological provider activity without retroactively changing earlier input assignments. | [Run Identity and Continuation Ledger](#run-identity-and-continuation-ledger) |
 
 ---
 
@@ -217,6 +218,10 @@ Every activation packet MUST include a compact input manifest for each assigned 
 source, its authority classification, and the expected use or disposition. Assigning an ID without passing its value is
 not input delivery. A worker may record an assigned input as unavailable or out of scope only when the packet includes
 the input and the worker records the concrete reason it could not use it.
+
+When an input names a relative framework artifact, the activation packet MUST preserve that user-supplied reference and
+also include its verified canonical resolved path. A worker must not report the relative reference unavailable when the
+resolved artifact was delivered.
 
 ## Evidence-to-Hypothesis Gate
 
@@ -727,6 +732,22 @@ The approval gate applies to delivery workers. Missing implementation approval m
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
 `not_executed`; do not substitute a generic workflow or claim success.
 
+## Run Identity and Continuation Ledger
+
+Every terminal or blocked record MUST contain a non-empty evaluation run ID. When no independent experiment identifier
+is supplied, use the provider run ID. Record the role-policy baseline's identifier, not merely its file path.
+
+The record MUST contain one chronological continuation row for the initial run and every later continuation, with the
+trigger, new Input IDs, prior terminal state, and RFC 3339 timestamp. It MUST update `Last Updated` on every durable
+change. A continuation may reuse durable artifacts after closure, but it must append a new row and must not rewrite an
+earlier worker's assigned inputs.
+
+The activation ledger is the source for actual instances, activation attempts, failed spawns, coordination errors, and
+handoff revisions. Record every provider action that changes or addresses a worker, including rejected calls and their
+recovery. Count a successful `spawn` as one activation attempt. A `resume` or `send` on the same handle is not a new
+instance or activation attempt; a provider-returned new handle is. A rejected `send`, `resume`, or `close` is a
+coordination error even when the recovery succeeds.
+
 ## Worker Wait and Termination Semantics
 
 A wait timeout is a polling boundary, not a worker outcome. When a provider wait returns `timed_out: true`, an empty
@@ -990,8 +1011,9 @@ timing before handoff.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
 `engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;
-durable artifact paths and required artifact-set disposition; worker activation/timing and result summaries; fan-in and
-runtime closure; metrics validity; displayed hypotheses; ownership; next action; and final reconciliation. Empty
+durable artifact paths and required artifact-set disposition; continuation and provider-activation ledgers; worker
+activation/timing and result summaries; fan-in and runtime closure; metrics validity; displayed hypotheses; ownership;
+next action; and final reconciliation. Empty
 explanatory sections MAY be omitted. A
 smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
 fails the applicable artifact budget unless the recorded exception is valid.

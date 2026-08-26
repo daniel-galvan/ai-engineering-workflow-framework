@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -37,7 +37,7 @@ It is intended to allow another engineer (or AI assistant) to resume the work wi
 | Requesting team or owner | |
 | Work owner | |
 | Started | |
-| Last Updated | |
+| Last Updated | RFC 3339 timestamp of this record's most recent durable change |
 
 ---
 
@@ -108,7 +108,7 @@ production, or current-main behavior.
 | Field | Value |
 | --- | --- |
 | Run ID | |
-| Evaluation run ID | |
+| Evaluation run ID | Required; use Run ID when no separate experiment identity was supplied |
 | Playbook / version | Canonical playbook path / independent document version |
 | Framework commit / status | Full Git commit / Clean or Dirty |
 | Plugin package / version | Installed plugin name/version, or `Not applicable` for manual runs |
@@ -150,6 +150,16 @@ Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engi
 `awaiting_input`, workflow outcome `completed`, and engineering outcome `partially_solved`; it is not `blocked`. Use
 `plan_only` only when the run produced a usable implementation plan.
 
+# Run Continuation Ledger
+
+Record the initial run and every continuation in chronological order. A continuation adds only its new input IDs and
+worker activity; it MUST NOT retroactively assign those inputs to an earlier activation. Update `Last Updated` whenever
+this ledger or another durable section changes.
+
+| Sequence | Type | Trigger or new evidence | New input IDs | Previous terminal state | Recorded at | Outcome |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Initial / Continuation | | IN-### / None | None / state | RFC 3339 | |
+
 # Durable Artifacts
 
 When the selected playbook requires an implementation plan, planning runs that reach `ready_for_implementation` must
@@ -183,11 +193,23 @@ Record every worker or subagent that materially contributes to the work.
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
 never estimate credit consumption.
 
+# Worker Activation Ledger
+
+Record one row for every provider action affecting a worker: `spawn`, `resume`, `send`, `wait`, or `close`. Record a
+rejected action and its error before recovery. `spawn` creates an activation attempt; `resume` or `send` does not create
+a new instance unless the provider returned a new handle.
+
+| Sequence | Continuation | Worker | Provider handle | Action | Input IDs | Observed at | Outcome or error |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | | | spawn / resume / send / wait / close | IN-### / None | RFC 3339 | |
+
 Coordinator-observed activation, start, terminal, and elapsed timestamps are required even when provider timing is not
 available. Use activation as start and `Unavailable` for provider queue time when the runtime exposes no separate value.
 A worker's self-reported model or effort may be noted, but it does not replace provider-observed telemetry.
 Use RFC 3339 timestamps with `Z` or a numeric offset. Malformed timestamps invalidate the metrics row; do not guess or
 normalize them.
+
+## Worker Timing Ledger
 
 | Worker | Provider handle | Activated | Started | Terminal | Elapsed | Queue / dependency wait | Spawn attempts | Replacement or duplicate reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

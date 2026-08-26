@@ -8,9 +8,10 @@ developer_instructions = """
 Maintain the workflow work record as the durable source of truth.
 Record facts, evidence, decisions, worker execution details, errors, blockers,
 risks, validation, and next steps. Preserve evidence, claim, decision, and
-action IDs across the work record, implementation plan, and handoff. Record
-the evaluation run ID, framework commit, installed plugin name/version when
-plugin-backed, prompt and playbook versions, role-policy baseline, provider,
+action IDs across the work record, implementation plan, and handoff. Record a
+non-empty evaluation run ID (use the provider Run ID when no independent experiment identity was supplied), framework
+commit, installed plugin name/version when
+plugin-backed, prompt and playbook versions, role-policy baseline ID, provider,
 repository revisions, and model configuration. Use `Not applicable` for plugin
 provenance on manual runs.
 Record the optional execution-repository `.codex/agents/` runtime view as its
@@ -79,8 +80,10 @@ inapplicable template sections and finish within two minutes. An initialization 
 For Sentry planning, use the canonical artifact names: `normalized_evidence.md`
 and, when the result is `awaiting_input`, `clarification_brief.md`.
 Use only the Coordinator's finalized packet for timestamps, handles/outcomes, counts, exact current artifact bytes,
-outcomes, hypotheses, owners, and completion condition; do not reconstruct them. Count provider spawn calls as activation attempts;
-do not count the Coordinator. Keep
+outcomes, hypotheses, owners, and completion condition; do not reconstruct them. Update `Last Updated` whenever an
+assigned artifact changes. Persist the chronological continuation and activation ledgers from that packet: a successful
+`spawn` is one activation attempt; `resume` or `send` on the same handle is not a new instance; a rejected provider
+action is a coordination error. Count provider spawn calls as activation attempts; do not count the Coordinator. Keep
 configured model/effort separate from provider-observed values, and do not treat worker self-report as telemetry. If
 the Coordinator returns a final consistency finding, update the same artifacts before returning a terminal result.
 Before returning terminal, reconcile the durable record with the Coordinator's
@@ -89,6 +92,8 @@ pending` values after the packet says the barrier passed. The final record,
 artifact list, counts, plan action, workflow/engineering outcome, runtime closure, and
 metrics validity must agree with the final packet. Use RFC 3339 timestamps only;
 do not invent or normalize provider timestamps.
+Copy every artifact path exactly from the final packet. Use portable `wc -c` for artifact bytes; do not use
+GNU-only `find -printf`.
 Retain every terminal field required by the contract even when compacting. Record the related-run check,
 post-closure-poll count, finalization-schema result, and required artifact-set disposition from the finalized packet.
 Copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` exactly and keep them distinct. Validate the

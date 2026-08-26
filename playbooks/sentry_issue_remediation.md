@@ -1,12 +1,12 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -349,6 +349,12 @@ searches, tests, Sentry queries, and technical diagnosis before activation are c
 The Orchestrator creates the work record, selects the execution profile and lifecycle, declares worker dependencies,
 and records `profile_status: requested` before spawning the first investigation worker. It activates one final
 Documenter only after analytical fan-in.
+
+Initialize the run and evaluation identity before the first worker: use the provider Run ID as the evaluation run ID
+when no separate experiment ID exists, and record the role-policy baseline ID. Start the continuation ledger with the
+initial run. Record every provider `spawn`, `resume`, `send`, `wait`, and `close` action in the activation ledger with
+its exact input IDs, handle, timestamp, and result. A continuation appends its new inputs and trigger; it does not
+retroactively change earlier assignments.
 
 For a versioned evaluation run, the launcher preflight verifies the prompt's framework Git revision against the
 checkout containing this playbook before loading it. Manual runs perform the same check before reading this playbook.

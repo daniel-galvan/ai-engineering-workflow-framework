@@ -97,7 +97,11 @@ failure or stoppage and permits one replacement attempt.
 Store every provider-returned worker handle exactly; never manually reproduce or edit it. If a wait or status lookup
 returns `not_found`, reconcile the handle against the activation ledger, original spawn result, durable artifacts, and
 provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
-time, spawn attempts, discrepancies, and replacements. Use one Documenter handle through finalization; if the runtime
+time, spawn attempts, discrepancies, and replacements. Record every `spawn`, `resume`, `send`, `wait`, and `close`
+action chronologically with its handle, exact input IDs, timestamp, and result. A failed provider action is a
+coordination error even when recovery succeeds; `resume` or `send` on the same handle is not another instance or
+activation attempt. On every continuation, append its trigger and new input IDs and update `Last Updated`; never
+retroactively assign new inputs to earlier workers. Use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
 Count every successful provider activation, including that Documenter. A
 malformed call rejected before activation is a coordination error.

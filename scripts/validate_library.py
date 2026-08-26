@@ -15,6 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+RFC3339_TIMESTAMP = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
+)
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
 MODEL_BASELINE_ID = "codex-role-policy-v0.3.0-01"
 MAX_MARKDOWN_PROSE_WIDTH = 120
@@ -221,9 +224,65 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     missing = [field for field in required_identity if not identity.get(field)]
     if missing:
         fail(f"{path}: missing evaluation identity: {', '.join(missing)}")
+    for field in ("Evaluation run ID", "Role-policy baseline ID"):
+        if identity[field] in {"Unknown", "None"}:
+            fail(f"{path}: {field} must identify the executed run")
+    baseline_id = identity["Role-policy baseline ID"]
+    if baseline_id != "Not applicable" and ("/" in baseline_id or baseline_id.endswith(".md")):
+        fail(f"{path}: Role-policy baseline ID must be an identifier, not a path")
     repositories = markdown_table(text, "# Repository Evidence Eligibility")
     if not repositories or any(not row.get("Full revision") for row in repositories):
         fail(f"{path}: every relevant repository must record its full revision")
+    work_item = {
+        row.get("Field", ""): row.get("Value", "")
+        for row in markdown_table(text, "# Work Item")
+    }
+    if not RFC3339_TIMESTAMP.fullmatch(work_item.get("Last Updated", "")):
+        fail(f"{path}: Work Item Last Updated must be an RFC 3339 timestamp")
+    required_tables = {
+        "# Run Continuation Ledger": ("Sequence", "Type", "New input IDs", "Recorded at"),
+        "# Worker Activation Ledger": (
+            "Sequence",
+            "Worker",
+            "Provider handle",
+            "Action",
+            "Input IDs",
+            "Observed at",
+            "Outcome or error",
+        ),
+        "# Worker Runtime Closure": (
+            "Run or stage",
+            "Completed worker handles",
+            "Runtime status",
+        ),
+        "# Worker Result Summary": (
+            "Worker",
+            "Outcome",
+            "Confidence",
+            "Unique contribution",
+        ),
+    }
+    for heading, fields in required_tables.items():
+        rows = markdown_table(text, heading)
+        if not rows or any(not row.get(field) for row in rows for field in fields):
+            fail(f"{path}: {heading} must contain populated terminal rows")
+    for heading, timestamp_field in (
+        ("# Run Continuation Ledger", "Recorded at"),
+        ("# Worker Activation Ledger", "Observed at"),
+    ):
+        for row in markdown_table(text, heading):
+            if not RFC3339_TIMESTAMP.fullmatch(row[timestamp_field]):
+                fail(f"{path}: {heading} {timestamp_field} must be RFC 3339")
+    timing_rows = markdown_table(text, "## Worker Timing Ledger")
+    timing_fields = ("Worker", "Provider handle", "Activated", "Started", "Terminal", "Elapsed")
+    if not timing_rows or any(not row.get(field) for row in timing_rows for field in timing_fields):
+        fail(f"{path}: Worker Timing Ledger must contain populated timing rows")
+    for row in timing_rows:
+        for field in ("Activated", "Started", "Terminal"):
+            if not RFC3339_TIMESTAMP.fullmatch(row[field]):
+                fail(f"{path}: Worker Timing Ledger {field} must be RFC 3339")
+        if row["Elapsed"].lower() in {"terminal", "released", "unknown", "unavailable"}:
+            fail(f"{path}: Worker Timing Ledger Elapsed must be a duration, not a state")
 
 
 def self_test_reasoning_records() -> None:
@@ -255,6 +314,30 @@ def self_test_reasoning_records() -> None:
 | Engineering state | validated |
 | Workflow outcome | completed |
 | Engineering outcome | solved |
+# Work Item
+| Field | Value |
+| --- | --- |
+| Last Updated | 2026-08-26T00:00:00Z |
+# Run Continuation Ledger
+| Sequence | Type | Trigger or new evidence | New input IDs | Previous terminal state | Recorded at | Outcome |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Initial | Request | IN-001 | None | 2026-08-26T00:00:00Z | completed |
+# Worker Activation Ledger
+| Sequence | Continuation | Worker | Provider handle | Action | Input IDs | Observed at | Outcome or error |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | Coordinator | coordinator | spawn | IN-001 | 2026-08-26T00:00:00Z | completed |
+## Worker Timing Ledger
+| Worker | Provider handle | Activated | Started | Terminal | Elapsed |
+| --- | --- | --- | --- | --- | --- |
+| Coordinator | coordinator | 2026-08-26T00:00:00Z | 2026-08-26T00:00:00Z | 2026-08-26T00:00:01Z | PT1S |
+# Worker Runtime Closure
+| Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
+| --- | --- | --- | --- | --- |
+| Final | coordinator | Released | None | provider confirmation |
+# Worker Result Summary
+| Worker | Outcome | Confidence | Unique contribution |
+| --- | --- | --- | --- |
+| Coordinator | completed | High | Finalized record |
 # Evidence
 | Evidence ID | Source |
 | --- | --- |
@@ -280,6 +363,31 @@ def self_test_reasoning_records() -> None:
         path = Path(directory) / "work_record.md"
         path.write_text(valid)
         validate_work_record(path, require_terminal=True)
+
+        def assert_invalid(record: str, expected: str) -> None:
+            path.write_text(record)
+            captured = StringIO()
+            with redirect_stdout(captured):
+                try:
+                    validate_work_record(path, require_terminal=True)
+                except SystemExit:
+                    pass
+                else:
+                    raise AssertionError(f"expected validation failure: {expected}")
+            assert expected in captured.getvalue(), captured.getvalue()
+
+        assert_invalid(
+            valid.replace("## Worker Timing Ledger", "## Missing Worker Timing Ledger"),
+            "Worker Timing Ledger must contain populated timing rows",
+        )
+        assert_invalid(
+            valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |"),
+            "Evaluation run ID must identify the executed run",
+        )
+        assert_invalid(
+            valid.replace("| Role-policy baseline ID | codex-role-policy-v0.3.0-01 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
+            "Role-policy baseline ID must be an identifier, not a path",
+        )
 
         legacy = path.with_name("legacy_work_record.md")
         legacy.write_text(
@@ -727,6 +835,9 @@ if "# Input Register" not in work_record_template:
     fail("templates/work_record.md is missing input provenance")
 if "| Input ID |" not in work_record_template or "| Assigned inputs |" not in work_record_template:
     fail("templates/work_record.md is missing input assignment tracking")
+for phrase in ("# Run Continuation Ledger", "# Worker Activation Ledger", "## Worker Timing Ledger"):
+    if phrase not in work_record_template:
+        fail(f"templates/work_record.md is missing terminal runtime ledger: {phrase}")
 if "# Delivery Activation Gate" not in work_record_template:
     fail("templates/work_record.md is missing the delivery activation gate")
 if "# Implementation Conformance Check" not in work_record_template:
