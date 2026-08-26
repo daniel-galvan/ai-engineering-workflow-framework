@@ -1,6 +1,6 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.3.4
+version: 0.3.5
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -103,8 +103,14 @@ codex plugin marketplace add "$FRAMEWORK_DIR"
 codex plugin add ai-engineering-workflows@ai-engineering-workflow-framework
 ```
 
-Plugin installation is user-global, not execution-repository-scoped. Start a new Codex task after installation, then
-explicitly invoke `$ai-engineering-workflows:run-ai-engineering-workflow` from the chosen execution repository.
+Plugin installation is user-global, not execution-repository-scoped. Start a new Codex task from the chosen execution
+repository after installation, then explicitly invoke the launcher with the framework checkout and work item:
+
+```text
+Use $ai-engineering-workflows:run-ai-engineering-workflow.
+Framework checkout: /absolute/path/to/ai-engineering-workflow-framework
+Work item: <stable ID or URL>
+```
 
 ## Create and run a prompt
 

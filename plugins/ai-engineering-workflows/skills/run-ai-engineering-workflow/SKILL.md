@@ -7,16 +7,15 @@ description: >-
 
 # Run an AI Engineering Workflow
 
-1. Resolve the framework checkout from this skill's source directory and verify that it contains the
-   [`playbook catalog`](../../../../PLAYBOOK_CATALOG.md). Do not assume the current working directory is the framework
-   checkout.
-2. Treat the current working directory as the execution repository unless the user explicitly names another
-   repository.
+1. Use the framework checkout path explicitly supplied by the user and verify that it contains `PLAYBOOK_CATALOG.md`.
+   If none was supplied, use the current working directory only when that file exists there; otherwise ask for the
+   absolute framework checkout path. Do not derive it from this installed skill's path.
+2. Treat the current working directory as the execution repository unless the user explicitly names another repository.
 3. Read the catalog, select the most specialized playbook, and record the primary evidence, primary goal, closest
    alternative, and selection rationale.
-4. Read the selected playbook, [`contracts/workflow_execution.md`](../../../../contracts/workflow_execution.md),
-   [`contracts/claims.md`](../../../../contracts/claims.md), and the canonical run template declared by the playbook.
-   Load the Codex provider adapter and model policy only when provider configuration is needed.
+4. Relative to the verified framework checkout, read the selected playbook, `contracts/workflow_execution.md`,
+   `contracts/claims.md`, and the canonical run template declared by the playbook. Load the Codex provider adapter and
+   model policy only when provider configuration is needed.
 5. Populate the canonical template from supplied and discoverable context. Preserve its field names, use `Unknown` or
    `None` for unavailable values, and ask only for a business, scope, ownership, or approval decision that bounded
    discovery cannot resolve.
