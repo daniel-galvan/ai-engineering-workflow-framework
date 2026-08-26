@@ -1,6 +1,6 @@
 ---
 title: Feature Delivery Playbook
-version: 0.3.4
+version: 0.4.0
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation

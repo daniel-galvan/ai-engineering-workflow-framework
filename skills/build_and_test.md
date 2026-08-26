@@ -1,7 +1,7 @@
 ---
 
 title: Build and Test
-version: 0.3.4
+version: 0.4.0
 status: Pilot
 category: Validation
 provider_independent: true

@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.3.7
+version: 0.4.0
 status: Pilot
 provider_independent: true
 owner: Engineering

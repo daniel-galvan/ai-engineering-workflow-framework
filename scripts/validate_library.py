@@ -240,12 +240,12 @@ def self_test_reasoning_records() -> None:
 | --- | --- |
 | Run ID | run-001 |
 | Evaluation run ID | evaluation-001 |
-| Playbook / version | playbooks/feature_delivery.md / 0.3.4 |
+| Playbook / version | playbooks/feature_delivery.md / 0.4.0 |
 | Framework commit / status | abcdef123456 / Dirty |
 | Plugin package / version | ai-engineering-workflows / 0.2.1 or Not applicable |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.3.4 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.0 / pass |
 | Role-policy baseline ID | codex-role-policy-v0.3.0-01 |
 | Provider / model configuration | Codex / Worker Execution Ledger |
 | Requested profile | standard |
