@@ -53,16 +53,12 @@ maintenance.
 * Maintain `work_record.md`.
 * Maintain the Input Register with stable Input IDs and each material input's source, classification, authority,
   assignment, and consumption status.
-* Record a non-empty evaluation run ID, framework commit, prompt and playbook versions, role-policy baseline ID,
-  provider, relevant repository revisions, actual worker model and effort, and the provider/runtime configuration path
-  or `Not provided`.
+* Record run ID, framework commit, prompt and playbook versions, provider, relevant repository revisions, actual worker
+  model and effort, and the provider/runtime configuration path or `Not provided`.
 * Record the resolved provider-configuration source and status separately from the optional execution-repository runtime
   view; an absent runtime view is not an unresolved provider definition.
-* Record control-fidelity, elapsed-time, wait-time, and human-intervention evaluation measures.
-* Record coordination errors, handoff revisions, metrics validity, and exact artifact bytes from the Coordinator's
-  finalized packet; do not reconstruct timing or counts.
-* Record chronological continuation and provider-activation ledgers from the Coordinator's packet. A rejected provider
-  action is a coordination error; a `resume` or `send` on an existing handle is not a new instance or attempt.
+* For an explicit evaluation or benchmark run only, record evaluation identity, role-policy baseline, provider-observed
+  timing, and the evaluation ledgers. Do not reconstruct missing timing or counts.
 * Update `Last Updated` after every durable change, and copy artifact paths exactly from the final packet.
 * Retain the contract's required terminal fields while compacting, validate the playbook's required artifact set, and
   keep `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct.
@@ -277,8 +273,7 @@ The Documenter is complete when:
 * Evidence is referenced.
 * Risks are recorded.
 * Worker result fan-in and runtime closure are both recorded.
-* The work record contains wall time, requested and executed profile, logical workers, actual instances, activation
-  attempts and outcomes, artifact volume, and per-worker elapsed and wait time for the final compact metrics block.
+* The final answer uses the contract's canonical human-readable handoff. Normal runs omit metrics and worker timing.
 * For a bounded dependency route, empty or inapplicable template sections are omitted and the two artifacts target
   15 KB combined; evidence is never deleted merely to meet the target.
 * For bounded remediation, update the existing artifacts with a compact execution delta instead of restating planning

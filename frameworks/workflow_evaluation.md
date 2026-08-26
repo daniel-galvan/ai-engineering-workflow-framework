@@ -14,8 +14,9 @@ depends_on:
 
 > Measure whether a workflow run followed the framework and produced a useful engineering outcome.
 
-Evaluation is not a delivery gate and does not replace software validation. Complete it at a terminal handoff, blocked
-handoff, or deliberate pilot review. It evaluates the workflow; the work record remains the source of evidence.
+Evaluation is opt-in, not a delivery gate, and does not replace software validation. Complete it only when the request
+explicitly declares an evaluation or benchmark run. Normal workflow runs omit evaluation telemetry and use the work
+record only for engineering evidence and execution status.
 
 ## Pilot Method
 

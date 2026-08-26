@@ -1,9 +1,9 @@
 ---
 title: TechOps Issue Remediation Run Prompt
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/techops_issue_remediation.md
@@ -83,9 +83,8 @@ Additional run-specific constraints or approvals:
 
 Follow the selected playbook and its required dependencies.
 
-At handoff, include the contract's compact `Run metrics:` and `Worker timing:` lines in the final answer; do not replace
-them with a work-record link or report coordinator-observed values as `Unknown`. Include coordination errors and
-handoff revisions, artifact bytes after the last correction, and metrics validity. Reserve `plan_only` for a run that produced
-a usable implementation plan; otherwise use `partially_solved` for useful incomplete diagnosis. Report distinct
+At handoff, use the contract's canonical human-readable template. Do not include Run Metrics or Worker Timing unless
+this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable
+implementation plan; otherwise use `partially_solved` for useful incomplete diagnosis. Preserve distinct
 `Workflow outcome` and `Engineering outcome` fields.
 ```

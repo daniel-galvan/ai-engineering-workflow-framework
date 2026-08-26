@@ -108,7 +108,7 @@ production, or current-main behavior.
 | Field | Value |
 | --- | --- |
 | Run ID | |
-| Evaluation run ID | Required; use Run ID when no separate experiment identity was supplied |
+| Evaluation run ID | Explicit evaluation/benchmark runs only; otherwise `Not applicable` |
 | Playbook / version | Canonical playbook path / independent document version |
 | Framework commit / status | Full Git commit / Clean or Dirty |
 | Plugin package / version | Installed plugin name/version, or `Not applicable` for manual runs |
@@ -142,7 +142,7 @@ production, or current-main behavior.
 | Active related run or work item | None / ID and artifact root |
 | Related-run check | Provider-visible tasks and sibling artifact roots; method, RFC 3339 timestamp, and result / Detection unavailable |
 | Durable artifact root | `.thoughts/<WORK-ITEM-ID>/` |
-| Final reconciliation | Pending / Passed / Failed; state, counts, bytes, runtime closure, and metrics agree |
+| Final reconciliation | Pending / Passed / Failed; state, artifacts, outcomes, and runtime closure agree |
 | Finalization schema | Pending / Passed / Failed; required terminal fields and playbook artifact set are present |
 
 Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engineering-outcome terms from
@@ -150,11 +150,10 @@ Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engi
 `awaiting_input`, workflow outcome `completed`, and engineering outcome `partially_solved`; it is not `blocked`. Use
 `plan_only` only when the run produced a usable implementation plan.
 
-# Run Continuation Ledger
+# Evaluation Run Continuation Ledger
 
-Record the initial run and every continuation in chronological order. A continuation adds only its new input IDs and
-worker activity; it MUST NOT retroactively assign those inputs to an earlier activation. Update `Last Updated` whenever
-this ledger or another durable section changes.
+Complete this section only for an explicitly declared evaluation or benchmark run. A continuation adds only its new
+input IDs and worker activity; it MUST NOT retroactively assign those inputs to an earlier activation.
 
 | Sequence | Type | Trigger or new evidence | New input IDs | Previous terminal state | Recorded at | Outcome |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -191,25 +190,18 @@ Record every worker or subagent that materially contributes to the work.
 | | | IN-### | | | | | | | | | | | | | |
 
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
-never estimate credit consumption.
+never estimate credit consumption. A self-reported model or effort does not replace provider-observed telemetry.
 
-# Worker Activation Ledger
+# Evaluation Worker Activation Ledger
 
-Record one row for every provider action affecting a worker: `spawn`, `resume`, `send`, `wait`, or `close`. Record a
-rejected action and its error before recovery. `spawn` creates an activation attempt; `resume` or `send` does not create
-a new instance unless the provider returned a new handle.
+Complete this section only for an explicitly declared evaluation or benchmark run. Record provider-observed actions;
+never reconstruct missing timestamps or counts.
 
 | Sequence | Continuation | Worker | Provider handle | Action | Input IDs | Observed at | Outcome or error |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 1 | | | spawn / resume / send / wait / close | IN-### / None | RFC 3339 | |
 
-Coordinator-observed activation, start, terminal, and elapsed timestamps are required even when provider timing is not
-available. Use activation as start and `Unavailable` for provider queue time when the runtime exposes no separate value.
-A worker's self-reported model or effort may be noted, but it does not replace provider-observed telemetry.
-Use RFC 3339 timestamps with `Z` or a numeric offset. Malformed timestamps invalidate the metrics row; do not guess or
-normalize them.
-
-## Worker Timing Ledger
+## Evaluation Worker Timing Ledger
 
 | Worker | Provider handle | Activated | Started | Terminal | Elapsed | Queue / dependency wait | Spawn attempts | Replacement or duplicate reason |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -237,7 +229,7 @@ expected use. An ID without its value is not delivered context.
 For every remediation run, record this gate at re-entry. Complete the first
 six checks before the first source, configuration, dependency, or
 infrastructure change. A downstream worker may wait for a dependency, but it
-must remain in the current run's activation ledger. Evaluate the Completion
+must remain in the current run's worker execution record. Evaluate the Completion
 barrier before final handoff.
 
 | Check | Required evidence | Status |
@@ -293,16 +285,16 @@ do not copy full reports here.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | | | | | | | | |
 
-The final handoff should present the shared outcome first and this worker summary second. Use `Unknown` for unavailable
-model, token, or credit data.
+The final handoff presents the shared outcome; this worker summary remains in the durable record. Use `Unknown` for
+unavailable model, token, or credit data.
 
 ---
 
 # Workflow Evaluation
 
-Complete this section at terminal handoff, blocked handoff, or a deliberate pilot review. It evaluates the workflow, not
-only the code change. Reuse the worker ledgers above for role, model, effort, usage, and individual outcome; do not
-duplicate them here. See [`../frameworks/workflow_evaluation.md`](../frameworks/workflow_evaluation.md).
+Complete this section only when the request explicitly declares an evaluation or benchmark run. Normal workflow runs
+omit it. Reuse the evaluation ledgers above; do not duplicate them here. See
+[`../frameworks/workflow_evaluation.md`](../frameworks/workflow_evaluation.md).
 
 | Complexity tags | Duration | Worker retries | Worker corrections | Review cycles | Validation failures |
 | --- | --- | --- | --- | --- | --- |

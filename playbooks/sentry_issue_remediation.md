@@ -233,8 +233,7 @@ The shared execution contract defines profile execution, fan-in, and no-downgrad
 - `standard` activates the standard planning worker set.
 - `deep` activates the standard planning worker set plus `failure-topology` and mandatory `repository-integration`.
 - The Orchestrator waits for every required worker before completing diagnosis or fix design.
-- The final handoff reports requested, activated, and executed profile, profile status, worker activation, fan-in
-  status, and runtime-closure status.
+- The final handoff uses the shared human-readable template; detailed worker results remain in the work record.
 
 ## Worker Profiles
 
@@ -350,11 +349,8 @@ The Orchestrator creates the work record, selects the execution profile and life
 and records `profile_status: requested` before spawning the first investigation worker. It activates one final
 Documenter only after analytical fan-in.
 
-Initialize the run and evaluation identity before the first worker: use the provider Run ID as the evaluation run ID
-when no separate experiment ID exists, and record the role-policy baseline ID. Start the continuation ledger with the
-initial run. Record every provider `spawn`, `resume`, `send`, `wait`, and `close` action in the activation ledger with
-its exact input IDs, handle, timestamp, and result. A continuation appends its new inputs and trigger; it does not
-retroactively change earlier assignments.
+Initialize the run identity before the first worker. Populate evaluation identity and detailed continuation, activation,
+and timing ledgers only when the request explicitly declares an evaluation or benchmark run.
 
 For a versioned evaluation run, the launcher preflight verifies the prompt's framework Git revision against the
 checkout containing this playbook before loading it. Manual runs perform the same check before reading this playbook.
@@ -597,18 +593,13 @@ The final handoff is ordered as follows:
    When the cause remains uncertain, include `Best current explanations` with the strongest hypothesis and no more than
    two alternatives, each with confidence and a short reason. Include a rejected hypothesis only when it clarifies the
    result.
-2. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
-   using the shared contract's ledger fields.
-3. Profile, gate, and synchronization status: distinguish requested, activated, and executed profile, then confirm that
+2. Profile, gate, and synchronization status: distinguish requested, activated, and executed profile, then confirm that
    all required workers are terminal and all required fan-in barriers passed and the prior run's worker handles are
    released.
-4. Remaining risks, blockers, clarification brief when input is required, and ownership.
+3. Remaining risks, blockers, clarification brief when input is required, and ownership.
 
-Also include the shared Human-Readable Handoff block with distinct `Workflow outcome` and `Engineering outcome` fields,
-followed by `What happened`, `What this means`, `Internal owner`,
-`Next-action owner`, `What you need to do`, and `To continue`. The internal owner manages workflow state; the
-next-action owner must be able to access and complete the named evidence or engineering action. If no technical user
-action is needed, say `Nothing technical.`
+Use the shared Human-Readable Handoff template with distinct `Workflow outcome` and `Engineering outcome` fields. The
+next-action owner must be able to access and complete the named evidence or engineering action.
 For a retryable worker runtime failure, `To continue` should give the exact request: `Retry the planning run.`
 
 When missing evidence keeps the plan Draft, name the internal owner, next-action owner, system, artifact, and completion

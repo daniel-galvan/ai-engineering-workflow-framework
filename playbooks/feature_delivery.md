@@ -1,12 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -268,15 +268,10 @@ The final handoff reports:
    the owner, location, and completion condition in plain language;
 2. parent/initiative and selected-sibling context, including conflicts and clarification questions;
 3. implementation-plan path/status, planned change, acceptance traceability, validation, rollout, and rollback;
-4. Worker result ledger: one compact row per activated worker and each required worker without a terminal envelope,
-   using the shared contract's ledger fields; plus requested, activated, and executed profile, fan-in, and
-   runtime-closure status; and
+4. requested, activated, and executed profile, fan-in, and runtime-closure status; and
 5. remaining risks, blockers, owner, and follow-up work.
 
-Also include the shared Human-Readable Handoff block with distinct `Workflow outcome` and `Engineering outcome` fields,
-followed by `What happened`, `What this means`, `Internal owner`,
-`Next-action owner`, `What you need to do`, and `To continue`. If no technical user action is needed, say
-`Nothing technical.`
+Use the shared canonical Human-Readable Handoff template. Detailed worker results remain in the work record.
 
 Do not imply that implementation, validation, or release completed when the workflow stopped at a planning,
 clarification, approval, environment, or worker gate.

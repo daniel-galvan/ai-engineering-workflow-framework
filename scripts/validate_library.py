@@ -224,9 +224,11 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     missing = [field for field in required_identity if not identity.get(field)]
     if missing:
         fail(f"{path}: missing evaluation identity: {', '.join(missing)}")
-    for field in ("Evaluation run ID", "Role-policy baseline ID"):
-        if identity[field] in {"Unknown", "None"}:
-            fail(f"{path}: {field} must identify the executed run")
+    evaluation_run = identity["Evaluation run ID"] != "Not applicable"
+    if evaluation_run and identity["Evaluation run ID"] in {"Unknown", "None"}:
+        fail(f"{path}: Evaluation run ID must identify the evaluated run")
+    if evaluation_run and identity["Role-policy baseline ID"] in {"Unknown", "None", "Not applicable"}:
+        fail(f"{path}: Role-policy baseline ID must identify the evaluated baseline")
     baseline_id = identity["Role-policy baseline ID"]
     if baseline_id != "Not applicable" and ("/" in baseline_id or baseline_id.endswith(".md")):
         fail(f"{path}: Role-policy baseline ID must be an identifier, not a path")
@@ -240,16 +242,6 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     if not RFC3339_TIMESTAMP.fullmatch(work_item.get("Last Updated", "")):
         fail(f"{path}: Work Item Last Updated must be an RFC 3339 timestamp")
     required_tables = {
-        "# Run Continuation Ledger": ("Sequence", "Type", "New input IDs", "Recorded at"),
-        "# Worker Activation Ledger": (
-            "Sequence",
-            "Worker",
-            "Provider handle",
-            "Action",
-            "Input IDs",
-            "Observed at",
-            "Outcome or error",
-        ),
         "# Worker Runtime Closure": (
             "Run or stage",
             "Completed worker handles",
@@ -266,23 +258,40 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
         rows = markdown_table(text, heading)
         if not rows or any(not row.get(field) for row in rows for field in fields):
             fail(f"{path}: {heading} must contain populated terminal rows")
-    for heading, timestamp_field in (
-        ("# Run Continuation Ledger", "Recorded at"),
-        ("# Worker Activation Ledger", "Observed at"),
-    ):
-        for row in markdown_table(text, heading):
-            if not RFC3339_TIMESTAMP.fullmatch(row[timestamp_field]):
-                fail(f"{path}: {heading} {timestamp_field} must be RFC 3339")
-    timing_rows = markdown_table(text, "## Worker Timing Ledger")
-    timing_fields = ("Worker", "Provider handle", "Activated", "Started", "Terminal", "Elapsed")
-    if not timing_rows or any(not row.get(field) for row in timing_rows for field in timing_fields):
-        fail(f"{path}: Worker Timing Ledger must contain populated timing rows")
-    for row in timing_rows:
-        for field in ("Activated", "Started", "Terminal"):
-            if not RFC3339_TIMESTAMP.fullmatch(row[field]):
-                fail(f"{path}: Worker Timing Ledger {field} must be RFC 3339")
-        if row["Elapsed"].lower() in {"terminal", "released", "unknown", "unavailable"}:
-            fail(f"{path}: Worker Timing Ledger Elapsed must be a duration, not a state")
+    if evaluation_run:
+        evaluation_tables = {
+            "# Evaluation Run Continuation Ledger": ("Sequence", "Type", "New input IDs", "Recorded at"),
+            "# Evaluation Worker Activation Ledger": (
+                "Sequence",
+                "Worker",
+                "Provider handle",
+                "Action",
+                "Input IDs",
+                "Observed at",
+                "Outcome or error",
+            ),
+        }
+        for heading, fields in evaluation_tables.items():
+            rows = markdown_table(text, heading)
+            if not rows or any(not row.get(field) for row in rows for field in fields):
+                fail(f"{path}: {heading} must contain populated evaluation rows")
+        for heading, timestamp_field in (
+            ("# Evaluation Run Continuation Ledger", "Recorded at"),
+            ("# Evaluation Worker Activation Ledger", "Observed at"),
+        ):
+            for row in markdown_table(text, heading):
+                if not RFC3339_TIMESTAMP.fullmatch(row[timestamp_field]):
+                    fail(f"{path}: {heading} {timestamp_field} must be RFC 3339")
+        timing_rows = markdown_table(text, "## Evaluation Worker Timing Ledger")
+        timing_fields = ("Worker", "Provider handle", "Activated", "Started", "Terminal", "Elapsed")
+        if not timing_rows or any(not row.get(field) for row in timing_rows for field in timing_fields):
+            fail(f"{path}: Evaluation Worker Timing Ledger must contain populated timing rows")
+        for row in timing_rows:
+            for field in ("Activated", "Started", "Terminal"):
+                if not RFC3339_TIMESTAMP.fullmatch(row[field]):
+                    fail(f"{path}: Evaluation Worker Timing Ledger {field} must be RFC 3339")
+            if row["Elapsed"].lower() in {"terminal", "released", "unknown", "unavailable"}:
+                fail(f"{path}: Evaluation Worker Timing Ledger Elapsed must be a duration, not a state")
 
 
 def self_test_reasoning_records() -> None:
@@ -318,15 +327,15 @@ def self_test_reasoning_records() -> None:
 | Field | Value |
 | --- | --- |
 | Last Updated | 2026-08-26T00:00:00Z |
-# Run Continuation Ledger
+# Evaluation Run Continuation Ledger
 | Sequence | Type | Trigger or new evidence | New input IDs | Previous terminal state | Recorded at | Outcome |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Initial | Request | IN-001 | None | 2026-08-26T00:00:00Z | completed |
-# Worker Activation Ledger
+# Evaluation Worker Activation Ledger
 | Sequence | Continuation | Worker | Provider handle | Action | Input IDs | Observed at | Outcome or error |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 1 | Coordinator | coordinator | spawn | IN-001 | 2026-08-26T00:00:00Z | completed |
-## Worker Timing Ledger
+## Evaluation Worker Timing Ledger
 | Worker | Provider handle | Activated | Started | Terminal | Elapsed |
 | --- | --- | --- | --- | --- | --- |
 | Coordinator | coordinator | 2026-08-26T00:00:00Z | 2026-08-26T00:00:00Z | 2026-08-26T00:00:01Z | PT1S |
@@ -364,6 +373,17 @@ def self_test_reasoning_records() -> None:
         path.write_text(valid)
         validate_work_record(path, require_terminal=True)
 
+        normal = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Not applicable |")
+        normal = normal.replace(
+            "| Role-policy baseline ID | codex-role-policy-v0.3.0-01 |",
+            "| Role-policy baseline ID | Not applicable |",
+        )
+        normal = normal.replace("# Evaluation Run Continuation Ledger", "# Omitted Evaluation Run Continuation Ledger")
+        normal = normal.replace("# Evaluation Worker Activation Ledger", "# Omitted Evaluation Worker Activation Ledger")
+        normal = normal.replace("## Evaluation Worker Timing Ledger", "## Omitted Evaluation Worker Timing Ledger")
+        path.write_text(normal)
+        validate_work_record(path, require_terminal=True)
+
         def assert_invalid(record: str, expected: str) -> None:
             path.write_text(record)
             captured = StringIO()
@@ -377,12 +397,12 @@ def self_test_reasoning_records() -> None:
             assert expected in captured.getvalue(), captured.getvalue()
 
         assert_invalid(
-            valid.replace("## Worker Timing Ledger", "## Missing Worker Timing Ledger"),
-            "Worker Timing Ledger must contain populated timing rows",
+            valid.replace("## Evaluation Worker Timing Ledger", "## Missing Evaluation Worker Timing Ledger"),
+            "Evaluation Worker Timing Ledger must contain populated timing rows",
         )
         assert_invalid(
             valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |"),
-            "Evaluation run ID must identify the executed run",
+            "Evaluation run ID must identify the evaluated run",
         )
         assert_invalid(
             valid.replace("| Role-policy baseline ID | codex-role-policy-v0.3.0-01 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
@@ -625,9 +645,6 @@ for path in TEMPLATES:
         "Current explicit user decisions and constraints are authoritative",
         "Delivery Activation Barrier",
         "Never claim successful execution when the required graph is incomplete.",
-        "coordination errors",
-        "handoff revisions",
-        "metrics validity",
         "Reserve `plan_only`",
     ):
         if phrase not in text:
@@ -639,12 +656,8 @@ for path in (ROOT / "playbooks").glob("*.md"):
         fail(f"{path.relative_to(ROOT)} reruns planning workers during remediation")
     if not re.search(r"In-scope review\s+findings return", text):
         fail(f"{path.relative_to(ROOT)} is missing the delivery review loop")
-    if not re.search(r"Worker result ledger:\s+one compact row per activated worker", text):
-        fail(f"{path.relative_to(ROOT)} is missing the canonical worker-result ledger")
-    if "Human-Readable Handoff block" not in text:
-        fail(f"{path.relative_to(ROOT)} is missing the human-readable handoff block")
-    if "`Next-action owner`" not in text:
-        fail(f"{path.relative_to(ROOT)} is missing next-action-owner handoff guidance")
+    if "canonical Human-Readable Handoff" not in text and "shared human-readable template" not in text:
+        fail(f"{path.relative_to(ROOT)} is missing the canonical human-readable handoff")
     if "in parallel" not in text or not re.search(r"recorded\s+discrepancy", text):
         fail(f"{path.relative_to(ROOT)} is missing Deep parallelism or non-duplication rules")
 
@@ -796,7 +809,7 @@ for phrase in (
     "A final handoff MUST reconcile durable artifact state",
     "A remediation run sharing an execution repository",
     "Every worker activation MUST include a compact value/source/authority manifest",
-    "All Coordinator and provider timestamps MUST use RFC 3339 format",
+    "Evaluation identity, role-policy baseline, detailed",
     "run_already_active",
 ):
     if phrase not in workflow_contract:
@@ -835,7 +848,11 @@ if "# Input Register" not in work_record_template:
     fail("templates/work_record.md is missing input provenance")
 if "| Input ID |" not in work_record_template or "| Assigned inputs |" not in work_record_template:
     fail("templates/work_record.md is missing input assignment tracking")
-for phrase in ("# Run Continuation Ledger", "# Worker Activation Ledger", "## Worker Timing Ledger"):
+for phrase in (
+    "# Evaluation Run Continuation Ledger",
+    "# Evaluation Worker Activation Ledger",
+    "## Evaluation Worker Timing Ledger",
+):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing terminal runtime ledger: {phrase}")
 if "# Delivery Activation Gate" not in work_record_template:
@@ -876,9 +893,7 @@ for phrase in (
     "Related-run check",
     "Final reconciliation",
     "Finalization schema",
-    "Post-closure polls",
     "compact manifest for every assigned Input ID",
-    "RFC 3339 timestamps",
 ):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing run-isolation/finalization control: {phrase}")
@@ -938,25 +953,24 @@ for phrase in (
     "MUST NOT manually reproduce or edit the handle",
     "elapsed wall time remains terminal minus activation",
     "one provider handle through finalization",
-    "Every terminal or blocked handoff MUST include this compact run-metrics block",
+    "Normal runs MUST NOT include `Run metrics` or `Worker timing`",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing runtime integrity rule: {phrase}")
 
 for prompt_template in TEMPLATES:
     prompt_text = prompt_template.read_text()
-    for phrase in ("`Run metrics:`", "`Worker timing:`", "final answer"):
+    for phrase in ("canonical human-readable", "Run Metrics", "Worker Timing"):
         if phrase not in prompt_text:
-            fail(f"{prompt_template.relative_to(ROOT)} is missing final metrics instruction: {phrase}")
+            fail(f"{prompt_template.relative_to(ROOT)} is missing canonical handoff instruction: {phrase}")
 
 documenter_role = (ROOT / "roles" / "documenter.md").read_text()
 documenter_agent = (CODEX_AGENT_DIR / "documenter.toml").read_text()
-for phrase in ("actual instances", "attempts and outcomes", "per-worker elapsed and wait time"):
+for phrase in ("canonical human-readable", "evaluation or benchmark run"):
     if phrase not in documenter_role:
-        fail(f"Documenter role is missing final metrics field: {phrase}")
-for phrase in ("actual instances", "activation attempts", "per-worker elapsed and wait time"):
+        fail(f"Documenter role is missing conditional handoff rule: {phrase}")
     if phrase not in documenter_agent:
-        fail(f"Documenter instructions are missing final metrics field: {phrase}")
+        fail(f"Documenter instructions are missing conditional handoff rule: {phrase}")
 
 vulnerability_playbook = (ROOT / "playbooks" / "vulnerability_investigation.md").read_text()
 for phrase in (
@@ -991,15 +1005,12 @@ for phrase in (
         fail(f"templates/vulnerability_issue_run_prompt.md is missing bounded-run field: {phrase}")
 
 for phrase in (
-    "Wall time starts when the user turn starts",
-    "worker-stage subtotal as run wall time",
     "The execution repository may itself contain code",
     "Never infer the framework checkout as the",
     "resolved source-checkout path",
     "MUST NOT override an equivalent active worktree",
     "Durable artifacts MUST remain under the",
     "never under an ephemeral managed-worktree path",
-    "MUST NOT reconstruct wall time",
     "missing tool does not authorize downloading",
 ):
     if phrase not in workflow_contract:
@@ -1022,20 +1033,17 @@ for phrase in ("managed worktree", "Never cd back to the original checkout", "st
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing worktree control: {phrase}")
 
-for phrase in ("do not", "spawn an initialize worker", "captured turn-start"):
+for phrase in ("do not", "spawn an initialize worker"):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing bounded-remediation control: {phrase}")
 
 for phrase in (
-    "coordination errors",
-    "handoff revisions",
-    "metrics status",
-    "report metrics as invalid",
-    "post-closure poll",
+    "canonical human-readable format",
+    "evaluation or benchmark run",
     "required finalization fields",
 ):
     if phrase not in orchestrator_agent:
-        fail(f"providers/codex/agents/orchestrator.toml is missing final-metrics control: {phrase}")
+        fail(f"providers/codex/agents/orchestrator.toml is missing final-handoff control: {phrase}")
 for phrase in (
     "concurrent-run decision",
     "IDs without values are not delivered",
@@ -1056,15 +1064,12 @@ for phrase in (
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing conformance gate: {phrase}")
 for phrase in (
-    "coordination errors",
-    "handoff revisions",
-    "metrics validity",
+    "canonical human-readable template",
     "next-action ownership",
     "required finalization fields",
-    "post-closure polls",
 ):
     if phrase not in orchestrator_role.lower():
-        fail(f"roles/orchestrator.md is missing final-metrics ownership: {phrase}")
+        fail(f"roles/orchestrator.md is missing final-handoff ownership: {phrase}")
 
 tester_role = (ROOT / "roles" / "tester.md").read_text()
 tester_agent = (CODEX_AGENT_DIR / "tester.toml").read_text()
@@ -1120,35 +1125,26 @@ for phrase in (
     "Do not instruct downstream workers to reread",
     "minimal work-record skeleton",
     "sole artifact writer",
-    "provider session start and terminal events",
     "one final Documenter after analytical fan-in",
     "must not write or promote the technical plan",
-    "compute wall time",
     "token-based Sentry skill",
     "Do not say `Nothing technical.`",
     "Do not query Sentry",
-    "not as an activation attempt",
     "same Documenter before closure",
     "If an analytical worker returned hypotheses",
     "make a stale prompt match",
     "one finalized packet",
-    "coordination errors",
-    "report metrics as invalid",
     "prompt_conformance",
     "run_prompt_nonconformant",
     "evidence_eligibility",
-    "including the final Documenter",
     "Keep that Documenter handle live",
-    "Invalid metrics still report",
     "answerable_by_local_source",
     "implementation_plan_action",
     "provider_configuration_unavailable",
     "concurrent-run decision",
     "IDs without values are not delivered",
     "final artifact and answer",
-    "All timestamps in the record must be RFC 3339",
     "run_already_active",
-    "post-closure poll",
     "required terminal-field checklist",
     "clarification_brief.md",
 ):
@@ -1186,26 +1182,22 @@ for phrase in (
     "framework_revision_mismatch",
     "make a stale prompt match",
     "exact configured model",
-    "provider session start and terminal events",
     "sole artifact writer",
     "initialization acknowledgement",
     "token-based Sentry skill",
     "under the declared execution-repository path",
     "evidence worker exclusively owns raw Sentry queries",
-    "not as an activation attempt",
     "same Documenter",
     "Best current explanations",
     "Standard initialization is limited",
     "Repository Integrator only for one recorded cross-repository question",
     "confirmed defect owner",
-    "handoff revisions",
     "provider_configuration_unavailable",
     "Quarantine any provider-required memory pass",
     "implementation_plan_action",
     "concurrent-run decision",
     "without its value is not a delivered input",
     "final artifact and answer",
-    "RFC 3339",
     "canonical Sentry artifacts",
 ):
     if phrase not in sentry_prompt:
@@ -1238,17 +1230,17 @@ for phrase in ("do not delete and recreate", "finish within two minutes", "sole 
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing bounded finalization control: {phrase}")
 
-for phrase in ("finalization budgets", "finalized packet", "handoff revisions", "reserve `plan_only`"):
+for phrase in ("finalization budgets", "finalized packet", "reserve `plan_only`"):
     if phrase not in documenter_agent:
-        fail(f"providers/codex/agents/documenter.toml is missing final-metrics control: {phrase}")
+        fail(f"providers/codex/agents/documenter.toml is missing final-handoff control: {phrase}")
 
-for phrase in ("finalization-schema result", "post-closure-poll count", "required artifact set by name"):
+for phrase in ("finalization-schema result", "required artifact set by name"):
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing terminal-schema control: {phrase}")
 
-for phrase in ("coordination errors", "handoff revisions", "next-action owner"):
+for phrase in ("next-action owner", "canonical human-readable handoff"):
     if phrase not in documenter_role.lower():
-        fail(f"roles/documenter.md is missing final-metrics ownership: {phrase}")
+        fail(f"roles/documenter.md is missing final-handoff ownership: {phrase}")
 
 for name in (
     "current_state_investigator.toml",
@@ -1288,27 +1280,21 @@ for phrase in (
     "MUST NOT change a technical worker's diagnosis",
     "mutually conditional candidate files",
     "owning technical worker MUST perform the assigned investigation",
-    "counts every provider-accepted worker spawn call",
     "final Documenter owns the finalized work record",
     "Do not add a second generic outcome field",
     "pass those exact values explicitly",
-    "Provider session timestamps take precedence",
     "sole writer for its assigned artifacts",
     "MUST NOT reread",
     "Provider-required memory remains quarantined",
     "Never reduce a useful hypothesis result",
     "During planning, run a unit or integration test only",
-    "Next-action owner",
-    "metrics status: invalid",
+    "Complete when",
     "Reserve `plan_only`",
     "one finalized packet",
-    "Coordination errors",
     "context_conformance",
     "configuration_conformance",
     "run_prompt_nonconformant",
     "evidence_eligibility",
-    "including the final Documenter",
-    "Invalid metrics do not erase",
     "Keep the final Documenter handle live",
     "implementation_plan_action",
     "provider_configuration_unavailable",

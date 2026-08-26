@@ -1,12 +1,12 @@
 ---
 
 title: Orchestrator Role
-version: 0.4.0
+version: 0.4.1
 status: Pilot
 category: Coordination
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-26
 required_documents:
 
   - ../frameworks/investigation.md
@@ -209,11 +209,10 @@ maintain and finalize a continuous worker.
 * Assigned Input IDs reconcile with each worker's `inputs_consumed`; authoritative omissions are resolved.
 * Ready independent workers run in parallel, or the sequential exception and wait are recorded.
 * Required worker activation and fan-in are recorded before a stage closes.
-* Exact provider-returned handles and coordinator-observed activation, terminal, and elapsed timestamps are recorded.
-* A `not_found` handle is reconciled against the activation ledger, spawn result, artifacts, and provider status before
+* Exact provider-returned handles are preserved; evaluation timing is recorded only for explicit evaluation runs.
+* A `not_found` handle is reconciled against the spawn result, artifacts, and provider status before
   any replacement worker starts.
-* The final handoff includes coordination errors, handoff revisions, metrics validity, wall time, profile,
-  worker/instance/activation counts, runtime failures, artifact volume, and per-worker elapsed and wait time.
+* The final handoff uses the canonical human-readable template and omits metrics and worker timing for normal runs.
 * The terminal record retains the required finalization fields and playbook artifact set; canonical state fields agree
   with the final answer, and post-closure polls are included in coordination errors.
 * The Delivery Activation Barrier is passed before any remediation source change.

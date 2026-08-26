@@ -113,7 +113,7 @@ the source of truth.
 | `INV-35` | Every worker activation MUST include a compact value/source/authority manifest for its assigned Input IDs. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 | `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-37` | A terminal work record MUST pass the packaged framework validator before the handoff is released. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
-| `INV-38` | A run and every continuation MUST record reproducible identity and chronological provider activity without retroactively changing earlier input assignments. | [Run Identity and Continuation Ledger](#run-identity-and-continuation-ledger) |
+| `INV-38` | A new run MUST start from fresh current-run artifacts; only an explicit continuation may reuse the current record. Evaluation telemetry is required only for declared evaluation runs. | [Run Identity and Continuation](#run-identity-and-continuation) |
 
 ---
 
@@ -624,8 +624,8 @@ dependency, or infrastructure change, the current remediation run MUST record a 
    Tester.
 
 The graph may execute sequentially. A downstream worker may be recorded as `awaiting_dependency`, but it must not be
-omitted from the current run's activation ledger. If the required graph or active Implementer cannot be created, stop
-before source changes with `profile_status: blocked` and reason `remediation_not_activated`.
+omitted from the current run's worker execution record. If the required graph or active Implementer cannot be created,
+stop before source changes with `profile_status: blocked` and reason `remediation_not_activated`.
 
 The Coordinator may inspect files to coordinate work and maintain durable artifacts, but it MUST NOT implement, review,
 or validate source changes. A source change made before the barrier is a workflow violation and invalidates any claim
@@ -725,28 +725,26 @@ review, or present a lower profile as completion of the requested profile.
 
 The Coordinator MUST store the provider-returned worker handle and pass that stored value to wait, follow-up, and close
 operations; it MUST NOT manually reproduce or edit the handle. A `not_found` result requires reconciliation against the
-activation ledger, original spawn result, durable artifacts, and provider status before replacement. Record every spawn
+original spawn result, durable artifacts, and provider status before replacement. Record every spawn
 attempt, handle discrepancy, replacement, and duplicated result.
 
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
 `not_executed`; do not substitute a generic workflow or claim success.
 
-## Run Identity and Continuation Ledger
+## Run Identity and Continuation
 
-Every terminal or blocked record MUST contain a non-empty evaluation run ID. When no independent experiment identifier
-is supplied, use the provider run ID. Record the role-policy baseline's identifier, not merely its file path.
+Every run records its provider run ID when available. Evaluation identity, role-policy baseline, detailed
+provider-action history, and timing are required only when the request explicitly declares an evaluation or benchmark
+run.
 
-The record MUST contain one chronological continuation row for the initial run and every later continuation, with the
-trigger, new Input IDs, prior terminal state, and RFC 3339 timestamp. It MUST update `Last Updated` on every durable
-change. A continuation may reuse durable artifacts after closure, but it must append a new row and must not rewrite an
-earlier worker's assigned inputs.
+`Start` creates a new run. It MUST NOT patch or consume a prior terminal run as current evidence. Before replacing the
+canonical artifact root, preserve the prior terminal artifacts under `.thoughts/<WORK-ITEM-ID>/runs/<RUN-ID>/`; then
+initialize a fresh canonical record. `Continue` reuses the current durable record and adds only the new inputs and
+activity. When the request does not say continue, treat it as start.
 
-The activation ledger is the source for actual instances, activation attempts, failed spawns, coordination errors, and
-handoff revisions. Record every provider action that changes or addresses a worker, including rejected calls and their
-recovery. Count a successful `spawn` as one activation attempt. A `resume` or `send` on the same handle is not a new
-instance or activation attempt; a provider-returned new handle is. A rejected `send`, `resume`, or `close` is a
-coordination error even when the recovery succeeds.
+Normal runs record material worker outcomes and control failures, but do not reconstruct provider metrics. Evaluation
+runs additionally maintain chronological continuation, activation, and timing ledgers using provider-observed values.
 
 ## Worker Wait and Termination Semantics
 
@@ -861,7 +859,7 @@ final worker after fan-in instead of reserving a continuous handle for the whole
 ## Concurrent Run Isolation
 
 Different read-only planning runs may inspect the same clean, immutable source revision. They MUST still use distinct
-work-item artifact roots and record the shared repository and revision in each run. A run that can write source,
+run artifact roots and record the shared repository and revision in each run. A run that can write source,
 lockfiles, tests, generated files, or external work-item state MUST NOT share a checkout with another active run; it
 requires a separate managed worktree and a distinct durable artifact root. A second run for the same work item MUST stop
 with `run_already_active` until the prior run's handles and artifact writers are released, or it must use an explicit
@@ -885,24 +883,37 @@ After activating a technical worker, the Coordinator MUST NOT perform that worke
 or evidence investigation. It may perform minimal initialization and verify the returned artifact, and may repeat a
 technical check only when a named discrepancy is recorded and returned to the owning worker.
 
-The final workflow handoff contains both a shared outcome summary and a compact worker-result ledger. The shared summary
-answers what should happen next. The worker ledger makes each contribution, outcome, limitation, and usage visible
-without requiring the reader to reconstruct parallel execution from logs.
+The final workflow handoff contains the shared outcome summary below. Detailed worker results remain in the work record;
+do not reproduce the worker ledger in the user-facing answer.
 
 ## Human-Readable Handoff
 
-Every playbook handoff must include this short block, especially when the run is blocked, incomplete, or awaiting input:
+Every playbook uses this final-answer order. Omit conditional sections that do not apply.
 
 ```text
-Workflow outcome: <completed | incomplete | blocked>
-Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>
-What happened: <plain-language result>
-What this means: <why the run stopped or what is ready>
-Best current explanations: <up to three hypotheses with confidence and one-line evidence, or “None”>
-Internal owner: <runtime, team, worker, or person responsible for the workflow state>
-Next-action owner: <team, worker, operator, or person able to complete the next action>
-What you need to do: <user action, or “Nothing technical.”>
-To continue: “<exact phrase or action the user can provide>”
+Workflow result: <plain-language outcome>
+
+- State: <canonical state>
+- Workflow outcome: <completed | incomplete | blocked>
+- Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>
+- Implementation plan: <created path, or omitted and why>
+
+What we established:
+- <major verified finding>
+
+Best current explanations:  # unresolved diagnosis only; strongest plus at most two alternatives
+- <confidence>: <hypothesis and one-line evidence>
+
+Next action:
+- Owner: <person or team able to act>
+- Action: <specific evidence, decision, or implementation>
+- Complete when: <observable completion condition>
+
+Artifacts:
+- <links>
+
+Execution: <profile/lifecycle>; validation <result>; workers <complete/incomplete>;
+runtime <released/not released>; source or external changes <none/summary>.
 ```
 
 `Workflow outcome: completed` means required workers reached terminal results, fan-in passed, and runtime closure was
@@ -917,103 +928,47 @@ run that produced a usable implementation plan but did not implement it. Use
 prevented the selected workflow from completing. Do not add a second generic outcome field that contradicts these
 values.
 
-The handoff must explain internal runtime terms such as `fan-in`, terminal worker envelope, and runtime closure in
-ordinary language before or alongside their status values. Do not present an internal owner as if the user must repair
-the agent runtime. If the user does not need to change code, configuration, or environment, say so explicitly. If the
-next step is a retry, give the exact short request, such as `Retry the planning run.`
+Do not expose internal runtime terms such as `fan-in` or terminal envelope without explanation. Do not present an
+internal owner as if the user must repair the agent runtime. If the next step is a retry, give the exact request.
 
 If an analytical worker returned hypotheses, the final summary MUST show the strongest one and up to two credible
 alternatives. Use short sentences, confidence labels, and the evidence for each. Show a rejected hypothesis only when it
 helps explain why the run did not choose an expected fix. Never reduce a useful hypothesis result to only “root cause
 unknown.”
 
-Every terminal or blocked handoff MUST include this compact run-metrics block, populated from the work record:
-
-```text
-Run metrics: <wall time>; <requested -> executed profile>; <logical workers>; <actual instances>;
-<activation attempts>; <failed spawns>; <replacements>; <handle discrepancies>; <coordination errors>;
-<handoff revisions>; <artifact count and bytes>; <metrics status>
-Worker timing: <worker: elapsed / wait, ...>
-```
-
-Provider token or credit usage remains optional when unavailable. Coordinator-observed wall time, worker elapsed time,
-instance counts, and activation outcomes MUST NOT be omitted or reported as `Unknown`.
-
-`Logical workers` includes the Coordinator and each required or conditionally activated role. `Actual instances`
-includes the Coordinator plus every provider worker instance that materially contributed. `Activation attempts`
-counts every provider-accepted worker spawn call, including the final Documenter; it excludes the already-running
-Coordinator. A malformed request rejected before provider activation is a coordination error, not an instance or
-provider activation. Worker timing MUST include the Coordinator and final Documenter as well as technical workers.
-Record configured provider model/effort separately from provider-observed values; a worker's self-report is not provider
-telemetry.
-
-`Coordination errors` counts pre-provider command, quoting, routing, ledger, or orchestration failures and retries that
-are not provider spawn failures. A wait or status call issued after the corresponding handle was released is a
-coordination error and MUST also be reported as a `post-closure poll`; do not silently discard it because it happened
-after fan-in. `Handoff revisions` counts returns to the same final Documenter after its first terminal result. These
-counts are zero only when checked. `Metrics status` is `valid` only after timestamp, count, and artifact-byte
-reconciliation passes.
-
-If provider session timestamps or another authoritative timestamp covering the complete user turn are unavailable,
-set `metrics status: invalid`. Never substitute artifact timestamps, a worker-stage subtotal, or an “at least” duration
-and then report complete or valid metrics.
-Invalid metrics do not erase measurements that are available: report every authoritative wall-time or worker duration
-and name only the missing or unreconciled fields.
-
-Wall time starts when the user turn starts and ends when the final answer is produced. It includes initialization,
-Coordinator work, worker execution and waits, documentation, runtime closure, and final verification. Do not report a
-worker-stage subtotal as run wall time. Worker activation and terminal timestamps come from the Coordinator's own clock
-when the provider exposes no telemetry.
-
-Provider session timestamps take precedence over timestamps written by a worker inside an artifact. A worker-authored
-"completed at" value is not a provider terminal time. Before handoff, reconcile each reported duration with the
-provider session start and terminal event when available.
-
-All Coordinator and provider timestamps MUST use RFC 3339 format with an explicit `Z` or numeric offset. A malformed
-timestamp invalidates metrics and MUST be recorded as the missing or unreconciled field; do not normalize or guess it.
-
-The Coordinator MUST capture the run start timestamp at turn entry and compute final wall time directly from that start
-and the final-answer timestamp. It MUST NOT reconstruct wall time by adding worker durations or estimating stage
-windows.
-
-If the turn-start timestamp was not captured, use a provider task start timestamp only when it represents the complete
-user turn. Otherwise report `metrics status: invalid` and the exact missing datum; do not present a shortened worker or
-stage window as run wall time. A run with invalid required metrics may finish its worker graph, but it MUST NOT claim
-metrics or process conformance.
+Normal runs MUST NOT include `Run metrics` or `Worker timing` in the final answer. An explicitly declared evaluation or
+benchmark run may append those blocks from provider-observed data. Never reconstruct missing timing or usage.
 
 The final Documenter owns the finalized work record and implementation plan. If verification finds an inconsistency,
 the Coordinator MUST return it to that same Documenter before closure; the Coordinator MUST NOT edit a finalized
 Documenter artifact after its terminal result.
 
-Keep the final Documenter handle live until artifact content, plan action, counts, timing, and byte totals pass final
-verification. Send every correction to that same handle, collect the revised terminal result, increment handoff
-revisions, and only then release it. A post-terminal Coordinator artifact edit is a coordination error and process
-conformance failure even when the corrected text is accurate.
+Keep the final Documenter handle live until artifact content, plan action, outcomes, and required artifact disposition
+pass final verification. Send every correction to that same handle, collect the revised terminal result, and only then
+release it. A post-terminal Coordinator artifact edit is a process conformance failure even when accurate.
 
-Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes ledger
-and timing corrections as input and MUST NOT edit those files concurrently.
+Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes
+corrections as input and MUST NOT edit those files concurrently.
 
 ## Final Handoff Reconciliation
 
 Before releasing the final Documenter, the Coordinator MUST compare the final artifact and final answer with the runtime
-ledger. The following values must agree: workflow state, profile status, workflow outcome, engineering outcome, plan
-action, worker outcomes, remaining active handles, activation/error/revision counts, artifact paths and bytes, runtime
-closure, and metrics validity. A released handoff MUST contain no stale `pending`, `active`, `in_progress`, or
-`closure pending` value for a completed barrier. Return any mismatch to the same Documenter, increment
-`handoff revisions`, collect the revised terminal result, and repeat the comparison before release. A final answer that
+record. The following values must agree: workflow state, profile status, workflow outcome, engineering outcome, plan
+action, worker outcomes, remaining active handles, artifact paths, and runtime closure. A released handoff MUST contain
+no stale `pending`, `active`, `in_progress`, or
+`closure pending` value for a completed barrier. Return any mismatch to the same Documenter, collect the revised
+terminal result, and repeat the comparison before release. A final answer that
 contradicts the durable record is a handoff conformance failure even when the worker graph itself completed.
 
-Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing the turn and
-provider timestamps, worker handles and outcomes, activation and coordination counts, exact current artifact bytes,
-workflow and engineering outcomes, displayed hypotheses, internal owner, next-action owner, and completion condition.
-The Documenter formats these values; it does not reconstruct them. After any correction, recompute artifact bytes and
-timing before handoff.
+Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing worker outcomes,
+workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action, and completion
+condition. The Documenter formats these values; it does not reconstruct them.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
 `engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;
-durable artifact paths and required artifact-set disposition; continuation and provider-activation ledgers; worker
-activation/timing and result summaries; fan-in and runtime closure; metrics validity; displayed hypotheses; ownership;
-next action; and final reconciliation. Empty
+durable artifact paths and required artifact-set disposition; worker result summaries; fan-in and runtime closure;
+displayed hypotheses; ownership; next action; and final reconciliation. Explicit evaluation runs additionally retain
+evaluation identity, continuation, activation, timing, and evaluation results. Empty
 explanatory sections MAY be omitted. A
 smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
 fails the applicable artifact budget unless the recorded exception is valid.

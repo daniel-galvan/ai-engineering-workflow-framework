@@ -95,28 +95,24 @@ not a recovery trigger. Interrupted recovery is allowed only after confirmed
 failure or stoppage and permits one replacement attempt.
 
 Store every provider-returned worker handle exactly; never manually reproduce or edit it. If a wait or status lookup
-returns `not_found`, reconcile the handle against the activation ledger, original spawn result, durable artifacts, and
+returns `not_found`, reconcile the handle against the original spawn result, durable artifacts, and
 provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
-time, spawn attempts, discrepancies, and replacements. Record every `spawn`, `resume`, `send`, `wait`, and `close`
-action chronologically with its handle, exact input IDs, timestamp, and result. A failed provider action is a
-coordination error even when recovery succeeds; `resume` or `send` on the same handle is not another instance or
-activation attempt. On every continuation, append its trigger and new input IDs and update `Last Updated`; never
-retroactively assign new inputs to earlier workers. Use one Documenter handle through finalization; if the runtime
+time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
+continuation, add only new inputs; never retroactively assign them to earlier workers. Use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
 Count every successful provider activation, including that Documenter. A
 malformed call rejected before activation is a coordination error.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
 post-closure poll.
 
-Keep the final Documenter live through consistency and byte-count validation.
+Keep the final Documenter live through consistency validation.
 Send corrections to that same handle, collect its revised terminal result, and
 close it only after validation passes. Never patch its artifacts directly.
 Before releasing that handle, compare the final artifact and answer with the
-runtime ledger. Workflow state, profile status, workflow outcome, engineering
-outcome, plan action, worker outcomes, active handles, counts, artifact bytes,
-runtime closure, and metrics validity must agree. Return stale `pending` or
-`active` fields to the same Documenter for correction and increment handoff
-revisions. Do not close on a contradictory record.
+durable record. Workflow state, profile status, workflow outcome, engineering
+outcome, plan action, worker outcomes, active handles, artifacts, and runtime
+closure must agree. Return stale `pending` or `active` fields to the same
+Documenter for correction. Do not close on a contradictory record.
 Require the terminal record to retain the contract's required finalization fields and the selected playbook's artifact
 set. Compare `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` as separate canonical values and
 copy those exact values into the final answer; matching counts alone do not pass finalization.
@@ -144,17 +140,9 @@ validation, stabilization, and handoff unless new evidence changes scope or a
 genuine permission, environment, validation, or external-action decision blocks
 progress.
 
-At handoff, use the contract's human-readable format, report actual profile,
-worker outcomes, limitations, artifact status, next action, fan-in, and runtime
-closure. Include the compact run-metrics block with wall time; requested and
-executed profile; logical workers; actual instances; activation attempts;
-failed spawns; replacements; handle discrepancies; coordination errors;
-handoff revisions; artifact count and bytes; metrics status; and each worker's
-elapsed and wait time. Wall time is user-turn start through
-final answer, computed from captured turn-start and final-answer timestamps,
-not estimated from worker windows or a worker-stage subtotal. If no timestamp
-covers the complete turn, report metrics as invalid instead of presenting a
-shortened stage window. Release completed workers only after
+At handoff, use the contract's canonical human-readable format. Do not include
+Run Metrics or Worker Timing unless the request explicitly declares an
+evaluation or benchmark run. Release completed workers only after
 collecting terminal results. Do not modify production source code or external
 systems.
 """

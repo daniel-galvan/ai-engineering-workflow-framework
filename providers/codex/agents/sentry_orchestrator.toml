@@ -117,13 +117,10 @@ not a recovery trigger. Interrupted recovery is allowed only after confirmed
 failure or stoppage and permits one replacement attempt.
 
 Store every provider-returned worker handle exactly; never manually reproduce or edit it. If a wait or status lookup
-returns `not_found`, reconcile the handle against the activation ledger, original spawn result, durable artifacts, and
+returns `not_found`, reconcile the handle against the original spawn result, durable artifacts, and
 provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
-time, spawn attempts, discrepancies, and replacements. Record every `spawn`, `resume`, `send`, `wait`, and `close`
-action with its handle, exact Input IDs, timestamp, and result. A rejected provider action is a coordination error even
-when recovery succeeds; `resume` or `send` on the same handle is not a new instance or activation attempt. On every
-continuation, append its trigger and new Input IDs, update `Last Updated`, and do not retroactively alter earlier
-assignments. Use one Documenter handle through finalization; if the runtime
+time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
+continuation, add only new inputs and do not retroactively alter earlier assignments. Use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
 Count every successful activation, including the final Documenter. Treat a
 malformed call rejected before activation as a coordination error.
@@ -147,28 +144,21 @@ rewrite the work record between workers. Once the final Documenter starts, it
 is the sole artifact writer; send corrections to that worker instead of editing
 concurrently.
 
-Pass the Coordinator-captured turn-start timestamp, worker activation and
-terminal timestamps, handles and outcomes, activation and coordination counts,
-exact current artifact byte totals, final workflow/engineering outcomes, displayed
+Pass worker handles and outcomes, final workflow/engineering outcomes, displayed
 hypotheses, internal owner, next-action owner, and completion condition to the
 final Documenter as one finalized packet.
-Include the related-run check, post-closure-poll count, required terminal-field checklist, and required artifact-set
+Include the related-run check, required terminal-field checklist, and required artifact-set
 disposition in that packet.
-Include evaluation run ID (provider Run ID when no independent experiment ID exists), role-policy baseline ID, the
-continuation ledger, and activation ledger in that packet.
-Use provider session start and terminal events when available; never substitute
-a worker-authored completion timestamp.
+Include evaluation identity and provider-observed telemetry only for an explicit evaluation or benchmark run.
 If final verification finds a record or plan inconsistency, return it to that
 same Documenter before closure; do not edit the finalized artifact yourself.
-Keep that Documenter handle live until content, plan action, counts, timing, and
-byte totals pass. Send corrections through the handle, collect a revised
-terminal result, increment handoff revisions, and only then release it.
+Keep that Documenter handle live until content and plan action pass. Send corrections through the handle, collect a
+revised terminal result, and only then release it.
 Before releasing that handle, compare the final artifact and answer with the
-runtime ledger. Workflow state, profile status, workflow outcome, engineering
-outcome, plan action, worker outcomes, active handles, counts, artifact bytes,
-runtime closure, and metrics validity must agree. Return stale `pending` or
-`active` fields to the same Documenter for correction and increment handoff
-revisions. Do not close on a contradictory record.
+durable record. Workflow state, profile status, workflow outcome, engineering
+outcome, plan action, worker outcomes, active handles, artifacts, and runtime
+closure must agree. Return stale `pending` or `active` fields to the same
+Documenter for correction. Do not close on a contradictory record.
 Require the terminal record to pass the contract's finalization schema. Compare `state`, `engineering_state`,
 `workflow_outcome`, and `engineering_outcome` as separate canonical values, and copy those exact values into the final
 answer. For `awaiting_input`, require the canonical `clarification_brief.md`; matching counts alone do not pass.
@@ -190,26 +180,10 @@ validation, stabilization, and handoff unless new evidence changes scope or a
 genuine permission, environment, validation, or external-action decision blocks
 progress.
 
-At handoff, use the contract's human-readable format. Report actual profile,
-worker outcomes, limitations, remediation boundary, artifact status, next
-action, fan-in, runtime closure, and exposed usage. Include the compact
-run-metrics block with wall time; requested and executed profile; logical
-workers; actual instances; activation attempts; failed spawns; replacements;
-handle discrepancies; coordination errors; handoff revisions; artifact count
-and bytes; metrics status; and each worker's elapsed and wait time. Capture
-turn-start and final-answer timestamps and compute wall time
-directly; do not estimate it from worker windows. Release completed workers only
-after collecting terminal results.
-
-If turn start was not captured and no provider task timestamp covers the whole
-turn, report metrics as invalid and do not present a shortened stage window as
-wall time or claim metrics/process conformance. Recompute artifact bytes and
-timing after every Documenter correction.
-Invalid metrics still report every authoritative duration that is available and
-name only the missing or unreconciled values.
-All timestamps in the record must be RFC 3339 with `Z` or a numeric offset.
-Use `wc -c` for portable artifact byte verification. Copy artifact paths exactly
-from the final packet; do not use GNU-only `find -printf`.
+At handoff, use the contract's canonical human-readable format. Do not include
+Run Metrics or Worker Timing unless the request explicitly declares an
+evaluation or benchmark run. Release completed workers only after collecting
+terminal results. Copy artifact paths exactly from the final packet.
 
 If an analytical worker returned hypotheses, show the strongest one and up to
 two credible alternatives in the final summary, with confidence and one short
@@ -217,9 +191,8 @@ reason each. Include a rejected hypothesis only when it helps explain the
 result. Say plainly when the workflow completed but the engineering task still
 needs evidence or a decision.
 
-Count the Coordinator as one logical worker and one actual instance, but not as an activation attempt. Include
-Coordinator and Documenter elapsed time in `Worker timing:`. Record configured model/effort separately from
-provider-observed values; do not treat a worker self-report as provider telemetry.
+Record configured model/effort separately from provider-observed values; do not treat a worker self-report as provider
+telemetry.
 
 If missing evidence keeps the plan Draft, name its internal owner, system,
 next-action owner, artifact, and completion condition. Use `partially_solved`

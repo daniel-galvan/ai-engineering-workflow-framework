@@ -35,8 +35,8 @@ Issue: <SENTRY-ISSUE-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
 Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
-Evaluation run ID (required; use Codex Run ID when no separate experiment ID is supplied): <RUN-ID>
-Role-policy baseline ID: <BASELINE-ID>
+Evaluation run ID (evaluation/benchmark runs only; otherwise Not applicable): <EVALUATION-RUN-ID>
+Role-policy baseline ID (evaluation/benchmark runs only): <BASELINE-ID-OR-NOT-APPLICABLE>
 
 Execution profile: standard
 Lifecycle: planning
@@ -87,8 +87,6 @@ Runtime bootstrap:
 - Before that worker starts, Standard initialization is limited to turn-start capture, framework/repository/path
   verification, authoritative-input registration, the minimal work-record skeleton, and worker configuration/activation.
   Do not search candidate source, history, tests, or Sentry during initialization.
-- Capture the turn-start timestamp before initialization. Count the Coordinator as a logical worker and actual instance,
-  not as an activation attempt, and include Coordinator and Documenter elapsed time in final metrics.
 - Before worker activation, record the concurrent-run decision. Read-only planning may share a clean revision. When
   another run is active, remediation or any writer requires a separate managed worktree and artifact root. Stop with
   `run_already_active` for the same work item unless this is an explicit continuation or recovery run.
@@ -98,16 +96,7 @@ Runtime bootstrap:
   without its value is not a delivered input; reconcile all assigned IDs with `inputs_consumed`.
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
   the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
-- Count every successful worker activation, including the final Documenter. Treat a malformed call rejected before
-  activation as a coordination error. Invalid metrics still report every authoritative duration that is available.
-- Record every provider action in the activation ledger. A `resume` or `send` on the same handle is not a new instance;
-  a rejected provider action is a coordination error even if recovery succeeds. Add a continuation-ledger row and update
-  `Last Updated` for every follow-up that adds evidence, constraints, or worker activity.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
-- Use provider session start and terminal events for worker timing when available; worker-authored artifact timestamps
-  are not provider terminal times.
-- Use RFC 3339 timestamps with `Z` or a numeric offset. Do not invent or normalize malformed provider timestamps; mark
-  metrics invalid and name the missing or unreconciled field.
 - For Standard planning, create one minimal work-record skeleton, retain intermediate ledgers in Coordinator state, and
   let the final Documenter perform the next artifact update. Once activated, the Documenter is the sole artifact writer.
 - During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
@@ -127,9 +116,9 @@ Runtime bootstrap:
   edit finalized artifacts after that worker returns.
 - Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to
   that same handle and close it only after the revised terminal result passes.
-- Before release, reconcile the final artifact and answer with the runtime ledger. Workflow state, profile status,
-  workflow/engineering outcome, plan action, worker outcomes, active handles, counts, artifact bytes, runtime closure, and
-  metrics validity must agree; return stale `pending` or `active` values to the same Documenter for correction.
+- Before release, reconcile the final artifact and answer with the durable record. Workflow state, profile status,
+  workflow/engineering outcome, plan action, worker outcomes, active handles, artifacts, and runtime closure must agree;
+  return stale `pending` or `active` values to the same Documenter for correction.
 - Finalization must retain the contract's required terminal fields and playbook artifact set. Keep `state`,
   `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct and copy their exact values to the final
   answer as `Workflow outcome` and `Engineering outcome`; matching artifact counts alone do not pass.
@@ -183,10 +172,8 @@ At handoff, report requested/executed profile, profile status,
 required-worker activation, fan-in status, and runtime-closure status.
 If analytical workers returned hypotheses, include `Best current explanations`: the strongest hypothesis and up to two
 alternatives, with confidence and one short reason each. Use common words, short sentences, and explain framework terms.
-Include the contract's compact `Run metrics:` and `Worker timing:` lines in the final answer; do not replace them with
-a work-record link or report coordinator-observed values as `Unknown`. Include coordination errors, handoff revisions,
-artifact bytes after the last correction, and metrics validity. Reserve `plan_only` for a run that produced a usable
-implementation plan; otherwise use `partially_solved` for useful incomplete diagnosis.
-Copy artifact paths exactly from the final packet. For portable byte verification, use `wc -c`; do not use GNU-only
-`find -printf`.
+Use the contract's canonical human-readable handoff. Do not include Run Metrics or Worker Timing unless this prompt
+explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable implementation
+plan; otherwise use `partially_solved` for useful incomplete diagnosis. Preserve distinct `Workflow outcome` and
+`Engineering outcome` fields. Copy artifact paths exactly.
 ```
