@@ -1,0 +1,20 @@
+{
+  "name": "ai-engineering-workflow-framework",
+  "interface": {
+    "displayName": "AI Engineering Workflow Framework"
+  },
+  "plugins": [
+    {
+      "name": "ai-engineering-workflows",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ai-engineering-workflows"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 ---
 
 # Setup
@@ -90,6 +90,21 @@ Read [providers/codex.md](providers/codex.md) and the [Codex model and effort
 policy](providers/codex/model_effort_policy.md) for the current provider mapping. If the provider runtime cannot use
 nested delegation, the active Codex session remains the Coordinator and must complete worker fan-in and runtime closure
 itself.
+
+## Optional Codex launcher plugin
+
+The repository includes a thin, explicitly invoked Codex launcher. It selects the canonical playbook and run template;
+it does not copy framework behavior or replace the provider-agent setup above. Install the repository marketplace and
+plugin from the framework checkout:
+
+```bash
+FRAMEWORK_DIR="/absolute/path/to/ai-engineering-workflow-framework"
+codex plugin marketplace add "$FRAMEWORK_DIR"
+codex plugin add ai-engineering-workflows@ai-engineering-workflow-framework
+```
+
+Plugin installation is user-global, not execution-repository-scoped. Start a new Codex task after installation, then
+explicitly invoke `$ai-engineering-workflows:run-ai-engineering-workflow` from the chosen execution repository.
 
 ## Create and run a prompt
 
