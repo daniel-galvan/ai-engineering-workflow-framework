@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.3.4
+version: 0.3.5
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -350,14 +350,18 @@ The Orchestrator creates the work record, selects the execution profile and life
 and records `profile_status: requested` before spawning the first investigation worker. It activates one final
 Documenter only after analytical fan-in.
 
-For a versioned evaluation run, verify the prompt's framework Git revision against the checkout containing this
-playbook before loading it. Stop with `framework_revision_mismatch` when HEAD differs or the framework worktree is
-dirty; regenerate the prompt from a clean revision instead of running against moving instructions. Do not create,
+For a versioned evaluation run, the launcher preflight verifies the prompt's framework Git revision against the
+checkout containing this playbook before loading it. Manual runs perform the same check before reading this playbook.
+Stop with `framework_revision_mismatch` when HEAD differs or the framework worktree is dirty; regenerate the prompt
+from a clean revision instead of running against moving instructions. Record `preflight_elapsed_ms` and
+`worker_activation_attempts: 0` for this blocked path. A stale plugin path stops with
+`plugin_revision_mismatch`; do not search another cache version or silently substitute a checkout. Do not create,
 switch, or detach another framework worktree to make a stale prompt match.
 
-For Standard planning, initialization writes only a minimal work-record skeleton. The Coordinator keeps intermediate
-worker and timing ledgers in runtime state and passes them to the final Documenter; it does not progressively rewrite
-the record between analytical workers.
+For Standard planning, initialization writes only a minimal work-record skeleton. On a preflight block, populate the
+required reasoning tables once and validate the blocked record once; do not progressively repair the artifact. After a
+successful activation, the Coordinator keeps intermediate worker and timing ledgers in runtime state and passes them
+to the final Documenter; it does not progressively rewrite the record between analytical workers.
 
 Use the prompt's declared `Execution repository` as the durable-artifact root. Code repositories listed for Sentry
 investigation must not receive the work record or worker artifacts.

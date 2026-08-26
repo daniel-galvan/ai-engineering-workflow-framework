@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.3.4
+version: 0.3.6
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -54,12 +54,18 @@ maintenance.
 * Maintain the Input Register with stable Input IDs and each material input's source, classification, authority,
   assignment, and consumption status.
 * Record the evaluation run ID, framework commit, prompt and playbook versions, role-policy baseline, provider, relevant
-  repository revisions, and actual worker model and effort.
+  repository revisions, actual worker model and effort, and the provider/runtime configuration path or `Not provided`.
+* Record the resolved provider-configuration source and status separately from the optional execution-repository runtime
+  view; an absent runtime view is not an unresolved provider definition.
 * Record control-fidelity, elapsed-time, wait-time, and human-intervention evaluation measures.
 * Record coordination errors, handoff revisions, metrics validity, and exact artifact bytes from the Coordinator's
   finalized packet; do not reconstruct timing or counts.
 * Retain the contract's required terminal fields while compacting, validate the playbook's required artifact set, and
   keep `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct.
+* Preserve the canonical `Playbook Selection`, `Run and Evaluation Identity`, `Evidence`, `Claims`, `Decision Log`, and
+  `Action Log` sections; compact wording inside those sections instead of replacing them with legacy headings.
+* Before terminal handoff, run the packaged framework validator against the execution repository's work record. A failed
+  validation is a correction loop, not a successful finalization.
 * Record the related-run check and post-closure polls from the Coordinator's finalized packet.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.

@@ -1,6 +1,6 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.3.5
+version: 0.3.8
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -93,9 +93,9 @@ itself.
 
 ## Optional Codex launcher plugin
 
-The repository includes a thin, explicitly invoked Codex launcher. It selects the canonical playbook and run template;
-it does not copy framework behavior or replace the provider-agent setup above. Install the repository marketplace and
-plugin from the framework checkout:
+The repository is also a self-contained, explicitly invoked Codex plugin. The installed plugin includes the canonical
+catalog, playbooks, contracts, skills, provider guidance, definitions, and templates; the execution-repository provider
+runtime view above remains optional. Install the repository marketplace and plugin from the framework checkout:
 
 ```bash
 FRAMEWORK_DIR="/absolute/path/to/ai-engineering-workflow-framework"
@@ -104,12 +104,105 @@ codex plugin add ai-engineering-workflows@ai-engineering-workflow-framework
 ```
 
 Plugin installation is user-global, not execution-repository-scoped. Start a new Codex task from the chosen execution
-repository after installation, then explicitly invoke the launcher with the framework checkout and work item:
+repository after installation, then explicitly invoke the launcher with the work item:
 
 ```text
-Use $ai-engineering-workflows:run-ai-engineering-workflow.
-Framework checkout: /absolute/path/to/ai-engineering-workflow-framework
+Use $ai-engineering-workflows:run.
 Work item: <stable ID or URL>
+```
+
+The plugin uses the framework snapshot bundled with its installed version. Reinstall or update the plugin to pick up
+later framework changes. The installed plugin name/version must be recorded in plugin-backed evaluation work records.
+Supplying a framework checkout path remains part of the manual prompt workflow below, not the plugin invocation.
+The launcher performs a package/revision/clean-status preflight before loading the catalog or playbook. Do not paste a
+versioned plugin-cache `SKILL.md` path into a plugin run; the active installed skill is authoritative. If an explicit
+old or different plugin path is supplied, the run stops immediately with `plugin_revision_mismatch`.
+
+### Plugin execution examples
+
+These examples execute the workflow directly. Start the Codex task from the execution repository, replace the
+scenario-specific values, and do not include a framework checkout path; the installed plugin supplies it.
+
+#### TechOps Issue Remediation
+
+```text
+Use $ai-engineering-workflows:run.
+
+Execution repository (the current session starts here and owns the
+durable .thoughts artifact):
+/absolute/path/to/execution-repository
+
+Provider/runtime configuration (optional runtime view; use `Not provided` when absent):
+/absolute/path/to/execution-repository/.codex/agents/
+
+Work item:
+TECHOPS-12345 (https://your-company.atlassian.net/browse/TECHOPS-12345)
+
+Playbook: playbooks/techops_issue_remediation.md
+Execution profile: standard
+Lifecycle: planning
+
+Additional repositories or assets:
+NONE
+```
+
+#### Vulnerability Investigation
+
+```text
+Use $ai-engineering-workflows:run.
+
+Execution repository (the current session starts here and owns the
+durable .thoughts artifact):
+/absolute/path/to/execution-repository
+
+Provider/runtime configuration (optional runtime view; use `Not provided` when absent):
+Not provided
+
+Work item:
+VULN-1234 (https://your-company.atlassian.net/browse/VULN-1234)
+
+Playbook: playbooks/vulnerability_investigation.md
+Execution profile: standard
+Lifecycle: planning
+
+Additional repositories or assets:
+NONE
+
+Optional supporting artifacts:
+NONE
+
+Additional context or constraints (optional; unverified):
+NONE
+```
+
+#### Sentry Issue Remediation
+
+```text
+Use $ai-engineering-workflows:run.
+
+Execution repository (the current session starts here and owns the
+durable .thoughts artifact):
+/absolute/path/to/execution-repository
+
+Provider/runtime configuration (optional runtime view; use `Not provided` when absent):
+/absolute/path/to/execution-repository/.codex/agents/
+
+Primary code repository:
+/absolute/path/to/primary-code-repository
+
+Work item:
+SENTRY-ISSUE-123 (https://sentry.example.com/issues/SENTRY-ISSUE-123)
+
+Playbook: playbooks/sentry_issue_remediation.md
+Execution profile: standard
+Lifecycle: planning
+
+Additional repositories or assets:
+- /absolute/path/to/additional-repository-or-NONE
+
+Optional supporting artifacts:
+- /absolute/path/to/payload.json-or-NONE
+- /absolute/path/to/screenshot-or-NONE
 ```
 
 ## Create and run a prompt
@@ -141,8 +234,8 @@ For a new run, fill only:
 - execution profile and lifecycle;
 - execution repository;
 - playbook and its matching canonical template path;
-- provider/runtime configuration when the execution repository's `.codex/agents/` directory is installed and verified
-  (required for versioned Codex evaluation runs);
+- provider/runtime configuration when the execution repository's `.codex/agents/` directory is installed and verified;
+  otherwise record `Not provided` and use the bundled provider definitions or selected work-graph binding;
 - playbook-specific context and evidence; and
 - additional repositories or constraints when applicable.
 
@@ -151,7 +244,8 @@ authorize using whichever feature branch happens to be checked out as baseline, 
 
 Omit the continuation section for a new run. The current session is the Coordinator by default, so there is normally no
 Coordinator field to fill in. Use the execution repository's `.codex/agents/` path only when it has been installed and
-verified. If it is unavailable, stop a versioned Codex evaluation instead of inheriting worker settings.
+verified. If it is unavailable, record `Not provided`; the Coordinator must resolve the bundled provider definitions or
+selected work-graph binding and must never inherit unverified worker settings.
 
 Start with `planning` for investigation, diagnosis, design, and a proposed implementation plan. Use `remediation` only
 after the plan exists and explicit implementation approval has been given.
@@ -203,7 +297,7 @@ Execution repository (the current session starts here and owns the
 durable .thoughts artifact):
 /absolute/path/to/execution-repository
 
-Provider/runtime configuration:
+Provider/runtime configuration (optional runtime view; use `Not provided` when absent):
 /absolute/path/to/execution-repository/.codex/agents/
 
 Primary code repository:
@@ -254,7 +348,7 @@ Execution repository (the current session starts here and owns the
 durable .thoughts artifact):
 /absolute/path/to/execution-repository
 
-Provider/runtime configuration:
+Provider/runtime configuration (optional runtime view; use `Not provided` when absent):
 /absolute/path/to/execution-repository/.codex/agents/
 
 Primary code repository:
@@ -308,7 +402,7 @@ Execution repository (the current session starts here and owns the
 durable .thoughts artifact):
 /absolute/path/to/execution-repository
 
-Provider/runtime configuration:
+Provider/runtime configuration (optional runtime view; use `Not provided` when absent):
 /absolute/path/to/execution-repository/.codex/agents/
 
 Primary code repository:

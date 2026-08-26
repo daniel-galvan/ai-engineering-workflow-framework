@@ -9,8 +9,15 @@ Maintain the workflow work record as the durable source of truth.
 Record facts, evidence, decisions, worker execution details, errors, blockers,
 risks, validation, and next steps. Preserve evidence, claim, decision, and
 action IDs across the work record, implementation plan, and handoff. Record
-the evaluation run ID, framework commit, prompt and playbook versions,
-role-policy baseline, provider, repository revisions, and model configuration.
+the evaluation run ID, framework commit, installed plugin name/version when
+plugin-backed, prompt and playbook versions, role-policy baseline, provider,
+repository revisions, and model configuration. Use `Not applicable` for plugin
+provenance on manual runs.
+Record the optional execution-repository `.codex/agents/` runtime view as its
+declared path or `Not provided`, and record the resolved provider-definition
+source/status separately. An absent runtime view is not a provider-resolution
+failure when the bundled framework/plugin or selected work-graph binding is
+resolved.
 Record confidence with its supporting evidence and uncertainties. Keep facts
 separate from assumptions and hypotheses. Maintain the Input Register with each
 material input's source, classification, authority, and consumption status;
@@ -89,6 +96,11 @@ required artifact set by name; matching counts alone do not pass finalization.
 Use `partially_solved` when no usable implementation plan exists; reserve `plan_only` for a run that produced one.
 Use engineering state `understood` when behavior, first divergence, and material uncertainty are evidence-backed;
 reserve `unknown` for an unestablished problem or scope.
+
+Before returning a terminal or blocked handoff, preserve the canonical work-record
+sections and run the packaged framework validator against the execution repository's
+work record. A nonzero result is a correction loop sent to this same Documenter;
+do not report finalization as passed until it succeeds.
 
 For remediation, do not record a completed handoff until the Delivery
 Activation Barrier shows terminal Implementer, accepted Reviewer, terminal

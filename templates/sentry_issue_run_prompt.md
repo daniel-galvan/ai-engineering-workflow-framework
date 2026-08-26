@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.3.4
+version: 0.3.5
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -46,8 +46,8 @@ Execution repository (required; durable artifact root):
 If the session runs in a managed worktree of this repository, use that worktree for source operations but keep every
 durable `.thoughts/<SENTRY-ISSUE-ID>/` artifact under the declared execution-repository path above.
 
-Provider/runtime configuration (required for Codex evaluation runs; otherwise optional):
-<PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION>
+Provider/runtime configuration (optional execution-repository runtime view; use `Not provided` when absent):
+<PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION-OR-Not-provided>
 
 Continuation (omit this entire section for a new investigation):
 - Run type: Planning follow-up / Interrupted profile recovery / Remediation re-entry
@@ -71,9 +71,11 @@ Runtime bootstrap:
 - Verify the framework revision and clean status before loading instructions. Stop with `framework_revision_mismatch`
   and regenerate the prompt if the checkout differs or is dirty. Do not create, switch, or detach another framework
   worktree to make a stale prompt match.
-- Resolve each named provider agent definition and pass its exact configured model and reasoning effort explicitly when
-  the spawn API would otherwise inherit Coordinator settings. Do not adapt or escalate those values. If a required
-  definition cannot be resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
+- The execution-repository `.codex/agents/` path is an optional runtime view. When it is absent, resolve each named
+  provider agent definition from the bundled framework/plugin or selected work-graph binding.
+- Pass each resolved definition's exact configured model and reasoning effort explicitly when the spawn API would
+  otherwise inherit Coordinator settings. Do not adapt or escalate those values. If a required definition cannot be
+  resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
 - Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
   reread the complete playbook or core contracts.
 - For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does

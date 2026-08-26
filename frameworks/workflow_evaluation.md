@@ -1,6 +1,6 @@
 ---
 title: Workflow Evaluation
-version: 0.3.4
+version: 0.3.5
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -27,7 +27,10 @@ time when the runtime exposes no separate value.
 
 Every evaluation MUST identify its evaluation run ID, framework commit, prompt template revision, playbook version,
 role-policy baseline, requested and executed profile, lifecycle, provider/model configuration, and relevant repository
-revisions. Missing reproducibility identity makes Process quality and Efficiency no better than `partial`.
+revisions. Plugin-backed evaluations MUST also record the installed plugin name and version; manual runs record
+`Not applicable`. The execution-repository `.codex/agents/` runtime view is optional, but the resolved provider
+configuration source and status are mandatory. Missing reproducibility identity makes Process quality and Efficiency no
+better than `partial`.
 
 | Dimension | Question | Evidence |
 | --- | --- | --- |

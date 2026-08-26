@@ -7,7 +7,9 @@ import re
 import sys
 import tempfile
 import tomllib
+from contextlib import redirect_stdout
 from collections import Counter
+from io import StringIO
 from pathlib import Path
 
 
@@ -37,6 +39,8 @@ WORKFLOW_EVALUATION = ROOT / "frameworks" / "workflow_evaluation.md"
 CODEX_POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
 CODEX_AGENT_DIR = ROOT / "providers" / "codex" / "agents"
 IMPLEMENTATION_HANDOFF_TEMPLATE = ROOT / "templates" / "implementation_handoff.md"
+RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
+RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
 
 ROLE_AGENT_ALIASES = {
     "Orchestrator": ("orchestrator",),
@@ -182,13 +186,27 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     for error in reasoning_record_errors(text):
         fail(f"{path}: {error}")
     selection = markdown_table(text, "# Playbook Selection")
-    if not selection or any(not value for value in selection[0].values()):
+    required_selection = {
+        "Primary evidence",
+        "Primary goal",
+        "Selected playbook",
+        "Closest alternative",
+        "Why this playbook",
+    }
+    if (
+        not selection
+        or not required_selection.issubset(selection[0])
+        or any(not selection[0].get(field) for field in required_selection)
+    ):
         fail(f"{path}: Playbook Selection must record the selected playbook, closest alternative, and rationale")
     required_identity = (
         "Run ID",
         "Evaluation run ID",
         "Playbook / version",
         "Framework commit / status",
+        "Plugin package / version",
+        "Provider/runtime configuration",
+        "Provider configuration source/status",
         "Prompt template / revision / conformance",
         "Role-policy baseline ID",
         "Provider / model configuration",
@@ -224,6 +242,9 @@ def self_test_reasoning_records() -> None:
 | Evaluation run ID | evaluation-001 |
 | Playbook / version | playbooks/feature_delivery.md / 0.3.4 |
 | Framework commit / status | abcdef123456 / Dirty |
+| Plugin package / version | ai-engineering-workflows / 0.2.1 or Not applicable |
+| Provider/runtime configuration | Not provided |
+| Provider configuration source/status | bundled provider definitions / resolved |
 | Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.3.4 / pass |
 | Role-policy baseline ID | codex-role-policy-v0.3.0-01 |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -259,6 +280,20 @@ def self_test_reasoning_records() -> None:
         path = Path(directory) / "work_record.md"
         path.write_text(valid)
         validate_work_record(path, require_terminal=True)
+
+        legacy = path.with_name("legacy_work_record.md")
+        legacy.write_text(
+            "# Engineering Work Record\n\n"
+            "## Identity and terminal contract\n\n"
+            "| Field | Value |\n|---|---|\n| State | awaiting_input |\n"
+        )
+        with redirect_stdout(StringIO()):
+            try:
+                validate_work_record(legacy, require_terminal=True)
+            except SystemExit:
+                pass
+            else:
+                raise AssertionError("legacy compact work records must fail terminal validation")
 
 
 for path in ROOT.rglob("*.md"):
@@ -666,6 +701,22 @@ for phrase in ("# Portable Implementation Handoff Contract", "The portable hando
     if phrase not in portable_handoff_contract:
         fail(f"{PORTABLE_HANDOFF_CONTRACT.relative_to(ROOT)} is missing: {phrase}")
 work_record_template = (ROOT / "templates" / "work_record.md").read_text()
+if not RUN_SKILL.is_file():
+    fail("skills/run/SKILL.md is missing")
+if not RUN_PREFLIGHT.is_file():
+    fail("scripts/run_preflight.py is missing")
+run_skill = RUN_SKILL.read_text()
+for phrase in (
+    "scripts/run_preflight.py",
+    "first framework tool call",
+    "do not read memory",
+    "plugin_revision_mismatch",
+    "framework_revision_mismatch",
+    "preflight_elapsed_ms",
+    "one minimal canonical blocked work record",
+):
+    if phrase not in run_skill:
+        fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
 if "| Engineering state |" not in work_record_template:
     fail("templates/work_record.md is missing engineering state")
 if "| Approval type |" not in work_record_template:
@@ -699,6 +750,9 @@ for phrase in (
     "| Evaluation run ID |",
     "| Playbook / version |",
     "| Framework commit / status |",
+    "| Plugin package / version |",
+    "| Provider/runtime configuration |",
+    "| Provider configuration source/status |",
     "| Prompt template / revision / conformance |",
     "| Role-policy baseline ID |",
     "| Provider / model configuration |",
@@ -1051,7 +1105,7 @@ for path in sorted((ROOT / "templates").glob("*_run_prompt.md")):
     for phrase in (
         "Framework revision (required for evaluation runs)",
         "Framework worktree status: clean",
-        "required for Codex evaluation runs",
+        "optional execution-repository runtime view",
         "prompt_conformance",
         "Intended ref:",
         "Workflow outcome",
@@ -1186,6 +1240,8 @@ for phrase in ("Configured model/effort", "Provider-observed model/effort", "sel
         fail(f"templates/work_record.md is missing model-observation distinction: {phrase}")
 if "Framework commit / status" not in work_record_template:
     fail("templates/work_record.md is missing framework-revision provenance")
+if "Plugin package / version" not in work_record_template:
+    fail("templates/work_record.md is missing plugin-package provenance")
 for phrase in (
     "Repository Evidence Eligibility",
     "Prompt template / revision / conformance",

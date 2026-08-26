@@ -1,6 +1,6 @@
 ---
 title: TechOps Issue Remediation Run Prompt
-version: 0.3.4
+version: 0.3.5
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -32,8 +32,8 @@ The selected execution profile is mandatory; do not silently downgrade it.
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
 
-Provider/runtime configuration (required for Codex evaluation runs; otherwise optional):
-<PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION>
+Provider/runtime configuration (optional execution-repository runtime view; use `Not provided` when absent):
+<PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION-OR-Not-provided>
 
 Continuation (omit this entire section for a new investigation):
 - Run type: Planning follow-up / Interrupted profile recovery / Remediation re-entry

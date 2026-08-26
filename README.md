@@ -56,7 +56,8 @@ For cloning, execution-repository selection, Codex agent links, prompt creation,
 
 ## Quick start
 
-1. Complete [SETUP.md](SETUP.md) for the framework, execution repository, and provider runtime.
+1. Complete [SETUP.md](SETUP.md) for the framework and execution repository; configure a provider runtime view when
+   needed.
 2. Choose the playbook that matches the primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md).
 3. Copy the matching canonical run template from [templates/](templates/) into a session started in the execution
    repository. Fill only the required first-run and scenario fields; do not invent a second prompt format.
@@ -86,8 +87,9 @@ Users normally make only two execution choices:
 The selected playbook and provider role policy derive workers, skills, tools, models, and reasoning effort. Actual
 model and effort values belong in the worker ledger, not in a first-use run prompt.
 
-Provider configuration is optional for ordinary runs and required for versioned Codex evaluation runs. Use it only
-when installed and verified; otherwise stop the evaluation instead of inheriting unverified worker settings.
+The execution repository's `.codex/agents/` runtime view is optional. When it is absent, resolve provider definitions
+from the bundled framework/plugin or the selected work-graph binding. Versioned evaluations still require a resolved,
+reproducible provider configuration source; never inherit unverified Coordinator settings.
 
 The shared rules are in [contracts/workflow_execution.md](contracts/workflow_execution.md). Vocabulary,
 portable-handoff rules, and non-normative execution guidance are linked from that core and loaded only when needed. The
@@ -200,6 +202,9 @@ python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 
 The optional path validates a terminal work record's identity, playbook-selection evidence, repository revisions, and
 evidence-to-action references.
+
+The final Documenter or Coordinator must run the explicit work-record validation command before releasing a terminal
+handoff. A nonzero result is a handoff conformance failure and must return to the same Documenter for correction.
 
 Document facts, limitations, and [workflow evaluation](frameworks/workflow_evaluation.md) in the work record. Exercise
 changes against real work items, then simplify. See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).

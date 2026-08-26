@@ -1,6 +1,6 @@
 interface:
   display_name: "Run AI Engineering Workflow"
   short_description: "Launch the canonical workflow for a work item"
-  default_prompt: "Use $ai-engineering-workflows:run-ai-engineering-workflow to start the appropriate framework run."
+  default_prompt: "Use $ai-engineering-workflows:run to start the appropriate framework run."
 policy:
   allow_implicit_invocation: false

@@ -1,15 +1,15 @@
 {
   "name": "ai-engineering-workflows",
-  "version": "0.1.1",
-  "description": "Codex launcher for the AI Engineering Workflow Framework",
+  "version": "0.2.1+codex.20260826055852",
+  "description": "AI Engineering Workflow Framework for Codex",
   "author": {
     "name": "AI Engineering Workflow Framework"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Engineering Workflows",
-    "shortDescription": "Launch a canonical engineering workflow.",
-    "longDescription": "Select and run the framework's canonical playbooks without copying their contracts or templates.",
+    "shortDescription": "Run a canonical engineering workflow.",
+    "longDescription": "Select and run the framework's bundled canonical playbooks, contracts, and templates.",
     "developerName": "AI Engineering Workflow Framework",
     "category": "Productivity",
     "capabilities": [

@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.3.4
+version: 0.3.6
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25
@@ -111,6 +111,9 @@ production, or current-main behavior.
 | Evaluation run ID | |
 | Playbook / version | Canonical playbook path / independent document version |
 | Framework commit / status | Full Git commit / Clean or Dirty |
+| Plugin package / version | Installed plugin name/version, or `Not applicable` for manual runs |
+| Provider/runtime configuration | Optional execution-repository `.codex/agents/` path, or `Not provided` |
+| Provider configuration source/status | Resolved bundled definition or work-graph source / `resolved`, `absent`, or `blocked` |
 | Prompt template / revision / conformance | Canonical path / independent document version / `pass` or `fail` with missing required fields |
 | Role-policy baseline ID | Provider baseline ID or `Not applicable` |
 | Provider / model configuration | Provider name / Worker Execution Ledger |

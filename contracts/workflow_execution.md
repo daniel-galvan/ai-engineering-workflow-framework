@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.3.4
+version: 0.3.7
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -40,10 +40,19 @@ second specification.
 | Implementation guidance | [Workflow Execution Guidance](workflow_execution_guidance.md) and linked operating/provider guides | Explains examples and provider flexibility without changing required outcomes. |
 | Normative checklist | [Pilot Conformance Checklist](#pilot-conformance-checklist) | Defines the minimum evidence required before a run may be called contract-compliant. |
 
-At initialization, the Coordinator MUST read the selected playbook, this contract, and the claims contract. Other
-frontmatter dependencies are maintenance or stage references, not an instruction to load the complete framework into
-the run context. Load a role, skill, strategy, integration, template, or example only when the active worker or stage
-needs it. Templates and examples MUST NOT override the selected playbook or contracts.
+Before initialization, a plugin-backed launcher MUST make package and framework preflight its first framework tool call.
+It MUST derive the package root from the active installed skill, verify its catalog and manifest, compare any declared
+framework revision, and check framework clean status before loading memory, cache directories, the selected playbook,
+contracts, provider definitions, templates, or sibling artifacts. A stale plugin path or an unavailable, dirty, or
+mismatched framework stops the run with the corresponding preflight reason; the launcher MUST NOT search another cache
+version, silently substitute a checkout, activate workers, query external systems, or load the complete framework to
+explain the block. A blocked preflight writes one minimal canonical work record, records
+`preflight_elapsed_ms` and `worker_activation_attempts: 0`, and validates the record before handoff.
+
+After preflight passes, at initialization the Coordinator MUST read the selected playbook, this contract, and the claims
+contract. Other frontmatter dependencies are maintenance or stage references, not an instruction to load the complete
+framework into the run context. Load a role, skill, strategy, integration, template, or example only when the active
+worker or stage needs it. Templates and examples MUST NOT override the selected playbook or contracts.
 
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
@@ -103,6 +112,7 @@ the source of truth.
 | `INV-34` | A remediation run sharing an execution repository with another active run MUST use an isolated managed worktree and run artifact root. | [Concurrent Run Isolation](#concurrent-run-isolation) |
 | `INV-35` | Every worker activation MUST include a compact value/source/authority manifest for its assigned Input IDs. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 | `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
+| `INV-37` | A terminal work record MUST pass the packaged framework validator before the handoff is released. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 
 ---
 
@@ -325,6 +335,9 @@ Each run records:
 | `playbook`     | Canonical playbook identifier.                                                       |
 | `playbook_version` | Version from the selected playbook's front matter.                              |
 | `framework_commit` | Full framework Git commit and clean or dirty status.                             |
+| `plugin_package` | Installed plugin name/version, or `Not applicable` for manual runs.              |
+| `provider_runtime_view` | Optional execution-repository `.codex/agents/` path, or `Not provided`.      |
+| `provider_configuration` | Resolved provider-definition source and status; must not be inherited or guessed. |
 | `prompt_template_revision` | Canonical prompt template path, version, and conformance result.          |
 | `role_policy_baseline` | Provider role-policy baseline ID or `Not applicable`.                         |
 | `provider`     | Execution provider and provider/model configuration reference.                       |
@@ -435,9 +448,9 @@ adapters apply the provider role policy without changing lifecycle gates or the 
 
 For a versioned evaluation, initialization MUST compare the populated run prompt with the selected canonical template.
 Record `prompt_conformance`, the template revision, and any missing or altered required fields. A missing framework
-revision, execution repository, provider/runtime configuration required by that provider, profile, lifecycle, or
-authoritative-input section stops the run with `run_prompt_nonconformant`; claiming the expected revision does not make
-a structurally incomplete prompt conformant.
+revision, execution repository, resolved provider configuration, profile, lifecycle, or authoritative-input section
+stops the run with `run_prompt_nonconformant`; an absent execution-repository `.codex/agents/` runtime view alone does
+not. Claiming the expected revision does not make a structurally incomplete prompt conformant.
 
 The requested profile is an execution requirement, not descriptive metadata. At initialization, the Orchestrator records
 the requested profile and its required workers. Before completing the run, it records the executed profile and profile
@@ -447,10 +460,12 @@ The Orchestrator must not silently downgrade a profile to a smaller worker graph
 the run is `not_executed` or `blocked`; it is not a successful execution of the requested profile.
 
 Before each AI-worker activation, resolve the provider agent definition and bind its configured model and reasoning
-effort. When the spawn API inherits the Coordinator by default, pass those exact values explicitly; this is
-configuration binding, not adaptive escalation. If the runtime cannot apply or verify them, record the mismatch and do
-not activate the worker. Unrecorded or accepted model/effort substitution is prohibited. A run whose required worker
-cannot be bound stops with `provider_configuration_unavailable`; it does not continue on inherited defaults.
+effort. The execution-repository `.codex/agents/` directory is an optional runtime view; when it is absent, use the
+bundled framework/plugin provider definition or the selected work-graph binding and record that source and status. When
+the spawn API inherits the Coordinator by default, pass those exact values explicitly; this is configuration binding,
+not adaptive escalation. If the runtime cannot apply or verify them, record the mismatch and do not activate the worker.
+Unrecorded or accepted model/effort substitution is prohibited. A run whose required worker cannot be bound stops with
+`provider_configuration_unavailable`; it does not continue on inherited defaults.
 
 `requested` means the graph has not started, `in_progress` means required workers are active or awaiting fan-in, and
 `executed` means all required workers returned terminal envelopes and fan-in passed. `not_executed` means the graph
@@ -980,6 +995,11 @@ runtime closure; metrics validity; displayed hypotheses; ownership; next action;
 explanatory sections MAY be omitted. A
 smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
 fails the applicable artifact budget unless the recorded exception is valid.
+
+Before releasing a terminal or blocked handoff, the Coordinator or final Documenter MUST run the packaged framework
+validator against the execution repository's `work_record.md`. A nonzero result is a handoff conformance failure. Return
+the record to the same Documenter, correct it using the canonical template sections, and repeat validation before
+release.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise

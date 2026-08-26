@@ -1,7 +1,7 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.3.3
+version: 0.3.4
 status: Pilot
 owner: Engineering
 provider: codex
@@ -18,9 +18,9 @@ symlink, and prompt setup, see [`../SETUP.md`](../SETUP.md).
 The canonical Codex model and effort mapping is defined in
 [`codex/model_effort_policy.md`](codex/model_effort_policy.md).
 
-Custom agent definitions are stored in [`codex/agents/`](codex/agents/). For an execution repository, expose these files
-under `.codex/agents/` using symlinks or another provider-specific installation mechanism. The framework is the source
-of truth; the execution repository contains only the runtime view.
+Custom agent definitions are stored in [`codex/agents/`](codex/agents/). An execution repository MAY expose these files
+under `.codex/agents/` using symlinks or another provider-specific installation mechanism. The framework/plugin remains
+the source of truth; the execution repository contains only an optional runtime view.
 
 Verify the runtime view before using it or reporting it as unavailable. Check the directory itself, list hidden entries,
 inspect both regular files and symlinks, and verify symlink targets. An empty filtered search is not evidence that
