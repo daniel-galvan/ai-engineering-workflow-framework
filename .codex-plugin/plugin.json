@@ -1,21 +1,21 @@
 {
   "name": "ai-engineering-workflows",
-  "version": "0.2.1+codex.20260826055852",
+  "version": "0.1.4+codex.20260826234711",
   "description": "AI Engineering Workflow Framework for Codex",
   "author": {
-    "name": "AI Engineering Workflow Framework"
+    "name": "Daniel Galvan"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Engineering Workflows",
     "shortDescription": "Run a canonical engineering workflow.",
     "longDescription": "Select and run the framework's bundled canonical playbooks, contracts, and templates.",
-    "developerName": "AI Engineering Workflow Framework",
+    "developerName": "Daniel Galvan",
     "category": "Productivity",
     "capabilities": [
       "Read",
       "Write"
     ],
-    "defaultPrompt": "Start the appropriate AI Engineering Workflow for this work item."
+    "defaultPrompt": "Start the appropriate AI Engineering Workflow for the following work item."
   }
 }
