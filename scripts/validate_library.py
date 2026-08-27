@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import tempfile
@@ -42,8 +43,10 @@ WORKFLOW_EVALUATION = ROOT / "frameworks" / "workflow_evaluation.md"
 CODEX_POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
 CODEX_AGENT_DIR = ROOT / "providers" / "codex" / "agents"
 IMPLEMENTATION_HANDOFF_TEMPLATE = ROOT / "templates" / "implementation_handoff.md"
+SENTRY_WORK_RECORD_TEMPLATE = ROOT / "templates" / "sentry_work_record.md"
 RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
 RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
+PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
 
 ROLE_AGENT_ALIASES = {
     "Orchestrator": ("orchestrator",),
@@ -55,6 +58,17 @@ ROLE_AGENT_ALIASES = {
     "Implementer": ("implementer",),
     "Tester": ("tester",),
     "Documenter": ("documenter",),
+}
+
+SENTRY_ROLE_AGENTS = {
+    "Current-State Investigator / Sentry Evidence": "sentry_current_state_investigator",
+    "Dependency Analyst": "sentry_dependency_analyst",
+    "Repository Integrator": "sentry_repository_integrator",
+    "Solution Architect": "sentry_solution_architect",
+    "Reviewer": "reviewer",
+    "Implementer": "implementer",
+    "Tester": "tester",
+    "Documenter": "documenter",
 }
 
 
@@ -107,6 +121,11 @@ def markdown_table(text: str, heading: str) -> list[dict[str, str]]:
             return []
         rows.append(dict(zip(headers, cells, strict=True)))
     return rows
+
+
+def fenced_section(text: str, heading: str) -> str:
+    match = re.search(rf"^{re.escape(heading)}\s*\n+```text\s*\n(.*?)\n```", text, re.MULTILINE | re.DOTALL)
+    return match.group(1) if match else ""
 
 
 def reasoning_record_errors(text: str) -> list[str]:
@@ -216,6 +235,7 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
         "Provider configuration source/status",
         "Prompt template / revision / conformance",
         "Role-policy baseline ID",
+        "Role binding manifest",
         "Provider / model configuration",
         "Requested profile",
         "Executed profile",
@@ -243,6 +263,35 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
         "vulnerability_investigation": "templates/vulnerability_issue_run_prompt.md",
     }
     playbook_name = Path(identity["Playbook / version"].split(" / ", 1)[0]).stem
+    codex_run = identity["Provider / model configuration"].strip().lower().startswith("codex")
+    manifest = None
+    if codex_run:
+        if baseline_id != MODEL_BASELINE_ID:
+            fail(f"{path}: Codex runs must use current Role-policy baseline ID {MODEL_BASELINE_ID}")
+        manifest_value = identity["Role binding manifest"]
+        manifest_path = Path(manifest_value)
+        if not manifest_path.is_absolute():
+            manifest_path = path.parent / manifest_path.name
+        if not manifest_path.is_file():
+            fail(f"{path}: role binding manifest does not exist: {manifest_path}")
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (json.JSONDecodeError, OSError) as error:
+            fail(f"{path}: invalid role binding manifest: {error}")
+        if manifest.get("baseline_id") != baseline_id:
+            fail(f"{path}: role binding manifest baseline does not match Run Identity")
+        if manifest.get("playbook") != playbook_name:
+            fail(f"{path}: role binding manifest playbook does not match Run Identity")
+        for agent, binding in manifest.get("bindings", {}).items():
+            definition = Path(binding.get("definition", ""))
+            if not definition.is_file():
+                fail(f"{path}: role binding definition does not exist for {agent}: {definition}")
+            definition_data = tomllib.loads(definition.read_text())
+            if (
+                binding.get("model") != definition_data.get("model")
+                or binding.get("effort") != definition_data.get("model_reasoning_effort")
+            ):
+                fail(f"{path}: role binding manifest differs from provider definition for {agent}")
     expected_prompt = prompt_by_playbook.get(playbook_name)
     if expected_prompt and not identity["Prompt template / revision / conformance"].startswith(expected_prompt):
         fail(f"{path}: Prompt template must match {expected_prompt} for {playbook_name}")
@@ -264,6 +313,11 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     if not RFC3339_TIMESTAMP.fullmatch(work_item.get("Last Updated", "")):
         fail(f"{path}: Work Item Last Updated must be an RFC 3339 timestamp")
     required_tables = {
+        "# Worker Execution Ledger": (
+            "Worker",
+            "Role",
+            "Configured model/effort",
+        ),
         "# Worker Runtime Closure": (
             "Run or stage",
             "Completed worker handles",
@@ -292,10 +346,30 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
             handles = [value.strip().lower() for value in re.split(r",|;|<br\s*/?>", row["Completed worker handles"])]
             if any(handle and handle not in closure_evidence for handle in handles):
                 fail(f"{path}: provider release evidence must identify every completed handle")
-    for row in markdown_table(text, "# Worker Execution Ledger"):
+    if identity["Workflow outcome"] == "completed":
+        for row in table_rows["# Worker Runtime Closure"]:
+            if row["Runtime status"].strip().lower() != "released":
+                fail(f"{path}: completed workflow requires released runtime closure")
+            if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
+                fail(f"{path}: completed workflow requires zero active handles")
+    worker_rows = table_rows["# Worker Execution Ledger"]
+    for row in worker_rows:
         for field in ("Elapsed", "Wait"):
             if row.get(field, "").strip().lower() in {"completed", "terminal", "released", "running"}:
                 fail(f"{path}: Worker Execution Ledger {field} must be a duration or availability value, not a state")
+        if codex_run and row.get("Worker", "").strip().lower() not in {"coordinator", "orchestrator"}:
+            role = row.get("Role", "").strip()
+            agent = SENTRY_ROLE_AGENTS.get(role) if playbook_name == "sentry_issue_remediation" else None
+            if not agent:
+                aliases = ROLE_AGENT_ALIASES.get(role, ())
+                agent = aliases[0] if aliases else None
+            binding = manifest.get("bindings", {}).get(agent) if manifest and agent else None
+            if not binding:
+                fail(f"{path}: activated worker role has no resolved binding: {role or row.get('Worker', '')}")
+            configured = row.get("Configured model/effort", "").strip().lower()
+            expected = f"{binding['model']} / {binding['effort']}".lower()
+            if configured != expected:
+                fail(f"{path}: {row.get('Worker', role)} configured model/effort must be {expected}")
     for row in markdown_table(text, "# Input Register"):
         if "worker" in row.get("Input or artifact", "").lower() and "user" in row.get("Source or path", "").lower():
             fail(f"{path}: worker-produced inputs must cite the provider worker/result handle, not the user")
@@ -337,6 +411,41 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
             if row["Elapsed"].lower() in {"terminal", "released", "unknown", "unavailable"}:
                 fail(f"{path}: Evaluation Worker Timing Ledger Elapsed must be a duration, not a state")
 
+    handoff = fenced_section(text, "# Final Handoff")
+    required_handoff = (
+        "Workflow result:",
+        "- State:",
+        "- Workflow outcome:",
+        "- Engineering outcome:",
+        "- Implementation plan:",
+        "What we established:",
+        "Next action:",
+        "- Owner:",
+        "- Action:",
+        "- Complete when:",
+        "Artifacts:",
+        "Execution:",
+        "Provenance:",
+    )
+    positions = [handoff.find(label) for label in required_handoff]
+    if not handoff or any(position < 0 for position in positions) or positions != sorted(positions):
+        fail(f"{path}: Final Handoff must contain the canonical ordered labels")
+    for label, field in (
+        ("- State:", "State"),
+        ("- Workflow outcome:", "Workflow outcome"),
+        ("- Engineering outcome:", "Engineering outcome"),
+    ):
+        value = re.search(rf"^{re.escape(label)}\s*(.+)$", handoff, re.MULTILINE)
+        if not value or value.group(1).strip() != identity[field]:
+            fail(f"{path}: Final Handoff {field} must match Run Identity")
+    runtime_value = "released" if all(
+        row["Runtime status"].strip().lower() == "released"
+        for row in table_rows["# Worker Runtime Closure"]
+    ) else "not released"
+    execution = re.search(r"^Execution:\s*(.*?)\nProvenance:", handoff, re.MULTILINE | re.DOTALL)
+    if not execution or f"runtime {runtime_value}" not in " ".join(execution.group(1).lower().split()):
+        fail(f"{path}: Final Handoff runtime must match Worker Runtime Closure")
+
 
 def self_test_reasoning_records() -> None:
     valid = """# Playbook Selection
@@ -359,6 +468,7 @@ def self_test_reasoning_records() -> None:
 | Provider configuration source/status | bundled provider definitions / resolved |
 | Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.0 / pass |
 | Role-policy baseline ID | codex-role-policy-v20260827032839 |
+| Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
 | Requested profile | standard |
 | Executed profile | standard |
@@ -367,6 +477,10 @@ def self_test_reasoning_records() -> None:
 | Engineering state | validated |
 | Workflow outcome | completed |
 | Engineering outcome | solved |
+# Worker Execution Ledger
+| Worker | Role | Configured model/effort | Provider-observed model/effort | Elapsed | Wait |
+| --- | --- | --- | --- | --- | --- |
+| Coordinator | Orchestrator | active session | active session | PT1S | PT0S |
 # Work Item
 | Field | Value |
 | --- | --- |
@@ -407,6 +521,29 @@ def self_test_reasoning_records() -> None:
 | Action ID | Decision ref |
 | --- | --- |
 | action-001 | decision-001 |
+# Final Handoff
+```text
+Workflow result: Completed test run
+
+- State: completed
+- Workflow outcome: completed
+- Engineering outcome: solved
+- Implementation plan: omitted; test fixture
+
+What we established:
+- Validator controls passed.
+
+Next action:
+- Owner: Test owner
+- Action: Retain the fixture.
+- Complete when: The self-test passes.
+
+Artifacts:
+- work_record.md
+
+Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.
+Provenance: plugin ai-engineering-workflows 0.2.1; framework revision abcdef123456 (dirty); playbook feature_delivery 0.4.0.
+```
 """
     assert reasoning_record_errors(valid) == []
     invalid = valid.replace("| claim-001 | evidence-001 |", "| claim-001 | evidence-999 |")
@@ -414,6 +551,17 @@ def self_test_reasoning_records() -> None:
     assert "orphaned evidence evidence-001" in reasoning_record_errors(invalid)
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "work_record.md"
+        (path.parent / "role_bindings.json").write_text(json.dumps({
+            "baseline_id": MODEL_BASELINE_ID,
+            "playbook": "feature_delivery",
+            "bindings": {
+                "current_state_investigator": {
+                    "definition": str(CODEX_AGENT_DIR / "current_state_investigator.toml"),
+                    "model": "gpt-5.6-luna",
+                    "effort": "high",
+                },
+            },
+        }))
         path.write_text(valid)
         validate_work_record(path, require_terminal=True)
 
@@ -421,6 +569,11 @@ def self_test_reasoning_records() -> None:
         normal = normal.replace(
             "| Role-policy baseline ID | codex-role-policy-v20260827032839 |",
             "| Role-policy baseline ID | Not applicable |",
+        )
+        normal = normal.replace("| Role binding manifest | role_bindings.json |", "| Role binding manifest | Not applicable |")
+        normal = normal.replace(
+            "| Provider / model configuration | Codex / Worker Execution Ledger |",
+            "| Provider / model configuration | Generic / Worker Execution Ledger |",
         )
         normal = normal.replace("# Evaluation Run Continuation Ledger", "# Omitted Evaluation Run Continuation Ledger")
         normal = normal.replace("# Evaluation Worker Activation Ledger", "# Omitted Evaluation Worker Activation Ledger")
@@ -465,6 +618,19 @@ def self_test_reasoning_records() -> None:
             valid.replace("provider release confirmation for provider-worker-001", "provider release confirmation"),
             "must identify every completed handle",
         )
+        assert_invalid(
+            valid.replace("| Workflow outcome | completed |", "| Workflow outcome | incomplete |", 1),
+            "Final Handoff Workflow outcome must match Run Identity",
+        )
+        assert_invalid(
+            valid.replace("| Released | None |", "| Unknown | Unknown |"),
+            "completed workflow requires released runtime closure",
+        )
+        bound_worker = valid.replace(
+            "| Coordinator | Orchestrator | active session | active session | PT1S | PT0S |",
+            "| evidence-topology | Current-State Investigator / Sentry Evidence | gpt-5.6-luna / low | gpt-5.6-luna / low | PT1S | PT0S |",
+        )
+        assert_invalid(bound_worker, "configured model/effort must be gpt-5.6-luna / high")
 
         legacy = path.with_name("legacy_work_record.md")
         legacy.write_text(
@@ -776,7 +942,7 @@ for phrase in (
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 37):
+for invariant_id in range(1, 40):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
@@ -883,6 +1049,10 @@ if not RUN_SKILL.is_file():
     fail("skills/run/SKILL.md is missing")
 if not RUN_PREFLIGHT.is_file():
     fail("scripts/run_preflight.py is missing")
+if not PREPARE_RUN.is_file():
+    fail("scripts/prepare_run.py is missing")
+if not SENTRY_WORK_RECORD_TEMPLATE.is_file() or SENTRY_WORK_RECORD_TEMPLATE.stat().st_size >= 10 * 1024:
+    fail("templates/sentry_work_record.md must exist and remain below the Sentry work-record budget")
 run_skill = RUN_SKILL.read_text()
 for phrase in (
     "scripts/run_preflight.py",
@@ -893,6 +1063,8 @@ for phrase in (
     "preflight_elapsed_ms",
     "one minimal canonical blocked work record",
     "derives the package root from its own location",
+    "scripts/prepare_run.py",
+    "role_bindings.json",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
@@ -1189,6 +1361,10 @@ for phrase in (
     "initialization is limited",
     "never activate or delegate an `initialize` worker",
     "resolve that issue directly before any project or issue",
+    "three Sentry data queries total",
+    "30 seconds",
+    "90 seconds",
+    "supplied_occurrence",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")

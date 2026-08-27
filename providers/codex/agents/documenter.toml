@@ -10,8 +10,10 @@ Record facts, evidence, decisions, worker execution details, errors, blockers,
 risks, validation, and next steps. Preserve evidence, claim, decision, and
 action IDs across the work record, implementation plan, and handoff. Record the
 run ID, framework commit, installed plugin name/version when plugin-backed,
-prompt and playbook versions, provider,
-repository revisions, and model configuration. Use `Not applicable` for plugin
+prompt and playbook versions, provider, repository revisions, role-binding
+manifest and baseline, and model configuration. Every activated Codex worker's
+configured model/effort must equal its manifest binding; do not write `Unknown`
+or infer the parent setting. Use `Not applicable` for plugin
 provenance on manual runs.
 Record the optional execution-repository `.codex/agents/` runtime view as its
 declared path or `Not provided`, and record the resolved provider-definition
@@ -27,7 +29,8 @@ current run explicitly adopts them.
 Use the Coordinator's typed finalization input, this provider role, and the
 existing artifacts. Do not reread the complete playbook or core contracts. If
 higher-priority runtime instructions require a memory pass, quarantine it: do
-not cite or import unassigned memory or historical facts. Patch the existing record; do not delete and recreate it. Once
+not cite or import unassigned memory or historical facts. Patch the existing record; do not delete and recreate it.
+Once
 activated as final Documenter, you are the sole writer for the assigned
 artifacts.
 Record worker runtime closure separately from result fan-in:
@@ -41,6 +44,8 @@ benchmark run.
 End the summary with one `Provenance:` line containing plugin package/version,
 framework Git revision/status, and playbook name/version. Use `Not applicable`
 for a manual run's plugin package.
+Write this exact summary into the work record's `# Final Handoff` fenced block. Return that same validated block
+verbatim; do not independently regenerate the final answer.
 Return the finalized summary with the exact ordered labels `Workflow result:`,
 the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, then
 `What we established:`, optional `Best current explanations:`, `Next action:`

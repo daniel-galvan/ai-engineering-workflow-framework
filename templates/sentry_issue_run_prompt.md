@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-26
@@ -77,8 +77,9 @@ Runtime bootstrap:
   `plugin_revision_mismatch`; do not discover or switch to another installed plugin package.
 - The execution-repository `.codex/agents/` path is an optional runtime view. When it is absent, resolve each named
   provider agent definition from the bundled framework/plugin or selected work-graph binding.
-- Pass each resolved definition's exact configured model and reasoning effort explicitly when the spawn API would
-  otherwise inherit Coordinator settings. Do not adapt or escalate those values. If a required definition cannot be
+- After preflight, run packaged `scripts/prepare_run.py` once to archive a prior terminal run, initialize the current
+  record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly. Do not
+  adapt, escalate, or inherit Coordinator values. If a required definition cannot be
   resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
 - Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
   reread the complete playbook or core contracts.
@@ -87,8 +88,10 @@ Runtime bootstrap:
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
   pre-query Sentry or duplicate that investigation. When `Issue` supplies a stable ID or URL, resolve it directly before
-  any project or issue search; search only if direct resolution fails. Request the latest event first (`limit: 1` when
-  supported).
+  any project or issue search; if direct resolution fails, allow one justified fallback and stop. Request the latest
+  event first (`limit: 1` when supported). For Standard, allow one tool-discovery call, at most three Sentry data
+  queries, 30 seconds per query, and 90 seconds total. Never enumerate projects or fan out across organizations and
+  datasets. When only a supplied occurrence exists, use it without broad Sentry discovery.
 - Before that worker starts, Standard initialization is limited to turn-start capture, framework/repository/path
   verification, authoritative-input registration, the minimal work-record skeleton, and worker configuration/activation.
   Do not search candidate source, history, tests, or Sentry during initialization.

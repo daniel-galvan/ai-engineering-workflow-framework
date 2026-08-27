@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -114,6 +114,7 @@ the source of truth.
 | `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-37` | A terminal work record MUST pass the packaged framework validator before the handoff is released. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-38` | A new run MUST start from fresh current-run artifacts; only an explicit continuation may reuse the current record. Evaluation telemetry is required only for declared evaluation runs. | [Run Identity and Continuation](#run-identity-and-continuation) |
+| `INV-39` | Worker model and effort MUST come from the prepared role-binding manifest and match the activation record. | [Profile Execution Semantics](#profile-execution-semantics) |
 
 ---
 
@@ -972,6 +973,10 @@ Before the first final Documenter activation, the Coordinator MUST pass one fina
 workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action, completion
 condition, plugin package/version, framework Git revision/status, and playbook name/version. The Documenter formats
 these values; it does not reconstruct them.
+
+The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. The standalone
+validator checks its ordered labels and verifies that its state and outcomes equal the Run Identity and runtime-closure
+tables. The Coordinator copies that validated block verbatim as the user-facing answer.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
 `engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;

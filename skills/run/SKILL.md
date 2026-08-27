@@ -34,21 +34,25 @@ description: >-
 6. Relative to the verified packaged framework root, read the selected playbook, `contracts/workflow_execution.md`,
    `contracts/claims.md`, and the canonical run template declared by the playbook. Load the Codex provider adapter and
    model policy only when provider configuration is needed.
-7. Populate the canonical template from supplied and discoverable context. When the prompt requires current-run-only
+7. Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
+   runtime-agent directory. Use `--continuation` only when the user explicitly says continue or resume. This one step
+   archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
+   Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its
+   baseline ID, and stop if a required binding is absent. The active main session remains the Orchestrator with its
+   already-selected model and effort; do not claim that the Orchestrator agent TOML changed the parent session.
+8. Populate the canonical template from supplied and discoverable context. When the prompt requires current-run-only
    evidence, do not read memory, historical `.thoughts` artifacts, or prior-run citations at any later stage. The
    execution repository's `.codex/agents/`
    runtime view is optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
    binding; record the source and status, and never inherit unverified Coordinator settings. Preserve template field
    names, use `Unknown` or `None` for unavailable values, and ask only for a business, scope, ownership, or approval
    decision that bounded discovery cannot resolve.
-8. Execute the selected playbook. Default to `planning`; use `remediation` only when an implementation plan exists and
-   the user has explicitly approved implementation. Treat an invocation that says start as a new run. Archive prior
-   terminal artifacts under `.thoughts/<WORK-ITEM-ID>/runs/<PRIOR-RUN-ID>/` before initializing a fresh canonical
-   record.
-   Reuse current artifacts only when the user explicitly says continue or resume. Record the installed plugin
+9. Execute the selected playbook. Default to `planning`; use `remediation` only when an implementation plan exists and
+   the user has explicitly approved implementation. Treat an invocation that says start as a new run. Reuse current
+   artifacts only when the user explicitly says continue or resume. Record the installed plugin
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
-9. Before terminal or blocked handoff, ensure the work record uses the canonical required sections and run
+10. Before terminal or blocked handoff, ensure the work record uses the canonical required sections and run
    `python3 <packaged-framework-root>/scripts/validate_library.py`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with

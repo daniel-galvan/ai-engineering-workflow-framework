@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-26
@@ -118,6 +118,7 @@ production, or current-main behavior.
 | Provider configuration source/status | Resolved bundled definition or work-graph source / `resolved`, `absent`, or `blocked` |
 | Prompt template / revision / conformance | Canonical path / independent document version / `pass` or `fail` with missing required fields |
 | Role-policy baseline ID | Provider baseline ID or `Not applicable` |
+| Role binding manifest | `.thoughts/<WORK-ITEM-ID>/role_bindings.json` or `Not applicable` for a non-Codex provider |
 | Provider / model configuration | Provider name / Worker Execution Ledger |
 | Requested profile | `standard` / `deep` |
 | Activated profile | `standard` / `deep` / `None` |
@@ -293,6 +294,33 @@ do not copy full reports here.
 
 The final handoff presents the shared outcome; this worker summary remains in the durable record. Use `Unknown` for
 unavailable model, token, or credit data.
+
+# Final Handoff
+
+```text
+Workflow result: <plain-language outcome>
+
+- State: <canonical state>
+- Workflow outcome: <completed | incomplete | blocked>
+- Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>
+- Implementation plan: <created path, or omitted and why>
+
+What we established:
+- <major verified finding>
+
+Next action:
+- Owner: <person or team able to act>
+- Action: <specific evidence, decision, or implementation>
+- Complete when: <observable completion condition>
+
+Artifacts:
+- <links>
+
+Execution: <profile/lifecycle>; validation <result>; workers <complete/incomplete>;
+runtime <released/not released>; source or external changes <none/summary>.
+Provenance: plugin <package and version, or Not applicable>; framework revision <Git SHA> (<clean/dirty>);
+playbook <name and independent document version>.
+```
 
 ---
 

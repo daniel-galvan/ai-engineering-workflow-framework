@@ -1,6 +1,6 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-27
@@ -106,6 +106,8 @@ The plugin-specific files are deliberately small:
 | `skills/run/SKILL.md` | Explicit workflow launcher and package preflight sequence |
 | `skills/run/agents/openai.yaml` | Codex display metadata and explicit-invocation policy |
 | `scripts/run_preflight.py` | Fail-fast package, Git revision, and cleanliness validation |
+| `scripts/prepare_run.py` | Fresh-run archival, work-record initialization, and exact Codex role bindings |
+| `templates/sentry_work_record.md` | Compact initial and terminal record surface for Sentry runs |
 
 The plugin version and framework document versions are independent. The plugin version identifies an installed package;
 document versions identify individual contracts, playbooks, templates, and guides.

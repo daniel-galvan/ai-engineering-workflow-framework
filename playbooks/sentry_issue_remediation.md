@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -273,8 +273,9 @@ Workers use the shared result envelope defined in the execution contract. Sentry
 
 - `evidence-topology` owns raw Sentry queries for the run.
 - When the prompt supplies a stable Sentry issue ID or URL, resolve that issue directly before any project or issue
-  search. Search only when direct resolution fails, then request the latest issue event first (`limit: 1` when
-  supported).
+  search, then request the latest issue event first (`limit: 1` when supported). If direct resolution fails, perform at
+  most one justified fallback search and stop with bounded uncertainty; do not enumerate projects or fan out across
+  organizations and datasets.
 - Downstream workers consume normalized evidence artifacts.
 - Workers repeat Sentry or repository analysis only when they identify and record a specific discrepancy.
 - The Documenter records every worker result, blocker, synchronization state, model, effort, usage, and credits when
@@ -370,6 +371,12 @@ required reasoning tables once and validate the blocked record once; do not prog
 successful activation, the Coordinator keeps intermediate worker and timing ledgers in runtime state and passes them
 to the final Documenter; it does not progressively rewrite the record between analytical workers.
 
+After preflight, run packaged `scripts/prepare_run.py` once with the execution repository, work item, playbook name,
+and optional verified runtime-agent directory. Its `role_bindings.json` output is the worker spawn source of truth. A
+fresh run archives prior terminal artifacts before creating the new record; only an explicit continuation reuses the
+current record. The helper starts Sentry runs from `templates/sentry_work_record.md`; use the full work-record template
+only as reference for an uncommon section instead of copying it wholesale.
+
 Use the prompt's declared `Execution repository` as the durable-artifact root. Code repositories listed for Sentry
 investigation must not receive the work record or worker artifacts.
 
@@ -399,6 +406,11 @@ Record the repository/event topology and any optional supporting artifacts.
 The `evidence-topology` worker exclusively owns raw Sentry queries and initial repository topology for the run. The
 Orchestrator does not pre-query Sentry or duplicate repository exploration. Use MCP to inspect the issue and request
 only the latest event first (`limit: 1` when supported).
+Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
+uses the current-run artifact without broad Sentry discovery; `mixed` uses both. Standard planning permits one tool
+discovery call and at most three Sentry data queries total: direct issue resolution, latest event, and one justified
+discriminating follow-up. Stop each query after 30 seconds and stop Sentry investigation after 90 seconds total. Return
+the bounded partial result when a limit is reached; a timeout does not authorize broader searches.
 Bound initial source mapping to the reporting repository's stack or culprit entry, outbound endpoint, and direct return
 boundary required by fix design. Do not inspect an additional repository's internal compatibility or deployment path in
 this stage; that belongs to Repository Integrator when its activation gate passes.

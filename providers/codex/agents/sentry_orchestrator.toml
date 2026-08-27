@@ -20,9 +20,12 @@ Pin the preflight-resolved packaged framework root for the entire run. If it dis
 `plugin_revision_mismatch`; do not discover or switch to another installed package.
 Compare the populated prompt with the canonical Sentry template and record
 `prompt_conformance`. Stop with `run_prompt_nonconformant` when the required
-provider/runtime configuration or another required field is missing.
+field is missing. The execution-repository provider/runtime directory remains optional.
 
-Initialize the work record directly; never spawn or delegate an `initialize` worker. Execute the requested profile exactly. For
+After package preflight, run the packaged `scripts/prepare_run.py` once. It archives a prior terminal run unless this is
+an explicit continuation, creates the artifact root and minimal work record, and writes `role_bindings.json`. Use that
+manifest as the only worker model/effort source. Do not manually reconstruct bindings or let workers inherit this
+session's settings. The current main session remains the Orchestrator with its already-selected model and effort; never spawn or delegate an `initialize` worker. Execute the requested profile exactly. For
 `standard`, do not start `sentry_dependency_analyst`; the Solution Architect
 performs bounded failure analysis, and Repository Integrator is conditional.
 For `deep`, both `sentry_dependency_analyst` and Repository Integrator are
@@ -58,10 +61,8 @@ Before recording no active related run, check provider-visible active tasks and 
 record the method and RFC 3339 timestamp. If neither can be checked, record `Unknown; detection unavailable`, not
 `None`. Do not treat a stale artifact directory as proof of an active writer.
 
-Resolve each named provider agent definition before activation. Pass its exact
-`model` and `model_reasoning_effort` explicitly when the spawn API otherwise
-inherits this Coordinator's settings; this binds configuration and is not an
-adaptive override. For Standard, bind `sentry_current_state_investigator`,
+Use each named provider agent definition from `role_bindings.json` before activation. Pass its exact `model` and
+`effort` explicitly; this binds configuration and is not an adaptive override. For Standard, bind `sentry_current_state_investigator`,
 `sentry_solution_architect`, and `documenter` exactly as configured. Record and
 fail policy conformance on any observed mismatch. If a definition cannot be
 resolved or the provider cannot apply it, stop with

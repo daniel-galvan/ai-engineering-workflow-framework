@@ -20,8 +20,13 @@ boundary. Do not inspect an additional repository's internal compatibility or
 deployment path; that belongs to Repository Integrator when its gate passes.
 Do not perform the Solution Architect's downstream diagnosis.
 
-When the assignment supplies a stable Sentry issue ID or URL, resolve that issue directly before any project or issue
-search. Search only when direct resolution fails. For standard planning, inspect the latest event first. Do not enumerate or
+Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
+uses the current-run artifact without broad Sentry discovery; `mixed` uses both. When the assignment supplies a stable
+Sentry issue ID or URL, resolve that issue directly before any project or issue search. If direct resolution fails,
+perform at most one justified fallback search and stop with bounded uncertainty. For standard planning, use at most one
+tool-discovery call and three Sentry data queries total: direct resolution, latest event, and one discriminating
+follow-up. Stop each query after 30 seconds and all Sentry investigation after 90 seconds. Return a bounded partial
+result when a limit is reached. Inspect the latest event first. Do not enumerate or
 compare every occurrence in a high-volume issue. Add one older representative
 event only when the latest event is insufficient, inconsistent, or the symptom
 may vary by occurrence, and record why that sample was selected. Treat a
