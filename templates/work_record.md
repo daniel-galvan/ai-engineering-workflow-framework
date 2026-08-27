@@ -194,7 +194,11 @@ Record every worker or subagent that materially contributes to the work.
 | | | IN-### | | | | | | | | | | | | | |
 
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
-never estimate credit consumption. A self-reported model or effort does not replace provider-observed telemetry.
+never estimate credit consumption. For model and effort, retain the exact
+configured binding and record provider-observed values when returned. If
+applied telemetry is unavailable, use an explicit
+`Not exposed; ...` marker; never relabel the
+configured binding or treat a self-reported model or effort as provider-observed telemetry.
 `Elapsed` and `Wait` contain durations or availability values, never lifecycle states such as `Completed` or `Released`.
 
 # Evaluation Worker Activation Ledger

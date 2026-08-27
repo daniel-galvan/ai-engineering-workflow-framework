@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,45 @@ def _section(title: str, body: str) -> str:
     return f"# {title}\n\n{body}\n"
 
 
+def _runtime_released(rows: list[dict[str, object]]) -> bool:
+    return bool(rows) and all(
+        str(row.get("Runtime status", "")).strip().lower() == "released"
+        and str(row.get("Remaining active handles", "")).strip().lower() in {"none", "0"}
+        for row in rows
+    )
+
+
+def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, object]]) -> None:
+    packet["runtime_closure"] = closure
+    if not _runtime_released(closure):
+        return
+    finalization = packet.get("finalization")
+    if isinstance(finalization, dict):
+        reconciliation = str(finalization.get("Final reconciliation", "")).lower()
+        stale = any(token in reconciliation for token in ("pending", "unknown", "in progress"))
+        stale = stale or ("active" in reconciliation and "no active" not in reconciliation)
+        if stale and "failed" not in reconciliation:
+            finalization["Final reconciliation"] = "Passed; runtime closure released with no active handles"
+    for row in packet.get("synchronization", []):
+        if not isinstance(row, dict):
+            continue
+        barrier = str(row.get("Barrier status", "")).lower()
+        stale = any(token in barrier for token in ("pending", "unknown", "in progress"))
+        stale = stale or ("active" in barrier and "no active" not in barrier)
+        if stale and "failed" not in barrier:
+            row["Barrier status"] = "Passed; runtime closure released"
+    handoff = packet.get("handoff")
+    if isinstance(handoff, dict):
+        execution = str(handoff.get("execution", ""))
+        execution = re.sub(
+            r"runtime\s+(?:pending/unknown|pending|unknown|active|in progress|not released)",
+            "runtime released",
+            execution,
+            flags=re.IGNORECASE,
+        )
+        handoff["execution"] = execution
+
+
 def render(packet: dict[str, object]) -> str:
     handoff = packet["handoff"]
     explanations = handoff.get("best_current_explanations", [])
@@ -47,9 +87,10 @@ def render(packet: dict[str, object]) -> str:
         explanation_block = "\nBest current explanations:\n" + "".join(f"- {item}\n" for item in explanations)
     established = "".join(f"- {item}\n" for item in handoff["established"])
     artifacts = "".join(f"- {item}\n" for item in handoff["artifacts"])
-    runtime = "released" if all(
-        row.get("Runtime status", "").strip().lower() == "released" for row in packet["runtime_closure"]
-    ) else "not released"
+    runtime = "released" if _runtime_released(packet["runtime_closure"]) else "not released"
+    execution = str(handoff["execution"])
+    if not re.search(r"\bruntime\s+released\b", execution, flags=re.IGNORECASE):
+        execution = f"{execution}; runtime {runtime}"
     handoff_text = f"""```text
 Workflow result: {handoff['workflow_result']}
 
@@ -67,7 +108,7 @@ Next action:
 
 Artifacts:
 {artifacts}
-Execution: {handoff['execution']}; runtime {runtime}.
+Execution: {execution}.
 Provenance: {handoff['provenance']}
 ```"""
 
@@ -127,7 +168,7 @@ Provenance: {handoff['provenance']}
 def finalize(packet_path: Path, closure_path: Path, record_path: Path, *, pre_release: bool = False) -> None:
     packet = json.loads(packet_path.read_text())
     closure = json.loads(closure_path.read_text())
-    packet["runtime_closure"] = closure["runtime_closure"]
+    _reconcile_runtime_state(packet, closure["runtime_closure"])
     rendered = render(packet)
     record_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=record_path.parent, suffix=".md", delete=False) as handle:
@@ -187,7 +228,7 @@ def self_test() -> None:
         },
         "finalization": {"Concurrent-run decision": "Not applicable", "Active related run or work item": "None",
                          "Related-run check": "Current task", "Durable artifact root": "/tmp/.thoughts/ITEM-1",
-                         "Final reconciliation": "Passed", "Finalization schema": "Passed",
+                         "Final reconciliation": "Pending; runtime closure not yet reconciled", "Finalization schema": "Passed",
                          "Work-record budget exception": "None"},
         "durable_artifacts": [{"Artifact": "Work record", "Path": "work_record.md", "Status": "Created",
                                "Purpose": "Terminal handoff"}],
@@ -198,7 +239,7 @@ def self_test() -> None:
                      "Usage": "Unknown", "Depends on": "None", "Outcome": "complete", "Confidence": "High"}],
         "synchronization": [{"Stage": "Initialization", "Workers launched": "None",
                              "Launch mode / exception": "worker_runtime_unavailable", "Worker outcomes": "Not applicable",
-                             "Results summarized": "Yes", "Barrier status": "Passed"}],
+                             "Results summarized": "Yes", "Barrier status": "Passed; runtime closure pending/unknown"}],
         "runtime_closure": [{"Run or stage": "Current run", "Completed worker handles": "coordinator",
                              "Runtime status": "Released", "Remaining active handles": "None",
                              "Closure evidence or blocker": "provider release confirmation for coordinator"}],
@@ -219,7 +260,7 @@ def self_test() -> None:
                         "owner": "User", "action": "Retry when in-task workers are available.",
                         "complete_when": "The worker graph starts in the current task."},
                     "artifacts": ["work_record.md"],
-                    "execution": "standard/planning; validation passed; workers not started; source changes none",
+                    "execution": "standard/planning; validation passed; workers not started; source changes none; runtime pending/unknown",
                     "provenance": f"plugin Not applicable; framework revision {'a' * 40} (clean); playbook sentry_issue_remediation 0.4.6."},
     }
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
@@ -231,6 +272,11 @@ def self_test() -> None:
         closure.write_text(json.dumps({"runtime_closure": packet["runtime_closure"]}))
         finalize(source, closure, record)
         assert "Workflow result: Worker runtime unavailable" in record.read_text()
+        rendered = record.read_text()
+        assert "Final reconciliation | Passed; runtime closure released with no active handles |" in rendered
+        assert "| Passed; runtime closure released |" in rendered
+        assert "Final reconciliation | Pending" not in rendered
+        assert "runtime pending" not in rendered.lower()
         pending = {"runtime_closure": [dict(packet["runtime_closure"][0], **{
             "Runtime status": "Pending",
             "Closure evidence or blocker": "provider release pending",

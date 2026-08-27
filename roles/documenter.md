@@ -55,8 +55,9 @@ maintenance.
   assignment, and consumption status.
 * Cite provider worker/result handles for worker outputs and Coordinator/provider observations for preflight evidence;
   reserve `Current user` for inputs supplied by the user.
-* Record run ID, framework commit, prompt and playbook versions, provider, relevant repository revisions, actual worker
-  model and effort, and the provider/runtime configuration path or `Not provided`.
+* Record run ID, framework commit, prompt and playbook versions, provider, relevant repository revisions, each worker's
+  configured model and effort, provider-observed values when exposed, and the provider/runtime configuration path or
+  `Not provided`. If applied telemetry is unavailable, use an explicit `Not exposed; ...` marker.
 * End the canonical final summary with one `Provenance:` line containing plugin package/version, framework Git
   revision/status, and playbook name/version. Use `Not applicable` for a manual run's plugin package.
 * Record the resolved provider-configuration source and status separately from the optional execution-repository runtime

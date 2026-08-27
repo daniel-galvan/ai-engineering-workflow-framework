@@ -81,9 +81,11 @@ Runtime bootstrap:
   provider agent definition from the bundled framework/plugin or selected work-graph binding.
 - After preflight, run packaged `scripts/prepare_run.py` once to archive a prior terminal run, initialize the current
   record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly.
-  Immediately inspect each provider activation's returned model, effort, and fresh-context metadata against the manifest;
-  missing or mismatched metadata is a configuration-conformance failure and must not reach fan-in. Do not
-  adapt, escalate, or inherit Coordinator values. If a required definition cannot be
+  Immediately inspect each provider activation's returned model, effort, and fresh-context metadata against the manifest
+  when the runtime exposes those values. If applied model/effort telemetry is unavailable, record `Not exposed; ...`
+  together with the exact explicit launch binding; unavailable telemetry alone is not a mismatch. A returned mismatch or
+  rejected binding is a configuration-conformance failure and must not reach fan-in. Do not adapt, escalate, or inherit
+  Coordinator values. If a required definition cannot be
   resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
 - Activate every delegated worker with `fork_context: false` or the provider-equivalent fresh-context option. Start
   every packet with `Coordinator initialization: complete` and prohibit the worker from running the launcher skill,

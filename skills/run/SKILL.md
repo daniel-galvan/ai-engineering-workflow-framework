@@ -78,7 +78,9 @@ description: >-
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
-   failure: return the packet and exact error to the same Documenter, correct it, and do not patch Markdown by hand.
+   failure. Return packet, path, table, rendering, or closure errors to the same Documenter. Return errors naming Fix
+   Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning
+   Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; do not regenerate or replace it with a compact status list. Before sending, verify the exact ordered labels

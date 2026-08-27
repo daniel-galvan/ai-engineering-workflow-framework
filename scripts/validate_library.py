@@ -80,7 +80,8 @@ BLOCKING_DECISION_TYPES = {
     "indispensable_evidence",
 }
 PROHIBITED_CONTEXT_MARKERS = ("MEMORY.md", "/memories/", "<oai-mem-citation>")
-UNOBSERVED_MODEL_VALUES = {"", "unknown", "none", "not exposed", "not applicable"}
+UNOBSERVED_MODEL_VALUES = {"", "unknown", "none"}
+MODEL_OBSERVATION_UNAVAILABLE_PREFIXES = ("not exposed", "provider telemetry unavailable")
 EMPTY_ARTIFACT_VALUES = {"", "unknown", "none", "not applicable", "n/a"}
 
 ROLE_AGENT_ALIASES = {
@@ -411,6 +412,16 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
     return errors
 
 
+def model_observation_unavailable(value: str) -> bool:
+    normalized = " ".join(value.strip().lower().split())
+    return any(
+        normalized == prefix
+        or normalized.startswith(f"{prefix};")
+        or normalized.startswith(f"{prefix}:")
+        for prefix in MODEL_OBSERVATION_UNAVAILABLE_PREFIXES
+    )
+
+
 def terminal_semantics_errors(identity: dict[str, str]) -> list[str]:
     errors = []
     enums = {
@@ -664,6 +675,23 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fail(f"{path}: Codex runtime closure must use exact provider UUID handles")
             if any(handle and handle not in closure_evidence for handle in handles):
                 fail(f"{path}: provider release evidence must identify every completed handle")
+    runtime_released = bool(table_rows["# Worker Runtime Closure"]) and all(
+        row.get("Runtime status", "").strip().lower() == "released"
+        and row.get("Remaining active handles", "").strip().lower() in {"none", "0"}
+        for row in table_rows["# Worker Runtime Closure"]
+    )
+    if runtime_released:
+        reconciliation = finalization.get("Final reconciliation", "").strip().lower()
+        stale = any(token in reconciliation for token in ("pending", "unknown", "in progress"))
+        stale = stale or ("active" in reconciliation and "no active" not in reconciliation)
+        if stale:
+            fail(f"{path}: released runtime closure cannot retain pending final reconciliation")
+        for row in markdown_table(text, "# Worker Synchronization"):
+            barrier = row.get("Barrier status", "").strip().lower()
+            stale = any(token in barrier for token in ("pending", "unknown", "in progress"))
+            stale = stale or ("active" in barrier and "no active" not in barrier)
+            if stale:
+                fail(f"{path}: released runtime closure cannot retain pending synchronization barrier")
     if identity["Workflow outcome"] == "completed" and not _ALLOW_UNRELEASED:
         for row in table_rows["# Worker Runtime Closure"]:
             if row.get("Runtime status", "").strip().lower() != "released":
@@ -685,7 +713,10 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             if worker_key not in {"coordinator", "orchestrator"}:
                 actual = row.get("Actual model/effort", "").strip().lower()
                 if actual in UNOBSERVED_MODEL_VALUES:
-                    fail(f"{path}: Codex worker result must record provider-observed model/effort for {row.get('Worker', '')}")
+                    fail(
+                        f"{path}: Codex worker result must record provider-observed model/effort or an explicit "
+                        f"unavailable marker for {row.get('Worker', '')}"
+                    )
                 if ledger_row and actual != ledger_row.get("Provider-observed model/effort", "").strip().lower():
                     fail(f"{path}: Worker Result Summary model/effort must match the execution ledger for {row.get('Worker', '')}")
     for row in worker_rows:
@@ -711,8 +742,11 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fail(f"{path}: {row.get('Worker', role)} configured model/effort must be {expected}")
             observed = row.get("Provider-observed model/effort", "").strip().lower()
             if observed in UNOBSERVED_MODEL_VALUES:
-                fail(f"{path}: Codex worker ledger must record provider-observed model/effort for {row.get('Worker', role)}")
-            elif observed != configured:
+                fail(
+                    f"{path}: Codex worker ledger must record provider-observed model/effort or an explicit "
+                    f"unavailable marker for {row.get('Worker', role)}"
+                )
+            elif not model_observation_unavailable(observed) and observed != configured:
                 fail(f"{path}: {row.get('Worker', role)} provider-observed model/effort must match configured model/effort")
     fix_worker_rows = [
         row for row in worker_rows
@@ -763,7 +797,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             completed_handles = " ".join(
                 row.get("Completed worker handles", "") for row in table_rows["# Worker Runtime Closure"]
             )
-            if fix_result.get("worker_handle") not in completed_handles:
+            worker_handle = fix_result.get("worker_handle")
+            if isinstance(worker_handle, str) and worker_handle.strip() and worker_handle not in completed_handles:
                 fail(f"{path}: Fix Design worker_handle is absent from runtime closure")
         evidence_path = path.parent / "normalized_evidence.md"
         if not evidence_path.is_file():
@@ -1035,6 +1070,12 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     )
     ready_fix_with_evidence = {**ready_fix, "inputs_consumed": ["IN-001", "/run/normalized_evidence.md"]}
     assert fix_design_result_errors(ready_fix_with_evidence, required_input_marker="normalized_evidence.md") == []
+    malformed_fix = dict(ready_fix)
+    malformed_fix.pop("worker_handle")
+    malformed_errors = fix_design_result_errors(malformed_fix)
+    assert any("fix design result is missing fields: worker_handle" in error for error in malformed_errors)
+    assert model_observation_unavailable("Not exposed; explicit launch binding was recorded")
+    assert not model_observation_unavailable("Unknown")
     overcautious_fix = {
         **ready_fix,
         "plan_readiness": "awaiting_input",

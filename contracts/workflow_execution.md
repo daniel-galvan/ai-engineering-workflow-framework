@@ -512,9 +512,11 @@ Before each AI-worker activation, resolve the provider agent definition and bind
 effort. The execution-repository `.codex/agents/` directory is an optional runtime view; when it is absent, use the
 bundled framework/plugin provider definition or the selected work-graph binding and record that source and status. When
 the spawn API inherits the Coordinator by default, pass those exact values explicitly; this is configuration binding,
-not adaptive escalation. If the runtime cannot apply or verify them, record the mismatch and do not activate the worker.
-Unrecorded or accepted model/effort substitution is prohibited. A run whose required worker cannot be bound stops with
-`provider_configuration_unavailable`; it does not continue on inherited defaults.
+not adaptive escalation. If provider telemetry exposes the applied model and effort, record the returned values. If the
+runtime does not expose applied telemetry, record an explicit `Not exposed; ...` marker alongside the exact launch
+binding; this is not a substitution. If the runtime rejects or reports a mismatch, record the mismatch and do not
+activate the worker. Unrecorded or accepted model/effort substitution is prohibited. A run whose required worker cannot
+be bound stops with `provider_configuration_unavailable`; it does not continue on inherited defaults.
 
 `requested` means the graph has not started, `in_progress` means required workers are active or awaiting fan-in, and
 `executed` means all required workers returned terminal envelopes and fan-in passed. `not_executed` means the graph

@@ -38,6 +38,10 @@ its selected state, readiness, outcomes, worker results, and artifact actions;
 do not choose, normalize, upgrade, downgrade, or reinterpret them. If the packet
 is internally inconsistent, return it unchanged as a validation error instead
 of deciding the outcome.
+Correct only mechanical packet, path, table, or rendering errors. If a validation
+error names Fix Design technical content, worker identity, readiness, blockers,
+diagnosis, or remediation boundary, return it to the Coordinator for the owning
+Fix Design worker; do not edit those fields here.
 Do not claim provider release in the packet; the Coordinator supplies exact
 provider-observed rows through `runtime_closure.json` after this worker returns.
 In every handoff, use the
@@ -61,8 +65,10 @@ When analytical workers return hypotheses, add `Best current explanations`
 with the strongest hypothesis and no more than two alternatives, using a
 confidence label and one short reason for each. Prefer common words and short
 sentences; explain framework terms when they must appear.
-These coordinator-observed values must not be `Unknown`, and a work-record
-link does not replace the lines in the final answer. If an immutable identity
+For Codex workers, retain the exact configured manifest binding. Record returned
+provider-observed model/effort when exposed; otherwise use `Not exposed; ...`
+with the explicit launch binding. Never relabel configured values as observed.
+A work-record link does not replace the lines in the final answer. If an immutable identity
 value or canonical role name is absent from the Coordinator packet, return a
 packet-input error instead of inferring it. When all required planning workers have returned terminal result
 envelopes, fan-in is complete, and the playbook reaches
