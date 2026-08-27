@@ -113,11 +113,13 @@ Runtime bootstrap:
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
   the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
-- For Standard planning, create one minimal work-record skeleton. The evidence worker then writes
-  `normalized_evidence.md`; retain intermediate ledgers in Coordinator state. Once activated, the final Documenter is
-  the sole artifact writer for the finalized artifact set.
-- Activate Fix Design only after `normalized_evidence.md` exists. Pass its exact path and every original supporting
-  artifact path; do not replace either with a Coordinator-written summary.
+- For Standard planning, create one minimal work-record skeleton. Start the evidence worker and Fix Design in parallel
+  after initialization; retain intermediate ledgers in Coordinator state. Once activated, the final Documenter is the
+  sole artifact writer for the finalized artifact set.
+- Pass Fix Design the exact `normalized_evidence.md` path as an optional upstream artifact and every original
+  supporting artifact path. It may perform bounded pre-analysis from its assigned inputs while evidence is running,
+  then must consume the normalized artifact before returning a terminal result; do not replace either with a
+  Coordinator-written summary.
 - Require normalized evidence to contain the playbook's canonical `# Contract Delta` table with the exact five boundary
   rows and evidence references.
 - Select `live_sentry` only from an explicit Sentry issue URL or separately identified Sentry issue ID. The work-item
@@ -136,10 +138,11 @@ Runtime bootstrap:
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
 - Pass the final Documenter one immutable finalized packet. It populates `templates/finalization_packet.json` as the
-  structured `finalization_packet.json`; it does
-  not select, normalize, or reinterpret state, readiness, outcomes, worker results, or artifact actions. The Coordinator
-  releases that worker, writes exact provider closure rows to `runtime_closure.json`, then runs packaged
-  `scripts/finalize_work_record.py`; neither role patches terminal Markdown by hand.
+  structured `finalization_packet.json`; it does not select, normalize, or reinterpret state, readiness, outcomes,
+  worker results, or artifact actions. While that worker remains active, the Coordinator runs packaged
+  `scripts/finalize_work_record.py --pre-release` against a pending closure probe and returns any error to the same
+  worker. After the pre-release check passes, release the worker, write exact provider closure rows to
+  `runtime_closure.json`, then run the finalizer normally; neither role patches terminal Markdown by hand.
 - If finalization finds an inconsistency, return the exact error to the same Documenter for a corrected packet; the
   Coordinator must not edit the packet or rendered record.
 - Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to

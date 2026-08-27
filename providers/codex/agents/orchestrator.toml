@@ -120,12 +120,14 @@ malformed call rejected before activation is a coordination error.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
 post-closure poll.
 
-Keep the final Documenter live through consistency validation.
-Send corrections to that same handle, collect its revised terminal result, and
-run the preflight-pinned packaged validator as a standalone command. If that packaged root disappears or changes, stop
-with `plugin_revision_mismatch`; do not discover another installed package. Close the handle only after validation
-passes. Then update only the runtime-closure row with the exact provider handle and provider release confirmation and
-rerun the same validator with `--emit-handoff`. Require exit status zero and the first exact output line
+Keep the final Documenter live through consistency validation. Run the
+preflight-pinned packaged finalizer with `--pre-release` against a pending
+closure probe before releasing it. Send corrections to that same handle, collect
+its revised terminal result, and repeat until the pre-release check passes. If
+that packaged root disappears or changes, stop with `plugin_revision_mismatch`;
+do not discover another installed package. Close the handle only after validation
+passes. Then update the runtime-closure row with the exact provider handle and
+provider release confirmation and rerun the finalizer with `--emit-handoff`. Require exit status zero and the first exact output line
 `Workflow-framework validation: passed`; copy the subsequently emitted handoff block verbatim as the final answer.
 Never patch its artifacts directly except for that provider-observed closure row.
 Before releasing that handle, compare the final artifact and answer with the

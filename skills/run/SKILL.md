@@ -20,7 +20,9 @@ description: >-
    `--declared-plugin-path <prompt-path>` only when the prompt contains an explicit versioned plugin path. A missing,
    stale, or different path is `plugin_revision_mismatch`; do not search another cache version or silently substitute
    a checkout. A dirty or mismatched framework is `framework_revision_mismatch`. Stop before worker activation and
-   report the preflight reason and `preflight_elapsed_ms`.
+   report the preflight reason and `preflight_elapsed_ms`. Treat a completed process with exit status 0 as a passed
+   preflight even when the app hides stdout; do not rerun it solely because the JSON payload is not visible. Retry only
+   after a timeout, nonzero exit, or an objectively malformed result whose status cannot be determined.
 3. On a preflight block, create one minimal canonical blocked work record, populate its required Evidence, Claims,
    Decision Log, and Action Log chain in one pass, and run the validator once. Do not progressively rewrite the record,
    load the full playbook, query external systems, or activate workers. Record `worker_activation_attempts: 0` and the
@@ -59,9 +61,15 @@ description: >-
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
 10. Before terminal or blocked handoff, require the final Documenter to write structured
-   `finalization_packet.json`. Release the Documenter, populate `templates/runtime_closure.json` with exact provider
-   observations as `runtime_closure.json`, then
-   run `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
+   `finalization_packet.json`. While that Documenter remains active, create a pending closure probe using the
+   `templates/runtime_closure.json` schema and run:
+   `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
+   to validate the packet without replacing `work_record.md`. Return any error to the same Documenter and repeat.
+   After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
+   observations as `runtime_closure.json`, then run
+   `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.

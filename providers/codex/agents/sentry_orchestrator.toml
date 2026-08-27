@@ -21,6 +21,9 @@ Pin the preflight-resolved packaged framework root for the entire run. If it dis
 Compare the populated prompt with the canonical Sentry template and record
 `prompt_conformance`. Stop with `run_prompt_nonconformant` when the required
 field is missing. The execution-repository provider/runtime directory remains optional.
+Treat a completed preflight process with exit status 0 as passed even when the
+app hides stdout; do not rerun a successful preflight solely for a missing
+display payload.
 
 After package preflight, run the packaged `scripts/prepare_run.py` once. It archives a prior terminal run unless this is
 an explicit continuation, creates the artifact root and minimal work record, and writes `role_bindings.json`. Use that
@@ -82,9 +85,11 @@ Use only the current task's in-task `spawn_agent`/collaboration runtime. Never u
 Verify the in-task runtime before `prepare_run.py`; if absent, stop with
 `worker_runtime_unavailable` without creating user-owned tasks.
 
-After `evidence-topology`, start the Deep failure-topology and repository-
-integration workers in parallel when capacity exists; otherwise record the
-reason and wait time. For Standard, activate Repository Integrator only after
+After activating `evidence-topology`, start the Deep failure-topology and
+repository-integration workers in parallel when capacity exists; otherwise
+record the reason and wait time. For Standard, activate Fix Design immediately
+in parallel with the evidence worker; do not wait for its terminal result.
+Activate Repository Integrator only after
 recording one concrete cross-repository question, the local evidence that can
 answer it, and the exact ownership, readiness, or scope disposition that will
 change. If that disposition cannot be stated or the remaining question requires
@@ -92,7 +97,12 @@ production state, skip it. Missing production state that local source cannot
 supply is not such a question. Record `answerable_by_local_source` and
 `decision_expected_to_change`; both must be true before activation.
 Workers consume the normalized evidence artifact and repeat upstream
-investigation only for a named discrepancy.
+investigation only for a named discrepancy. Before accepting the Standard Fix
+Design terminal envelope, verify that its `inputs_consumed` includes the exact
+`normalized_evidence.md` path and that the artifact exists. If either check
+fails, return one correction to the same worker before fan-in; if evidence
+terminates without the artifact, preserve the typed blocker instead of
+inventing a diagnosis.
 
 Preserve all supplied context. Current explicit user decisions and constraints
 are authoritative and override historical worker conclusions. Treat a confirmed
@@ -149,16 +159,24 @@ Require Fix Design to return `plan_readiness` and
 `implementation_plan_action`. Pass them unchanged to the Documenter:
 `awaiting_input` requires `omit`; only `ready_for_implementation` permits
 `create`.
+When analytical fan-in completes but evidence or a decision is still required,
+use `State: awaiting_input`, `Profile status: executed`, `Workflow outcome:
+completed`, and `Engineering outcome: partially_solved`. Use `plan_only` only
+when a plan was actually created; never emit `passed` as a profile status or
+`incomplete` for a completed clarification handoff.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
 never normalize, reinterpret, or silently repair it in Coordinator state.
 After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded
 discrepancy or required conditional gate remains unresolved.
 
 For Standard planning, create only a minimal work-record skeleton before
-analysis and keep the runtime ledger in Coordinator state. Give the evidence
-worker the exact `normalized_evidence.md` path and require that file before Fix
-Design starts. Pass Fix Design that exact path plus every original supporting
-artifact path; never replace them with a Coordinator summary. Do not
+analysis and keep the runtime ledger in Coordinator state. Start evidence and
+Fix Design in parallel after Coordinator initialization. Pass Fix Design the
+exact `normalized_evidence.md` path as an optional upstream artifact plus every
+original supporting artifact path; it may perform bounded pre-analysis from its
+assigned inputs while evidence is running, then consume the normalized artifact
+before returning a terminal result. It must not repeat raw Sentry queries except
+for a named discrepancy. Do not
 progressively rewrite the work record between workers. Once the final
 Documenter starts, it is the sole artifact writer for the finalized artifact set; send
 corrections to that worker instead of editing concurrently.
@@ -168,13 +186,21 @@ hypotheses, internal owner, next-action owner, and completion condition to the
 final Documenter as one finalized packet.
 Include the related-run check, required terminal-field checklist, and required artifact-set
 disposition in that packet.
+Also pass every immutable identity value explicitly: run and evaluation IDs,
+playbook/version, framework revision/status, installed plugin name/version,
+provider/runtime configuration and source/status, prompt template/revision,
+role-policy baseline, role-binding manifest path, requested/activated/executed
+profile, profile status, lifecycle, and the exact canonical worker role names
+used by the manifest. The Documenter must not infer or replace missing values
+with `Not applicable`.
 Include evaluation identity and provider-observed telemetry only for an explicit evaluation or benchmark run.
 If final verification finds a record or plan inconsistency, return it to that
 same Documenter before closure; do not edit the finalized artifact yourself.
-Keep that Documenter handle live until content and plan action pass. Send corrections through the handle, collect a
-revised terminal result, and run the pinned packaged validator as a standalone command. Only then release it. Update only
-the runtime-closure row with the exact provider handle and provider release confirmation, then rerun the same validator
-with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line
+Keep that Documenter handle live and run the pinned packaged finalizer with
+`--pre-release` against a pending closure probe. Send corrections through the
+handle and repeat until the pre-release check passes. Only then release it.
+Update the runtime-closure row with the exact provider handle and provider
+release confirmation, then rerun the finalizer with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line
 `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block verbatim as the final answer.
 Before releasing that handle, compare the final artifact and answer with the
 durable record. Workflow state, profile status, workflow outcome, engineering

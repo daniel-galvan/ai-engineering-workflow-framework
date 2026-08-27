@@ -51,6 +51,14 @@ Record the actual model and reasoning effort used by each worker in the work rec
 or credits when available. If the enterprise workspace does not expose a recommended model or usage value, record the
 limitation and do not estimate it.
 
+Treat a completed preflight process with exit status 0 as passed even when the app hides its stdout. Do not rerun a
+successful preflight solely to recover a missing display payload; retry only after timeout, nonzero exit, or an
+objectively malformed result whose status cannot be determined.
+
+Keep the final Documenter active while running the packaged finalizer in
+`--pre-release` mode with a pending closure probe. Release the worker only after
+that check passes; then record exact provider closure and run the finalizer normally.
+
 Reference mapping from framework skills to Codex capabilities.
 
 | Skill ID | Codex capability examples |

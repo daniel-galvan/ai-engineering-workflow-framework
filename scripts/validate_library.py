@@ -95,16 +95,22 @@ ROLE_AGENT_ALIASES = {
 
 SENTRY_ROLE_AGENTS = {
     "Current-State Investigator / Sentry Evidence": "sentry_current_state_investigator",
+    "Evidence topology": "sentry_current_state_investigator",
     "Dependency Analyst": "sentry_dependency_analyst",
+    "Failure topology": "sentry_dependency_analyst",
     "Repository Integrator": "sentry_repository_integrator",
+    "Repository integration": "sentry_repository_integrator",
     "Solution Architect": "sentry_solution_architect",
+    "Fix design": "sentry_solution_architect",
     "Reviewer": "reviewer",
     "Implementer": "implementer",
     "Tester": "tester",
     "Documenter": "documenter",
+    "Recovery documenter": "documenter",
 }
 
 _WORK_RECORD_ERRORS: list[str] | None = None
+_ALLOW_UNRELEASED = False
 
 
 def fail(message: str) -> None:
@@ -255,7 +261,7 @@ def sentry_contract_delta_errors(text: str) -> list[str]:
     return errors
 
 
-def fix_design_result_errors(data: object) -> list[str]:
+def fix_design_result_errors(data: object, *, required_input_marker: str | None = None) -> list[str]:
     if not isinstance(data, dict):
         return ["fix_design_result.json must contain one object"]
     errors = []
@@ -295,6 +301,8 @@ def fix_design_result_errors(data: object) -> list[str]:
         or not all(isinstance(value, str) and value.strip() for value in data["inputs_consumed"])
     ):
         errors.append("fix design inputs_consumed must be a non-empty list")
+    elif required_input_marker and not any(required_input_marker in value for value in data["inputs_consumed"]):
+        errors.append(f"fix design inputs_consumed must include {required_input_marker}")
     if data["context_conformance"] != "pass":
         errors.append("fix design context_conformance must pass")
     for field in ("supported_remediation_boundary", "supported_intended_change"):
@@ -615,7 +623,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fail(f"{path}: Codex runtime closure must use exact provider UUID handles")
             if any(handle and handle not in closure_evidence for handle in handles):
                 fail(f"{path}: provider release evidence must identify every completed handle")
-    if identity["Workflow outcome"] == "completed":
+    if identity["Workflow outcome"] == "completed" and not _ALLOW_UNRELEASED:
         for row in table_rows["# Worker Runtime Closure"]:
             if row.get("Runtime status", "").strip().lower() != "released":
                 fail(f"{path}: completed workflow requires released runtime closure")
@@ -644,7 +652,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             if configured != expected:
                 fail(f"{path}: {row.get('Worker', role)} configured model/effort must be {expected}")
     fix_worker_complete = any(
-        row.get("Role", "").strip() == "Solution Architect"
+        SENTRY_ROLE_AGENTS.get(row.get("Role", "").strip()) == "sentry_solution_architect"
         and row.get("Outcome", "").strip().lower() == "complete"
         for row in worker_rows
     )
@@ -658,7 +666,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             except (json.JSONDecodeError, OSError) as error:
                 fail(f"{path}: invalid fix_design_result.json: {error}")
                 fix_result = {}
-            for error in fix_design_result_errors(fix_result):
+            for error in fix_design_result_errors(fix_result, required_input_marker="normalized_evidence.md"):
                 fail(f"{path}: {error}")
             readiness = fix_result.get("plan_readiness")
             expected_identity = {
@@ -931,6 +939,12 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         "blocking_unknowns": [],
     }
     assert fix_design_result_errors(ready_fix) == []
+    assert any(
+        "normalized_evidence.md" in error
+        for error in fix_design_result_errors(ready_fix, required_input_marker="normalized_evidence.md")
+    )
+    ready_fix_with_evidence = {**ready_fix, "inputs_consumed": ["IN-001", "/run/normalized_evidence.md"]}
+    assert fix_design_result_errors(ready_fix_with_evidence, required_input_marker="normalized_evidence.md") == []
     overcautious_fix = {
         **ready_fix,
         "plan_readiness": "awaiting_input",
@@ -1534,6 +1548,9 @@ for phrase in (
     "`send_message_to_thread`",
     "scripts/finalize_work_record.py",
     "finalization_packet.json",
+    "preflight even when the app hides stdout",
+    "do not rerun it solely",
+    "--pre-release",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
@@ -1552,7 +1569,12 @@ for phrase in (
 ):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
-for phrase in ("finalization_packet.json", "scripts/finalize_work_record.py", "do not patch `work_record.md`"):
+for phrase in (
+    "finalization_packet.json",
+    "scripts/finalize_work_record.py",
+    "do not patch `work_record.md`",
+    "awaiting_input` is a Fix Design readiness value",
+):
     if phrase not in (CODEX_AGENT_DIR / "documenter.toml").read_text():
         fail(f"providers/codex/agents/documenter.toml is missing deterministic finalization control: {phrase}")
 for path in (
@@ -1868,6 +1890,8 @@ for phrase in (
     "fix_design_result.json",
     "# Contract Delta",
     "materially different fix implications",
+    "parallel with evidence in standard",
+    "must consume the completed `normalized_evidence.md` artifact before returning a terminal",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
@@ -1907,6 +1931,11 @@ for phrase in (
     "Workflow-framework validation: passed",
     "fork_context: false",
     "Coordinator initialization: complete",
+    "--pre-release",
+    "pending closure probe",
+    "Profile status: executed",
+    "activate Fix Design immediately",
+    "inputs_consumed",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -2193,7 +2222,10 @@ for name in ("generic.md", "claude.md", "cursor.md", "codex.md"):
         fail(f"providers/{name} is missing skill mappings: {', '.join(missing)}")
 
 emit_handoff = "--emit-handoff" in sys.argv
-arguments = [value for value in sys.argv[1:] if value not in {"--self-test", "--emit-handoff"}]
+_ALLOW_UNRELEASED = "--allow-unreleased" in sys.argv
+arguments = [
+    value for value in sys.argv[1:] if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}
+]
 if emit_handoff and len(arguments) != 1:
     fail("--emit-handoff requires exactly one terminal work record")
 if "--self-test" in sys.argv:

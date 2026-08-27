@@ -62,7 +62,9 @@ with the strongest hypothesis and no more than two alternatives, using a
 confidence label and one short reason for each. Prefer common words and short
 sentences; explain framework terms when they must appear.
 These coordinator-observed values must not be `Unknown`, and a work-record
-link does not replace the lines in the final answer. When all required planning workers have returned terminal result
+link does not replace the lines in the final answer. If an immutable identity
+value or canonical role name is absent from the Coordinator packet, return a
+packet-input error instead of inferring it. When all required planning workers have returned terminal result
 envelopes, fan-in is complete, and the playbook reaches
 `ready_for_implementation`, create or update
 `<execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md` from
@@ -102,6 +104,8 @@ condition; do not reconstruct them. Populate detailed evaluation identity, conti
 only for an explicit evaluation or benchmark run. Keep configured model/effort separate from provider-observed values,
 and do not treat worker self-report as telemetry. If
 the Coordinator returns a final consistency finding, update the same artifacts before returning a terminal result.
+Use the shared worker-outcome enum in the Worker Result Summary; `awaiting_input` is a Fix Design readiness value, not a
+worker outcome. A Fix Design worker that returns a valid `awaiting_input` disposition has worker outcome `complete`.
 Before returning terminal, reconcile the durable record with the Coordinator's
 final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
 pending` values after the packet says the barrier passed. The final record,

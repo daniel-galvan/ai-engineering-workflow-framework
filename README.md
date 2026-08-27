@@ -213,10 +213,12 @@ python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 The optional path validates a terminal work record's identity, playbook-selection evidence, repository revisions, and
 evidence-to-action references.
 
-For terminal handoff, the Documenter writes structured `finalization_packet.json`. After releasing it, the Coordinator
-writes exact provider closure rows to `runtime_closure.json` and runs `scripts/finalize_work_record.py`. The helper
-renders and atomically replaces `work_record.md` only after validation accepts it. A nonzero result returns the packet
-and exact error to the same Documenter; never repair terminal Markdown by hand.
+For terminal handoff, the Documenter writes structured `finalization_packet.json`. While it remains active, the
+Coordinator runs `scripts/finalize_work_record.py --pre-release` with a pending closure probe and returns any error to
+the same Documenter. After that check passes, the Coordinator releases the worker, writes exact provider closure rows
+to `runtime_closure.json`, and runs the finalizer normally. The helper renders and atomically replaces `work_record.md`
+only after validation accepts it. A nonzero result returns the packet and exact error to the same Documenter; never
+repair terminal Markdown by hand.
 
 Document facts, limitations, and [workflow evaluation](frameworks/workflow_evaluation.md) in the work record. Exercise
 changes against real work items, then simplify. See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).

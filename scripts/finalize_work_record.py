@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render and atomically validate a terminal work record from structured JSON."""
+"""Validate a structured packet and atomically render a terminal work record."""
 
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ Provenance: {handoff['provenance']}
     return "\n".join(sections)
 
 
-def finalize(packet_path: Path, closure_path: Path, record_path: Path) -> None:
+def finalize(packet_path: Path, closure_path: Path, record_path: Path, *, pre_release: bool = False) -> None:
     packet = json.loads(packet_path.read_text())
     closure = json.loads(closure_path.read_text())
     packet["runtime_closure"] = closure["runtime_closure"]
@@ -134,8 +134,14 @@ def finalize(packet_path: Path, closure_path: Path, record_path: Path) -> None:
         temporary = Path(handle.name)
         handle.write(rendered)
     try:
+        validator_args = [sys.executable, str(VALIDATOR)]
+        if not pre_release:
+            validator_args.append("--emit-handoff")
+        if pre_release:
+            validator_args.append("--allow-unreleased")
+        validator_args.append(str(temporary))
         result = subprocess.run(
-            [sys.executable, str(VALIDATOR), "--emit-handoff", str(temporary)],
+            validator_args,
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -143,7 +149,8 @@ def finalize(packet_path: Path, closure_path: Path, record_path: Path) -> None:
         )
         if result.returncode:
             raise ValueError(result.stdout.strip() or result.stderr.strip() or "work_record_validation_failed")
-        temporary.replace(record_path)
+        if not pre_release:
+            temporary.replace(record_path)
         print(result.stdout, end="")
     finally:
         temporary.unlink(missing_ok=True)
@@ -224,6 +231,36 @@ def self_test() -> None:
         closure.write_text(json.dumps({"runtime_closure": packet["runtime_closure"]}))
         finalize(source, closure, record)
         assert "Workflow result: Worker runtime unavailable" in record.read_text()
+        pending = {"runtime_closure": [dict(packet["runtime_closure"][0], **{
+            "Runtime status": "Pending",
+            "Closure evidence or blocker": "provider release pending",
+        })]}
+        pending_closure = root / "pending_runtime_closure.json"
+        pending_closure.write_text(json.dumps(pending))
+        pre_release_record = root / "pre-release-work-record.md"
+        pre_release_record.write_text("existing record must remain untouched\n")
+        finalize(source, pending_closure, pre_release_record, pre_release=True)
+        assert pre_release_record.read_text() == "existing record must remain untouched\n"
+        awaiting = json.loads(source.read_text())
+        awaiting["identity"].update({
+            "Profile status": "executed",
+            "State": "awaiting_input",
+            "Workflow outcome": "completed",
+            "Engineering outcome": "partially_solved",
+        })
+        source.write_text(json.dumps(awaiting))
+        finalize(source, pending_closure, pre_release_record, pre_release=True)
+        assert pre_release_record.read_text() == "existing record must remain untouched\n"
+        invalid_identity = json.loads(source.read_text())
+        invalid_identity["identity"]["Profile status"] = "passed"
+        source.write_text(json.dumps(invalid_identity))
+        try:
+            finalize(source, pending_closure, pre_release_record, pre_release=True)
+        except ValueError as error:
+            assert "invalid Profile status" in str(error)
+        else:
+            raise AssertionError("pre-release validation must reject invalid identity")
+        source.write_text(json.dumps(packet))
         invalid = dict(packet)
         invalid["evidence"] = []
         source.write_text(json.dumps(invalid))
@@ -243,6 +280,7 @@ def main() -> int:
     parser.add_argument("--packet", type=Path)
     parser.add_argument("--closure", type=Path)
     parser.add_argument("--record", type=Path)
+    parser.add_argument("--pre-release", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -251,7 +289,7 @@ def main() -> int:
     if not args.packet or not args.closure or not args.record:
         parser.error("--packet, --closure, and --record are required")
     try:
-        finalize(args.packet.resolve(), args.closure.resolve(), args.record.resolve())
+        finalize(args.packet.resolve(), args.closure.resolve(), args.record.resolve(), pre_release=args.pre_release)
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
         return 2

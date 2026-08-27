@@ -48,6 +48,8 @@ mismatched framework stops the run with the corresponding preflight reason; the 
 version, silently substitute a checkout, activate workers, query external systems, or load the complete framework to
 explain the block. A blocked preflight writes one minimal canonical work record, records
 `preflight_elapsed_ms` and `worker_activation_attempts: 0`, and validates the record before handoff.
+The process exit status is authoritative: a completed preflight with exit status 0 is passed even when stdout is hidden
+by the host application. The launcher MUST NOT rerun a successful preflight solely to recover a missing display payload.
 
 After preflight passes, at initialization the Coordinator MUST read the selected playbook, this contract, and the claims
 contract. Other frontmatter dependencies are maintenance or stage references, not an instruction to load the complete
@@ -979,7 +981,9 @@ validation passes. If rendering or validation fails, the Coordinator MUST return
 Documenter for a corrected packet; neither agent may patch the terminal Markdown by hand.
 
 Keep the final Documenter handle live until artifact content, plan action, outcomes, and required artifact disposition
-pass packet verification. Send every packet correction to that same handle and collect the revised result. Release the
+pass the packaged finalizer in `--pre-release` mode. Before release, provide a pending closure probe in the same schema;
+the pre-release check validates the packet and candidate record without replacing `work_record.md`. Send every packet
+correction to that same handle and collect the revised result. Only after the pre-release check passes, release the
 handle, then write one provider-observed `runtime_closure.json` receipt. The receipt contains only the exact closure
 table rows from `templates/runtime_closure.json` and is not a second interpretation of the workflow outcome.
 
@@ -1018,9 +1022,10 @@ explanatory sections MAY be omitted. A
 smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
 fails the applicable artifact budget unless the recorded exception is valid.
 
-Before releasing a terminal or blocked handoff, the Coordinator MUST run the packaged finalizer. It runs the framework
-validator against the candidate record before replacing `work_record.md`. A nonzero result is a handoff conformance
-failure. Return the packet and exact error to the same Documenter and repeat finalization. Pin the
+Before releasing a terminal or blocked handoff, the Coordinator MUST run the packaged finalizer in `--pre-release` mode
+against a pending closure probe while the final Documenter handle is still active. It runs the framework validator
+against the candidate record without replacing `work_record.md`. A nonzero result is a handoff conformance failure.
+Return the packet and exact error to the same Documenter and repeat the pre-release check. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
 `plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and
 recording provider closure in `runtime_closure.json`, finalization passes only when the finalizer exits zero and its

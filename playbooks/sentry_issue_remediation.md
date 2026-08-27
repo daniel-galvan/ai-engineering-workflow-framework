@@ -248,7 +248,7 @@ mandatory Repository Integrator. Repository Integrator remains conditional for s
 | `evidence-topology`      | `current_state_investigator` | investigation | standard       | `work_item_context`, `repository_exploration`, `architecture_mapping`, `failure_diagnosis`, `work_record_maintenance` | `work_item_read`, `runtime_observe`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; Coordinator initialization                                      |
 | `failure-topology`       | `dependency_analyst`         | investigation | standard       | `dependency_mapping`, `destination_integration`, `architecture_mapping`, `failure_diagnosis`                          | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write`                | Deep only; after `evidence-topology`                                       |
 | `repository-integration` | `repository_integrator`      | investigation | standard       | `destination_integration`, `architecture_mapping`, `operational_readiness`                                            | `repository_read`, `repository_search`, `history_read`, `artifact_write`                                      | Required for `deep`; conditional for `standard`; after `evidence-topology` |
-| `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `repository_read`, `repository_search`, `test_run`                                                            | Required after evidence in standard; after `failure-topology` and integrator in deep |
+| `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `repository_read`, `repository_search`, `test_run`                                                            | Required; parallel with evidence in standard; after `failure-topology` and integrator in deep |
 | `implement`              | `implementer`                | delivery      | standard       | `failure_diagnosis`, `build_and_test`                                                                                 | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write`                           | Approval plus `fix-design`                                                 |
 | `review`                 | `reviewer`                   | review        | standard       | `architecture_mapping`, `build_and_test`, `operational_readiness`                                                     | `repository_read`, `diff_review`, `test_run`, `artifact_write`                                                | `implement`                                                                |
 | `validate`               | `tester`                     | review        | standard       | `build_and_test`, `operational_readiness`                                                                             | `build_run`, `test_run`, `runtime_observe`, `artifact_write`                                                  | `review`                                                                   |
@@ -433,12 +433,12 @@ Use an older representative event only when the latest event is insufficient, in
 occurrence. Do not inspect every event in a high-volume issue by default. Record the selected event IDs and the reason
 for any additional sample.
 
-The evidence worker MUST write one canonical `normalized_evidence.md` artifact before Fix Design starts, containing the
-full material field values and source references needed to preserve field-local distinctions. It includes the Sentry
-facts, latest event as the primary occurrence, any justified representative
-sample, initial repository/revision mapping, initial topology, code-path entry
-point, source references, and unresolved boundary questions. Downstream workers
-consume the exact artifact path instead of a Coordinator summary or repeated Sentry queries.
+The evidence worker MUST write one canonical `normalized_evidence.md` artifact containing the full material field values
+and source references needed to preserve field-local distinctions. It includes the Sentry facts, latest event as the
+primary occurrence, any justified representative sample, initial repository/revision mapping, initial topology,
+code-path entry point, source references, and unresolved boundary questions. Standard Fix Design may start in parallel
+with evidence using its independently assigned inputs; it consumes the exact normalized artifact path before returning
+a terminal result and must not repeat raw Sentry queries except for a named discrepancy.
 
 The artifact MUST contain this compact table, using `Not established` for unevidenced values rather than inferring them:
 
@@ -485,10 +485,11 @@ Do not require the user to repeat repository or revision information already pre
 ### Stage 3 — Diagnose and Reproduce
 
 In `deep`, the `failure-topology` worker owns independent diagnosis and reproduction planning. In `standard`, the
-`solution_architect` owns bounded diagnosis and reproduction planning after consuming the normalized Sentry evidence.
-Form competing hypotheses appropriate to the selected profile and reproduce or verify the failure with the smallest safe
-test or local scenario. The `tester` owns executable validation during the remediation lifecycle. Use Seer only as
-optional supporting evidence.
+`solution_architect` owns bounded diagnosis and reproduction planning. It may begin that bounded work in parallel with
+evidence normalization, but must consume the completed `normalized_evidence.md` artifact before returning a terminal
+result. Form competing hypotheses appropriate to the selected profile and reproduce or verify the failure with the
+smallest safe test or local scenario. The `tester` owns executable validation during the remediation lifecycle. Use
+Seer only as optional supporting evidence.
 
 In planning, do not run unit or integration tests merely to establish a baseline. Run one existing focused test only
 when its result can confirm or reject a leading hypothesis, identify the owning repository, or change readiness. Before
@@ -498,8 +499,10 @@ repair environments, install missing test tools, or run broad suites. Put the fo
 in the implementation plan for remediation.
 
 The Solution Architect accepts source paths and citations already verified in normalized evidence. It does not remap
-that path without a named discrepancy. When missing indispensable evidence already selects `needs_input`, execute only
-the one smallest available check that could change that disposition before returning the gate result.
+that path without a named discrepancy. In Standard, the Coordinator must verify that the terminal result consumed the
+exact normalized-evidence path; if it did not, return one correction to the same worker before fan-in. When missing
+indispensable evidence already selects `needs_input`, execute only the one smallest available check that could change
+that disposition before returning the gate result.
 
 Before requesting clarification, apply the shared
 [Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate).
