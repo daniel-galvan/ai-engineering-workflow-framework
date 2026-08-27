@@ -19,7 +19,7 @@ RFC3339_TIMESTAMP = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
-MODEL_BASELINE_ID = "codex-role-policy-v0.3.0-01"
+MODEL_BASELINE_ID = "codex-role-policy-v20260827003429"
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
@@ -314,7 +314,7 @@ def self_test_reasoning_records() -> None:
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
 | Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.0 / pass |
-| Role-policy baseline ID | codex-role-policy-v0.3.0-01 |
+| Role-policy baseline ID | codex-role-policy-v20260827003429 |
 | Provider / model configuration | Codex / Worker Execution Ledger |
 | Requested profile | standard |
 | Executed profile | standard |
@@ -375,7 +375,7 @@ def self_test_reasoning_records() -> None:
 
         normal = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Not applicable |")
         normal = normal.replace(
-            "| Role-policy baseline ID | codex-role-policy-v0.3.0-01 |",
+            "| Role-policy baseline ID | codex-role-policy-v20260827003429 |",
             "| Role-policy baseline ID | Not applicable |",
         )
         normal = normal.replace("# Evaluation Run Continuation Ledger", "# Omitted Evaluation Run Continuation Ledger")
@@ -405,7 +405,7 @@ def self_test_reasoning_records() -> None:
             "Evaluation run ID must identify the evaluated run",
         )
         assert_invalid(
-            valid.replace("| Role-policy baseline ID | codex-role-policy-v0.3.0-01 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
+            valid.replace("| Role-policy baseline ID | codex-role-policy-v20260827003429 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
             "Role-policy baseline ID must be an identifier, not a path",
         )
 
@@ -976,6 +976,17 @@ for phrase in ("canonical human-readable", "evaluation or benchmark run", "Prove
     if phrase not in documenter_agent:
         fail(f"Documenter instructions are missing conditional handoff rule: {phrase}")
 
+for path in (
+    ROOT / "skills" / "run" / "SKILL.md",
+    CODEX_AGENT_DIR / "orchestrator.toml",
+    CODEX_AGENT_DIR / "sentry_orchestrator.toml",
+    CODEX_AGENT_DIR / "documenter.toml",
+):
+    text = path.read_text()
+    for phrase in ("Workflow result:", "What we established:", "Next action:", "Complete when:", "Provenance:"):
+        if phrase not in text:
+            fail(f"{path.relative_to(ROOT)} is missing final-summary label: {phrase}")
+
 vulnerability_playbook = (ROOT / "playbooks" / "vulnerability_investigation.md").read_text()
 for phrase in (
     "### Bounded Dependency Route",
@@ -1353,8 +1364,8 @@ for phrase in (
 for phrase in (
     "initial hypothesis: an experimental baseline",
     "Orchestrator | `gpt-5.6-terra` | Medium | `medium`",
-    "Dependency Analyst | `gpt-5.6-luna` | Medium | `medium`",
-    "Repository Integrator | `gpt-5.6-luna` | Medium | `medium`",
+    "Dependency Analyst | `gpt-5.6-luna` | High | `high`",
+    "Repository Integrator | `gpt-5.6-luna` | High | `high`",
     "Solution Architect | `gpt-5.6-terra` | Medium | `medium`",
     "Reviewer | `gpt-5.6-terra` | Medium | `medium`",
 ):

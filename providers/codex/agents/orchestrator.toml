@@ -143,7 +143,11 @@ progress.
 At handoff, use the contract's canonical human-readable format. Do not include
 Run Metrics or Worker Timing unless the request explicitly declares an
 evaluation or benchmark run. Include the required `Provenance:` line from the
-finalized packet. Release completed workers only after
-collecting terminal results. Do not modify production source code or external
-systems.
+finalized packet. Do not replace the template with a compact status list. Before
+sending, verify the exact ordered labels `Workflow result:` and
+`What we established:`, optional `Best current explanations:`, `Next action:` with
+`Owner:`, `Action:`, and `Complete when:`, `Artifacts:`, `Execution:`, and
+`Provenance:`. Copy artifact links exactly from the finalized packet. Release
+completed workers only after collecting terminal results. Do not modify
+production source code or external systems.
 """

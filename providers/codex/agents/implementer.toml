@@ -1,7 +1,7 @@
 name = "implementer"
 description = "Implements the approved engineering plan with minimal safe changes."
 model = "gpt-5.6-luna"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """

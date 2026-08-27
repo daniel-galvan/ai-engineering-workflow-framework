@@ -5,9 +5,9 @@ version: 0.4.0
 status: Pilot
 provider: codex
 provider_independent_profiles: true
-baseline_id: codex-role-policy-v0.3.0-01
+baseline_id: codex-role-policy-v20260827003429
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-08-27
 ---
 
 # Codex Model and Effort Policy
@@ -17,10 +17,10 @@ Vulnerability Investigation, and Sentry Issue Remediation. It is advanced provid
 input. The role policy below is an initial hypothesis: an experimental baseline to validate against real runs, not a
 claim of optimal model selection.
 
-The experimental baseline is `codex-role-policy-v0.3.0-01` and is shared across Feature Delivery, Sentry, TechOps Issue
-Remediation, and Vulnerability Investigation. Profiles select which roles run; they do not change a role's model or
-reasoning effort. Record the baseline ID plus requested and resolved values in the work record, and revise it only from
-comparable evaluation evidence.
+The experimental baseline is `codex-role-policy-v20260827003429` and is shared across Feature Delivery, Sentry, TechOps
+Issue Remediation, and Vulnerability Investigation. Profiles select which roles run; they do not change a role's model
+or reasoning effort. Record the baseline ID plus requested and resolved values in the work record, and revise it only
+from comparable evaluation evidence.
 
 Codex policy labels map to configuration values as follows:
 
@@ -44,18 +44,18 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Role | Codex model | Policy effort | TOML value |
 | --- | --- | --- | --- |
 | Orchestrator | `gpt-5.6-terra` | Medium | `medium` |
-| Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | Medium | `medium` |
-| Dependency Analyst | `gpt-5.6-luna` | Medium | `medium` |
-| Repository Integrator | `gpt-5.6-luna` | Medium | `medium` |
+| Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | High | `high` |
+| Dependency Analyst | `gpt-5.6-luna` | High | `high` |
+| Repository Integrator | `gpt-5.6-luna` | High | `high` |
 | Solution Architect | `gpt-5.6-terra` | Medium | `medium` |
 | Reviewer | `gpt-5.6-terra` | Medium | `medium` |
-| Implementer | `gpt-5.6-luna` | High | `high` |
-| Tester | `gpt-5.6-luna` | High | `high` |
+| Implementer | `gpt-5.6-luna` | Extra High | `xhigh` |
+| Tester | `gpt-5.6-luna` | Extra High | `xhigh` |
 | Documenter | `gpt-5.6-luna` | Low | `low` |
 
-This baseline assigns the balanced model to coordination and design, while Deep's additional analysis workers use
-Medium effort. Implementation and testing remain High while remediation reliability is inconsistent. Keep the baseline
-only when comparable runs show that it maintains or improves quality, elapsed-time, and human-effort metrics.
+This baseline assigns the balanced model to coordination and design. Investigation and integration use High effort;
+implementation and testing use Extra High while remediation reliability is inconsistent. Keep the baseline only when
+comparable runs show that it maintains or improves quality, elapsed-time, and human-effort metrics.
 
 ## Agent selection
 

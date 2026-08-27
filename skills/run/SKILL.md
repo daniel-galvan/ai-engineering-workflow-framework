@@ -52,6 +52,9 @@ description: >-
    `python3 <packaged-framework-root>/scripts/validate_library.py`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
    A nonzero result is a handoff failure: return the record to the same Documenter, correct it, and do not claim
-   finalization passed. Use the contract's canonical human-readable handoff and omit Run Metrics and Worker Timing for
-   normal runs. The plugin does not override any canonical contract, playbook, template, role, skill, or provider
-   policy.
+   finalization passed. Render the contract's canonical human-readable handoff; do not replace it with a compact status
+   list. Before sending, verify the exact ordered labels `Workflow result:`, `What we established:`, optional
+   `Best current explanations:`, `Next action:` with `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`,
+   `Execution:`, and `Provenance:`. Copy artifact links exactly from the finalized packet. Omit Run Metrics and Worker
+   Timing for normal runs. The plugin does not override any canonical contract, playbook, template, role, skill, or
+   provider policy.
