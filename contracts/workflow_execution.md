@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.4
+version: 0.4.5
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -974,9 +974,10 @@ workflow and engineering outcomes, displayed hypotheses, artifact paths, next-ac
 condition, plugin package/version, framework Git revision/status, and playbook name/version. The Documenter formats
 these values; it does not reconstruct them.
 
-The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. The standalone
-validator checks its ordered labels and verifies that its state and outcomes equal the Run Identity and runtime-closure
-tables. The Coordinator copies that validated block verbatim as the user-facing answer.
+The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. With
+`--emit-handoff`, the standalone validator checks its ordered labels, verifies that its state and outcomes equal the Run
+Identity and runtime-closure tables, and emits that block after the validation receipt. The Coordinator copies the
+emitted block verbatim as the user-facing answer.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
 `engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;
@@ -992,8 +993,9 @@ validator against the execution repository's `work_record.md`. A nonzero result 
 the record to the same Documenter, correct it using the canonical template sections, and repeat validation. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
 `plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and
-recording its provider closure receipt, run the pinned validator as a standalone command again. Finalization passes only
-when its exit status is zero and its output contains exactly `Workflow-framework validation: passed`.
+recording its provider closure receipt, run the pinned validator with `--emit-handoff` again. Finalization passes only
+when its exit status is zero and its first output line is exactly `Workflow-framework validation: passed`; the remaining
+output is the canonical user-facing handoff.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise

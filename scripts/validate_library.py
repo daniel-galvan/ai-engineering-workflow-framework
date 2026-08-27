@@ -71,8 +71,13 @@ SENTRY_ROLE_AGENTS = {
     "Documenter": "documenter",
 }
 
+_WORK_RECORD_ERRORS: list[str] | None = None
+
 
 def fail(message: str) -> None:
+    if _WORK_RECORD_ERRORS is not None:
+        _WORK_RECORD_ERRORS.append(message)
+        return
     print(f"FAIL: {message}")
     raise SystemExit(1)
 
@@ -193,9 +198,10 @@ def reasoning_record_errors(text: str) -> list[str]:
     return errors
 
 
-def validate_work_record(path: Path, require_terminal: bool = False) -> None:
+def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     if not path.is_file():
         fail(f"work record does not exist: {path}")
+        return ""
     text = path.read_text()
     identity = {
         row.get("Field", ""): row.get("Value", "")
@@ -204,7 +210,7 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     if identity.get("State") not in {"awaiting_input", "blocked", "ready_for_implementation", "completed"}:
         if require_terminal:
             fail(f"{path}: work record is not terminal or lacks Run and Evaluation Identity")
-        return
+        return ""
     for error in reasoning_record_errors(text):
         fail(f"{path}: {error}")
     selection = markdown_table(text, "# Playbook Selection")
@@ -248,6 +254,15 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     missing = [field for field in required_identity if not identity.get(field)]
     if missing:
         fail(f"{path}: missing evaluation identity: {', '.join(missing)}")
+    for field in required_identity:
+        identity.setdefault(field, "")
+    unresolved = [
+        field
+        for field in required_identity
+        if "`" in identity[field] or ("<" in identity[field] and ">" in identity[field])
+    ]
+    if unresolved:
+        fail(f"{path}: unresolved Run Identity placeholders: {', '.join(unresolved)}")
     evaluation_run = identity["Evaluation run ID"] != "Not applicable"
     if evaluation_run and identity["Evaluation run ID"] in {"Unknown", "None"}:
         fail(f"{path}: Evaluation run ID must identify the evaluated run")
@@ -263,8 +278,21 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
         "vulnerability_investigation": "templates/vulnerability_issue_run_prompt.md",
     }
     playbook_name = Path(identity["Playbook / version"].split(" / ", 1)[0]).stem
-    codex_run = identity["Provider / model configuration"].strip().lower().startswith("codex")
-    manifest = None
+    provider_model = identity["Provider / model configuration"].strip()
+    codex_run = (
+        provider_model.lower().startswith("codex")
+        or baseline_id != "Not applicable"
+        or identity["Role binding manifest"] != "Not applicable"
+    )
+    if " / " not in provider_model:
+        fail(f"{path}: Provider / model configuration must identify the provider and its ledger")
+    framework_identity = identity["Framework commit / status"]
+    if not re.fullmatch(r"[0-9a-fA-F]{40} / (?:Clean|Dirty)", framework_identity):
+        fail(f"{path}: Framework commit / status must contain the full commit and Clean or Dirty")
+    plugin_identity = identity["Plugin package / version"]
+    if plugin_identity != "Not applicable" and not re.fullmatch(r"[^\s/]+ / \S+", plugin_identity):
+        fail(f"{path}: Plugin package / version must contain an exact package and version")
+    manifest: dict[str, object] | None = None
     if codex_run:
         if baseline_id != MODEL_BASELINE_ID:
             fail(f"{path}: Codex runs must use current Role-policy baseline ID {MODEL_BASELINE_ID}")
@@ -278,6 +306,7 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
             manifest = json.loads(manifest_path.read_text())
         except (json.JSONDecodeError, OSError) as error:
             fail(f"{path}: invalid role binding manifest: {error}")
+            manifest = {}
         if manifest.get("baseline_id") != baseline_id:
             fail(f"{path}: role binding manifest baseline does not match Run Identity")
         if manifest.get("playbook") != playbook_name:
@@ -286,7 +315,12 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
             definition = Path(binding.get("definition", ""))
             if not definition.is_file():
                 fail(f"{path}: role binding definition does not exist for {agent}: {definition}")
-            definition_data = tomllib.loads(definition.read_text())
+                continue
+            try:
+                definition_data = tomllib.loads(definition.read_text())
+            except (OSError, tomllib.TOMLDecodeError) as error:
+                fail(f"{path}: invalid role binding definition for {agent}: {error}")
+                continue
             if (
                 binding.get("model") != definition_data.get("model")
                 or binding.get("effort") != definition_data.get("model_reasoning_effort")
@@ -301,7 +335,11 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     }
     if playbook_name == "sentry_issue_remediation" and path.stat().st_size > 10 * 1024:
         budget_exception = finalization.get("Work-record budget exception", "").strip().lower()
-        if not budget_exception or budget_exception in {"none", "not applicable", "n/a"}:
+        if (
+            not budget_exception
+            or budget_exception in {"none", "not applicable", "n/a"}
+            or "byte count and reason required" in budget_exception
+        ):
             fail(f"{path}: Sentry work records over 10 KB require a byte-count and compaction exception")
     repositories = markdown_table(text, "# Repository Evidence Eligibility")
     if not repositories or any(not row.get("Full revision") for row in repositories):
@@ -337,18 +375,27 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
         if not rows or any(not row.get(field) for row in rows for field in fields):
             fail(f"{path}: {heading} must contain populated terminal rows")
     for row in table_rows["# Worker Runtime Closure"]:
-        if row["Runtime status"].strip().lower() == "released":
+        if row.get("Runtime status", "").strip().lower() == "released":
             if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
                 fail(f"{path}: released runtime closure must have no active handles")
             closure_evidence = row.get("Closure evidence or blocker", "").strip().lower()
             if "provider" not in closure_evidence or not any(word in closure_evidence for word in ("release", "close")):
                 fail(f"{path}: released runtime closure requires provider release evidence")
-            handles = [value.strip().lower() for value in re.split(r",|;|<br\s*/?>", row["Completed worker handles"])]
+            handles = [
+                value.strip().lower()
+                for value in re.split(r",|;|<br\s*/?>", row.get("Completed worker handles", ""))
+            ]
+            if codex_run and any(
+                handle != "none"
+                and not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", handle)
+                for handle in handles
+            ):
+                fail(f"{path}: Codex runtime closure must use exact provider UUID handles")
             if any(handle and handle not in closure_evidence for handle in handles):
                 fail(f"{path}: provider release evidence must identify every completed handle")
     if identity["Workflow outcome"] == "completed":
         for row in table_rows["# Worker Runtime Closure"]:
-            if row["Runtime status"].strip().lower() != "released":
+            if row.get("Runtime status", "").strip().lower() != "released":
                 fail(f"{path}: completed workflow requires released runtime closure")
             if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
                 fail(f"{path}: completed workflow requires zero active handles")
@@ -366,6 +413,7 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
             binding = manifest.get("bindings", {}).get(agent) if manifest and agent else None
             if not binding:
                 fail(f"{path}: activated worker role has no resolved binding: {role or row.get('Worker', '')}")
+                continue
             configured = row.get("Configured model/effort", "").strip().lower()
             expected = f"{binding['model']} / {binding['effort']}".lower()
             if configured != expected:
@@ -439,12 +487,28 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
         if not value or value.group(1).strip() != identity[field]:
             fail(f"{path}: Final Handoff {field} must match Run Identity")
     runtime_value = "released" if all(
-        row["Runtime status"].strip().lower() == "released"
+        row.get("Runtime status", "").strip().lower() == "released"
         for row in table_rows["# Worker Runtime Closure"]
     ) else "not released"
     execution = re.search(r"^Execution:\s*(.*?)\nProvenance:", handoff, re.MULTILINE | re.DOTALL)
     if not execution or f"runtime {runtime_value}" not in " ".join(execution.group(1).lower().split()):
         fail(f"{path}: Final Handoff runtime must match Worker Runtime Closure")
+    return handoff
+
+
+def validate_work_record(path: Path, require_terminal: bool = False) -> str:
+    global _WORK_RECORD_ERRORS
+    if _WORK_RECORD_ERRORS is not None:
+        raise RuntimeError("nested work-record validation")
+    errors: list[str] = []
+    _WORK_RECORD_ERRORS = errors
+    try:
+        handoff = _validate_work_record(path, require_terminal)
+    finally:
+        _WORK_RECORD_ERRORS = None
+    if errors:
+        fail("\nFAIL: ".join(errors))
+    return handoff
 
 
 def self_test_reasoning_records() -> None:
@@ -462,8 +526,8 @@ def self_test_reasoning_records() -> None:
 | Run ID | run-001 |
 | Evaluation run ID | evaluation-001 |
 | Playbook / version | playbooks/feature_delivery.md / 0.4.0 |
-| Framework commit / status | abcdef123456 / Dirty |
-| Plugin package / version | ai-engineering-workflows / 0.2.1 or Not applicable |
+| Framework commit / status | 0123456789abcdef0123456789abcdef01234567 / Dirty |
+| Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
 | Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.0 / pass |
@@ -500,7 +564,7 @@ def self_test_reasoning_records() -> None:
 # Worker Runtime Closure
 | Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
 | --- | --- | --- | --- | --- |
-| Final | provider-worker-001 | Released | None | provider release confirmation for provider-worker-001 |
+| Final | 01a04174-7f58-7a12-b91d-9d171c43f012 | Released | None | provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012 |
 # Worker Result Summary
 | Worker | Outcome | Confidence | Unique contribution |
 | --- | --- | --- | --- |
@@ -542,7 +606,8 @@ Artifacts:
 - work_record.md
 
 Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.
-Provenance: plugin ai-engineering-workflows 0.2.1; framework revision abcdef123456 (dirty); playbook feature_delivery 0.4.0.
+Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
+0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.4.0.
 ```
 """
     assert reasoning_record_errors(valid) == []
@@ -563,7 +628,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision abcdef1234
             },
         }))
         path.write_text(valid)
-        validate_work_record(path, require_terminal=True)
+        assert validate_work_record(path, require_terminal=True).startswith("Workflow result:")
 
         normal = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Not applicable |")
         normal = normal.replace(
@@ -581,7 +646,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision abcdef1234
         path.write_text(normal)
         validate_work_record(path, require_terminal=True)
 
-        def assert_invalid(record: str, expected: str) -> None:
+        def validation_output(record: str) -> str:
             path.write_text(record)
             captured = StringIO()
             with redirect_stdout(captured):
@@ -590,8 +655,12 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision abcdef1234
                 except SystemExit:
                     pass
                 else:
-                    raise AssertionError(f"expected validation failure: {expected}")
-            assert expected in captured.getvalue(), captured.getvalue()
+                    raise AssertionError("expected validation failure")
+            return captured.getvalue()
+
+        def assert_invalid(record: str, expected: str) -> None:
+            output = validation_output(record)
+            assert expected in output, output
 
         assert_invalid(
             valid.replace("## Evaluation Worker Timing Ledger", "## Missing Evaluation Worker Timing Ledger"),
@@ -611,11 +680,17 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision abcdef1234
             "Prompt template must match",
         )
         assert_invalid(
-            valid.replace("provider release confirmation for provider-worker-001", "all workers released"),
+            valid.replace(
+                "provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012",
+                "all workers released",
+            ),
             "requires provider release evidence",
         )
         assert_invalid(
-            valid.replace("provider release confirmation for provider-worker-001", "provider release confirmation"),
+            valid.replace(
+                "provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012",
+                "provider release confirmation",
+            ),
             "must identify every completed handle",
         )
         assert_invalid(
@@ -631,6 +706,14 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision abcdef1234
             "| evidence-topology | Current-State Investigator / Sentry Evidence | gpt-5.6-luna / low | gpt-5.6-luna / low | PT1S | PT0S |",
         )
         assert_invalid(bound_worker, "configured model/effort must be gpt-5.6-luna / high")
+        multiple = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |")
+        multiple = multiple.replace(
+            "| Role-policy baseline ID | codex-role-policy-v20260827032839 |",
+            "| Role-policy baseline ID | providers/codex/model_effort_policy.md |",
+        )
+        output = validation_output(multiple)
+        assert "Evaluation run ID must identify the evaluated run" in output
+        assert "Role-policy baseline ID must be an identifier, not a path" in output
 
         legacy = path.with_name("legacy_work_record.md")
         legacy.write_text(
@@ -1673,11 +1756,16 @@ for name in ("generic.md", "claude.md", "cursor.md", "codex.md"):
     if missing:
         fail(f"providers/{name} is missing skill mappings: {', '.join(missing)}")
 
+emit_handoff = "--emit-handoff" in sys.argv
+arguments = [value for value in sys.argv[1:] if value not in {"--self-test", "--emit-handoff"}]
+if emit_handoff and len(arguments) != 1:
+    fail("--emit-handoff requires exactly one terminal work record")
 if "--self-test" in sys.argv:
     self_test_reasoning_records()
-for argument in (value for value in sys.argv[1:] if value != "--self-test"):
-    validate_work_record(Path(argument).resolve(), require_terminal=True)
+handoffs = [validate_work_record(Path(argument).resolve(), require_terminal=True) for argument in arguments]
 for work_record in sorted(ROOT.glob(".thoughts/*/work_record.md")):
     validate_work_record(work_record)
 
 print("Workflow-framework validation: passed")
+if emit_handoff:
+    print(handoffs[0])

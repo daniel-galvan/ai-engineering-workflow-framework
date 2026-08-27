@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.4
+version: 0.4.5
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -407,10 +407,11 @@ The `evidence-topology` worker exclusively owns raw Sentry queries and initial r
 Orchestrator does not pre-query Sentry or duplicate repository exploration. Use MCP to inspect the issue and request
 only the latest event first (`limit: 1` when supported).
 Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
-uses the current-run artifact without broad Sentry discovery; `mixed` uses both. Standard planning permits one tool
-discovery call and at most three Sentry data queries total: direct issue resolution, latest event, and one justified
-discriminating follow-up. Stop each query after 30 seconds and stop Sentry investigation after 90 seconds total. Return
-the bounded partial result when a limit is reached; a timeout does not authorize broader searches.
+uses the current-run artifact without broad Sentry discovery; `mixed` uses both. An explicit Sentry issue URL or a
+separately identified Sentry issue ID selects live lookup; the work-item key alone does not. Standard planning permits
+one tool discovery call and at most three Sentry data queries total: direct issue resolution, latest event, and one
+justified discriminating follow-up. Stop each query after 30 seconds and stop Sentry investigation after 90 seconds
+total. Return the bounded partial result when a limit is reached; a timeout does not authorize broader searches.
 Bound initial source mapping to the reporting repository's stack or culprit entry, outbound endpoint, and direct return
 boundary required by fix design. Do not inspect an additional repository's internal compatibility or deployment path in
 this stage; that belongs to Repository Integrator when its activation gate passes.
@@ -426,13 +427,14 @@ Use an older representative event only when the latest event is insufficient, in
 occurrence. Do not inspect every event in a high-volume issue by default. Record the selected event IDs and the reason
 for any additional sample.
 
-Publish one canonical `normalized_evidence.md` artifact containing the Sentry
+The evidence worker MUST write one canonical `normalized_evidence.md` artifact before Fix Design starts, containing the
+full material field values and source references needed to preserve field-local distinctions. It includes the Sentry
 facts, latest event as the primary occurrence, any justified representative
 sample, initial repository/revision mapping, initial topology, code-path entry
 point, source references, and unresolved boundary questions. Downstream workers
-consume this artifact instead of repeating the same Sentry queries.
+consume the exact artifact path instead of a Coordinator summary or repeated Sentry queries.
 
-The Orchestrator also records each prompt-supplied artifact and material
+The Orchestrator also records and passes through each prompt-supplied artifact and material
 context as consumed, unavailable, conflicting, or out of scope. The original
 artifact references remain available to downstream workers when the normalized
 artifact omits details needed for diagnosis.

@@ -36,9 +36,9 @@ or substitute the Coordinator for an independent worker.
 Do not query Sentry or explore the candidate source path before activating
 `sentry_current_state_investigator`; that worker exclusively owns raw Sentry
 queries and initial repository topology. When the prompt supplies a stable issue ID or URL, require direct issue
-resolution before any project or issue search; search only if direct resolution fails. Request only the latest issue
-event first (`limit: 1` when supported). Repeat its work only for a named discrepancy
-that is recorded and returned to that worker.
+resolution before any project or issue search; search only if direct resolution fails. A work-item key alone does not
+select live Sentry mode. Request only the latest issue event first (`limit: 1` when supported). Repeat its work only for
+a named discrepancy that is recorded and returned to that worker.
 
 For Standard initialization, do only these actions before that activation:
 capture turn start; verify framework and repository identity/status; register
@@ -145,10 +145,13 @@ After Fix Design returns `awaiting_input` with action `omit`, proceed directly t
 discrepancy or required conditional gate remains unresolved.
 
 For Standard planning, create only a minimal work-record skeleton before
-analysis and keep the runtime ledger in Coordinator state. Do not progressively
-rewrite the work record between workers. Once the final Documenter starts, it
-is the sole artifact writer; send corrections to that worker instead of editing
-concurrently.
+analysis and keep the runtime ledger in Coordinator state. Give the evidence
+worker the exact `normalized_evidence.md` path and require that file before Fix
+Design starts. Pass Fix Design that exact path plus every original supporting
+artifact path; never replace them with a Coordinator summary. Do not
+progressively rewrite the work record between workers. Once the final
+Documenter starts, it is the sole artifact writer for the finalized artifact set; send
+corrections to that worker instead of editing concurrently.
 
 Pass worker handles and outcomes, final workflow/engineering outcomes, displayed
 hypotheses, internal owner, next-action owner, and completion condition to the
@@ -160,8 +163,9 @@ If final verification finds a record or plan inconsistency, return it to that
 same Documenter before closure; do not edit the finalized artifact yourself.
 Keep that Documenter handle live until content and plan action pass. Send corrections through the handle, collect a
 revised terminal result, and run the pinned packaged validator as a standalone command. Only then release it. Update only
-the runtime-closure row with the exact provider handle and provider release confirmation, then rerun the same validator.
-Finalization passes only on exit status zero plus exact output `Workflow-framework validation: passed`.
+the runtime-closure row with the exact provider handle and provider release confirmation, then rerun the same validator
+with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line
+`Workflow-framework validation: passed`. Copy the subsequently emitted handoff block verbatim as the final answer.
 Before releasing that handle, compare the final artifact and answer with the
 durable record. Workflow state, profile status, workflow outcome, engineering
 outcome, plan action, worker outcomes, active handles, artifacts, and runtime

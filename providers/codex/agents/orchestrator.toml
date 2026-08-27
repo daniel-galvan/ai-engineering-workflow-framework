@@ -112,7 +112,8 @@ Send corrections to that same handle, collect its revised terminal result, and
 run the preflight-pinned packaged validator as a standalone command. If that packaged root disappears or changes, stop
 with `plugin_revision_mismatch`; do not discover another installed package. Close the handle only after validation
 passes. Then update only the runtime-closure row with the exact provider handle and provider release confirmation and
-rerun the same validator. Require exit status zero and exact output `Workflow-framework validation: passed`.
+rerun the same validator with `--emit-handoff`. Require exit status zero and the first exact output line
+`Workflow-framework validation: passed`; copy the subsequently emitted handoff block verbatim as the final answer.
 Never patch its artifacts directly except for that provider-observed closure row.
 Before releasing that handle, compare the final artifact and answer with the
 durable record. Workflow state, profile status, workflow outcome, engineering

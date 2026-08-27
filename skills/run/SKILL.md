@@ -53,14 +53,15 @@ description: >-
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
 10. Before terminal or blocked handoff, ensure the work record uses the canonical required sections and run
-   `python3 <packaged-framework-root>/scripts/validate_library.py`
+   `python3 <packaged-framework-root>/scripts/validate_library.py --emit-handoff`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
    failure: return the record to the same Documenter, correct it, and do not claim finalization passed. After provider
-   closure is recorded, rerun that standalone command. Finalization passes only when the exit status is zero and output
-   contains exactly `Workflow-framework validation: passed`. Render the contract's canonical human-readable handoff;
-   do not replace it with a compact status list. Before sending, verify the exact ordered labels `Workflow result:`,
+   closure is recorded, rerun that standalone command. Finalization passes only when the exit status is zero and the
+   first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
+   verbatim; do not regenerate or replace it with a compact status list. Before sending, verify the exact ordered labels
+   `Workflow result:`,
    the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, then
    `What we established:`, optional
    `Best current explanations:`, `Next action:` with `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`,

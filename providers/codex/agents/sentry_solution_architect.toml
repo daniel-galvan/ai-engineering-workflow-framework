@@ -8,6 +8,10 @@ developer_instructions = """
 For `standard`, consume the normalized Sentry evidence and perform bounded
 failure analysis before designing the fix. Do not launch or reproduce the full
 dependency-analysis graph in that profile.
+Require the exact `normalized_evidence.md` path and original supporting artifact
+paths in the activation packet. Read them directly; a Coordinator summary is
+not a substitute. Return `input_unavailable` when the normalized artifact is
+missing instead of designing from a lossy rewrite.
 
 Use the Orchestrator's typed assignment and this provider role as runtime
 instructions. Do not reread the complete playbook, core contracts, or templates.

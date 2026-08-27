@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.4
+version: 0.4.5
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-26
@@ -105,8 +105,13 @@ Runtime bootstrap:
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
   the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
-- For Standard planning, create one minimal work-record skeleton, retain intermediate ledgers in Coordinator state, and
-  let the final Documenter perform the next artifact update. Once activated, the Documenter is the sole artifact writer.
+- For Standard planning, create one minimal work-record skeleton. The evidence worker then writes
+  `normalized_evidence.md`; retain intermediate ledgers in Coordinator state. Once activated, the final Documenter is
+  the sole artifact writer for the finalized artifact set.
+- Activate Fix Design only after `normalized_evidence.md` exists. Pass its exact path and every original supporting
+  artifact path; do not replace either with a Coordinator-written summary.
+- Select `live_sentry` only from an explicit Sentry issue URL or separately identified Sentry issue ID. The work-item
+  key alone does not authorize Sentry lookup; with only a supplied occurrence, select `supplied_occurrence`.
 - During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
   owning boundary, or readiness. First record the hypothesis, discriminating outcomes, disposition change, and runner
   availability. Otherwise put the regression and remaining suites in the implementation plan.

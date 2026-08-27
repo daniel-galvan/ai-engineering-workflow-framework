@@ -38,6 +38,7 @@ GENERIC_AGENTS = (
     "tester",
     "documenter",
 )
+PLAYBOOKS = {path.stem for path in (ROOT / "playbooks").glob("*.md")}
 
 
 def _table_value(text: str, field: str) -> str | None:
@@ -50,6 +51,13 @@ def _baseline_id() -> str:
     if not match:
         raise ValueError("role_policy_baseline_unavailable")
     return match.group(1)
+
+
+def _playbook_name(value: str) -> str:
+    name = Path(value).stem
+    if name not in PLAYBOOKS:
+        raise ValueError(f"unknown_playbook:{value}")
+    return name
 
 
 def _agent_binding(name: str, runtime_agents: Path | None) -> dict[str, str]:
@@ -72,6 +80,7 @@ def _agent_binding(name: str, runtime_agents: Path | None) -> dict[str, str]:
 
 
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:
+    playbook = _playbook_name(playbook)
     names = SENTRY_AGENTS if playbook == "sentry_issue_remediation" else GENERIC_AGENTS
     return {
         "baseline_id": _baseline_id(),
@@ -109,6 +118,7 @@ def prepare_run(
     runtime_agents: Path | None,
     continuation: bool,
 ) -> dict[str, object]:
+    playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
         raise ValueError("invalid_work_item")
     if not execution_repository.resolve().is_dir():
@@ -141,8 +151,10 @@ def self_test() -> None:
 
     with tempfile.TemporaryDirectory(prefix="workflow-prepare-") as directory:
         execution = Path(directory)
-        first = prepare_run(execution, "ITEM-1", "sentry_issue_remediation", None, False)
+        first = prepare_run(execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False)
+        assert first["playbook"] == "sentry_issue_remediation"
         assert first["bindings"]["sentry_solution_architect"]["model"] == "gpt-5.6-sol"
+        assert Path(first["work_record"]).stat().st_size < 10 * 1024
         record = Path(first["work_record"])
         record.write_text(
             record.read_text().replace("| Run ID | |", "| Run ID | run-1 |").replace(
@@ -152,6 +164,12 @@ def self_test() -> None:
         second = prepare_run(execution, "ITEM-1", "sentry_issue_remediation", None, False)
         assert second["archived_prior_run"].endswith("runs/run-1")
         assert Path(second["work_record"]).is_file()
+        try:
+            prepare_run(execution, "ITEM-2", "playbooks/unknown.md", None, False)
+        except ValueError as error:
+            assert str(error) == "unknown_playbook:playbooks/unknown.md"
+        else:
+            raise AssertionError("unknown playbook must be rejected")
     print("prepare_run self-test: passed")
 
 
