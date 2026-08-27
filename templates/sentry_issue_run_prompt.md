@@ -85,7 +85,9 @@ Runtime bootstrap:
   resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
 - Activate every delegated worker with `fork_context: false` or the provider-equivalent fresh-context option. Start
   every packet with `Coordinator initialization: complete` and prohibit the worker from running the launcher skill,
-  `run_preflight.py`, or `prepare_run.py`.
+  `run_preflight.py`, or `prepare_run.py`. Use only the current task's in-task `spawn_agent`/collaboration runtime.
+  Never use `create_thread`, `fork_thread`, or `send_message_to_thread` for workers. Verify the in-task runtime before
+  `prepare_run.py`; stop with `worker_runtime_unavailable` when it is absent.
 - Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
   reread the complete playbook or core contracts.
 - For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
@@ -133,10 +135,13 @@ Runtime bootstrap:
   appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
-- Pass the final Documenter one immutable finalized packet. It formats and persists the packet; it does not select,
-  normalize, or reinterpret state, readiness, outcomes, worker results, or artifact actions.
-- If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
-  edit finalized artifacts after that worker returns.
+- Pass the final Documenter one immutable finalized packet. It populates `templates/finalization_packet.json` as the
+  structured `finalization_packet.json`; it does
+  not select, normalize, or reinterpret state, readiness, outcomes, worker results, or artifact actions. The Coordinator
+  releases that worker, writes exact provider closure rows to `runtime_closure.json`, then runs packaged
+  `scripts/finalize_work_record.py`; neither role patches terminal Markdown by hand.
+- If finalization finds an inconsistency, return the exact error to the same Documenter for a corrected packet; the
+  Coordinator must not edit the packet or rendered record.
 - Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to
   that same handle and close it only after the revised terminal result passes.
 - Before release, reconcile the final artifact and answer with the durable record. Workflow state, profile status,

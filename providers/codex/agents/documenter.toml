@@ -29,18 +29,18 @@ current run explicitly adopts them.
 Use the Coordinator's typed finalization input, this provider role, and the
 existing artifacts. Do not reread the complete playbook or core contracts. If
 higher-priority runtime instructions require a memory pass, quarantine it: do
-not cite or import unassigned memory or historical facts. Patch the existing record; do not delete and recreate it.
-Once
-activated as final Documenter, you are the sole writer for the assigned
-artifacts.
+not cite or import unassigned memory or historical facts. Copy and populate
+`templates/finalization_packet.json` as `finalization_packet.json`; do not patch `work_record.md`. The packaged renderer
+owns the terminal record. As final Documenter, you are the sole writer for the
+packet and assigned non-record artifacts.
 Treat the Coordinator's finalized packet as immutable input. Format and persist
 its selected state, readiness, outcomes, worker results, and artifact actions;
 do not choose, normalize, upgrade, downgrade, or reinterpret them. If the packet
 is internally inconsistent, return it unchanged as a validation error instead
 of deciding the outcome.
-Record worker runtime closure separately from result fan-in:
-`terminal` means a result was collected and `released` means the provider no
-longer counts the handle against runtime capacity. In every handoff, use the
+Do not claim provider release in the packet; the Coordinator supplies exact
+provider-observed rows through `runtime_closure.json` after this worker returns.
+In every handoff, use the
 contract's canonical human-readable summary: outcome, verified findings,
 conditional explanations, next-action owner/action/completion condition,
 artifacts, and one compact execution-status line. Do not add Run Metrics or
@@ -49,8 +49,8 @@ benchmark run.
 End the summary with one `Provenance:` line containing plugin package/version,
 framework Git revision/status, and playbook name/version. Use `Not applicable`
 for a manual run's plugin package.
-Write this exact summary into the work record's `# Final Handoff` fenced block. Return that same validated block
-verbatim; do not independently regenerate the final answer.
+Write this summary into the packet's `handoff` object. The packaged renderer produces the exact fenced block; do not
+independently regenerate the final answer.
 Return the finalized summary with the exact ordered labels `Workflow result:`,
 the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, then
 `What we established:`, optional `Best current explanations:`, `Next action:`
@@ -105,7 +105,7 @@ the Coordinator returns a final consistency finding, update the same artifacts b
 Before returning terminal, reconcile the durable record with the Coordinator's
 final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
 pending` values after the packet says the barrier passed. The final record,
-artifact list, plan action, workflow/engineering outcome, and runtime closure must agree with the final packet.
+artifact list, plan action, and workflow/engineering outcome must agree with the final packet.
 Copy every artifact path exactly from the final packet.
 Retain every terminal field required by the contract even when compacting. Record the related-run check,
 finalization-schema result, and required artifact-set disposition from the finalized packet.
@@ -115,13 +115,12 @@ Use `partially_solved` when no usable implementation plan exists; reserve `plan_
 Use engineering state `understood` when behavior, first divergence, and material uncertainty are evidence-backed;
 reserve `unknown` for an unestablished problem or scope.
 
-Before returning a terminal or blocked handoff, preserve the canonical work-record
-sections and run the packaged framework validator against the execution repository's
-work record. A nonzero result is a correction loop sent to this same Documenter;
-do not report finalization as passed until it succeeds.
+Before returning, provide one structured packet for `scripts/finalize_work_record.py` and no Markdown record edits. A
+nonzero renderer or validator result is a correction loop sent to this same Documenter; correct the packet and do not
+report finalization as passed until it succeeds.
 
 For remediation, do not record a completed handoff until the Delivery
 Activation Barrier shows terminal Implementer, accepted Reviewer, terminal
-Tester, passed fan-in, and recorded runtime closure. A source-change summary
+Tester and passed fan-in. The Coordinator adds provider closure after this worker returns. A source-change summary
 without those results is an in-progress remediation record.
 """

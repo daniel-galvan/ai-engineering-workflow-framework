@@ -340,9 +340,9 @@ replace the compaction attempt.
 
 Measure current artifacts before final Documenter activation. If either target is exceeded, the Documenter MUST compact
 repeated content before creating another artifact. A remaining `Work-record budget exception` must name the
-indispensable evidence, actual bytes, and reason; Process quality and Efficiency are not `met`.
-The Documenter never deletes and recreates the work
-record merely to reformat it.
+indispensable evidence, actual bytes, and reason; Process quality and Efficiency are not `met`. The Documenter writes
+structured `finalization_packet.json`; packaged `scripts/finalize_work_record.py` is the only terminal work-record
+writer and replaces the record atomically only after validation passes.
 
 ## Execution Flow
 

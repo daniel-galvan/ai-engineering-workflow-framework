@@ -1,0 +1,169 @@
+{
+  "work_item": {
+    "ID": "",
+    "Title": "",
+    "Last Updated": ""
+  },
+  "playbook_selection": {
+    "Primary evidence": "",
+    "Primary goal": "",
+    "Selected playbook": "",
+    "Closest alternative": "",
+    "Why this playbook": ""
+  },
+  "inputs": [
+    {
+      "Input ID": "",
+      "Input or artifact": "",
+      "Source or path": "",
+      "Authority": "",
+      "Status": ""
+    }
+  ],
+  "repositories": [
+    {
+      "Repository role": "",
+      "Declared path": "",
+      "Resolved path": "",
+      "Branch / detached": "",
+      "Full revision": "",
+      "Clean status": "",
+      "User-selected ref": "",
+      "Release mapping": "",
+      "Evidence eligibility": ""
+    }
+  ],
+  "identity": {
+    "Run ID": "",
+    "Evaluation run ID": "Not applicable",
+    "Playbook / version": "",
+    "Framework commit / status": "",
+    "Plugin package / version": "",
+    "Provider/runtime configuration": "",
+    "Provider configuration source/status": "",
+    "Prompt template / revision / conformance": "",
+    "Role-policy baseline ID": "",
+    "Role binding manifest": "",
+    "Provider / model configuration": "Codex / Worker Execution Ledger",
+    "Requested profile": "",
+    "Activated profile": "",
+    "Executed profile": "",
+    "Profile status": "",
+    "Lifecycle": "",
+    "State": "",
+    "Engineering state": "",
+    "Workflow outcome": "",
+    "Engineering outcome": ""
+  },
+  "finalization": {
+    "Concurrent-run decision": "",
+    "Active related run or work item": "",
+    "Related-run check": "",
+    "Durable artifact root": "",
+    "Final reconciliation": "",
+    "Finalization schema": "",
+    "Work-record budget exception": "None"
+  },
+  "durable_artifacts": [
+    {
+      "Artifact": "",
+      "Path": "",
+      "Status": "",
+      "Purpose": ""
+    }
+  ],
+  "workers": [
+    {
+      "Worker": "",
+      "Role": "",
+      "Assigned inputs": "",
+      "Mode": "",
+      "Depth": "",
+      "Skills": "",
+      "Tools": "",
+      "Capacity": "",
+      "Configured model/effort": "",
+      "Provider-observed model/effort": "",
+      "Elapsed": "",
+      "Wait": "",
+      "Usage": "",
+      "Depends on": "",
+      "Outcome": "",
+      "Confidence": ""
+    }
+  ],
+  "synchronization": [
+    {
+      "Stage": "",
+      "Workers launched": "",
+      "Launch mode / exception": "",
+      "Worker outcomes": "",
+      "Results summarized": "",
+      "Barrier status": ""
+    }
+  ],
+  "worker_results": [
+    {
+      "Worker": "",
+      "Outcome": "",
+      "Confidence": "",
+      "Unique contribution": "",
+      "Evidence / claim refs": "",
+      "Uncertainties / blockers": "",
+      "Actual model/effort": "",
+      "Usage/credits": ""
+    }
+  ],
+  "evidence": [
+    {
+      "Evidence ID": "",
+      "Source": "",
+      "Summary": "",
+      "Confidence": "",
+      "Uncertainty": "",
+      "Status": ""
+    }
+  ],
+  "claims": [
+    {
+      "Claim ID": "",
+      "Claim": "",
+      "Evidence refs": "",
+      "Confidence": "",
+      "Uncertainty": "",
+      "Status": ""
+    }
+  ],
+  "decisions": [
+    {
+      "Decision ID": "",
+      "Decision": "",
+      "Claim refs": "",
+      "Owner": "",
+      "Status": ""
+    }
+  ],
+  "actions": [
+    {
+      "Action ID": "",
+      "Action": "",
+      "Decision ref": "",
+      "Owner": "",
+      "Status": ""
+    }
+  ],
+  "handoff": {
+    "workflow_result": "",
+    "implementation_plan": "",
+    "established": [],
+    "best_current_explanations": [],
+    "next_action": {
+      "owner": "",
+      "action": "",
+      "complete_when": ""
+    },
+    "artifacts": [],
+    "execution": "",
+    "provenance": ""
+  }
+}

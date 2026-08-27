@@ -42,6 +42,11 @@ The Coordinator alone performs plugin preflight and run preparation. Activate ev
 `prepare_run.py`. A worker consumes only its provider role, assignment, and named current-run inputs. It does not
 inherit the Coordinator transcript or initialize the run again.
 
+Use only Codex's in-task `spawn_agent`/collaboration runtime for delegated workers. Never use `create_thread`,
+`fork_thread`, or `send_message_to_thread`: those operations create or control user-owned tasks. Check for the
+in-task runtime before `prepare_run.py`; if unavailable, stop with `worker_runtime_unavailable` without creating a task
+or starting the worker graph.
+
 Record the actual model and reasoning effort used by each worker in the work record. Also record provider-reported usage
 or credits when available. If the enterprise workspace does not expose a recommended model or usage value, record the
 limitation and do not estimate it.

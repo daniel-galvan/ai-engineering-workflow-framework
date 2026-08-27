@@ -54,9 +54,12 @@ CODEX_ADAPTER = ROOT / "providers" / "codex.md"
 CODEX_AGENT_DIR = ROOT / "providers" / "codex" / "agents"
 IMPLEMENTATION_HANDOFF_TEMPLATE = ROOT / "templates" / "implementation_handoff.md"
 SENTRY_WORK_RECORD_TEMPLATE = ROOT / "templates" / "sentry_work_record.md"
+FINALIZATION_PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
+RUNTIME_CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
 RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
 PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
+FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 PROFILE_STATUSES = {"requested", "in_progress", "executed", "not_executed", "blocked"}
@@ -1497,6 +1500,16 @@ if not RUN_PREFLIGHT.is_file():
     fail("scripts/run_preflight.py is missing")
 if not PREPARE_RUN.is_file():
     fail("scripts/prepare_run.py is missing")
+if not FINALIZE_WORK_RECORD.is_file():
+    fail("scripts/finalize_work_record.py is missing")
+for template in (FINALIZATION_PACKET_TEMPLATE, RUNTIME_CLOSURE_TEMPLATE):
+    if not template.is_file():
+        fail(f"{template.relative_to(ROOT)} is missing")
+    else:
+        try:
+            json.loads(template.read_text())
+        except json.JSONDecodeError as error:
+            fail(f"{template.relative_to(ROOT)} is invalid JSON: {error}")
 if not SENTRY_WORK_RECORD_TEMPLATE.is_file() or SENTRY_WORK_RECORD_TEMPLATE.stat().st_size >= 10 * 1024:
     fail("templates/sentry_work_record.md must exist and remain below the Sentry work-record budget")
 run_skill = RUN_SKILL.read_text()
@@ -1513,15 +1526,44 @@ for phrase in (
     "role_bindings.json",
     "fork_context: false",
     "Coordinator initialization: complete",
+    "worker_runtime_unavailable",
+    "`spawn_agent`",
+    "Never use",
+    "`create_thread`",
+    "`fork_thread`",
+    "`send_message_to_thread`",
+    "scripts/finalize_work_record.py",
+    "finalization_packet.json",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
 if "--framework-root" in run_skill:
     fail("skills/run/SKILL.md must not pass a separately constructed framework root")
 codex_adapter = CODEX_ADAPTER.read_text()
-for phrase in ("fork_context: false", "Coordinator initialization: complete", "prepare_run.py"):
+for phrase in (
+    "fork_context: false",
+    "Coordinator initialization: complete",
+    "prepare_run.py",
+    "worker_runtime_unavailable",
+    "`spawn_agent`",
+    "Never use `create_thread`",
+    "`fork_thread`",
+    "`send_message_to_thread`",
+):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
+for phrase in ("finalization_packet.json", "scripts/finalize_work_record.py", "do not patch `work_record.md`"):
+    if phrase not in (CODEX_AGENT_DIR / "documenter.toml").read_text():
+        fail(f"providers/codex/agents/documenter.toml is missing deterministic finalization control: {phrase}")
+for path in (
+    CODEX_AGENT_DIR / "orchestrator.toml",
+    CODEX_AGENT_DIR / "sentry_orchestrator.toml",
+    ROOT / "templates" / "sentry_issue_run_prompt.md",
+):
+    text = path.read_text()
+    for phrase in ("`spawn_agent`", "Never use", "`create_thread`", "`fork_thread`", "`send_message_to_thread`", "worker_runtime_unavailable"):
+        if phrase not in text:
+            fail(f"{path.relative_to(ROOT)} is missing task-isolation control: {phrase}")
 if "| Engineering state |" not in work_record_template:
     fail("templates/work_record.md is missing engineering state")
 if "| Approval type |" not in work_record_template:
@@ -1801,7 +1843,7 @@ for phrase in (
     "framework_revision_mismatch",
     "make a stale prompt match",
     "minimal work-record skeleton",
-    "never deletes and recreates",
+    "scripts/finalize_work_record.py",
     "one smallest available check",
     "do not run unit or integration tests merely",
     "Best current explanations",
@@ -1960,7 +2002,7 @@ for text, label in (
     if "runtime-managed worktrees are not" not in text or "artifact roots unless" not in text:
         fail(f"{label} is missing durable artifact-root control")
 
-for phrase in ("do not delete and recreate", "finish within two minutes", "sole writer", "Best current explanations"):
+for phrase in ("do not patch `work_record.md`", "finish within two minutes", "sole writer", "Best current explanations"):
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing bounded finalization control: {phrase}")
 
@@ -2014,10 +2056,10 @@ for phrase in (
     "MUST NOT change a technical worker's diagnosis",
     "mutually conditional candidate files",
     "owning technical worker MUST perform the assigned investigation",
-    "final Documenter owns the finalized work record",
+    "renderer is the only writer of the terminal `work_record.md`",
     "Do not add a second generic outcome field",
     "pass those exact values explicitly",
-    "sole writer for its assigned artifacts",
+    "sole writer for its assigned non-record artifacts and packet",
     "MUST NOT reread",
     "Provider-required memory remains quarantined",
     "Never reduce a useful hypothesis result",

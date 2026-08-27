@@ -79,6 +79,8 @@ status: Pilot
 | Artifact | Path | Status | Purpose |
 | --- | --- | --- | --- |
 | Role bindings | `role_bindings.json` | Created | Exact worker model and effort source |
+| Finalization packet | `finalization_packet.json` | Pending | Structured input for deterministic terminal rendering |
+| Runtime closure receipt | `runtime_closure.json` | Pending | Provider-observed handle release rows |
 | Normalized evidence | `normalized_evidence.md` | Pending | Current-run evidence |
 | Fix design result | `fix_design_result.json` | Pending | Canonical readiness and artifact action |
 

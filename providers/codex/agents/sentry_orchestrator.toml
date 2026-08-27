@@ -77,6 +77,11 @@ provider-equivalent fresh-context option. Start every activation packet with
 running the launcher skill, `run_preflight.py`, or `prepare_run.py`; those are
 Coordinator-only initialization actions.
 
+Use only the current task's in-task `spawn_agent`/collaboration runtime. Never use `create_thread`,
+`fork_thread`, or `send_message_to_thread` for worker activation or communication.
+Verify the in-task runtime before `prepare_run.py`; if absent, stop with
+`worker_runtime_unavailable` without creating user-owned tasks.
+
 After `evidence-topology`, start the Deep failure-topology and repository-
 integration workers in parallel when capacity exists; otherwise record the
 reason and wait time. For Standard, activate Repository Integrator only after

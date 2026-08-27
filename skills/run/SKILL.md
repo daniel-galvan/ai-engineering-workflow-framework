@@ -43,7 +43,9 @@ description: >-
    The Coordinator is the only role that performs package preflight and run preparation. Activate every delegated
    worker with `fork_context: false` or the provider-equivalent fresh-context option. Start its packet with
    `Coordinator initialization: complete` and explicitly prohibit rerunning this skill, `run_preflight.py`, or
-   `prepare_run.py`.
+   `prepare_run.py`. Workers must use the current task's in-task `spawn_agent`/collaboration runtime. Never use
+   `create_thread`, `fork_thread`, or `send_message_to_thread` for workers. Verify the in-task runtime before
+   `prepare_run.py`; when unavailable, stop with `worker_runtime_unavailable` without creating user-owned tasks.
 8. Populate the canonical template from supplied and discoverable context. When the prompt requires current-run-only
    evidence, do not read memory, historical `.thoughts` artifacts, or prior-run citations at any later stage. The
    execution repository's `.codex/agents/`
@@ -56,13 +58,17 @@ description: >-
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
-10. Before terminal or blocked handoff, ensure the work record uses the canonical required sections and run
-   `python3 <packaged-framework-root>/scripts/validate_library.py --emit-handoff`
+10. Before terminal or blocked handoff, require the final Documenter to write structured
+   `finalization_packet.json`. Release the Documenter, populate `templates/runtime_closure.json` with exact provider
+   observations as `runtime_closure.json`, then
+   run `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
-   failure: return the record to the same Documenter, correct it, and do not claim finalization passed. After provider
-   closure is recorded, rerun that standalone command. Finalization passes only when the exit status is zero and the
+   failure: return the packet and exact error to the same Documenter, correct it, and do not patch Markdown by hand.
+   Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; do not regenerate or replace it with a compact status list. Before sending, verify the exact ordered labels
    `Workflow result:`,

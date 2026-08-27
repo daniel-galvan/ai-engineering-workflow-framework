@@ -59,6 +59,13 @@ provider context (`fork_context: false` or the provider-equivalent option), and 
 `Coordinator initialization: complete`. Delegated workers MUST NOT invoke the launcher, package preflight, or run
 preparation.
 
+Delegated workers MUST run inside the current user task through the provider's subagent primitive, such as Codex
+`spawn_agent`. Provider operations that create or fork user-owned tasks,
+including Codex `create_thread`, `fork_thread`, and `send_message_to_thread`, MUST NOT be used as worker activation or
+communication mechanisms. Before run preparation, the Coordinator MUST verify that an in-task worker/subagent runtime
+is available. If it is unavailable, stop with `worker_runtime_unavailable`; do not create sidebar tasks and do not
+substitute Coordinator analysis for the required graph.
+
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
 section or template needed to resolve an ambiguity in their assigned stage. They MUST NOT search memory or historical
@@ -964,18 +971,20 @@ unknown.”
 Normal runs MUST NOT include `Run metrics` or `Worker timing` in the final answer. An explicitly declared evaluation or
 benchmark run may append those blocks from provider-observed data. Never reconstruct missing timing or usage.
 
-The final Documenter owns the finalized work record and implementation plan. If verification finds an inconsistency,
-the Coordinator MUST return it to that same Documenter before closure; the Coordinator MUST NOT edit a finalized
-Documenter artifact after its terminal result, except for the provider-observed runtime-closure receipt described below.
+The final Documenter owns the implementation plan, clarification brief, and structured `finalization_packet.json`,
+populated from `templates/finalization_packet.json`.
+The packaged `scripts/finalize_work_record.py` renderer is the only writer of the terminal `work_record.md`. It renders
+the packet into canonical Markdown, runs the packaged validator, and atomically replaces the record only after
+validation passes. If rendering or validation fails, the Coordinator MUST return the exact error to the same
+Documenter for a corrected packet; neither agent may patch the terminal Markdown by hand.
 
 Keep the final Documenter handle live until artifact content, plan action, outcomes, and required artifact disposition
-pass final verification. Send every correction to that same handle and collect the revised terminal result. After the
-first standalone validation passes, release the Documenter, then allow the Coordinator to update only the
-runtime-closure row with the exact provider handle and provider release confirmation. Run the same standalone validator
-again. Any other post-terminal Coordinator artifact edit is a process conformance failure.
+pass packet verification. Send every packet correction to that same handle and collect the revised result. Release the
+handle, then write one provider-observed `runtime_closure.json` receipt. The receipt contains only the exact closure
+table rows from `templates/runtime_closure.json` and is not a second interpretation of the workflow outcome.
 
-Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes
-corrections as input and MUST NOT edit those files concurrently.
+Once the final Documenter is activated, it is the sole writer for its assigned non-record artifacts and packet. The
+Coordinator invokes the renderer but MUST NOT edit the packet or rendered record.
 
 ## Final Handoff Reconciliation
 
@@ -990,9 +999,10 @@ contradicts the durable record is a handoff conformance failure even when the wo
 Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing worker
 outcomes, workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action,
 completion condition, plugin package/version, framework Git revision/status, and playbook name/version. The packet is
-immutable once passed to the Documenter. The Documenter formats
-and persists these values; it does not select, normalize, reinterpret, or reconstruct them. An inconsistent packet is a
-validation error returned to the Coordinator, not authority for the Documenter to decide a different state or outcome.
+immutable once passed to the Documenter. The Documenter serializes these values as structured JSON; it does not select,
+normalize, reinterpret, or reconstruct them. After the Documenter returns and is released, the Coordinator invokes
+`scripts/finalize_work_record.py` with the packet, closure receipt, and record paths. An inconsistent packet is a
+validation error returned to the Documenter, not authority to decide a different state or outcome.
 
 The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. With
 `--emit-handoff`, the standalone validator checks its ordered labels, verifies that its state and outcomes equal the Run
@@ -1008,14 +1018,13 @@ explanatory sections MAY be omitted. A
 smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
 fails the applicable artifact budget unless the recorded exception is valid.
 
-Before releasing a terminal or blocked handoff, the Coordinator or final Documenter MUST run the packaged framework
-validator against the execution repository's `work_record.md`. A nonzero result is a handoff conformance failure. Return
-the record to the same Documenter, correct it using the canonical template sections, and repeat validation. Pin the
+Before releasing a terminal or blocked handoff, the Coordinator MUST run the packaged finalizer. It runs the framework
+validator against the candidate record before replacing `work_record.md`. A nonzero result is a handoff conformance
+failure. Return the packet and exact error to the same Documenter and repeat finalization. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
 `plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and
-recording its provider closure receipt, run the pinned validator with `--emit-handoff` again. Finalization passes only
-when its exit status is zero and its first output line is exactly `Workflow-framework validation: passed`; the remaining
-output is the canonical user-facing handoff.
+recording provider closure in `runtime_closure.json`, finalization passes only when the finalizer exits zero and its
+first output line is exactly `Workflow-framework validation: passed`; the remaining output is the canonical handoff.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise
