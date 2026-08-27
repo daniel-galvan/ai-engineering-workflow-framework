@@ -19,7 +19,7 @@ RFC3339_TIMESTAMP = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
-MODEL_BASELINE_ID = "codex-role-policy-v20260827003429"
+MODEL_BASELINE_ID = "codex-role-policy-v20260827032839"
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
@@ -358,7 +358,7 @@ def self_test_reasoning_records() -> None:
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
 | Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.0 / pass |
-| Role-policy baseline ID | codex-role-policy-v20260827003429 |
+| Role-policy baseline ID | codex-role-policy-v20260827032839 |
 | Provider / model configuration | Codex / Worker Execution Ledger |
 | Requested profile | standard |
 | Executed profile | standard |
@@ -419,7 +419,7 @@ def self_test_reasoning_records() -> None:
 
         normal = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Not applicable |")
         normal = normal.replace(
-            "| Role-policy baseline ID | codex-role-policy-v20260827003429 |",
+            "| Role-policy baseline ID | codex-role-policy-v20260827032839 |",
             "| Role-policy baseline ID | Not applicable |",
         )
         normal = normal.replace("# Evaluation Run Continuation Ledger", "# Omitted Evaluation Run Continuation Ledger")
@@ -449,7 +449,7 @@ def self_test_reasoning_records() -> None:
             "Evaluation run ID must identify the evaluated run",
         )
         assert_invalid(
-            valid.replace("| Role-policy baseline ID | codex-role-policy-v20260827003429 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
+            valid.replace("| Role-policy baseline ID | codex-role-policy-v20260827032839 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
             "Role-policy baseline ID must be an identifier, not a path",
         )
         assert_invalid(valid.replace("| TechOps |", "| None selected |"), "run-specific evidence")
@@ -1434,11 +1434,11 @@ for phrase in (
         fail(f"templates/work_record.md is missing run-control evidence: {phrase}")
 for phrase in (
     "initial hypothesis: an experimental baseline",
-    "Orchestrator | `gpt-5.6-terra` | Medium | `medium`",
+    "Orchestrator | `gpt-5.6-luna` | Extra High | `xhigh`",
     "Dependency Analyst | `gpt-5.6-luna` | High | `high`",
     "Repository Integrator | `gpt-5.6-luna` | High | `high`",
-    "Solution Architect | `gpt-5.6-terra` | Medium | `medium`",
-    "Reviewer | `gpt-5.6-terra` | Medium | `medium`",
+    "Solution Architect | `gpt-5.6-sol` | Light | `low`",
+    "Reviewer | `gpt-5.6-sol` | Light | `low`",
 ):
     if phrase not in policy_text:
         fail(f"{CODEX_POLICY.relative_to(ROOT)} is missing experimental baseline: {phrase}")
