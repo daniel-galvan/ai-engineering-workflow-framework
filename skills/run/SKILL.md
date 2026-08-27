@@ -14,7 +14,8 @@ description: >-
 2. The first framework tool call after this skill is loaded MUST be package preflight. Before it, do not read memory,
    `PLAYBOOK_CATALOG.md`, any playbook, contract, provider definition, template, validator, sibling `.thoughts` root,
    or plugin cache directory. Run:
-   `python3 <framework-root>/scripts/run_preflight.py --framework-root <framework-root>`.
+   `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do
+   not construct or pass a separate framework-root argument.
    Pass `--declared-framework-revision <FULL-SHA>` when the prompt declares one, and pass
    `--declared-plugin-path <prompt-path>` only when the prompt contains an explicit versioned plugin path. A missing,
    stale, or different path is `plugin_revision_mismatch`; do not search another cache version or silently substitute

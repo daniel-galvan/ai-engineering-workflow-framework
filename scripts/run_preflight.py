@@ -17,6 +17,10 @@ EXIT_OK = 0
 EXIT_BLOCKED = 2
 
 
+def _framework_root(script: Path) -> Path:
+    return script.resolve().parents[1]
+
+
 def _git(root: Path, *args: str) -> tuple[int, str, str]:
     completed = subprocess.run(
         ["git", "-C", str(root), *args],
@@ -140,6 +144,10 @@ def self_test() -> None:
         subprocess.run(["git", "-C", str(root), "commit", "-qm", "test"], check=True)
         revision = _git_checked(root, "rev-parse", "HEAD")
 
+        script = root / "scripts" / "run_preflight.py"
+        assert _framework_root(script) == root.resolve()
+        assert _framework_root(script) != root.parent.resolve()
+
         passed = preflight(root, declared_framework_revision=revision, declared_plugin_path=skill)
         assert passed["status"] == "passed", passed
 
@@ -159,7 +167,6 @@ def self_test() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--framework-root", type=Path)
     parser.add_argument("--declared-framework-revision")
     parser.add_argument("--declared-plugin-path", type=Path)
     parser.add_argument("--self-test", action="store_true")
@@ -168,12 +175,10 @@ def main() -> int:
     if args.self_test:
         self_test()
         return EXIT_OK
-    if args.framework_root is None:
-        parser.error("--framework-root is required unless --self-test is used")
 
     started = time.perf_counter()
     result = preflight(
-        args.framework_root,
+        _framework_root(Path(__file__)),
         declared_framework_revision=args.declared_framework_revision,
         declared_plugin_path=args.declared_plugin_path,
     )

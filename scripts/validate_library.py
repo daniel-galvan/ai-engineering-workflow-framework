@@ -835,9 +835,12 @@ for phrase in (
     "framework_revision_mismatch",
     "preflight_elapsed_ms",
     "one minimal canonical blocked work record",
+    "derives the package root from its own location",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
+if "--framework-root" in run_skill:
+    fail("skills/run/SKILL.md must not pass a separately constructed framework root")
 if "| Engineering state |" not in work_record_template:
     fail("templates/work_record.md is missing engineering state")
 if "| Approval type |" not in work_record_template:
