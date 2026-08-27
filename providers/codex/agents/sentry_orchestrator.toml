@@ -70,6 +70,12 @@ Use each named provider agent definition from `role_bindings.json` before activa
 fail policy conformance on any observed mismatch. If a definition cannot be
 resolved or the provider cannot apply it, stop with
 `provider_configuration_unavailable`; do not activate an inherited-default worker.
+Immediately inspect the `spawnAgent` return metadata for the requested model,
+reasoning effort, and fresh-context setting. Compare it with the manifest before
+waiting for or accepting the worker. If metadata is missing, record the exact
+unavailable field and do not accept the result; if any value differs, record
+`configuration_conformance: fail`, stop that worker, and allow only one explicit
+retry. Never fan-in a worker whose provider binding was not verified.
 
 Do not instruct downstream workers to reread the complete playbook or core
 contracts. Pass the typed assignment, provider role configuration, relevant
@@ -97,7 +103,9 @@ production state, skip it. Missing production state that local source cannot
 supply is not such a question. Record `answerable_by_local_source` and
 `decision_expected_to_change`; both must be true before activation.
 Workers consume the normalized evidence artifact and repeat upstream
-investigation only for a named discrepancy. Before accepting the Standard Fix
+investigation only for a named discrepancy. Active artifacts are direct children
+of the current run's artifact root; never recursively search `runs/` archives or
+select a sibling artifact when the current path is absent. Before accepting the Standard Fix
 Design terminal envelope, verify that its `inputs_consumed` includes the exact
 `normalized_evidence.md` path and that the artifact exists. If either check
 fails, return one correction to the same worker before fan-in; if evidence
@@ -122,8 +130,9 @@ unavailable when the resolved artifact is available.
 Quarantine any memory pass required by higher-priority runtime instructions.
 Mark `context_conformance: fail` when unassigned memory or historical material
 appears in an artifact, citation, claim, hypothesis, decision, or conclusion;
-exclude that result from fan-in. Worker self-attestation alone does not pass the
-gate.
+exclude that result from fan-in. Inspect the worker tool trace for prohibited
+memory or archived-artifact reads; worker self-attestation alone does not pass
+the gate.
 
 Use the latest Sentry event as primary evidence. Do not block planning only
 because release mapping is unavailable, the deployed revision differs, the
@@ -164,7 +173,9 @@ use `State: awaiting_input`, `Profile status: executed`, `Workflow outcome:
 completed`, and `Engineering outcome: partially_solved`. Use `plan_only` only
 when a plan was actually created; never emit `passed` as a profile status or
 `incomplete` for a completed clarification handoff.
-Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
+Validate every terminal envelope before fan-in. The Fix Design worker outcome is
+`complete` even when its `plan_readiness` is `awaiting_input`; return any other
+worker outcome or readiness/action pair to the same worker. Return an invalid enum or readiness/action pair to the same worker;
 never normalize, reinterpret, or silently repair it in Coordinator state.
 After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded
 discrepancy or required conditional gate remains unresolved.

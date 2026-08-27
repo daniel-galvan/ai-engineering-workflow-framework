@@ -80,6 +80,8 @@ BLOCKING_DECISION_TYPES = {
     "indispensable_evidence",
 }
 PROHIBITED_CONTEXT_MARKERS = ("MEMORY.md", "/memories/", "<oai-mem-citation>")
+UNOBSERVED_MODEL_VALUES = {"", "unknown", "none", "not exposed", "not applicable"}
+EMPTY_ARTIFACT_VALUES = {"", "unknown", "none", "not applicable", "n/a"}
 
 ROLE_AGENT_ALIASES = {
     "Orchestrator": ("orchestrator",),
@@ -170,6 +172,45 @@ def markdown_table(text: str, heading: str) -> list[dict[str, str]]:
 def fenced_section(text: str, heading: str) -> str:
     match = re.search(rf"^{re.escape(heading)}\s*\n+```text\s*\n(.*?)\n```", text, re.MULTILINE | re.DOTALL)
     return match.group(1) if match else ""
+
+
+def _artifact_path(value: str, record_path: Path) -> Path | None:
+    value = value.strip()
+    if value.lower() in EMPTY_ARTIFACT_VALUES:
+        return None
+    if value.startswith("[") and "](" in value and value.endswith(")"):
+        value = value.split("](", 1)[1][:-1]
+    candidate = Path(value)
+    return candidate.resolve() if candidate.is_absolute() else (record_path.parent / candidate).resolve()
+
+
+def current_artifact_errors(
+    rows: list[dict[str, str]], record_path: Path, artifact_root_value: str, *, require_files: bool = True
+) -> list[str]:
+    errors = []
+    if not artifact_root_value.strip():
+        return [f"{record_path}: Durable Artifacts requires a durable artifact root"]
+    root = Path(artifact_root_value.strip())
+    if not root.is_absolute():
+        return [f"{record_path}: durable artifact root must be absolute"]
+    root = root.resolve()
+    if not rows:
+        return [f"{record_path}: Durable Artifacts must contain populated rows"]
+    for row in rows:
+        artifact = row.get("Artifact", "").strip() or "unnamed"
+        target = _artifact_path(row.get("Path", ""), record_path)
+        if target is None:
+            errors.append(f"{record_path}: durable artifact {artifact} has no path")
+            continue
+        if not target.is_relative_to(root):
+            errors.append(f"{record_path}: durable artifact {artifact} escapes the current artifact root")
+        elif target.parent != root:
+            errors.append(f"{record_path}: durable artifact {artifact} must be a current-run root file, not an archive")
+        if require_files and not target.is_file() and not (
+            target.name == "work_record.md" and target.parent == record_path.parent
+        ):
+            errors.append(f"{record_path}: durable artifact {artifact} does not exist: {target}")
+    return errors
 
 
 def reasoning_record_errors(text: str) -> list[str]:
@@ -630,6 +671,23 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
                 fail(f"{path}: completed workflow requires zero active handles")
     worker_rows = table_rows["# Worker Execution Ledger"]
+    result_rows = table_rows["# Worker Result Summary"]
+    if playbook_name == "sentry_issue_remediation" and codex_run:
+        ledger_by_worker = {row.get("Worker", "").strip().lower(): row for row in worker_rows}
+        for row in result_rows:
+            outcome = row.get("Outcome", "").strip().lower()
+            if outcome not in WORKER_OUTCOMES:
+                fail(f"{path}: invalid worker result outcome: {outcome}")
+            worker_key = row.get("Worker", "").strip().lower()
+            ledger_row = ledger_by_worker.get(worker_key)
+            if ledger_row and outcome != ledger_row.get("Outcome", "").strip().lower():
+                fail(f"{path}: Worker Result Summary outcome must match the execution ledger for {row.get('Worker', '')}")
+            if worker_key not in {"coordinator", "orchestrator"}:
+                actual = row.get("Actual model/effort", "").strip().lower()
+                if actual in UNOBSERVED_MODEL_VALUES:
+                    fail(f"{path}: Codex worker result must record provider-observed model/effort for {row.get('Worker', '')}")
+                if ledger_row and actual != ledger_row.get("Provider-observed model/effort", "").strip().lower():
+                    fail(f"{path}: Worker Result Summary model/effort must match the execution ledger for {row.get('Worker', '')}")
     for row in worker_rows:
         outcome = row.get("Outcome", "").strip().lower()
         if "Outcome" in row and outcome not in WORKER_OUTCOMES:
@@ -651,12 +709,18 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             expected = f"{binding['model']} / {binding['effort']}".lower()
             if configured != expected:
                 fail(f"{path}: {row.get('Worker', role)} configured model/effort must be {expected}")
-    fix_worker_complete = any(
-        SENTRY_ROLE_AGENTS.get(row.get("Role", "").strip()) == "sentry_solution_architect"
-        and row.get("Outcome", "").strip().lower() == "complete"
-        for row in worker_rows
-    )
-    if playbook_name == "sentry_issue_remediation" and fix_worker_complete:
+            observed = row.get("Provider-observed model/effort", "").strip().lower()
+            if observed in UNOBSERVED_MODEL_VALUES:
+                fail(f"{path}: Codex worker ledger must record provider-observed model/effort for {row.get('Worker', role)}")
+            elif observed != configured:
+                fail(f"{path}: {row.get('Worker', role)} provider-observed model/effort must match configured model/effort")
+    fix_worker_rows = [
+        row for row in worker_rows
+        if SENTRY_ROLE_AGENTS.get(row.get("Role", "").strip()) == "sentry_solution_architect"
+    ]
+    if playbook_name == "sentry_issue_remediation" and fix_worker_rows:
+        if any(row.get("Outcome", "").strip().lower() != "complete" for row in fix_worker_rows):
+            fail(f"{path}: Sentry Fix Design worker outcome must be complete; use plan_readiness for awaiting_input")
         fix_result_path = path.parent / "fix_design_result.json"
         if not fix_result_path.is_file():
             fail(f"{path}: completed Sentry Fix Design requires fix_design_result.json")
@@ -786,6 +850,32 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     execution = re.search(r"^Execution:\s*(.*?)\nProvenance:", handoff, re.MULTILINE | re.DOTALL)
     if not execution or f"runtime {runtime_value}" not in " ".join(execution.group(1).lower().split()):
         fail(f"{path}: Final Handoff runtime must match Worker Runtime Closure")
+    if playbook_name == "sentry_issue_remediation" and codex_run:
+        for error in current_artifact_errors(
+            markdown_table(text, "# Durable Artifacts"),
+            path,
+            finalization.get("Durable artifact root", ""),
+        ):
+            fail(error)
+        if handoff:
+            in_artifacts = False
+            for line in handoff.splitlines():
+                if line == "Artifacts:":
+                    in_artifacts = True
+                    continue
+                if in_artifacts and line.startswith("Execution:"):
+                    break
+                if in_artifacts and line.startswith("- "):
+                    target = _artifact_path(line[2:], path)
+                    if target is None:
+                        fail(f"{path}: Final Handoff contains an empty artifact path")
+                    elif not target.is_file() and not (
+                        target.name == "work_record.md" and target.parent == path.parent
+                    ):
+                        fail(f"{path}: Final Handoff artifact does not exist: {target}")
+        if not _ALLOW_UNRELEASED and runtime_value == "released" and execution:
+            if "validation passed" not in " ".join(execution.group(1).lower().split()):
+                fail(f"{path}: released Sentry handoff must report validation passed")
     return handoff
 
 
@@ -1921,6 +2011,11 @@ for phrase in (
     "provider_configuration_unavailable",
     "concurrent-run decision",
     "IDs without values are not delivered",
+    "`spawnAgent` return metadata",
+    "Never fan-in a worker whose provider binding was not verified",
+    "direct children",
+    "Inspect the worker tool trace",
+    "Fix Design worker outcome is",
     "final artifact and answer",
     "run_already_active",
     "required terminal-field checklist",
@@ -1988,6 +2083,8 @@ for phrase in (
     "Repository Integrator only for one recorded cross-repository question",
     "confirmed defect owner",
     "provider_configuration_unavailable",
+    "returned model, effort, and fresh-context metadata",
+    "`runs/` archives",
     "Quarantine any provider-required memory pass",
     "implementation_plan_action",
     "concurrent-run decision",
@@ -2028,7 +2125,11 @@ for text, label in (
 ):
     if "Standard Sentry planning" not in text or "30 KB combined" not in text or "10 KB" not in text:
         fail(f"{label} is missing Standard Sentry artifact control")
-    if "runtime-managed worktrees are not" not in text or "artifact roots unless" not in text:
+    if (
+        "runtime-managed worktrees are not" not in text
+        or "artifact roots unless" not in text
+        or "direct children of the declared current-run artifact" not in text
+    ):
         fail(f"{label} is missing durable artifact-root control")
 
 for phrase in ("do not patch `work_record.md`", "finish within two minutes", "sole writer", "Best current explanations"):
@@ -2091,6 +2192,8 @@ for phrase in (
     "sole writer for its assigned non-record artifacts and packet",
     "MUST NOT reread",
     "Provider-required memory remains quarantined",
+    "returned activation metadata",
+    "Active-run artifacts MUST be direct children",
     "Never reduce a useful hypothesis result",
     "During planning, run a unit or integration test only",
     "Complete when",

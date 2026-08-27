@@ -37,7 +37,8 @@ description: >-
    `contracts/claims.md`, and the canonical run template declared by the playbook. Load the Codex provider adapter and
    model policy only when provider configuration is needed.
 7. Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
-   runtime-agent directory. Use `--continuation` only when the user explicitly says continue or resume. This one step
+   runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
+   when the user explicitly says continue or resume. This one step
    archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
    Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its
    baseline ID, and stop if a required binding is absent. The active main session remains the Orchestrator with its
@@ -52,7 +53,9 @@ description: >-
    evidence, do not read memory, historical `.thoughts` artifacts, or prior-run citations at any later stage. The
    execution repository's `.codex/agents/`
    runtime view is optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
-   binding; record the source and status, and never inherit unverified Coordinator settings. Preserve template field
+   binding; record the source and status, and never inherit unverified Coordinator settings. Active artifacts are direct
+   children of the current `.thoughts/<WORK-ITEM-ID>/` root; do not search or reuse `runs/` archives unless the user
+   explicitly requests continuation or recovery. Preserve template field
    names, use `Unknown` or `None` for unavailable values, and ask only for a business, scope, ownership, or approval
    decision that bounded discovery cannot resolve.
 9. Execute the selected playbook. Default to `planning`; use `remediation` only when an implementation plan exists and

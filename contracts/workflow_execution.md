@@ -76,6 +76,19 @@ require a memory pass. Provider-required memory remains quarantined: no memory-d
 hypothesis, or conclusion may enter run evidence or influence a decision until current-run evidence independently
 establishes it.
 
+For every delegated activation, the Coordinator MUST pass the exact manifest
+`model`, reasoning effort, and fresh-context setting to the provider primitive.
+It MUST inspect the returned activation metadata before accepting or waiting on
+the worker. Missing metadata is an unverified binding; a mismatched value is a
+configuration-conformance failure. The Coordinator MUST stop the affected
+worker, allow at most one explicit retry, and MUST NOT fan-in an unverified
+worker result.
+
+Active-run artifacts MUST be direct children of the declared durable artifact
+root. Archived `runs/` directories are retention only and MUST NOT be searched
+or used as current-run inputs unless the user explicitly requests continuation
+or recovery.
+
 ---
 
 # Vocabulary

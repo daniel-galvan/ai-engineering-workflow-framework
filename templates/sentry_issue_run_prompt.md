@@ -80,7 +80,9 @@ Runtime bootstrap:
 - The execution-repository `.codex/agents/` path is an optional runtime view. When it is absent, resolve each named
   provider agent definition from the bundled framework/plugin or selected work-graph binding.
 - After preflight, run packaged `scripts/prepare_run.py` once to archive a prior terminal run, initialize the current
-  record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly. Do not
+  record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly.
+  Immediately inspect each provider activation's returned model, effort, and fresh-context metadata against the manifest;
+  missing or mismatched metadata is a configuration-conformance failure and must not reach fan-in. Do not
   adapt, escalate, or inherit Coordinator values. If a required definition cannot be
   resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
 - Activate every delegated worker with `fork_context: false` or the provider-equivalent fresh-context option. Start
@@ -90,6 +92,8 @@ Runtime bootstrap:
   `prepare_run.py`; stop with `worker_runtime_unavailable` when it is absent.
 - Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
   reread the complete playbook or core contracts.
+- Active artifacts are direct children of the current `.thoughts/<WORK-ITEM-ID>/` root. Do not recursively search or
+  reuse `runs/` archives unless this is an explicit continuation or recovery run.
 - For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
   not satisfy final handoff.
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.

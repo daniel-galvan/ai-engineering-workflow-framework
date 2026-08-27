@@ -231,6 +231,8 @@ Create the implementation plan only after required planning workers complete, fa
 The execution repository comes from the canonical run prompt and may itself contain code. Additional repositories and
 runtime-managed worktrees are not artifact roots unless explicitly declared as the execution repository. The work record
 links to the plan before the workflow is marked `ready_for_implementation`.
+Active artifacts are direct children of the declared current-run artifact root; archived `runs/` directories are not
+current inputs unless the run explicitly continues or recovers a prior run.
 
 ---
 

@@ -111,6 +111,9 @@ final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
 pending` values after the packet says the barrier passed. The final record,
 artifact list, plan action, and workflow/engineering outcome must agree with the final packet.
 Copy every artifact path exactly from the final packet.
+Active artifacts must be direct children of the declared current-run artifact
+root. Do not recursively inspect or reuse `runs/` archives unless the packet
+explicitly declares continuation or recovery.
 Retain every terminal field required by the contract even when compacting. Record the related-run check,
 finalization-schema result, and required artifact-set disposition from the finalized packet.
 Copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` exactly and keep them distinct. Validate the
