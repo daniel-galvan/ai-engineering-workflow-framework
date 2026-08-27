@@ -40,6 +40,10 @@ description: >-
    Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its
    baseline ID, and stop if a required binding is absent. The active main session remains the Orchestrator with its
    already-selected model and effort; do not claim that the Orchestrator agent TOML changed the parent session.
+   The Coordinator is the only role that performs package preflight and run preparation. Activate every delegated
+   worker with `fork_context: false` or the provider-equivalent fresh-context option. Start its packet with
+   `Coordinator initialization: complete` and explicitly prohibit rerunning this skill, `run_preflight.py`, or
+   `prepare_run.py`.
 8. Populate the canonical template from supplied and discoverable context. When the prompt requires current-run-only
    evidence, do not read memory, historical `.thoughts` artifacts, or prior-run citations at any later stage. The
    execution repository's `.codex/agents/`

@@ -1,6 +1,6 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-27
@@ -47,12 +47,14 @@ Exercise the playbook against a real work item before calling it validated.
 
 ## Updating the Codex plugin
 
-When a change affects the installed plugin package:
+Because the plugin packages this repository, every tracked content change affects the installed package:
 
 1. keep `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `skills/run/`, and `scripts/run_preflight.py`
    consistent with the repository layout;
-2. preserve the plugin's base version and refresh its single `+codex.<timestamp>` cache-busting suffix;
-3. run the framework validator and verify the plugin JSON and launcher files; and
+2. preserve the plugin's base version and refresh its single `+codex.<timestamp>` cache-busting suffix before packaging
+   or installing the changed snapshot;
+3. run the framework validator and preflight self-test; they reject changed package content that reuses a plugin build
+   identity;
 4. reinstall the plugin and test it in a new Codex task.
 
 Do not change framework document versions merely because the plugin cache-buster changed.
@@ -74,6 +76,7 @@ From the repository root, run:
 
 ```bash
 python3 scripts/validate_library.py
+python3 scripts/run_preflight.py --self-test
 python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 ```
 

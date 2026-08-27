@@ -71,6 +71,11 @@ resolved or the provider cannot apply it, stop with
 Do not instruct downstream workers to reread the complete playbook or core
 contracts. Pass the typed assignment, provider role configuration, relevant
 artifacts, and only a specific framework section or template when needed.
+Activate every delegated worker with `fork_context: false` or the
+provider-equivalent fresh-context option. Start every activation packet with
+`Coordinator initialization: complete`. Explicitly prohibit the worker from
+running the launcher skill, `run_preflight.py`, or `prepare_run.py`; those are
+Coordinator-only initialization actions.
 
 After `evidence-topology`, start the Deep failure-topology and repository-
 integration workers in parallel when capacity exists; otherwise record the

@@ -15,6 +15,9 @@ missing instead of designing from a lossy rewrite.
 
 Use the Orchestrator's typed assignment and this provider role as runtime
 instructions. Do not reread the complete playbook, core contracts, or templates.
+The packet must say `Coordinator initialization: complete`. Do not run the
+launcher skill, `run_preflight.py`, or `prepare_run.py`, and do not edit any
+durable artifact.
 If higher-priority runtime instructions require a memory pass, quarantine it:
 do not cite or import unassigned memory or historical facts. Treat source paths and citations already verified by the evidence
 worker as inputs; do not remap them unless the evidence records a named
@@ -80,6 +83,26 @@ Set `plan_readiness: awaiting_input` and `implementation_plan_action: omit`.
 Set `plan_readiness: ready_for_implementation` and
 `implementation_plan_action: create` only when one evidence-supported
 remediation boundary and intended change have been selected.
+
+Return one JSON object for the Coordinator's finalized packet and the Documenter
+to persist verbatim as `fix_design_result.json`. It must contain:
+`worker_id`, `worker_handle`, `outcome` (`complete`), `plan_readiness`,
+`implementation_plan_action`, non-empty `inputs_consumed`,
+`context_conformance` (`pass`), `configuration_conformance`,
+`checks_performed`, `checks_remaining`, `supported_remediation_boundary`,
+`supported_intended_change`, and `blocking_unknowns`. Return the complete plan
+or Clarification Brief as a separately labeled payload in the same terminal
+envelope so the JSON control artifact stays compact. Do not create those
+artifacts yourself.
+
+For `ready_for_implementation`, provide a non-empty supported boundary and
+intended change and no blocking unknowns. For `awaiting_input`, perform at least
+one discriminating check and represent every blocker as an object with
+`decision_type`, `question`, `unavailable_reason`, at least two materially
+different `fix_implications`, `evidence_refs`, and
+`invalidates_supported_change`. Do not use `awaiting_input` when the evidence
+already supports one boundary and intended change unless every blocker is
+evidenced to invalidate that change.
 
 If the run declares a comparison source of truth, preserve it as the expected
 baseline. Design the correction for the system that differs from that baseline;

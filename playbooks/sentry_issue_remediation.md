@@ -1,12 +1,12 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.5
+version: 0.4.6
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -52,9 +52,11 @@ Use another workflow when:
 
 ## Required Inputs
 
-- Sentry issue URL or issue identifier
-- MCP access to the relevant Sentry organization and project
-- One or more relevant repository checkouts or working directories
+- For `live_sentry`: a stable Sentry issue URL or identifier, access to the relevant Sentry organization and project,
+  and one or more relevant repository checkouts or working directories
+- For `supplied_occurrence`: the current-run occurrence artifact and one or more relevant repository checkouts or
+  working directories; live Sentry identity and access are optional
+- For `mixed`: the `live_sentry` inputs plus the current-run occurrence artifact
 
 ## Recommended Inputs
 
@@ -183,12 +185,12 @@ re-entry:
 3. start or record a new run with the same profile and `lifecycle: remediation`;
 4. re-read this playbook, the work record, and the implementation plan;
 5. record `profile_status: requested` for the remediation run;
-6. reuse completed planning artifacts and activate `implement`, `review`, `validate`, and `handoff` before source
-   changes;
+6. reuse completed planning artifacts and activate `implement`, `review`, and `validate` before source changes;
 7. wait for every required result envelope and complete fan-in before closing the remediation stage; and
-8. complete the shared worker-runtime closure barrier before closing the prior run or starting another lifecycle run;
+8. activate final `handoff` after delivery fan-in;
+9. complete the shared worker-runtime closure barrier before closing the prior run or starting another lifecycle run;
    and
-9. report the remediation run's lifecycle, worker activation, fan-in, and runtime-closure status.
+10. report the remediation run's lifecycle, worker activation, fan-in, and runtime-closure status.
 
 If new evidence contradicts or expands the approved plan, reactivate the profile's required planning workers before
 implementation. If approval is missing, stop with state `awaiting_input` and reason `approval_required`. If remediation
@@ -221,10 +223,10 @@ Required worker sets are explicit:
 - `standard + planning`: Coordinator initialization, `evidence-topology`, `fix-design`, and one final `handoff` after
   analytical fan-in. The `fix-design` worker performs bounded failure analysis before designing the fix.
 - `deep + planning`: all standard planning workers plus `failure-topology` and mandatory `repository-integration`.
-- `standard + remediation`: reuse completed standard planning artifacts, then activate `implement`, `review`,
-  `validate`, and `handoff` after approval.
-- `deep + remediation`: reuse completed deep planning artifacts, then activate `implement`, `review`, `validate`, and
-  `handoff` after approval.
+- `standard + remediation`: reuse completed standard planning artifacts, activate `implement`, `review`, and `validate`
+  after approval, then activate final `handoff` after delivery fan-in.
+- `deep + remediation`: reuse completed deep planning artifacts, activate `implement`, `review`, and `validate` after
+  approval, then activate final `handoff` after delivery fan-in.
 
 ## Profile Execution
 
@@ -246,7 +248,7 @@ mandatory Repository Integrator. Repository Integrator remains conditional for s
 | `evidence-topology`      | `current_state_investigator` | investigation | standard       | `work_item_context`, `repository_exploration`, `architecture_mapping`, `failure_diagnosis`, `work_record_maintenance` | `work_item_read`, `runtime_observe`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; Coordinator initialization                                      |
 | `failure-topology`       | `dependency_analyst`         | investigation | standard       | `dependency_mapping`, `destination_integration`, `architecture_mapping`, `failure_diagnosis`                          | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write`                | Deep only; after `evidence-topology`                                       |
 | `repository-integration` | `repository_integrator`      | investigation | standard       | `destination_integration`, `architecture_mapping`, `operational_readiness`                                            | `repository_read`, `repository_search`, `history_read`, `artifact_write`                                      | Required for `deep`; conditional for `standard`; after `evidence-topology` |
-| `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `artifact_write`, `work_record_write`                                                                         | Required after evidence in standard; after `failure-topology` and integrator in deep |
+| `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `repository_read`, `repository_search`, `test_run`                                                            | Required after evidence in standard; after `failure-topology` and integrator in deep |
 | `implement`              | `implementer`                | delivery      | standard       | `failure_diagnosis`, `build_and_test`                                                                                 | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write`                           | Approval plus `fix-design`                                                 |
 | `review`                 | `reviewer`                   | review        | standard       | `architecture_mapping`, `build_and_test`, `operational_readiness`                                                     | `repository_read`, `diff_review`, `test_run`, `artifact_write`                                                | `implement`                                                                |
 | `validate`               | `tester`                     | review        | standard       | `build_and_test`, `operational_readiness`                                                                             | `build_run`, `test_run`, `runtime_observe`, `artifact_write`                                                  | `review`                                                                   |
@@ -255,7 +257,7 @@ mandatory Repository Integrator. Repository Integrator remains conditional for s
 The delivery profile is `implement` ↔ `review` → `validate`. No additional discovery workers are started after approval
 unless new evidence contradicts the diagnosis or expands the approved scope.
 
-The Coordinator performs Standard initialization directly; never activate or delegate an `initialize` worker.
+The Coordinator performs initialization directly; never activate or delegate an `initialize` worker.
 
 This delivery sequence is valid only inside an explicitly activated `remediation` run. The presence of an existing
 `implementation_plan.md` is not evidence that remediation workers ran in the current run.
@@ -271,12 +273,16 @@ threads keep the workflow `in_progress`.
 
 Workers use the shared result envelope defined in the execution contract. Sentry-specific requirements are:
 
+- The Coordinator activates every delegated worker with fresh context (`fork_context: false` or provider equivalent).
+  Every packet starts with `Coordinator initialization: complete`; workers do not rerun the launcher, preflight, run
+  preparation, or edit the work record.
 - `evidence-topology` owns raw Sentry queries for the run.
 - When the prompt supplies a stable Sentry issue ID or URL, resolve that issue directly before any project or issue
   search, then request the latest issue event first (`limit: 1` when supported). If direct resolution fails, perform at
   most one justified fallback search and stop with bounded uncertainty; do not enumerate projects or fan out across
   organizations and datasets.
 - Downstream workers consume normalized evidence artifacts.
+- Fix Design returns one canonical JSON result for the Documenter to persist verbatim as `fix_design_result.json`.
 - Workers repeat Sentry or repository analysis only when they identify and record a specific discrepancy.
 - The Documenter records every worker result, blocker, synchronization state, model, effort, usage, and credits when
   available.
@@ -310,7 +316,7 @@ The planning lifecycle must produce an implementation plan before reaching `read
 [`templates/implementation_plan.md`](../templates/implementation_plan.md) at:
 
 ```text
-<execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/implementation_plan.md
+<execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
 The plan is a design artifact, not authorization to change source code. It is the execution source for the remediation
@@ -383,7 +389,7 @@ investigation must not receive the work record or worker artifacts.
 Recover or create:
 
 ```text
-<execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/work_record.md
+<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
 Do not create `implementation_plan.md` during initialization. Create it after all required planning workers have
@@ -433,6 +439,18 @@ facts, latest event as the primary occurrence, any justified representative
 sample, initial repository/revision mapping, initial topology, code-path entry
 point, source references, and unresolved boundary questions. Downstream workers
 consume the exact artifact path instead of a Coordinator summary or repeated Sentry queries.
+
+The artifact MUST contain this compact table, using `Not established` for unevidenced values rather than inferring them:
+
+```text
+# Contract Delta
+| Boundary | Representation | Field identity / coordinate space | Evidence refs |
+| Baseline | ... | ... | ... |
+| Outbound | ... | ... | ... |
+| Destination input | ... | ... | ... |
+| Return | ... | ... | ... |
+| Semantic input equivalence | equivalent / not_equivalent / not_established | Not applicable | ... |
+```
 
 The Orchestrator also records and passes through each prompt-supplied artifact and material
 context as consumed, unavailable, conflicting, or out of scope. The original
@@ -520,12 +538,23 @@ completion criteria. The Documenter persists it as `implementation_plan.md` and 
 Artifacts section with a relative link to the plan. Do not implement until the workflow reaches
 `ready_for_implementation` and approval is recorded.
 
+Fix Design returns a complete structured result with `worker_id`, `worker_handle`, `outcome`, `plan_readiness`,
+`implementation_plan_action`, `inputs_consumed`, `context_conformance`, `configuration_conformance`,
+`checks_performed`, `checks_remaining`, `supported_remediation_boundary`, `supported_intended_change`, and
+`blocking_unknowns`. The Documenter persists that result verbatim as `fix_design_result.json` and creates the selected
+plan or Clarification Brief from the separately labeled content in the same terminal envelope; Fix Design does not edit
+durable artifacts.
+
 If the evidence supports more than one credible fix, record the alternatives, tradeoffs, validation impact, and a
 recommendation in the implementation plan when a safe recommendation is possible. Do not ask the user to resolve a
 technical hypothesis that the workers can investigate or validate. Use the shared Clarification Brief and hand off
 `awaiting_input` only when a material business, scope, ownership, or incompatible-alternatives decision remains after
 bounded discovery and cannot be resolved by a recommendation. Do not create a plan only when that genuine decision
 prevents a safe implementation scope.
+
+Every blocking unknown MUST name its decision type, question, unavailable reason, evidence references, and at least two
+materially different fix implications. Do not return `awaiting_input` after the evidence establishes a remediation
+boundary and intended change unless every blocker is evidenced to invalidate that change.
 
 A clarification result is incomplete if it only requests production data or
 repeats an unresolved question without reporting the consumed evidence,
@@ -626,10 +655,11 @@ condition. Do not say `Nothing technical.` if the user must supply evidence, aut
 
 For Standard Sentry planning, use these canonical durable artifacts when applicable:
 
-- `.thoughts/<SENTRY-ISSUE-ID>/work_record.md`
-- `.thoughts/<SENTRY-ISSUE-ID>/normalized_evidence.md`
-- `.thoughts/<SENTRY-ISSUE-ID>/clarification_brief.md` when the result is `awaiting_input`
-- `.thoughts/<SENTRY-ISSUE-ID>/implementation_plan.md` only when `plan_readiness=ready_for_implementation`
+- `.thoughts/<WORK-ITEM-ID>/work_record.md`
+- `.thoughts/<WORK-ITEM-ID>/normalized_evidence.md`
+- `.thoughts/<WORK-ITEM-ID>/fix_design_result.json`
+- `.thoughts/<WORK-ITEM-ID>/clarification_brief.md` when the result is `awaiting_input`
+- `.thoughts/<WORK-ITEM-ID>/implementation_plan.md` only when `plan_readiness=ready_for_implementation`
 
 Final reconciliation validates this artifact set by name and disposition. An `awaiting_input` result without
 `clarification_brief.md` fails finalization even when the artifact count and byte total otherwise reconcile.

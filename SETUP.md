@@ -1,6 +1,6 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.4.4
+version: 0.4.5
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-27
@@ -130,10 +130,11 @@ Use $ai-engineering-workflows:run.
 Work item: <stable ID or URL>
 ```
 
-The plugin uses the framework snapshot bundled with its installed version. After packaged content changes, update the
-cache-busting suffix in `.codex-plugin/plugin.json`, run the framework validator, and rerun the `codex plugin add`
-command above. Start a new task to load the updated package. The installed plugin name/version must be recorded in
-plugin-backed work records.
+The plugin uses the framework snapshot bundled with its installed version. After any tracked repository content change,
+update the cache-busting suffix in `.codex-plugin/plugin.json` before packaging or installing the snapshot. Run the
+framework validator and preflight self-test, then rerun the `codex plugin add` command above. Reusing build metadata
+fails validation or preflight with `plugin_build_identity_reused`. Start a new task to load the updated package. Record
+the installed plugin name/version in plugin-backed work records.
 Supplying a framework checkout path remains part of the manual prompt workflow below, not the plugin invocation.
 The launcher performs a package/revision/clean-status preflight before loading the catalog or playbook. Do not paste a
 versioned plugin-cache `SKILL.md` path into a plugin run; the active installed skill is authoritative. If an explicit
@@ -213,6 +214,9 @@ Primary code repository:
 
 Work item:
 SENTRY-ISSUE-123 (https://sentry.example.com/issues/SENTRY-ISSUE-123)
+
+Evidence source: live_sentry
+Sentry issue: https://sentry.example.com/issues/SENTRY-ISSUE-123
 
 Playbook: playbooks/sentry_issue_remediation.md
 Execution profile: standard
@@ -431,6 +435,9 @@ Primary code repository:
 
 Work item:
 SENTRY-ISSUE-123 (https://sentry.example.com/issues/SENTRY-ISSUE-123)
+
+Evidence source: live_sentry
+Sentry issue: https://sentry.example.com/issues/SENTRY-ISSUE-123
 
 Playbook: playbooks/sentry_issue_remediation.md
 Canonical run template: templates/sentry_issue_run_prompt.md

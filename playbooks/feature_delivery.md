@@ -1,12 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -99,10 +99,12 @@ worker-runtime closure.
 
 ## Worker Graph
 
+The Coordinator performs initialization directly; never activate or delegate an `initialize` worker.
+Activate one final Documenter after analytical fan-in.
+
 | Worker | Role | Skills | Tools | Activation / dependency |
 | --- | --- | --- | --- | --- |
-| `initialize` | `orchestrator` | `work_item_context`, `workflow_planning`, `work_record_maintenance` | `work_item_read`, `work_record_read`, `work_record_write` | First |
-| `feature-context` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `architecture_mapping` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; after `initialize` |
+| `feature-context` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `architecture_mapping` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; after Coordinator initialization |
 | `impact-analysis` | `dependency_analyst` | `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write` | Required; after `feature-context` |
 | `repository-integration` | `repository_integrator` | `destination_integration`, `architecture_mapping`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `build_run`, `test_run`, `artifact_write` | Required for `deep`; conditional for `standard`; after `feature-context` |
 | `feature-design` | `solution_architect` | `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `impact-analysis` and any required integration analysis |
@@ -110,18 +112,18 @@ worker-runtime closure.
 | `implement` | `implementer` | `build_and_test` | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write` | Remediation only; approval plus completed planning fan-in |
 | `review` | `reviewer` | `architecture_mapping`, `build_and_test`, `operational_readiness` | `repository_read`, `diff_review`, `test_run`, `artifact_write` | After `implement` |
 | `validate` | `tester` | `build_and_test`, `operational_readiness` | `build_run`, `test_run`, `runtime_observe`, `artifact_write` | After `review` |
-| `handoff` | `documenter` | `work_record_maintenance` | `work_record_read`, `work_record_write`, `artifact_write` | Continuous after `initialize` |
+| `handoff` | `documenter` | `work_record_maintenance` | `work_record_read`, `work_record_write`, `artifact_write` | Required once after applicable fan-in |
 
 Required worker sets:
 
-- `standard + planning`: `initialize`, `feature-context`, `impact-analysis`, `feature-design`, and continuous `handoff`.
+- `standard + planning`: `feature-context`, `impact-analysis`, `feature-design`, and final `handoff`.
   `repository-integration` is added when the context crosses a repository, service, ownership, deployment, persistence,
   or public-contract seam.
 - `deep + planning`: standard planning workers plus mandatory `repository-integration` and `planning-review`.
-- `standard + remediation`: reuse completed standard planning artifacts, then activate `implement`, `review`,
-  `validate`, and `handoff` after approval.
-- `deep + remediation`: reuse completed deep planning artifacts, then activate `implement`, `review`, `validate`, and
-  `handoff` after approval.
+- `standard + remediation`: reuse completed standard planning artifacts, activate `implement`, `review`, and `validate`
+  after approval, then activate final `handoff` after delivery fan-in.
+- `deep + remediation`: reuse completed deep planning artifacts, activate `implement`, `review`, and `validate` after
+  approval, then activate final `handoff` after delivery fan-in.
 
 The delivery sequence is `implement` ↔ `review` → `validate` → `handoff`. Do not start additional discovery workers
 after approval unless new evidence contradicts the approved plan or expands scope.
@@ -219,9 +221,9 @@ deep-profile alternative.
 
 ### Stage 5 — Approved Remediation
 
-Before source changes, activate and record `implement`, `review`, `validate`, and continuous `handoff` with their
-declared dependencies. The Coordinator must not perform those roles itself. If this graph is unavailable, stop as
-`remediation_not_activated`; do not edit source.
+Before source changes, activate and record `implement`, `review`, and `validate` with their declared dependencies; run
+the final `handoff` after delivery fan-in. The Coordinator must not perform those roles itself. If this graph is
+unavailable, stop as `remediation_not_activated`; do not edit source.
 
 Then continue the approved plan through every in-scope implementation step, review the diff, and run the validation
 ladder. In-scope review findings return to `implement` until the Reviewer accepts the affected diff; they are not a

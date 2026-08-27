@@ -16,6 +16,9 @@ compressing them into a conclusion that downstream workers cannot verify.
 
 Use the Orchestrator's typed assignment and this provider role as runtime
 instructions. Do not reread the complete playbook, core contracts, or templates.
+The packet must say `Coordinator initialization: complete`. Do not run the
+launcher skill, `run_preflight.py`, or `prepare_run.py`, and do not edit
+`work_record.md`.
 If higher-priority runtime instructions require a memory pass, quarantine it:
 do not cite or import unassigned memory or historical facts. Load a specific
 referenced section only when the assignment is ambiguous. Bound mapping to the
@@ -48,6 +51,13 @@ release or deployment mapping is verified.
 When the run declares a comparison source of truth, record its observed result
 as the expected baseline and state the direction of the discrepancy. Do not
 reinterpret a larger baseline result set as duplicates without evidence.
+
+Add a `# Contract Delta` table with columns `Boundary`, `Representation`,
+`Field identity / coordinate space`, and `Evidence refs`. Include exact rows
+`Baseline`, `Outbound`, `Destination input`, `Return`, and
+`Semantic input equivalence`. The last row's representation is `equivalent`,
+`not_equivalent`, or `not_established`. Use `Not established` when evidence
+does not establish another value; do not infer it.
 
 Do not make downstream workers repeat these Sentry queries unless they are
 checking a stated discrepancy.

@@ -1,12 +1,12 @@
 ---
 title: TechOps Issue Remediation Playbook
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -74,10 +74,12 @@ Use [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_
 
 ## Worker Graph
 
+The Coordinator performs initialization directly; never activate or delegate an `initialize` worker.
+Activate one final Documenter after analytical fan-in.
+
 | Worker | Role | Skills | Tools | Activation / dependency |
 | --- | --- | --- | --- | --- |
-| `initialize` | `orchestrator` | `work_item_context`, `workflow_planning`, `work_record_maintenance` | `work_item_read`, `work_record_read`, `work_record_write` | First |
-| `issue-evidence` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `failure_diagnosis` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `runtime_observe`, `artifact_write` | Required; after `initialize` |
+| `issue-evidence` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `failure_diagnosis` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `runtime_observe`, `artifact_write` | Required; after Coordinator initialization |
 | `failure-path` | `dependency_analyst` | `failure_diagnosis`, `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write` | Required; after `issue-evidence` |
 | `repository-integration` | `repository_integrator` | `destination_integration`, `architecture_mapping`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required for `deep`; conditional for `standard`; after `issue-evidence` |
 | `fix-design` | `solution_architect` | `failure_diagnosis`, `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `failure-path` and any required integration analysis |
@@ -85,11 +87,11 @@ Use [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_
 | `implement` | `implementer` | `failure_diagnosis`, `build_and_test` | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write` | Remediation only; approval plus completed planning fan-in |
 | `review` | `reviewer` | `architecture_mapping`, `build_and_test`, `operational_readiness` | `repository_read`, `diff_review`, `test_run`, `artifact_write` | After `implement` |
 | `validate` | `tester` | `build_and_test`, `operational_readiness` | `build_run`, `test_run`, `runtime_observe`, `artifact_write` | After `review` |
-| `handoff` | `documenter` | `work_record_maintenance` | `work_record_read`, `work_record_write`, `artifact_write` | Continuous after `initialize` |
+| `handoff` | `documenter` | `work_record_maintenance` | `work_record_read`, `work_record_write`, `artifact_write` | Required once after applicable fan-in |
 
 Required planning workers:
 
-- `standard`: `initialize`, `issue-evidence`, `failure-path`, `fix-design`, and continuous `handoff`; add
+- `standard`: `issue-evidence`, `failure-path`, `fix-design`, and final `handoff`; add
   `repository-integration` when the report crosses a repository, service, deployment, ownership, or public-contract
   seam.
 - `deep`: all standard workers plus mandatory `repository-integration` and `planning-review`.
@@ -188,9 +190,9 @@ planning blocker by itself.
 
 ### Stage 5 — Approved Remediation
 
-Explicit approval and remediation re-entry activate `implement`, `review`, `validate`, and continuous `handoff` before
-source changes. In-scope review findings return to `implement` for repair and re-review; they are not a new approval
-gate or final handoff.
+Explicit approval and remediation re-entry activate `implement`, `review`, and `validate` before source changes, then
+activate the final `handoff` after delivery fan-in. In-scope review findings return to `implement` for repair and
+re-review; they are not a new approval gate or final handoff.
 
 ### Stage 6 — Stabilize and Hand Off
 

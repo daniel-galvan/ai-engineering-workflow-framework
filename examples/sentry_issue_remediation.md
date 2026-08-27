@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Example
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-07-30
+last_updated: 2026-08-27
 depends_on:
   - ../playbooks/sentry_issue_remediation.md
   - ../templates/sentry_issue_run_prompt.md
@@ -26,7 +26,9 @@ regression test, and validation plan.
 
 | Item | Example |
 | --- | --- |
-| Sentry issue | `<SENTRY-ISSUE-ID-OR-URL>` |
+| Work item | `<STABLE-WORK-ITEM-ID-OR-URL>` |
+| Evidence source | `live_sentry`, `supplied_occurrence`, or `mixed` |
+| Sentry issue | `<SENTRY-ISSUE-ID-OR-URL-OR-NOT-PROVIDED>` |
 | Execution repository | Local checkout where the workflow starts and stores artifacts |
 | Event-origin repository | `<REPORTING-REPOSITORY>` |
 | Candidate fault repository | `<REPOSITORY-OR-UNKNOWN>` |
@@ -39,14 +41,17 @@ regression test, and validation plan.
 ## Run Format
 
 Use the canonical [`templates/sentry_issue_run_prompt.md`](../templates/sentry_issue_run_prompt.md) template. Fill in
-the issue, repositories, topology hypothesis, optional artifacts, profile, and lifecycle. Do not copy the playbook
-process into the prompt.
+the work item, evidence source, Sentry issue when applicable, repositories, topology, artifacts, profile, and lifecycle.
+Do not copy the playbook process into the prompt.
 
 For a normal first investigation, use:
 
 ```text
 Playbook: playbooks/sentry_issue_remediation.md
 Canonical run template: templates/sentry_issue_run_prompt.md
+Work item: <STABLE-WORK-ITEM-ID-OR-URL>
+Evidence source: live_sentry
+Sentry issue: <SENTRY-ISSUE-ID-OR-URL>
 Execution profile: standard
 Lifecycle: planning
 ```
@@ -66,13 +71,13 @@ persisted rows only when the latest event and source evidence cannot answer a ma
 Recover or create:
 
 ```text
-<execution-repository>/.thoughts/<SENTRY-ISSUE-ID>/work_record.md
+<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
 Create `implementation_plan.md` under the same execution repository only after all required planning workers complete
 and the workflow reaches `ready_for_implementation`. The evidence worker owns raw Sentry queries and publishes
-normalized evidence. The Solution Architect designs the fix. The Documenter persists the implementation plan and links
-it from the work record.
+normalized evidence. The Solution Architect designs the fix. The Documenter persists `fix_design_result.json` plus the
+selected implementation plan or Clarification Brief and links them from the work record.
 
 ## Planning Follow-up and Remediation Re-entry
 

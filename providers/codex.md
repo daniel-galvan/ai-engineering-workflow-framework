@@ -1,11 +1,11 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-08-21
+last_updated: 2026-08-27
 ---
 
 # Codex Provider Adapter
@@ -35,6 +35,12 @@ The active Codex session is the Coordinator and performs the Orchestrator role u
 nested delegation for a coordinator agent. Agent TOML files configure workers; they do not create delegation capability.
 If nested delegation is not available, the active session must invoke the required workers directly and complete fan-in
 and release completed worker handles before reporting profile success or starting a new lifecycle run.
+
+The Coordinator alone performs plugin preflight and run preparation. Activate every delegated worker with
+`fork_context: false` or the provider-equivalent fresh-context option. Its typed activation packet MUST begin with
+`Coordinator initialization: complete` and MUST prohibit rerunning the launcher skill, `run_preflight.py`, or
+`prepare_run.py`. A worker consumes only its provider role, assignment, and named current-run inputs. It does not
+inherit the Coordinator transcript or initialize the run again.
 
 Record the actual model and reasoning effort used by each worker in the work record. Also record provider-reported usage
 or credits when available. If the enterprise workspace does not expose a recommended model or usage value, record the

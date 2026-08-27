@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -21,6 +22,14 @@ RFC3339_TIMESTAMP = re.compile(
 )
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
 MODEL_BASELINE_ID = "codex-role-policy-v20260827032839"
+POLICY_EFFORTS = {
+    "Light": "low",
+    "Medium": "medium",
+    "High": "high",
+    "Extra High": "xhigh",
+    "Max": "max",
+    "Ultra": "ultra",
+}
 MAX_MARKDOWN_PROSE_WIDTH = 120
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
@@ -41,12 +50,33 @@ PORTABLE_HANDOFF_CONTRACT = ROOT / "contracts" / "portable_implementation_handof
 CLAIMS_CONTRACT = ROOT / "contracts" / "claims.md"
 WORKFLOW_EVALUATION = ROOT / "frameworks" / "workflow_evaluation.md"
 CODEX_POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
+CODEX_ADAPTER = ROOT / "providers" / "codex.md"
 CODEX_AGENT_DIR = ROOT / "providers" / "codex" / "agents"
 IMPLEMENTATION_HANDOFF_TEMPLATE = ROOT / "templates" / "implementation_handoff.md"
 SENTRY_WORK_RECORD_TEMPLATE = ROOT / "templates" / "sentry_work_record.md"
 RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
 RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
 PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
+PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
+TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
+PROFILE_STATUSES = {"requested", "in_progress", "executed", "not_executed", "blocked"}
+PROFILES = {"standard", "deep"}
+WORKFLOW_OUTCOMES = {"completed", "incomplete", "blocked"}
+ENGINEERING_OUTCOMES = {"solved", "partially_solved", "plan_only", "blocked", "incorrect"}
+WORKER_OUTCOMES = {"complete", "needs_input", "blocked", "failed", "not_applicable"}
+LIFECYCLES = {"planning", "remediation"}
+READINESS_ACTIONS = {
+    "ready_for_implementation": "create",
+    "awaiting_input": "omit",
+}
+BLOCKING_DECISION_TYPES = {
+    "business",
+    "scope",
+    "ownership",
+    "incompatible_alternatives",
+    "indispensable_evidence",
+}
+PROHIBITED_CONTEXT_MARKERS = ("MEMORY.md", "/memories/", "<oai-mem-citation>")
 
 ROLE_AGENT_ALIASES = {
     "Orchestrator": ("orchestrator",),
@@ -198,6 +228,191 @@ def reasoning_record_errors(text: str) -> list[str]:
     return errors
 
 
+def sentry_contract_delta_errors(text: str) -> list[str]:
+    rows = markdown_table(text, "# Contract Delta")
+    if not rows:
+        return ["normalized evidence must contain a populated # Contract Delta table"]
+    required = {"Baseline", "Outbound", "Destination input", "Return", "Semantic input equivalence"}
+    boundaries = [row.get("Boundary", "") for row in rows]
+    errors = []
+    for duplicate, count in Counter(boundaries).items():
+        if duplicate and count > 1:
+            errors.append(f"contract delta contains duplicate boundary: {duplicate}")
+    by_boundary = {row.get("Boundary", ""): row for row in rows}
+    for boundary in sorted(required - set(by_boundary)):
+        errors.append(f"contract delta is missing boundary: {boundary}")
+    for boundary in required & set(by_boundary):
+        row = by_boundary[boundary]
+        for field in ("Representation", "Field identity / coordinate space", "Evidence refs"):
+            if not row.get(field, "").strip():
+                errors.append(f"contract delta {boundary} is missing {field}")
+    semantic = by_boundary.get("Semantic input equivalence", {}).get("Representation", "").lower()
+    if semantic and semantic not in {"equivalent", "not_equivalent", "not_established"}:
+        errors.append("contract delta Semantic input equivalence has an invalid representation")
+    return errors
+
+
+def fix_design_result_errors(data: object) -> list[str]:
+    if not isinstance(data, dict):
+        return ["fix_design_result.json must contain one object"]
+    errors = []
+    required = {
+        "worker_id",
+        "worker_handle",
+        "outcome",
+        "plan_readiness",
+        "implementation_plan_action",
+        "inputs_consumed",
+        "context_conformance",
+        "configuration_conformance",
+        "checks_performed",
+        "checks_remaining",
+        "supported_remediation_boundary",
+        "supported_intended_change",
+        "blocking_unknowns",
+    }
+    missing = sorted(field for field in required if field not in data)
+    if missing:
+        errors.append(f"fix design result is missing fields: {', '.join(missing)}")
+        return errors
+    readiness = data["plan_readiness"]
+    action = data["implementation_plan_action"]
+    if readiness not in READINESS_ACTIONS:
+        errors.append(f"invalid plan_readiness: {readiness}")
+    elif action != READINESS_ACTIONS[readiness]:
+        errors.append(f"{readiness} requires implementation_plan_action: {READINESS_ACTIONS[readiness]}")
+    if data["outcome"] != "complete":
+        errors.append("fix design outcome must be complete before finalization")
+    for field in ("worker_id", "worker_handle", "configuration_conformance"):
+        if not isinstance(data[field], str) or not data[field].strip():
+            errors.append(f"fix design {field} must be a non-empty string")
+    if (
+        not isinstance(data["inputs_consumed"], list)
+        or not data["inputs_consumed"]
+        or not all(isinstance(value, str) and value.strip() for value in data["inputs_consumed"])
+    ):
+        errors.append("fix design inputs_consumed must be a non-empty list")
+    if data["context_conformance"] != "pass":
+        errors.append("fix design context_conformance must pass")
+    for field in ("supported_remediation_boundary", "supported_intended_change"):
+        if not isinstance(data[field], str):
+            errors.append(f"fix design {field} must be a string")
+    for field in ("checks_performed", "checks_remaining", "blocking_unknowns"):
+        if not isinstance(data[field], list):
+            errors.append(f"fix design {field} must be a list")
+    if errors:
+        return errors
+    boundary = data["supported_remediation_boundary"]
+    intended_change = data["supported_intended_change"]
+    blockers = data["blocking_unknowns"]
+    if bool(boundary.strip()) != bool(intended_change.strip()):
+        errors.append("supported remediation boundary and intended change must be provided together")
+    if readiness == "ready_for_implementation":
+        if not isinstance(boundary, str) or not boundary.strip():
+            errors.append("ready fix design requires a supported remediation boundary")
+        if not isinstance(intended_change, str) or not intended_change.strip():
+            errors.append("ready fix design requires a supported intended change")
+        if blockers:
+            errors.append("ready fix design cannot retain blocking_unknowns")
+    elif readiness == "awaiting_input":
+        if not data["checks_performed"]:
+            errors.append("awaiting_input requires at least one performed discriminating check")
+        if not blockers:
+            errors.append("awaiting_input requires at least one structured blocking unknown")
+        for index, blocker in enumerate(blockers, start=1):
+            if not isinstance(blocker, dict):
+                errors.append(f"blocking unknown {index} must be an object")
+                continue
+            decision_type = blocker.get("decision_type")
+            implications = blocker.get("fix_implications")
+            evidence_refs = blocker.get("evidence_refs")
+            if decision_type not in BLOCKING_DECISION_TYPES:
+                errors.append(f"blocking unknown {index} has invalid decision_type")
+            if not isinstance(blocker.get("question"), str) or not blocker["question"].strip():
+                errors.append(f"blocking unknown {index} requires a question")
+            if not isinstance(blocker.get("unavailable_reason"), str) or not blocker["unavailable_reason"].strip():
+                errors.append(f"blocking unknown {index} requires an unavailable_reason")
+            if (
+                not isinstance(implications, list)
+                or not all(isinstance(value, str) for value in implications)
+                or len({value.strip() for value in implications if value.strip()}) < 2
+            ):
+                errors.append(f"blocking unknown {index} must identify at least two materially different fixes")
+            if (
+                not isinstance(evidence_refs, list)
+                or not evidence_refs
+                or not all(isinstance(value, str) and value.strip() for value in evidence_refs)
+            ):
+                errors.append(f"blocking unknown {index} requires evidence_refs")
+        if boundary and intended_change and not all(
+            isinstance(blocker, dict) and blocker.get("invalidates_supported_change") is True
+            for blocker in blockers
+        ):
+            errors.append(
+                "awaiting_input cannot defer an established boundary and intended change without evidence that each "
+                "blocker invalidates the supported change"
+            )
+    serialized = json.dumps(data, sort_keys=True)
+    for marker in PROHIBITED_CONTEXT_MARKERS:
+        if marker in serialized:
+            errors.append(f"fix design result contains prohibited context marker: {marker}")
+    return errors
+
+
+def terminal_semantics_errors(identity: dict[str, str]) -> list[str]:
+    errors = []
+    enums = {
+        "Requested profile": PROFILES,
+        "Activated profile": PROFILES | {"None"},
+        "Executed profile": PROFILES | {"None"},
+        "Profile status": PROFILE_STATUSES,
+        "Lifecycle": LIFECYCLES,
+        "State": TERMINAL_STATES,
+        "Workflow outcome": WORKFLOW_OUTCOMES,
+        "Engineering outcome": ENGINEERING_OUTCOMES,
+    }
+    for field, allowed in enums.items():
+        if identity.get(field) not in allowed:
+            errors.append(f"invalid {field}: {identity.get(field, '')}")
+    state = identity.get("State")
+    workflow_outcome = identity.get("Workflow outcome")
+    if state in {"completed", "ready_for_implementation", "awaiting_input"} and workflow_outcome != "completed":
+        errors.append(f"state {state} requires Workflow outcome completed")
+    if state == "blocked" and workflow_outcome != "blocked":
+        errors.append("state blocked requires Workflow outcome blocked")
+    return errors
+
+
+def _plugin_version_refresh_error() -> str | None:
+    completed = subprocess.run(
+        ["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=all"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode:
+        return None
+    changed = [line[3:] for line in completed.stdout.splitlines() if len(line) > 3]
+    if not any(path != str(PLUGIN_MANIFEST.relative_to(ROOT)) for path in changed):
+        return None
+    previous = subprocess.run(
+        ["git", "-C", str(ROOT), "show", f"HEAD:{PLUGIN_MANIFEST.relative_to(ROOT)}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if previous.returncode:
+        return None
+    try:
+        previous_version = json.loads(previous.stdout)["version"]
+        current_version = json.loads(PLUGIN_MANIFEST.read_text())["version"]
+    except (json.JSONDecodeError, KeyError):
+        return None
+    if previous_version == current_version:
+        return "plugin build metadata must change when bundled package content changes"
+    return None
+
+
 def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     if not path.is_file():
         fail(f"work record does not exist: {path}")
@@ -207,7 +422,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         row.get("Field", ""): row.get("Value", "")
         for row in markdown_table(text, "# Run and Evaluation Identity")
     }
-    if identity.get("State") not in {"awaiting_input", "blocked", "ready_for_implementation", "completed"}:
+    if identity.get("State") not in TERMINAL_STATES:
         if require_terminal:
             fail(f"{path}: work record is not terminal or lacks Run and Evaluation Identity")
         return ""
@@ -244,7 +459,9 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         "Role binding manifest",
         "Provider / model configuration",
         "Requested profile",
+        "Activated profile",
         "Executed profile",
+        "Profile status",
         "Lifecycle",
         "State",
         "Engineering state",
@@ -263,6 +480,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     ]
     if unresolved:
         fail(f"{path}: unresolved Run Identity placeholders: {', '.join(unresolved)}")
+    for error in terminal_semantics_errors(identity):
+        fail(f"{path}: {error}")
     evaluation_run = identity["Evaluation run ID"] != "Not applicable"
     if evaluation_run and identity["Evaluation run ID"] in {"Unknown", "None"}:
         fail(f"{path}: Evaluation run ID must identify the evaluated run")
@@ -401,6 +620,9 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fail(f"{path}: completed workflow requires zero active handles")
     worker_rows = table_rows["# Worker Execution Ledger"]
     for row in worker_rows:
+        outcome = row.get("Outcome", "").strip().lower()
+        if "Outcome" in row and outcome not in WORKER_OUTCOMES:
+            fail(f"{path}: invalid worker outcome: {outcome}")
         for field in ("Elapsed", "Wait"):
             if row.get(field, "").strip().lower() in {"completed", "terminal", "released", "running"}:
                 fail(f"{path}: Worker Execution Ledger {field} must be a duration or availability value, not a state")
@@ -418,6 +640,66 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             expected = f"{binding['model']} / {binding['effort']}".lower()
             if configured != expected:
                 fail(f"{path}: {row.get('Worker', role)} configured model/effort must be {expected}")
+    fix_worker_complete = any(
+        row.get("Role", "").strip() == "Solution Architect"
+        and row.get("Outcome", "").strip().lower() == "complete"
+        for row in worker_rows
+    )
+    if playbook_name == "sentry_issue_remediation" and fix_worker_complete:
+        fix_result_path = path.parent / "fix_design_result.json"
+        if not fix_result_path.is_file():
+            fail(f"{path}: completed Sentry Fix Design requires fix_design_result.json")
+        else:
+            try:
+                fix_result = json.loads(fix_result_path.read_text())
+            except (json.JSONDecodeError, OSError) as error:
+                fail(f"{path}: invalid fix_design_result.json: {error}")
+                fix_result = {}
+            for error in fix_design_result_errors(fix_result):
+                fail(f"{path}: {error}")
+            readiness = fix_result.get("plan_readiness")
+            expected_identity = {
+                "ready_for_implementation": {
+                    "State": "ready_for_implementation",
+                    "Workflow outcome": "completed",
+                    "Engineering outcome": "plan_only",
+                },
+                "awaiting_input": {
+                    "State": "awaiting_input",
+                    "Workflow outcome": "completed",
+                    "Engineering outcome": "partially_solved",
+                },
+            }.get(readiness, {})
+            for field, expected in expected_identity.items():
+                if identity.get(field) != expected:
+                    fail(f"{path}: Fix Design {readiness} requires {field} {expected}")
+            plan = path.parent / "implementation_plan.md"
+            clarification = path.parent / "clarification_brief.md"
+            if readiness == "ready_for_implementation":
+                if not plan.is_file():
+                    fail(f"{path}: ready Fix Design requires implementation_plan.md")
+                if clarification.exists():
+                    fail(f"{path}: ready Fix Design cannot retain clarification_brief.md")
+            elif readiness == "awaiting_input":
+                if not clarification.is_file():
+                    fail(f"{path}: awaiting Fix Design requires clarification_brief.md")
+                if plan.exists():
+                    fail(f"{path}: awaiting Fix Design cannot retain implementation_plan.md")
+            completed_handles = " ".join(
+                row.get("Completed worker handles", "") for row in table_rows["# Worker Runtime Closure"]
+            )
+            if fix_result.get("worker_handle") not in completed_handles:
+                fail(f"{path}: Fix Design worker_handle is absent from runtime closure")
+        evidence_path = path.parent / "normalized_evidence.md"
+        if not evidence_path.is_file():
+            fail(f"{path}: completed Sentry Fix Design requires normalized_evidence.md")
+        else:
+            evidence_text = evidence_path.read_text()
+            for marker in PROHIBITED_CONTEXT_MARKERS:
+                if marker in evidence_text:
+                    fail(f"{path}: normalized evidence contains prohibited context marker: {marker}")
+            for error in sentry_contract_delta_errors(evidence_text):
+                fail(f"{path}: {error}")
     for row in markdown_table(text, "# Input Register"):
         if "worker" in row.get("Input or artifact", "").lower() and "user" in row.get("Source or path", "").lower():
             fail(f"{path}: worker-produced inputs must cite the provider worker/result handle, not the user")
@@ -535,7 +817,9 @@ def self_test_reasoning_records() -> None:
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
 | Requested profile | standard |
+| Activated profile | standard |
 | Executed profile | standard |
+| Profile status | executed |
 | Lifecycle | remediation |
 | State | completed |
 | Engineering state | validated |
@@ -614,6 +898,54 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     invalid = valid.replace("| claim-001 | evidence-001 |", "| claim-001 | evidence-999 |")
     assert "claim-001 references missing evidence evidence-999" in reasoning_record_errors(invalid)
     assert "orphaned evidence evidence-001" in reasoning_record_errors(invalid)
+    contract_delta = """# Contract Delta
+
+| Boundary | Representation | Field identity / coordinate space | Evidence refs |
+| --- | --- | --- | --- |
+| Baseline | field-keyed object | field names | evidence-001 |
+| Outbound | scalar message | field identity lost | evidence-002 |
+| Destination input | scalar message | no field identity | evidence-003 |
+| Return | scalar result | no field identity | evidence-004 |
+| Semantic input equivalence | not_equivalent | Not applicable | evidence-001, evidence-002 |
+"""
+    assert sentry_contract_delta_errors(contract_delta) == []
+    assert "contract delta is missing boundary: Return" in sentry_contract_delta_errors(
+        contract_delta.replace("| Return | scalar result | no field identity | evidence-004 |\n", "")
+    )
+    ready_fix = {
+        "worker_id": "fix-design",
+        "worker_handle": "01a04174-7f58-7a12-b91d-9d171c43f012",
+        "outcome": "complete",
+        "plan_readiness": "ready_for_implementation",
+        "implementation_plan_action": "create",
+        "inputs_consumed": ["IN-001"],
+        "context_conformance": "pass",
+        "configuration_conformance": "pass",
+        "checks_performed": ["Compared the source-of-truth input with the outbound contract."],
+        "checks_remaining": ["Verify production parity before release."],
+        "supported_remediation_boundary": "Outbound contract loses one required field.",
+        "supported_intended_change": "Preserve the required field across the contract.",
+        "blocking_unknowns": [],
+    }
+    assert fix_design_result_errors(ready_fix) == []
+    overcautious_fix = {
+        **ready_fix,
+        "plan_readiness": "awaiting_input",
+        "implementation_plan_action": "omit",
+        "blocking_unknowns": [
+            {
+                "decision_type": "indispensable_evidence",
+                "question": "Which deployed revision ran?",
+                "unavailable_reason": "Release mapping is unavailable.",
+                "fix_implications": ["Preserve the required field."],
+                "evidence_refs": ["evidence-001"],
+                "invalidates_supported_change": False,
+            }
+        ],
+    }
+    overcautious_errors = fix_design_result_errors(overcautious_fix)
+    assert any("materially different fixes" in error for error in overcautious_errors)
+    assert any("cannot defer an established boundary" in error for error in overcautious_errors)
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "work_record.md"
         (path.parent / "role_bindings.json").write_text(json.dumps({
@@ -695,7 +1027,15 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace("| Workflow outcome | completed |", "| Workflow outcome | incomplete |", 1),
-            "Final Handoff Workflow outcome must match Run Identity",
+            "state completed requires Workflow outcome completed",
+        )
+        assert_invalid(
+            valid.replace("| Profile status | executed |", "| Profile status | completed |"),
+            "invalid Profile status: completed",
+        )
+        assert_invalid(
+            valid.replace("| Workflow outcome | completed |", "| Workflow outcome | partially_solved |", 1),
+            "invalid Workflow outcome: partially_solved",
         )
         assert_invalid(
             valid.replace("| Released | None |", "| Unknown | Unknown |"),
@@ -828,9 +1168,11 @@ for match in re.finditer(
     policy_text,
     re.M,
 ):
-    role, model, _label, effort = (value.strip() for value in match.groups())
+    role, model, label, effort = (value.strip() for value in match.groups())
     if role not in ROLE_AGENT_ALIASES:
         continue
+    if POLICY_EFFORTS.get(label) != effort:
+        fail(f"{CODEX_POLICY.relative_to(ROOT)} maps policy effort {label} inconsistently to {effort}")
     for agent_name in ROLE_AGENT_ALIASES[role]:
         expected = (model, effort)
         previous = expected_agents.setdefault(agent_name, expected)
@@ -860,6 +1202,13 @@ if missing_agents:
     fail(f"Codex policy does not document agents: {', '.join(missing_agents)}")
 if undocumented_agents:
     fail(f"Codex policy references missing TOML agents: {', '.join(undocumented_agents)}")
+
+for phrase in ("nearest available", "then the parent session"):
+    if phrase in policy_text:
+        fail(f"{CODEX_POLICY.relative_to(ROOT)} permits unstable provider fallback: {phrase}")
+for phrase in ("do not inherit Coordinator values", "provider_configuration_unavailable", "new baseline ID"):
+    if phrase not in policy_text:
+        fail(f"{CODEX_POLICY.relative_to(ROOT)} is missing fail-closed provider resolution: {phrase}")
 
 for agent_name, config in agent_configs.items():
     if config.get("name") != agent_name:
@@ -966,6 +1315,16 @@ for path in (ROOT / "playbooks").glob("*.md"):
         fail(f"{path.relative_to(ROOT)} is missing the canonical human-readable handoff")
     if "in parallel" not in text or not re.search(r"recorded\s+discrepancy", text):
         fail(f"{path.relative_to(ROOT)} is missing Deep parallelism or non-duplication rules")
+    if "never activate or delegate an `initialize` worker" not in text:
+        fail(f"{path.relative_to(ROOT)} delegates Coordinator initialization")
+    if not re.search(r"Activate\s+one final Documenter after analytical fan-in", text):
+        fail(f"{path.relative_to(ROOT)} is missing final-Documenter ownership")
+    if not re.search(r"final\s+`handoff`\s+after delivery fan-in", text):
+        fail(f"{path.relative_to(ROOT)} is missing final remediation handoff ownership")
+    if "| `initialize` |" in text:
+        fail(f"{path.relative_to(ROOT)} declares an initialize worker")
+    if re.search(r"(?:continuous|Continuous).*`handoff`", text):
+        fail(f"{path.relative_to(ROOT)} declares a continuous handoff worker")
 
 vulnerability_playbook = (ROOT / "playbooks" / "vulnerability_investigation.md").read_text()
 for phrase in (
@@ -1025,9 +1384,13 @@ for phrase in (
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 40):
+for invariant_id in range(1, 41):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
+invariant_ids = re.findall(r"\| `(INV-\d{2})` \|", workflow_contract)
+for invariant_id, count in Counter(invariant_ids).items():
+    if count > 1:
+        fail(f"contracts/workflow_execution.md contains duplicate {invariant_id}")
 if "# Pilot Conformance Checklist" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the conformance checklist")
 for heading in (
@@ -1148,11 +1511,17 @@ for phrase in (
     "derives the package root from its own location",
     "scripts/prepare_run.py",
     "role_bindings.json",
+    "fork_context: false",
+    "Coordinator initialization: complete",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
 if "--framework-root" in run_skill:
     fail("skills/run/SKILL.md must not pass a separately constructed framework root")
+codex_adapter = CODEX_ADAPTER.read_text()
+for phrase in ("fork_context: false", "Coordinator initialization: complete", "prepare_run.py"):
+    if phrase not in codex_adapter:
+        fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
 if "| Engineering state |" not in work_record_template:
     fail("templates/work_record.md is missing engineering state")
 if "| Approval type |" not in work_record_template:
@@ -1363,6 +1732,12 @@ for phrase in ("managed worktree", "Never cd back to the original checkout", "st
 for phrase in ("do not", "spawn an initialize worker"):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing bounded-remediation control: {phrase}")
+for phrase in (
+    "never activate or delegate an `initialize` worker",
+    "Documenter after analytical fan-in",
+):
+    if phrase not in orchestrator_agent:
+        fail(f"providers/codex/agents/orchestrator.toml is missing shared worker-ownership control: {phrase}")
 
 for phrase in (
     "canonical human-readable format",
@@ -1448,6 +1823,9 @@ for phrase in (
     "30 seconds",
     "90 seconds",
     "supplied_occurrence",
+    "fix_design_result.json",
+    "# Contract Delta",
+    "materially different fix implications",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
@@ -1485,6 +1863,8 @@ for phrase in (
     "never spawn or delegate an `initialize` worker",
     "never normalize, reinterpret, or silently repair it",
     "Workflow-framework validation: passed",
+    "fork_context: false",
+    "Coordinator initialization: complete",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -1499,6 +1879,9 @@ for phrase in (
     "expected discriminating outcomes",
     "event emitter, comparison owner, baseline producer",
     "implementation_plan_action: omit",
+    "fix_design_result.json",
+    "invalidates_supported_change",
+    "Do not run the",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
@@ -1511,6 +1894,8 @@ for phrase in (
     "event emitter, comparison owner, baseline producer",
     "do not exclude that service from the deployed path",
     "resolve that issue directly before any project or issue",
+    "# Contract Delta",
+    "Coordinator initialization: complete",
 ):
     if phrase not in sentry_investigator:
         fail(f"providers/codex/agents/sentry_current_state_investigator.toml is missing bounded evidence control: {phrase}")
@@ -1542,6 +1927,12 @@ for phrase in (
     "never spawn or delegate an `initialize` worker",
     "never normalize or silently repair it",
     "Implementation plan",
+    "fork_context: false",
+    "fix_design_result.json",
+    "immutable finalized packet",
+    "Work item: <STABLE-WORK-ITEM-ID-OR-URL>",
+    "Sentry issue: <SENTRY-ISSUE-ID-OR-URL-OR-NOT-PROVIDED>",
+    ".thoughts/<WORK-ITEM-ID>/",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
@@ -1643,6 +2034,9 @@ for phrase in (
     "provider_configuration_unavailable",
     "never normalize, reinterpret, or silently repair it",
     "Workflow-framework validation: passed",
+    "fork_context: false",
+    "Coordinator initialization: complete",
+    "blocking_unknowns",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")
@@ -1765,6 +2159,9 @@ if "--self-test" in sys.argv:
 handoffs = [validate_work_record(Path(argument).resolve(), require_terminal=True) for argument in arguments]
 for work_record in sorted(ROOT.glob(".thoughts/*/work_record.md")):
     validate_work_record(work_record)
+plugin_refresh_error = _plugin_version_refresh_error()
+if plugin_refresh_error:
+    fail(plugin_refresh_error)
 
 print("Workflow-framework validation: passed")
 if emit_handoff:

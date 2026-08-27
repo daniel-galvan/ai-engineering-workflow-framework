@@ -1,7 +1,7 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 provider: codex
 provider_independent_profiles: true
@@ -51,7 +51,7 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Reviewer | `gpt-5.6-sol` | Light | `low` |
 | Implementer | `gpt-5.6-luna` | Extra High | `xhigh` |
 | Tester | `gpt-5.6-luna` | Extra High | `xhigh` |
-| Documenter | `gpt-5.6-luna` | Low | `low` |
+| Documenter | `gpt-5.6-luna` | Light | `low` |
 
 This baseline assigns Luna with Extra High effort to coordination, Sol with Light effort to design and review, and keeps
 the existing investigation, implementation, testing, and documentation assignments. Keep the baseline only when
@@ -71,11 +71,10 @@ Only Sentry-specific investigation uses specialized `sentry_*.toml` agents.
 | --- | --- | --- |
 | Diagnosis, architecture, implementation, and review | Role-specific | Role-specific |
 | Sentry evidence and testing | Role-specific | Role-specific |
-| Work-record documentation | `gpt-5.6-luna` | `low` (Low) |
+| Work-record documentation | `gpt-5.6-luna` | `low` (Light) |
 
 This profile is enforced by the named agent files when the Orchestrator uses those agents. Prompt text alone does not
-override a pinned agent model or effort. If a requested model is unavailable, use a separate equivalent agent definition
-with the nearest available model and record the substitution.
+override a pinned agent model or effort.
 
 ### Specialized Sentry Agent Mapping
 
@@ -101,12 +100,14 @@ For Sentry planning runs:
 
 ## Resolution
 
-The workflow selects a provider-neutral profile. The Codex agent file supplies the concrete model and
-`model_reasoning_effort`. When those fields are pinned in the selected agent file, that file wins. If a field is
-omitted, Codex resolves it from an explicit spawn value, configured subagent defaults, and then the parent session.
+The workflow selects a provider-neutral profile. Before activation, every required AI worker must resolve an exact
+model and `model_reasoning_effort` from its selected agent definition or explicit work-graph binding. When the runtime
+would otherwise inherit Coordinator settings, pass those exact values explicitly; do not inherit Coordinator values or
+accept provider defaults as the role binding.
 
-If a recommended model or effort is unavailable, use the nearest available setting and record the substitution as an
-execution note and risk.
+If the exact model or effort is unavailable or cannot be bound, stop with `provider_configuration_unavailable`. A
+different model or effort requires an explicit policy decision, updated agent definition, and new baseline ID; never
+substitute another setting within the current baseline.
 
 ## Delegation Runtime
 

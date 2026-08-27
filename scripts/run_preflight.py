@@ -15,6 +15,7 @@ from pathlib import Path
 FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 EXIT_OK = 0
 EXIT_BLOCKED = 2
+PLUGIN_MANIFEST = ".codex-plugin/plugin.json"
 
 
 def _framework_root(script: Path) -> Path:
@@ -44,6 +45,27 @@ def _plugin_root(path: Path) -> Path | None:
 
 def _result(status: str, reason: str | None, **fields: str) -> dict[str, str | None]:
     return {"status": status, "reason": reason, **fields}
+
+
+def _manifest_version(text: str) -> str | None:
+    try:
+        value = json.loads(text).get("version")
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, str) and value else None
+
+
+def _reused_plugin_build_identity(root: Path, revision: str) -> tuple[bool, str | None]:
+    version = _manifest_version((root / PLUGIN_MANIFEST).read_text())
+    parent_code, parent, _ = _git(root, "rev-parse", f"{revision}^")
+    if parent_code:
+        return False, version
+    changed_code, changed, _ = _git(root, "diff", "--name-only", parent, revision)
+    if changed_code or not any(path != PLUGIN_MANIFEST for path in changed.splitlines()):
+        return False, version
+    previous_code, previous_manifest, _ = _git(root, "show", f"{parent}:{PLUGIN_MANIFEST}")
+    previous_version = _manifest_version(previous_manifest) if not previous_code else None
+    return bool(version and version == previous_version), version
 
 
 def preflight(
@@ -112,12 +134,24 @@ def preflight(
             framework_status="dirty",
         )
 
+    reused_identity, plugin_version = _reused_plugin_build_identity(root, revision)
+    if reused_identity:
+        return _result(
+            "blocked",
+            "plugin_build_identity_reused",
+            framework_root=str(root),
+            framework_revision=revision,
+            framework_status="clean",
+            plugin_version=plugin_version or "unknown",
+        )
+
     return _result(
         "passed",
         None,
         framework_root=str(root),
         framework_revision=revision,
         framework_status="clean",
+        plugin_version=plugin_version or "unknown",
     )
 
 
@@ -161,6 +195,18 @@ def self_test() -> None:
 
         stale = preflight(root, declared_plugin_path=root / "missing" / "SKILL.md")
         assert stale["reason"] == "plugin_revision_mismatch", stale
+
+        (root / "README.md").write_text("package change\n")
+        subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "package change"], check=True)
+        reused = preflight(root)
+        assert reused["reason"] == "plugin_build_identity_reused", reused
+
+        (root / ".codex-plugin" / "plugin.json").write_text('{"name":"test","version":"0.0.1+codex.2"}\n')
+        subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "refresh plugin build"], check=True)
+        refreshed = preflight(root)
+        assert refreshed["status"] == "passed", refreshed
 
     print("run_preflight self-test: passed")
 

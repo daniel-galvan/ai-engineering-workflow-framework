@@ -194,7 +194,8 @@ declares the plugin, [`.agents/plugins/marketplace.json`](.agents/plugins/market
 [`skills/run/`](skills/run/) provides the explicit launcher, and [`scripts/run_preflight.py`](scripts/run_preflight.py)
 guards package identity before a workflow starts. [`scripts/prepare_run.py`](scripts/prepare_run.py) archives prior
 runs, creates the current record, and resolves exact worker bindings. These files do not duplicate playbook or
-contract behavior.
+contract behavior. Because the installed plugin bundles this repository, every tracked content change refreshes the
+plugin's `+codex.<timestamp>` build metadata; validation and preflight reject a reused build identity.
 
 Codex users should read [providers/codex.md](providers/codex.md) and
 [providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md). The provider adapter is the source of

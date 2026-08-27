@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.5
+version: 0.4.6
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -31,7 +31,9 @@ Prompt-preparation rules:
 ```text
 Run the Sentry Issue Remediation playbook.
 
-Issue: <SENTRY-ISSUE-ID-OR-URL>
+Work item: <STABLE-WORK-ITEM-ID-OR-URL>
+Evidence source: <live_sentry|supplied_occurrence|mixed>
+Sentry issue: <SENTRY-ISSUE-ID-OR-URL-OR-NOT-PROVIDED>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
 Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
@@ -46,7 +48,7 @@ Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
 
 If the session runs in a managed worktree of this repository, use that worktree for source operations but keep every
-durable `.thoughts/<SENTRY-ISSUE-ID>/` artifact under the declared execution-repository path above.
+durable `.thoughts/<WORK-ITEM-ID>/` artifact under the declared execution-repository path above.
 
 Provider/runtime configuration (optional execution-repository runtime view; use `Not provided` when absent):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION-OR-Not-provided>
@@ -81,16 +83,20 @@ Runtime bootstrap:
   record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly. Do not
   adapt, escalate, or inherit Coordinator values. If a required definition cannot be
   resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
+- Activate every delegated worker with `fork_context: false` or the provider-equivalent fresh-context option. Start
+  every packet with `Coordinator initialization: complete` and prohibit the worker from running the launcher skill,
+  `run_preflight.py`, or `prepare_run.py`.
 - Downstream workers consume their provider role, typed assignment, and relevant artifacts. Do not instruct them to
   reread the complete playbook or core contracts.
 - For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
   not satisfy final handoff.
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
-  pre-query Sentry or duplicate that investigation. When `Issue` supplies a stable ID or URL, resolve it directly before
-  any project or issue search; if direct resolution fails, allow one justified fallback and stop. Request the latest
-  event first (`limit: 1` when supported). For Standard, allow one tool-discovery call, at most three Sentry data
-  queries, 30 seconds per query, and 90 seconds total. Never enumerate projects or fan out across organizations and
+  pre-query Sentry or duplicate that investigation. When `Sentry issue` supplies a stable ID or URL, resolve it directly
+  before any project or issue search. If direct resolution fails, allow one justified fallback and stop.
+  Request the latest event first (`limit: 1` when supported). For Standard, allow one tool-discovery call.
+  Allow at most three Sentry data queries, 30 seconds per query, and 90 seconds total. Never enumerate projects or fan
+  out across organizations and
   datasets. When only a supplied occurrence exists, use it without broad Sentry discovery.
 - Before that worker starts, Standard initialization is limited to turn-start capture, framework/repository/path
   verification, authoritative-input registration, the minimal work-record skeleton, and worker configuration/activation.
@@ -110,6 +116,8 @@ Runtime bootstrap:
   the sole artifact writer for the finalized artifact set.
 - Activate Fix Design only after `normalized_evidence.md` exists. Pass its exact path and every original supporting
   artifact path; do not replace either with a Coordinator-written summary.
+- Require normalized evidence to contain the playbook's canonical `# Contract Delta` table with the exact five boundary
+  rows and evidence references.
 - Select `live_sentry` only from an explicit Sentry issue URL or separately identified Sentry issue ID. The work-item
   key alone does not authorize Sentry lookup; with only a supplied occurrence, select `supplied_occurrence`.
 - During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
@@ -125,6 +133,8 @@ Runtime bootstrap:
   appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
+- Pass the final Documenter one immutable finalized packet. It formats and persists the packet; it does not select,
+  normalize, or reinterpret state, readiness, outcomes, worker results, or artifact actions.
 - If final verification finds a documentation inconsistency, return it to the same Documenter; the Coordinator must not
   edit finalized artifacts after that worker returns.
 - Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to
@@ -135,10 +145,15 @@ Runtime bootstrap:
 - Finalization must retain the contract's required terminal fields and playbook artifact set. Keep `state`,
   `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct and copy their exact values to the final
   answer as `Workflow outcome` and `Engineering outcome`; matching artifact counts alone do not pass.
-- Use canonical Sentry artifacts: `normalized_evidence.md`, and `clarification_brief.md` when the result is
-  `awaiting_input`; create `implementation_plan.md` only when the readiness gate allows it.
-- The fix-design result must set `plan_readiness` and `implementation_plan_action`. `awaiting_input` means `omit` and
-  produces a Clarification Brief; only `ready_for_implementation` permits the Documenter to create a plan.
+- Use canonical Sentry artifacts: `normalized_evidence.md`, `fix_design_result.json`, and `clarification_brief.md` when
+  the result is `awaiting_input`; create `implementation_plan.md` only when the readiness gate allows it.
+- The fix-design result must be one structured JSON object containing the shared identity, input, conformance, checks,
+  supported boundary/change, `plan_readiness`, `implementation_plan_action`, and blocking-unknown fields. The
+  Documenter persists it verbatim as `fix_design_result.json`.
+- `awaiting_input` means `omit` and produces a Clarification Brief. Every blocker must identify its decision type,
+  question, unavailable reason, evidence, and at least two materially different fix implications. Do not defer an
+  established boundary and intended change unless every blocker is evidenced to invalidate that change. Only
+  `ready_for_implementation` permits the Documenter to create a plan.
 - Validate each terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
   never normalize or silently repair it in Coordinator state.
 

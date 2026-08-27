@@ -1,9 +1,9 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-27
 ---
 
 # Playbook Architecture Catalog
@@ -31,7 +31,8 @@ flowchart TB
 
 Every playbook has `standard` and `deep` execution profiles plus `planning` and `remediation` lifecycles. Profiles add
 independent workers and review; they do not reduce role quality. Planning is read-only, creates an implementation plan
-only after fan-in, and requires explicit approval before remediation.
+only after fan-in, and requires explicit approval before remediation. The Coordinator performs initialization directly;
+one final Documenter runs after analytical fan-in.
 
 ## Feature Delivery
 
@@ -44,13 +45,13 @@ ticket but does not silently become a requirement.
 
 ```mermaid
 flowchart TB
-    A["Initialize"] --> B["Feature context"]
+    A["Coordinator initialization"] --> B["Feature context"]
     B --> C["Impact analysis"]
     B --> D["Repository integration"]
     C --> E["Feature design"]
     D --> E
     E --> F["Planning review: deep only"]
-    E --> G["Plan and handoff"]
+    E --> G["Final Documenter and plan"]
     F --> G
     G --> H["Approved remediation"]
     H --> I["Implement → Code Review → Validate"]
@@ -69,13 +70,13 @@ reliability, control fidelity, and efficiency remain under validation.
 
 ```mermaid
 flowchart TB
-    A["Initialize"] --> B["Issue evidence"]
+    A["Coordinator initialization"] --> B["Issue evidence"]
     B --> C["Failure path and first divergence"]
     B --> D["Repository integration"]
     C --> E["Fix design"]
     D --> E
     E --> F["Planning review: deep only"]
-    E --> G["Plan and handoff"]
+    E --> G["Final Documenter and plan"]
     F --> G
     G --> H["Approved remediation"]
     H --> I["Implement → Code Review → Validate"]
@@ -92,13 +93,13 @@ profile/lifecycle combinations exercised; reliability, control fidelity, and eff
 
 ```mermaid
 flowchart TB
-    A["Initialize"] --> B["Sentry evidence and topology"]
+    A["Coordinator initialization"] --> B["Sentry evidence and topology"]
     B --> C["Failure topology: deep only"]
     B --> D["Repository integration"]
     B --> E["Fix design"]
     C --> E
     D --> E
-    E --> F["Plan and handoff"]
+    E --> F["Final Documenter and plan"]
     F --> G["Approved remediation"]
     G --> H["Implement → Code Review → Validate"]
 ```
@@ -116,14 +117,14 @@ scenarios are required before broader reliability or delivery-validation claims.
 
 ```mermaid
 flowchart TB
-    A["Initialize"] --> B["Scanner and finding evidence"]
+    A["Coordinator initialization"] --> B["Scanner and finding evidence"]
     B --> C["Reachability analysis"]
     B --> D["Repository and artifact integration"]
     C --> E["Remediation design"]
     D --> E
     E --> F["Planning review: deep or disputed"]
-    E --> G["Plan and handoff"]
-    F --> G["Plan and handoff"]
+    E --> G["Final Documenter and plan"]
+    F --> G
     G --> H["Approved remediation"]
     H --> I["Implement → Code Review → Validate"]
 ```

@@ -71,6 +71,14 @@ without a recorded policy decision. If the definition cannot be resolved or
 bound, stop with `provider_configuration_unavailable`; do not activate inherited
 defaults or accept a mismatch. Give workers typed assignments and relevant
 artifacts; do not make them reread the complete playbook or core contracts.
+Activate every delegated worker with `fork_context: false` or the
+provider-equivalent fresh-context option. Start every activation packet with
+`Coordinator initialization: complete`. Explicitly prohibit the worker from
+running the launcher skill, `run_preflight.py`, or `prepare_run.py`; those are
+Coordinator-only initialization actions.
+
+For planning, perform initialization directly; never activate or delegate an `initialize` worker. Activate one final
+Documenter after analytical fan-in.
 
 Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
 the Documenter: `awaiting_input` requires `omit`; only

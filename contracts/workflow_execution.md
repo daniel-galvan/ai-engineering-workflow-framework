@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.5
+version: 0.4.6
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 ---
 
 # Workflow Execution Contract
@@ -53,6 +53,11 @@ After preflight passes, at initialization the Coordinator MUST read the selected
 contract. Other frontmatter dependencies are maintenance or stage references, not an instruction to load the complete
 framework into the run context. Load a role, skill, strategy, integration, template, or example only when the active
 worker or stage needs it. Templates and examples MUST NOT override the selected playbook or contracts.
+
+The Coordinator alone performs package preflight and run preparation. It MUST activate delegated workers with fresh
+provider context (`fork_context: false` or the provider-equivalent option), and every activation packet MUST begin with
+`Coordinator initialization: complete`. Delegated workers MUST NOT invoke the launcher, package preflight, or run
+preparation.
 
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
@@ -115,6 +120,7 @@ the source of truth.
 | `INV-37` | A terminal work record MUST pass the packaged framework validator before the handoff is released. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-38` | A new run MUST start from fresh current-run artifacts; only an explicit continuation may reuse the current record. Evaluation telemetry is required only for declared evaluation runs. | [Run Identity and Continuation](#run-identity-and-continuation) |
 | `INV-39` | Worker model and effort MUST come from the prepared role-binding manifest and match the activation record. | [Profile Execution Semantics](#profile-execution-semantics) |
+| `INV-40` | Delegated workers MUST start in fresh context and MUST NOT repeat Coordinator initialization. | [Worker Contract](#worker-contract) |
 
 ---
 
@@ -370,6 +376,9 @@ Each run records:
 
 Each worker must have a stable identifier and an explicit execution profile.
 
+A delegated worker starts in fresh provider context after Coordinator initialization. Its activation packet begins
+with `Coordinator initialization: complete`, and it MUST NOT run the launcher, package preflight, or run preparation.
+
 | Field              | Required           | Description                                                                                                          |
 | ------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `id`               | Yes                | Unique worker identifier within the workflow run.                                                                    |
@@ -399,6 +408,7 @@ by the Orchestrator at fan-in.
 | Field              | Required    | Description                                                     |
 | ------------------ | ----------- | --------------------------------------------------------------- |
 | `worker_id`        | Yes         | Worker that produced the result.                                |
+| `worker_handle`    | Yes         | Exact provider-returned handle for this activation.             |
 | `outcome`          | Yes         | One of the shared worker outcomes.                              |
 | `summary`          | Yes         | The worker's unique contribution in a few sentences.            |
 | `inputs_consumed`  | Yes         | Assigned Input IDs and artifacts used, with disposition for assigned inputs not used. |
@@ -415,6 +425,9 @@ by the Orchestrator at fan-in.
 | `context_conformance` | Yes | `pass` only when the worker used assigned current-run context and no prohibited historical source. |
 | `plan_readiness`   | Conditional | Fix-design disposition: `ready_for_implementation` or `awaiting_input`. |
 | `implementation_plan_action` | Conditional | Fix-design instruction to `create` or `omit` the implementation plan. |
+| `supported_remediation_boundary` | Conditional | Fix-design boundary supported by current-run evidence. |
+| `supported_intended_change` | Conditional | Fix-design change supported by current-run evidence. |
+| `blocking_unknowns` | Conditional | Structured decisions or indispensable evidence that can select a materially different fix. |
 | `timing`           | Yes         | Coordinator-observed activation, start, terminal, elapsed, and wait timestamps; provider timing may supplement them. |
 | `usage`            | Recommended | Provider-reported tokens, duration, credits, or `Unknown`.      |
 | `errors_blockers`  | Yes         | Errors, blockers, or `None`.                                    |
@@ -427,6 +440,10 @@ is checking a stated discrepancy. The envelope's `outcome` is a worker outcome; 
 The Coordinator MUST validate every terminal envelope before fan-in. For Fix Design,
 `ready_for_implementation` pairs only with `create`, and `awaiting_input` pairs only with `omit`. Return an invalid
 enum or pair to the same worker; never normalize, reinterpret, or silently repair it in Coordinator state.
+`ready_for_implementation` requires a supported remediation boundary, a supported intended change, and no blocking
+unknowns. `awaiting_input` requires at least one discriminating check and a structured blocker naming its decision type,
+question, unavailable reason, evidence, and at least two materially different fix implications. It MUST NOT defer an
+already supported boundary and intended change unless the evidence shows that each blocker invalidates that change.
 
 Coordinator-observed activation and terminal timestamps are always available and MUST be recorded. When the provider
 does not expose a distinct start time or queue wait, use activation as start and record provider queue wait as
@@ -613,7 +630,8 @@ Implementer, Reviewer, or Tester. If the required remediation graph cannot be ac
 `profile_status: blocked` and reason `remediation_not_activated`.
 
 Initialization and delivery preflight are Coordinator responsibilities and do not require a delegated worker unless the
-selected playbook explicitly requires independent initialization analysis.
+selected playbook explicitly requires independent initialization analysis. Even then, the delegated worker starts after
+Coordinator initialization and MUST NOT repeat package preflight or run preparation.
 
 ## Delivery Activation and Completion Barrier
 
@@ -969,10 +987,12 @@ no stale `pending`, `active`, `in_progress`, or
 terminal result, and repeat the comparison before release. A final answer that
 contradicts the durable record is a handoff conformance failure even when the worker graph itself completed.
 
-Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing worker outcomes,
-workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action, completion
-condition, plugin package/version, framework Git revision/status, and playbook name/version. The Documenter formats
-these values; it does not reconstruct them.
+Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing worker
+outcomes, workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action,
+completion condition, plugin package/version, framework Git revision/status, and playbook name/version. The packet is
+immutable once passed to the Documenter. The Documenter formats
+and persists these values; it does not select, normalize, reinterpret, or reconstruct them. An inconsistent packet is a
+validation error returned to the Coordinator, not authority for the Documenter to decide a different state or outcome.
 
 The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. With
 `--emit-handoff`, the standalone validator checks its ordered labels, verifies that its state and outcomes equal the Run
