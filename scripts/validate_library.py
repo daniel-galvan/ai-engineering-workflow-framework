@@ -202,6 +202,10 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
         or any(not selection[0].get(field) for field in required_selection)
     ):
         fail(f"{path}: Playbook Selection must record the selected playbook, closest alternative, and rationale")
+    empty_selection = {"none", "none selected", "unknown", "not applicable", "n/a"}
+    for field in required_selection:
+        if selection and selection[0].get(field, "").strip().lower() in empty_selection:
+            fail(f"{path}: Playbook Selection {field} must contain run-specific evidence")
     required_identity = (
         "Run ID",
         "Evaluation run ID",
@@ -232,6 +236,24 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
     baseline_id = identity["Role-policy baseline ID"]
     if baseline_id != "Not applicable" and ("/" in baseline_id or baseline_id.endswith(".md")):
         fail(f"{path}: Role-policy baseline ID must be an identifier, not a path")
+    prompt_by_playbook = {
+        "feature_delivery": "templates/feature_delivery_run_prompt.md",
+        "techops_issue_remediation": "templates/techops_issue_run_prompt.md",
+        "sentry_issue_remediation": "templates/sentry_issue_run_prompt.md",
+        "vulnerability_investigation": "templates/vulnerability_issue_run_prompt.md",
+    }
+    playbook_name = Path(identity["Playbook / version"].split(" / ", 1)[0]).stem
+    expected_prompt = prompt_by_playbook.get(playbook_name)
+    if expected_prompt and not identity["Prompt template / revision / conformance"].startswith(expected_prompt):
+        fail(f"{path}: Prompt template must match {expected_prompt} for {playbook_name}")
+    finalization = {
+        row.get("Field", ""): row.get("Value", "")
+        for row in markdown_table(text, "# Run Isolation and Finalization")
+    }
+    if playbook_name == "sentry_issue_remediation" and path.stat().st_size > 10 * 1024:
+        budget_exception = finalization.get("Work-record budget exception", "").strip().lower()
+        if not budget_exception or budget_exception in {"none", "not applicable", "n/a"}:
+            fail(f"{path}: Sentry work records over 10 KB require a byte-count and compaction exception")
     repositories = markdown_table(text, "# Repository Evidence Eligibility")
     if not repositories or any(not row.get("Full revision") for row in repositories):
         fail(f"{path}: every relevant repository must record its full revision")
@@ -254,10 +276,32 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> None:
             "Unique contribution",
         ),
     }
+    table_rows = {}
     for heading, fields in required_tables.items():
         rows = markdown_table(text, heading)
+        table_rows[heading] = rows
         if not rows or any(not row.get(field) for row in rows for field in fields):
             fail(f"{path}: {heading} must contain populated terminal rows")
+    for row in table_rows["# Worker Runtime Closure"]:
+        if row["Runtime status"].strip().lower() == "released":
+            if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
+                fail(f"{path}: released runtime closure must have no active handles")
+            closure_evidence = row.get("Closure evidence or blocker", "").strip().lower()
+            if "provider" not in closure_evidence or not any(word in closure_evidence for word in ("release", "close")):
+                fail(f"{path}: released runtime closure requires provider release evidence")
+            handles = [value.strip().lower() for value in re.split(r",|;|<br\s*/?>", row["Completed worker handles"])]
+            if any(handle and handle not in closure_evidence for handle in handles):
+                fail(f"{path}: provider release evidence must identify every completed handle")
+    for row in markdown_table(text, "# Worker Execution Ledger"):
+        for field in ("Elapsed", "Wait"):
+            if row.get(field, "").strip().lower() in {"completed", "terminal", "released", "running"}:
+                fail(f"{path}: Worker Execution Ledger {field} must be a duration or availability value, not a state")
+    for row in markdown_table(text, "# Input Register"):
+        if "worker" in row.get("Input or artifact", "").lower() and "user" in row.get("Source or path", "").lower():
+            fail(f"{path}: worker-produced inputs must cite the provider worker/result handle, not the user")
+    for row in markdown_table(text, "# Evidence"):
+        if "preflight" in " ".join(row.values()).lower() and "user" in row.get("Source", "").lower():
+            fail(f"{path}: preflight evidence must cite the Coordinator/provider observation, not the user")
     if evaluation_run:
         evaluation_tables = {
             "# Evaluation Run Continuation Ledger": ("Sequence", "Type", "New input IDs", "Recorded at"),
@@ -342,7 +386,7 @@ def self_test_reasoning_records() -> None:
 # Worker Runtime Closure
 | Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
 | --- | --- | --- | --- | --- |
-| Final | coordinator | Released | None | provider confirmation |
+| Final | provider-worker-001 | Released | None | provider release confirmation for provider-worker-001 |
 # Worker Result Summary
 | Worker | Outcome | Confidence | Unique contribution |
 | --- | --- | --- | --- |
@@ -407,6 +451,19 @@ def self_test_reasoning_records() -> None:
         assert_invalid(
             valid.replace("| Role-policy baseline ID | codex-role-policy-v20260827003429 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
             "Role-policy baseline ID must be an identifier, not a path",
+        )
+        assert_invalid(valid.replace("| TechOps |", "| None selected |"), "run-specific evidence")
+        assert_invalid(
+            valid.replace("templates/feature_delivery_run_prompt.md", "templates/work_record.md"),
+            "Prompt template must match",
+        )
+        assert_invalid(
+            valid.replace("provider release confirmation for provider-worker-001", "all workers released"),
+            "requires provider release evidence",
+        )
+        assert_invalid(
+            valid.replace("provider release confirmation for provider-worker-001", "provider release confirmation"),
+            "must identify every completed handle",
         )
 
         legacy = path.with_name("legacy_work_record.md")
@@ -1120,6 +1177,7 @@ for phrase in (
     "Best current explanations",
     "target 30 KB combined",
     "target 10 KB for the work record",
+    "Work-record budget exception",
     "exclusively owns raw Sentry queries",
     "`limit: 1` when supported",
     "keep the plan `Draft`",
@@ -1129,6 +1187,8 @@ for phrase in (
     "run_already_active",
     "event emitter, comparison owner, baseline producer",
     "initialization is limited",
+    "never activate or delegate an `initialize` worker",
+    "resolve that issue directly before any project or issue",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
@@ -1162,6 +1222,10 @@ for phrase in (
     "run_already_active",
     "required terminal-field checklist",
     "clarification_brief.md",
+    "plugin_revision_mismatch",
+    "never spawn or delegate an `initialize` worker",
+    "never normalize, reinterpret, or silently repair it",
+    "Workflow-framework validation: passed",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -1187,6 +1251,7 @@ for phrase in (
     "Do not inspect an additional repository",
     "event emitter, comparison owner, baseline producer",
     "do not exclude that service from the deployed path",
+    "resolve that issue directly before any project or issue",
 ):
     if phrase not in sentry_investigator:
         fail(f"providers/codex/agents/sentry_current_state_investigator.toml is missing bounded evidence control: {phrase}")
@@ -1214,6 +1279,10 @@ for phrase in (
     "without its value is not a delivered input",
     "final artifact and answer",
     "canonical Sentry artifacts",
+    "plugin_revision_mismatch",
+    "never spawn or delegate an `initialize` worker",
+    "never normalize or silently repair it",
+    "Implementation plan",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
@@ -1313,6 +1382,8 @@ for phrase in (
     "Keep the final Documenter handle live",
     "implementation_plan_action",
     "provider_configuration_unavailable",
+    "never normalize, reinterpret, or silently repair it",
+    "Workflow-framework validation: passed",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")

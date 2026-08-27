@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.2
+version: 0.4.3
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -422,6 +422,10 @@ The summary must describe the worker's unique contribution, not repeat the entir
 must consume the envelope and referenced artifacts rather than independently repeating the same investigation unless it
 is checking a stated discrepancy. The envelope's `outcome` is a worker outcome; it does not replace the run-level
 `workflow_outcome` or `engineering_outcome`.
+
+The Coordinator MUST validate every terminal envelope before fan-in. For Fix Design,
+`ready_for_implementation` pairs only with `create`, and `awaiting_input` pairs only with `omit`. Return an invalid
+enum or pair to the same worker; never normalize, reinterpret, or silently repair it in Coordinator state.
 
 Coordinator-observed activation and terminal timestamps are always available and MUST be recorded. When the provider
 does not expose a distinct start time or queue wait, use activation as start and record provider queue wait as
@@ -943,11 +947,13 @@ benchmark run may append those blocks from provider-observed data. Never reconst
 
 The final Documenter owns the finalized work record and implementation plan. If verification finds an inconsistency,
 the Coordinator MUST return it to that same Documenter before closure; the Coordinator MUST NOT edit a finalized
-Documenter artifact after its terminal result.
+Documenter artifact after its terminal result, except for the provider-observed runtime-closure receipt described below.
 
 Keep the final Documenter handle live until artifact content, plan action, outcomes, and required artifact disposition
-pass final verification. Send every correction to that same handle, collect the revised terminal result, and only then
-release it. A post-terminal Coordinator artifact edit is a process conformance failure even when accurate.
+pass final verification. Send every correction to that same handle and collect the revised terminal result. After the
+first standalone validation passes, release the Documenter, then allow the Coordinator to update only the
+runtime-closure row with the exact provider handle and provider release confirmation. Run the same standalone validator
+again. Any other post-terminal Coordinator artifact edit is a process conformance failure.
 
 Once the final Documenter is activated, it is the sole writer for its assigned artifacts. The Coordinator passes
 corrections as input and MUST NOT edit those files concurrently.
@@ -978,8 +984,11 @@ fails the applicable artifact budget unless the recorded exception is valid.
 
 Before releasing a terminal or blocked handoff, the Coordinator or final Documenter MUST run the packaged framework
 validator against the execution repository's `work_record.md`. A nonzero result is a handoff conformance failure. Return
-the record to the same Documenter, correct it using the canonical template sections, and repeat validation before
-release.
+the record to the same Documenter, correct it using the canonical template sections, and repeat validation. Pin the
+preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
+`plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and
+recording its provider closure receipt, run the pinned validator as a standalone command again. Finalization passes only
+when its exit status is zero and its output contains exactly `Workflow-framework validation: passed`.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise
@@ -1022,10 +1031,14 @@ it does not prove that the provider released the worker handle or its capacity.
 After result envelopes and artifacts are persisted, the Orchestrator must:
 
 1. mark each completed worker terminal;
-2. close or release every completed worker handle, including continuous handoff/documentation workers from the finished
-   run;
+2. close or release every completed provider handle, including continuous handoff or documentation workers from the
+   finished run;
 3. verify that no required worker from that run remains active; and
-4. record the closure status before marking the run complete or starting a new lifecycle run.
+4. record each exact provider handle and its provider release confirmation before marking the run complete or starting
+   a new lifecycle run.
+
+Role names, terminal envelopes, and statements such as “all workers released” are not closure evidence. The closure row
+must contain the provider-returned handles, no remaining active handles, and the provider close/release confirmation.
 
 Before starting another lifecycle or remediation run, apply the [Concurrent Run Isolation](#concurrent-run-isolation)
 gate. A clean read-only planning run may remain concurrent; any run with a writer

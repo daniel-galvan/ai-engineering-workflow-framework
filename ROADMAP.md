@@ -5,12 +5,13 @@ playbooks. This file lists only planned evolution.
 
 ## Next validation
 
-- Evaluate the v0.4.0 prompt and controls with the existing model baseline on comparable real runs.
+- Evaluate the current prompt and control revisions with the current
+  [Codex role-policy baseline](providers/codex/model_effort_policy.md) on comparable real runs.
 - Measure control fidelity, authoritative-input consumption, human intervention, elapsed time, and wait time.
 - Exercise more Vulnerability Investigation Deep planning and remediation scenarios.
 - Reduce Deep elapsed and wait time without skipping required workers, gates, or fan-in.
 - Improve remediation completion reliability across all four playbooks.
-- Perform a cross-playbook failure audit after collecting comparable v0.4.0 run evidence.
+- Perform a cross-playbook failure audit after collecting comparable current-baseline run evidence.
 
 ## Expansion freeze
 

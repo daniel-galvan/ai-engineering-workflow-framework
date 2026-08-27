@@ -1,8 +1,9 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.4.0
+version: 0.4.3
 status: Pilot
 owner: Engineering
+last_updated: 2026-08-27
 ---
 
 # Contributing
@@ -26,6 +27,8 @@ Guide](OPERATING_GUIDE.md). This file focuses only on how to extend the framewor
 7. Keep work records in the execution repository under `.thoughts/<WORK-ITEM-ID>/`; do not commit real work-item context
    here.
 8. Record verified facts, hypotheses, unknowns, blockers, and limitations separately.
+9. Keep plugin packaging thin: launcher and metadata files may route into the framework, but must not redefine
+   contracts, playbooks, templates, roles, skills, or provider policy.
 
 ## Adding a playbook
 
@@ -41,6 +44,18 @@ Reuse the shared contract and declare:
 - a canonical run template and safe example.
 
 Exercise the playbook against a real work item before calling it validated.
+
+## Updating the Codex plugin
+
+When a change affects the installed plugin package:
+
+1. keep `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `skills/run/`, and `scripts/run_preflight.py`
+   consistent with the repository layout;
+2. preserve the plugin's base version and refresh its single `+codex.<timestamp>` cache-busting suffix;
+3. run the framework validator and verify the plugin JSON and launcher files; and
+4. reinstall the plugin and test it in a new Codex task.
+
+Do not change framework document versions merely because the plugin cache-buster changed.
 
 ## Markdown format
 

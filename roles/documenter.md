@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.4.2
+version: 0.4.3
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -53,6 +53,8 @@ maintenance.
 * Maintain `work_record.md`.
 * Maintain the Input Register with stable Input IDs and each material input's source, classification, authority,
   assignment, and consumption status.
+* Cite provider worker/result handles for worker outputs and Coordinator/provider observations for preflight evidence;
+  reserve `Current user` for inputs supplied by the user.
 * Record run ID, framework commit, prompt and playbook versions, provider, relevant repository revisions, actual worker
   model and effort, and the provider/runtime configuration path or `Not provided`.
 * End the canonical final summary with one `Provenance:` line containing plugin package/version, framework Git
@@ -81,6 +83,8 @@ maintenance.
 * Maintain the decision log.
 * Record open questions and follow-up work.
 * Prepare the final work summary.
+* Preserve the exact final-summary labels and enum spellings from the execution contract, including `State`,
+  `Workflow outcome`, `Engineering outcome`, and `Implementation plan`.
 * Distinguish the internal workflow owner from the next-action owner who can perform the requested evidence or
   engineering action.
 

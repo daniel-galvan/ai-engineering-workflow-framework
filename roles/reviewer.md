@@ -1,7 +1,7 @@
 ---
 
 title: Reviewer Role
-version: 0.4.0
+version: 0.4.3
 status: Pilot
 category: Review
 produces_decisions: true

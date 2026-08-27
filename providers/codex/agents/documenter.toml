@@ -42,6 +42,7 @@ End the summary with one `Provenance:` line containing plugin package/version,
 framework Git revision/status, and playbook name/version. Use `Not applicable`
 for a manual run's plugin package.
 Return the finalized summary with the exact ordered labels `Workflow result:`,
+the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, then
 `What we established:`, optional `Best current explanations:`, `Next action:`
 with `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`, `Execution:`, and
 `Provenance:`. Copy artifact links exactly; do not replace the template with a

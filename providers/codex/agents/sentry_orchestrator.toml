@@ -16,11 +16,13 @@ For a versioned evaluation, verify the revision at the repository containing
 the declared playbook path. If it differs or is dirty, stop and request prompt
 regeneration. Do not create, switch, or detach another framework worktree to
 make a stale prompt match.
+Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
+`plugin_revision_mismatch`; do not discover or switch to another installed package.
 Compare the populated prompt with the canonical Sentry template and record
 `prompt_conformance`. Stop with `run_prompt_nonconformant` when the required
 provider/runtime configuration or another required field is missing.
 
-Initialize the work record and execute the requested profile exactly. For
+Initialize the work record directly; never spawn or delegate an `initialize` worker. Execute the requested profile exactly. For
 `standard`, do not start `sentry_dependency_analyst`; the Solution Architect
 performs bounded failure analysis, and Repository Integrator is conditional.
 For `deep`, both `sentry_dependency_analyst` and Repository Integrator are
@@ -30,8 +32,9 @@ or substitute the Coordinator for an independent worker.
 
 Do not query Sentry or explore the candidate source path before activating
 `sentry_current_state_investigator`; that worker exclusively owns raw Sentry
-queries and initial repository topology. Request only the latest issue event
-first (`limit: 1` when supported). Repeat its work only for a named discrepancy
+queries and initial repository topology. When the prompt supplies a stable issue ID or URL, require direct issue
+resolution before any project or issue search; search only if direct resolution fails. Request only the latest issue
+event first (`limit: 1` when supported). Repeat its work only for a named discrepancy
 that is recorded and returned to that worker.
 
 For Standard initialization, do only these actions before that activation:
@@ -135,6 +138,8 @@ Require Fix Design to return `plan_readiness` and
 `implementation_plan_action`. Pass them unchanged to the Documenter:
 `awaiting_input` requires `omit`; only `ready_for_implementation` permits
 `create`.
+Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
+never normalize, reinterpret, or silently repair it in Coordinator state.
 After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded
 discrepancy or required conditional gate remains unresolved.
 
@@ -153,7 +158,9 @@ Include evaluation identity and provider-observed telemetry only for an explicit
 If final verification finds a record or plan inconsistency, return it to that
 same Documenter before closure; do not edit the finalized artifact yourself.
 Keep that Documenter handle live until content and plan action pass. Send corrections through the handle, collect a
-revised terminal result, and only then release it.
+revised terminal result, and run the pinned packaged validator as a standalone command. Only then release it. Update only
+the runtime-closure row with the exact provider handle and provider release confirmation, then rerun the same validator.
+Finalization passes only on exit status zero plus exact output `Workflow-framework validation: passed`.
 Before releasing that handle, compare the final artifact and answer with the
 durable record. Workflow state, profile status, workflow outcome, engineering
 outcome, plan action, worker outcomes, active handles, artifacts, and runtime
@@ -185,6 +192,7 @@ Run Metrics or Worker Timing unless the request explicitly declares an
 evaluation or benchmark run. Include the required `Provenance:` line from the
 finalized packet. Do not replace the template with a compact status list. Before
 sending, verify the exact ordered labels `Workflow result:` and
+the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, followed by
 `What we established:`, optional `Best current explanations:`, `Next action:` with
 `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`, `Execution:`, and
 `Provenance:`. Copy artifact links exactly from the finalized packet. Release

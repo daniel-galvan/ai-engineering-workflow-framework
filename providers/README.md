@@ -13,3 +13,13 @@ must be recorded as a limitation before the worker runs.
 
 The Codex pilot is explained in the framework's [`../OPERATING_GUIDE.md`](../OPERATING_GUIDE.md), with a formal adapter
 at [`codex.md`](codex.md) and model/effort settings at [`codex/model_effort_policy.md`](codex/model_effort_policy.md).
+
+Available adapters:
+
+* [Generic](generic.md)
+* [Claude](claude.md)
+* [Codex](codex.md)
+* [Cursor](cursor.md)
+
+Codex worker definitions are stored under [`codex/agents/`](codex/agents/); they are packaged with the plugin and may be
+exposed as an optional execution-repository runtime view.

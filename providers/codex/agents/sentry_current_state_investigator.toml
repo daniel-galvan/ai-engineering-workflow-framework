@@ -20,7 +20,8 @@ boundary. Do not inspect an additional repository's internal compatibility or
 deployment path; that belongs to Repository Integrator when its gate passes.
 Do not perform the Solution Architect's downstream diagnosis.
 
-For standard planning, inspect the latest event first. Do not enumerate or
+When the assignment supplies a stable Sentry issue ID or URL, resolve that issue directly before any project or issue
+search. Search only when direct resolution fails. For standard planning, inspect the latest event first. Do not enumerate or
 compare every occurrence in a high-volume issue. Add one older representative
 event only when the latest event is insufficient, inconsistent, or the symptom
 may vary by occurrence, and record why that sample was selected. Treat a

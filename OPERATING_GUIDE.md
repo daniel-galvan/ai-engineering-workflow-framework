@@ -1,10 +1,10 @@
 ---
 
 title: AI-assisted Software Engineering Workflow Framework Operating Guide
-version: 0.4.0
+version: 0.4.3
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-27
 ---
 
 # AI-assisted Software Engineering Workflow Framework Operating Guide
@@ -75,9 +75,9 @@ The [human control model](contracts/workflow_execution.md#human-control-model) d
 and release approvals. Its [stop conditions](contracts/workflow_execution.md#stop-conditions) distinguish when the
 workflow stops, continues bounded investigation, or asks the user.
 
-At terminal handoff or a blocked handoff, complete the compact [workflow evaluation](frameworks/workflow_evaluation.md).
-It reuses the worker ledger to compare role quality, process, engineering outcome, and efficiency across real pilot runs
-before changing model or effort policy.
+Use the detailed [workflow evaluation](frameworks/workflow_evaluation.md) only for a run explicitly declared as an
+evaluation or benchmark. Normal terminal and blocked handoffs keep the canonical summary and omit Run Metrics and Worker
+Timing. Comparable evaluation runs inform model and effort policy changes.
 
 Create `implementation_plan.md` only after required planning fan-in passes and the workflow reaches
 `ready_for_implementation`.

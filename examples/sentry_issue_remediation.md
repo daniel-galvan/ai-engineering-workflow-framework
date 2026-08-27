@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Example
-version: 0.4.0
+version: 0.4.3
 status: Pilot
 owner: Engineering
 last_updated: 2026-07-30

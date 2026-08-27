@@ -75,6 +75,8 @@ artifacts; do not make them reread the complete playbook or core contracts.
 Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
 the Documenter: `awaiting_input` requires `omit`; only
 `ready_for_implementation` permits `create`.
+Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
+never normalize, reinterpret, or silently repair it in Coordinator state.
 
 Start ready independent workers in parallel when capacity exists; otherwise
 record the runtime or dependency reason and wait time. Give each Deep worker a
@@ -107,7 +109,11 @@ post-closure poll.
 
 Keep the final Documenter live through consistency validation.
 Send corrections to that same handle, collect its revised terminal result, and
-close it only after validation passes. Never patch its artifacts directly.
+run the preflight-pinned packaged validator as a standalone command. If that packaged root disappears or changes, stop
+with `plugin_revision_mismatch`; do not discover another installed package. Close the handle only after validation
+passes. Then update only the runtime-closure row with the exact provider handle and provider release confirmation and
+rerun the same validator. Require exit status zero and exact output `Workflow-framework validation: passed`.
+Never patch its artifacts directly except for that provider-observed closure row.
 Before releasing that handle, compare the final artifact and answer with the
 durable record. Workflow state, profile status, workflow outcome, engineering
 outcome, plan action, worker outcomes, active handles, artifacts, and runtime
@@ -145,6 +151,7 @@ Run Metrics or Worker Timing unless the request explicitly declares an
 evaluation or benchmark run. Include the required `Provenance:` line from the
 finalized packet. Do not replace the template with a compact status list. Before
 sending, verify the exact ordered labels `Workflow result:` and
+the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, followed by
 `What we established:`, optional `Best current explanations:`, `Next action:` with
 `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`, `Execution:`, and
 `Provenance:`. Copy artifact links exactly from the finalized packet. Release

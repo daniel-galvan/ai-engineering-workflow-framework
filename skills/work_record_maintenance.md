@@ -1,7 +1,7 @@
 ---
 
 title: Work-Record Maintenance
-version: 0.4.0
+version: 0.4.3
 status: Pilot
 category: Documentation
 provider_independent: true

@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.1
+version: 0.4.3
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-26
@@ -73,6 +73,8 @@ Record every material user-supplied input before workers use it. Historical
 plans, work records, and worker conclusions are supporting evidence unless the
 current run explicitly adopts them as a decision. Do not promote a hypothesis
 to an authority or approval gate.
+Worker outputs cite the provider worker/result handle; framework preflight evidence cites the Coordinator/provider
+observation. Reserve `Current user` for inputs actually supplied by the user.
 
 | Input ID | Input or artifact | Source or path | Classification | Authority | Status / worker |
 | --- | --- | --- | --- | --- | --- |
@@ -144,6 +146,7 @@ production, or current-main behavior.
 | Durable artifact root | `.thoughts/<WORK-ITEM-ID>/` |
 | Final reconciliation | Pending / Passed / Failed; state, artifacts, outcomes, and runtime closure agree |
 | Finalization schema | Pending / Passed / Failed; required terminal fields and playbook artifact set are present |
+| Work-record budget exception | None / byte count and reason required when a Sentry work record exceeds 10 KB |
 
 Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engineering-outcome terms from
 `../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
@@ -191,6 +194,7 @@ Record every worker or subagent that materially contributes to the work.
 
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
 never estimate credit consumption. A self-reported model or effort does not replace provider-observed telemetry.
+`Elapsed` and `Wait` contain durations or availability values, never lifecycle states such as `Completed` or `Released`.
 
 # Evaluation Worker Activation Ledger
 
@@ -268,6 +272,8 @@ diff before accepting the implementation.
 
 Record the provider-handle closure barrier separately from result fan-in. `terminal` means the result was collected;
 `released` means the provider no longer counts the worker against runtime capacity.
+Record exact provider-returned handles and provider close/release confirmations. Role names or circular statements that
+all workers were released are not closure evidence.
 
 | Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
 | --- | --- | --- | --- | --- |
@@ -327,7 +333,7 @@ omit it. Reuse the evaluation ledgers above; do not duplicate them here. See
 | Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries |
 | Post-closure polls | Count | Wait or status calls issued after the corresponding handle was released; included in coordination errors |
 | Handoff revisions | Count | Returns to the final Documenter after its first terminal result |
-| Post-finalization Coordinator edits | Count | Must be zero; direct edits after Documenter terminal are control failures |
+| Post-finalization Coordinator edits | Count | Must be zero except the single provider-observed runtime-closure receipt update |
 | Metrics status | Valid / Invalid | Timestamp, count, timing, and artifact-byte reconciliation |
 
 | Dimension | Rating | Evidence / notes |

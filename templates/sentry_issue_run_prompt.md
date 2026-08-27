@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.1
+version: 0.4.3
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-26
@@ -73,6 +73,8 @@ Runtime bootstrap:
 - Verify the framework revision and clean status before loading instructions. Stop with `framework_revision_mismatch`
   and regenerate the prompt if the checkout differs or is dirty. Do not create, switch, or detach another framework
   worktree to make a stale prompt match.
+- Pin the preflight-resolved packaged framework root for the entire run. If that root disappears or changes, stop with
+  `plugin_revision_mismatch`; do not discover or switch to another installed plugin package.
 - The execution-repository `.codex/agents/` path is an optional runtime view. When it is absent, resolve each named
   provider agent definition from the bundled framework/plugin or selected work-graph binding.
 - Pass each resolved definition's exact configured model and reasoning effort explicitly when the spawn API would
@@ -82,8 +84,11 @@ Runtime bootstrap:
   reread the complete playbook or core contracts.
 - For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
   not satisfy final handoff.
+- The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
-  pre-query Sentry or duplicate that investigation; request only the latest event first (`limit: 1` when supported).
+  pre-query Sentry or duplicate that investigation. When `Issue` supplies a stable ID or URL, resolve it directly before
+  any project or issue search; search only if direct resolution fails. Request the latest event first (`limit: 1` when
+  supported).
 - Before that worker starts, Standard initialization is limited to turn-start capture, framework/repository/path
   verification, authoritative-input registration, the minimal work-record skeleton, and worker configuration/activation.
   Do not search candidate source, history, tests, or Sentry during initialization.
@@ -126,6 +131,8 @@ Runtime bootstrap:
   `awaiting_input`; create `implementation_plan.md` only when the readiness gate allows it.
 - The fix-design result must set `plan_readiness` and `implementation_plan_action`. `awaiting_input` means `omit` and
   produces a Clarification Brief; only `ready_for_implementation` permits the Documenter to create a plan.
+- Validate each terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
+  never normalize or silently repair it in Coordinator state.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):
@@ -175,5 +182,6 @@ alternatives, with confidence and one short reason each. Use common words, short
 Use the contract's canonical human-readable handoff. Do not include Run Metrics or Worker Timing unless this prompt
 explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable implementation
 plan; otherwise use `partially_solved` for useful incomplete diagnosis. Preserve distinct `Workflow outcome` and
-`Engineering outcome` fields. Copy artifact paths exactly.
+`Engineering outcome` fields. Use the exact ordered labels and canonical enum spellings from the contract, including
+`State`, `Workflow outcome`, `Engineering outcome`, and `Implementation plan`. Copy artifact paths exactly.
 ```

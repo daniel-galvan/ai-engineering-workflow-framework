@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.1
+version: 0.4.3
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -243,8 +243,7 @@ mandatory Repository Integrator. Repository Integrator remains conditional for s
 
 | Worker                   | Role                         | Mode          | Default effort | Skills                                                                                                                | Tools                                                                                                         | Activation / depends on                                                    |
 | ------------------------ | ---------------------------- | ------------- | -------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `initialize`             | `orchestrator`               | investigation | standard       | `work_item_context`, `workflow_planning`, `work_record_maintenance`                                                   | `work_item_read`, `work_record_read`, `work_record_write`                                                     | First; none                                                                |
-| `evidence-topology`      | `current_state_investigator` | investigation | standard       | `work_item_context`, `repository_exploration`, `architecture_mapping`, `failure_diagnosis`, `work_record_maintenance` | `work_item_read`, `runtime_observe`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; `initialize`                                                     |
+| `evidence-topology`      | `current_state_investigator` | investigation | standard       | `work_item_context`, `repository_exploration`, `architecture_mapping`, `failure_diagnosis`, `work_record_maintenance` | `work_item_read`, `runtime_observe`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; Coordinator initialization                                      |
 | `failure-topology`       | `dependency_analyst`         | investigation | standard       | `dependency_mapping`, `destination_integration`, `architecture_mapping`, `failure_diagnosis`                          | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write`                | Deep only; after `evidence-topology`                                       |
 | `repository-integration` | `repository_integrator`      | investigation | standard       | `destination_integration`, `architecture_mapping`, `operational_readiness`                                            | `repository_read`, `repository_search`, `history_read`, `artifact_write`                                      | Required for `deep`; conditional for `standard`; after `evidence-topology` |
 | `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `artifact_write`, `work_record_write`                                                                         | Required after evidence in standard; after `failure-topology` and integrator in deep |
@@ -255,6 +254,8 @@ mandatory Repository Integrator. Repository Integrator remains conditional for s
 
 The delivery profile is `implement` ↔ `review` → `validate`. No additional discovery workers are started after approval
 unless new evidence contradicts the diagnosis or expands the approved scope.
+
+The Coordinator performs Standard initialization directly; never activate or delegate an `initialize` worker.
 
 This delivery sequence is valid only inside an explicitly activated `remediation` run. The presence of an existing
 `implementation_plan.md` is not evidence that remediation workers ran in the current run.
@@ -271,6 +272,9 @@ threads keep the workflow `in_progress`.
 Workers use the shared result envelope defined in the execution contract. Sentry-specific requirements are:
 
 - `evidence-topology` owns raw Sentry queries for the run.
+- When the prompt supplies a stable Sentry issue ID or URL, resolve that issue directly before any project or issue
+  search. Search only when direct resolution fails, then request the latest issue event first (`limit: 1` when
+  supported).
 - Downstream workers consume normalized evidence artifacts.
 - Workers repeat Sentry or repository analysis only when they identify and record a specific discrepancy.
 - The Documenter records every worker result, blocker, synchronization state, model, effort, usage, and credits when
@@ -328,8 +332,9 @@ before handoff. Exceed a budget only when further compaction would remove requir
 replace the compaction attempt.
 
 Measure current artifacts before final Documenter activation. If either target is exceeded, the Documenter MUST compact
-repeated content before creating another artifact. A remaining exception must name the indispensable evidence, actual
-bytes, and reason; Process quality and Efficiency are not `met`. The Documenter never deletes and recreates the work
+repeated content before creating another artifact. A remaining `Work-record budget exception` must name the
+indispensable evidence, actual bytes, and reason; Process quality and Efficiency are not `met`.
+The Documenter never deletes and recreates the work
 record merely to reformat it.
 
 ## Execution Flow

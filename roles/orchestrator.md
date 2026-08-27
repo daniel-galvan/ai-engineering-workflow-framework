@@ -1,7 +1,7 @@
 ---
 
 title: Orchestrator Role
-version: 0.4.1
+version: 0.4.3
 status: Pilot
 category: Coordination
 produces_decisions: true
@@ -213,12 +213,16 @@ maintain and finalize a continuous worker.
 * A `not_found` handle is reconciled against the spawn result, artifacts, and provider status before
   any replacement worker starts.
 * The final handoff uses the canonical human-readable template and omits metrics and worker timing for normal runs.
+* The final handoff copies the exact `State`, `Workflow outcome`, `Engineering outcome`, and `Implementation plan`
+  values before findings, next action, artifacts, execution, and provenance.
+* Terminal envelopes use valid contract enums and readiness/action pairs; invalid values return to the same worker and
+  are never normalized by the Coordinator.
 * The terminal record retains the required finalization fields and playbook artifact set; canonical state fields agree
   with the final answer, and post-closure polls are included in coordination errors.
 * The Delivery Activation Barrier is passed before any remediation source change.
 * The Coordinator does not implement, review, or validate in place of delivery workers.
-* Completed worker handles are released and runtime closure is recorded before a run closes or a new lifecycle run
-  starts.
+* Exact provider handles are released and provider closure receipts are recorded before a run closes or a new lifecycle
+  run starts.
 * Remediation is not complete until Implementer, Reviewer, Tester, and
   Documenter results are terminal and accepted where required.
 * Workflow completed or explicitly closed with another outcome.

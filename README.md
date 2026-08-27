@@ -174,6 +174,8 @@ Use this reading path:
 ## Repository map
 
 ```text
+.agents/plugins/  Codex marketplace metadata
+.codex-plugin/    Codex plugin manifest
 contracts/       shared execution and reasoning semantics
 examples/        safe, generic scenario guides
 frameworks/      reusable engineering method
@@ -181,11 +183,16 @@ integrations/    external evidence and work-item sources
 playbooks/       scenario workflows
 providers/       platform adapters and agent definitions
 roles/           reusable responsibilities
-scripts/         deterministic framework validation
-skills/          provider-neutral capabilities
+scripts/         package preflight and deterministic framework validation
+skills/          provider-neutral capabilities and the explicit Codex launcher
 strategies/      coordination approaches
 templates/       canonical prompts and durable work artifacts
 ```
+
+The Codex plugin is a thin package over the same repository: [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json)
+declares the plugin, [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) exposes it to Codex,
+[`skills/run/`](skills/run/) provides the explicit launcher, and [`scripts/run_preflight.py`](scripts/run_preflight.py)
+guards package identity before a workflow starts. These files do not duplicate playbook or contract behavior.
 
 Codex users should read [providers/codex.md](providers/codex.md) and
 [providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md). The provider adapter is the source of

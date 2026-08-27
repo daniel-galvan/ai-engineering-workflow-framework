@@ -1,9 +1,9 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.4.0
+version: 0.4.3
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-08-27
 ---
 
 # Setup
@@ -95,7 +95,24 @@ itself.
 
 The repository is also a self-contained, explicitly invoked Codex plugin. The installed plugin includes the canonical
 catalog, playbooks, contracts, skills, provider guidance, definitions, and templates; the execution-repository provider
-runtime view above remains optional. Install the repository marketplace and plugin from the framework checkout:
+runtime view above remains optional.
+
+The plugin-specific files are deliberately small:
+
+| Path | Purpose |
+| --- | --- |
+| `.codex-plugin/plugin.json` | Plugin identity, independent plugin version, capabilities, and skill root |
+| `.agents/plugins/marketplace.json` | Local marketplace identity and repository-relative plugin source |
+| `skills/run/SKILL.md` | Explicit workflow launcher and package preflight sequence |
+| `skills/run/agents/openai.yaml` | Codex display metadata and explicit-invocation policy |
+| `scripts/run_preflight.py` | Fail-fast package, Git revision, and cleanliness validation |
+
+The plugin version and framework document versions are independent. The plugin version identifies an installed package;
+document versions identify individual contracts, playbooks, templates, and guides.
+
+### Install or update
+
+Add the repository marketplace once, then install the plugin from the framework checkout:
 
 ```bash
 FRAMEWORK_DIR="/absolute/path/to/ai-engineering-workflow-framework"
@@ -111,8 +128,10 @@ Use $ai-engineering-workflows:run.
 Work item: <stable ID or URL>
 ```
 
-The plugin uses the framework snapshot bundled with its installed version. Reinstall or update the plugin to pick up
-later framework changes. The installed plugin name/version must be recorded in plugin-backed evaluation work records.
+The plugin uses the framework snapshot bundled with its installed version. After packaged content changes, update the
+cache-busting suffix in `.codex-plugin/plugin.json`, run the framework validator, and rerun the `codex plugin add`
+command above. Start a new task to load the updated package. The installed plugin name/version must be recorded in
+plugin-backed work records.
 Supplying a framework checkout path remains part of the manual prompt workflow below, not the plugin invocation.
 The launcher performs a package/revision/clean-status preflight before loading the catalog or playbook. Do not paste a
 versioned plugin-cache `SKILL.md` path into a plugin run; the active installed skill is authoritative. If an explicit
