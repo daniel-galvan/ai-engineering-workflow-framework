@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
 BUNDLED_AGENTS = ROOT / "providers" / "codex" / "agents"
+PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 SENTRY_AGENTS = (
     "sentry_orchestrator",
@@ -39,6 +40,12 @@ GENERIC_AGENTS = (
     "documenter",
 )
 PLAYBOOKS = {path.stem for path in (ROOT / "playbooks").glob("*.md")}
+PROMPT_TEMPLATES = {
+    "feature_delivery": "feature_delivery_run_prompt.md",
+    "sentry_issue_remediation": "sentry_issue_run_prompt.md",
+    "techops_issue_remediation": "techops_issue_run_prompt.md",
+    "vulnerability_investigation": "vulnerability_issue_run_prompt.md",
+}
 CODEX_TOOL_MAPPING = {
     "work_item_read": "supplied context, connected work-item tool, or exec_command",
     "work_record_read": "exec_command",
@@ -74,6 +81,57 @@ def _playbook_name(value: str) -> str:
     if name not in PLAYBOOKS:
         raise ValueError(f"unknown_playbook:{value}")
     return name
+
+
+def _document_version(path: Path) -> str:
+    match = re.search(r"^version:\s*(\S+)\s*$", path.read_text(), re.MULTILINE)
+    if not match:
+        raise ValueError(f"document_version_unavailable:{path.relative_to(ROOT)}")
+    return match.group(1)
+
+
+def _initial_packet(
+    artifact_root: Path,
+    work_item: str,
+    playbook: str,
+    runtime_agents: Path | None,
+    manifest: dict[str, object],
+    manifest_path: Path,
+) -> dict[str, object]:
+    packet = json.loads((ROOT / "templates" / "finalization_packet.json").read_text())
+    playbook_path = ROOT / "playbooks" / f"{playbook}.md"
+    prompt_path = ROOT / "templates" / PROMPT_TEMPLATES[playbook]
+    plugin = json.loads(PLUGIN_MANIFEST.read_text())
+    packet["work_item"]["ID"] = work_item
+    packet["playbook_selection"]["Selected playbook"] = playbook
+    packet["identity"].update({
+        "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
+        "Plugin package / version": f"{plugin['name']} / {plugin['version']}",
+        "Provider/runtime configuration": str(runtime_agents) if runtime_agents else "Not provided",
+        "Provider configuration source/status": manifest["provider_configuration_source_status"],
+        "Prompt template / revision / conformance": (
+            f"templates/{prompt_path.name} / {_document_version(prompt_path)} / pending"
+        ),
+        "Role-policy baseline ID": manifest["baseline_id"],
+        "Role binding manifest": str(manifest_path),
+        "Provider / model configuration": "Codex / Worker Execution Ledger",
+    })
+    packet["finalization"]["Durable artifact root"] = str(artifact_root)
+    packet["durable_artifacts"] = [
+        {
+            "Artifact": "Role bindings",
+            "Path": str(manifest_path),
+            "Status": "Created",
+            "Purpose": "Exact worker bindings",
+        },
+        {
+            "Artifact": "Finalization packet",
+            "Path": str(artifact_root / "finalization_packet.json"),
+            "Status": "Prepared",
+            "Purpose": "Structured finalization input",
+        },
+    ]
+    return packet
 
 
 def _agent_binding(name: str, runtime_agents: Path | None) -> dict[str, str]:
@@ -158,12 +216,14 @@ def prepare_run(
     elif not record.exists():
         template = "sentry_work_record.md" if playbook == "sentry_issue_remediation" else "work_record.md"
         shutil.copyfile(ROOT / "templates" / template, record)
-    packet_path = artifact_root / "finalization_packet.json"
-    if not continuation and not packet_path.exists():
-        shutil.copyfile(ROOT / "templates" / "finalization_packet.json", packet_path)
-    manifest = resolve_bindings(playbook, runtime_agents.resolve() if runtime_agents else None)
+    resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
+    manifest = resolve_bindings(playbook, resolved_runtime_agents)
     manifest_path = artifact_root / "role_bindings.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    packet_path = artifact_root / "finalization_packet.json"
+    if not continuation and not packet_path.exists():
+        packet = _initial_packet(artifact_root, work_item, playbook, resolved_runtime_agents, manifest, manifest_path)
+        packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     return {
         "status": "prepared",
         "artifact_root": str(artifact_root),
@@ -193,9 +253,11 @@ def self_test() -> None:
             (runtime / f"{name}.toml").symlink_to(BUNDLED_AGENTS / f"{name}.toml")
         linked = resolve_bindings("sentry_issue_remediation", runtime)
         assert linked["provider_configuration_source_status"] == "runtime / resolved (9 definitions; 9 symlinked)"
-        assert json.loads(Path(first["finalization_packet"]).read_text()) == json.loads(
-            (ROOT / "templates" / "finalization_packet.json").read_text()
-        )
+        prepared_packet = json.loads(Path(first["finalization_packet"]).read_text())
+        assert prepared_packet["work_item"]["ID"] == "ITEM-1"
+        assert prepared_packet["identity"]["Role binding manifest"] == first["role_binding_manifest"]
+        assert prepared_packet["identity"]["Prompt template / revision / conformance"].endswith(" / pending")
+        assert prepared_packet["durable_artifacts"][0]["Artifact"] == "Role bindings"
         record = Path(first["work_record"])
         record.write_text(
             record.read_text().replace("| Run ID | |", "| Run ID | run-1 |").replace(

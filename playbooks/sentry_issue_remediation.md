@@ -137,7 +137,8 @@ It performs evidence collection, failure analysis, diagnosis, fix design, and wo
 latency or a worker runtime exceeds the applicable target, record the duration and critical-path cause; do not
 compensate by skipping a required worker or claiming completion early.
 
-For Standard, target evidence-worker activation within 60 seconds of turn start. After Fix Design returns
+For Standard, target evidence-worker activation within 60 seconds of turn start. Validate completed normalized evidence
+before activating Fix Design; Standard does not parallelize those two dependent stages. After Fix Design returns
 `awaiting_input` with `implementation_plan_action: omit`, proceed directly to the final Documenter; do not activate an
 additional technical worker unless a recorded discrepancy or required conditional gate remains unresolved.
 
@@ -248,7 +249,7 @@ mandatory Repository Integrator. Repository Integrator remains conditional for s
 | `evidence-topology`      | `current_state_investigator` | investigation | standard       | `work_item_context`, `repository_exploration`, `architecture_mapping`, `failure_diagnosis`, `work_record_maintenance` | `work_item_read`, `runtime_observe`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; Coordinator initialization                                      |
 | `failure-topology`       | `dependency_analyst`         | investigation | standard       | `dependency_mapping`, `destination_integration`, `architecture_mapping`, `failure_diagnosis`                          | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write`                | Deep only; after `evidence-topology`                                       |
 | `repository-integration` | `repository_integrator`      | investigation | standard       | `destination_integration`, `architecture_mapping`, `operational_readiness`                                            | `repository_read`, `repository_search`, `history_read`, `artifact_write`                                      | Required for `deep`; conditional for `standard`; after `evidence-topology` |
-| `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `repository_read`, `repository_search`, `test_run`                                                            | Required; parallel with evidence in standard; after `failure-topology` and integrator in deep |
+| `fix-design`             | `solution_architect`         | investigation | standard       | `failure_diagnosis`, `architecture_mapping`, `workflow_planning`                                                      | `repository_read`, `repository_search`, `test_run`                                                            | Required; after validated evidence in standard; after `failure-topology` and integrator in deep |
 | `implement`              | `implementer`                | delivery      | standard       | `failure_diagnosis`, `build_and_test`                                                                                 | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write`                           | Approval plus `fix-design`                                                 |
 | `review`                 | `reviewer`                   | review        | standard       | `architecture_mapping`, `build_and_test`, `operational_readiness`                                                     | `repository_read`, `diff_review`, `test_run`, `artifact_write`                                                | `implement`                                                                |
 | `validate`               | `tester`                     | review        | standard       | `build_and_test`, `operational_readiness`                                                                             | `build_run`, `test_run`, `runtime_observe`, `artifact_write`                                                  | `review`                                                                   |
@@ -431,9 +432,9 @@ for any additional sample.
 The evidence worker MUST write one canonical `normalized_evidence.md` artifact containing the full material field values
 and source references needed to preserve field-local distinctions. It includes the Sentry facts, latest event as the
 primary occurrence, any justified representative sample, initial repository/revision mapping, initial topology,
-code-path entry point, source references, and unresolved boundary questions. Standard Fix Design may start in parallel
-with evidence using its independently assigned inputs; it consumes the exact normalized artifact path before returning
-a terminal result and must not repeat raw Sentry queries except for a named discrepancy.
+code-path entry point, source references, and unresolved boundary questions. Standard Fix Design starts only after this
+artifact exists and passes artifact validation. It consumes the exact normalized artifact path and must not repeat raw
+Sentry queries except for a named discrepancy.
 
 The artifact MUST contain this compact table, using `Not established` for unevidenced values rather than inferring them:
 
@@ -480,9 +481,8 @@ Do not require the user to repeat repository or revision information already pre
 ### Stage 3 — Diagnose and Reproduce
 
 In `deep`, the `failure-topology` worker owns independent diagnosis and reproduction planning. In `standard`, the
-`solution_architect` owns bounded diagnosis and reproduction planning. It may begin that bounded work in parallel with
-evidence normalization, but must consume the completed `normalized_evidence.md` artifact before returning a terminal
-result. Form competing hypotheses appropriate to the selected profile and reproduce or verify the failure with the
+`solution_architect` owns bounded diagnosis and reproduction planning after normalized evidence passes validation.
+Form competing hypotheses appropriate to the selected profile and reproduce or verify the failure with the
 smallest safe test or local scenario. The `tester` owns executable validation during the remediation lifecycle. Use
 Seer only as optional supporting evidence.
 
@@ -554,7 +554,10 @@ prevents a safe implementation scope.
 
 Every blocking unknown MUST name its decision type, question, unavailable reason, evidence references, and at least two
 materially different fix implications. Do not return `awaiting_input` after the evidence establishes a remediation
-boundary and intended change unless every blocker is evidenced to invalidate that change.
+boundary and intended change unless every blocker is evidenced to invalidate that change. A blocker marked
+`invalidates_supported_change: true` MUST include `contradicting_evidence_refs` to observed current-run evidence for a
+materially different boundary or fix. Missing runtime confirmation alone is a validation gate, not contradictory
+evidence.
 
 A clarification result is incomplete if it only requests production data or
 repeats an unresolved question without reporting the consumed evidence,

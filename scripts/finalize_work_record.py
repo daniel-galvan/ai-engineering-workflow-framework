@@ -17,6 +17,7 @@ VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
 CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 V22_FIXTURE = ROOT / "tests" / "fixtures" / "v22_sentry_planning.json"
+V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)\s*$", re.IGNORECASE
@@ -28,6 +29,9 @@ ROLE_LABELS = {
     "repository-integration": "Repository integration",
     "handoff": "Documenter",
     "documenter": "Documenter",
+    "sentry_current_state_investigator": "Evidence topology",
+    "sentry_solution_architect": "Fix design",
+    "sentry_repository_integrator": "Repository integration",
 }
 
 
@@ -81,6 +85,24 @@ def _normalize_playbook_identity(value: object) -> object:
     return value
 
 
+def _normalize_plugin_identity(value: object) -> object:
+    supplied = str(value).strip()
+    if supplied.lower() == "not applicable" or " / " in supplied:
+        return supplied
+    match = re.fullmatch(r"([^\s/]+)\s+(\S+)", supplied)
+    return f"{match.group(1)} / {match.group(2)}" if match else value
+
+
+def _normalize_prompt_identity(value: object) -> object:
+    parts = str(value).split(" / ", 2)
+    if len(parts) != 3:
+        return value
+    conformance = parts[2].strip().lower()
+    if conformance in {"conformant", "passed", "success"} or conformance.startswith("pass:"):
+        parts[2] = "pass"
+    return " / ".join(parts)
+
+
 def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> None:
     identity = packet.get("identity", {})
     if isinstance(identity, dict):
@@ -90,7 +112,23 @@ def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> 
         if revision and status:
             identity["Framework commit / status"] = f"{revision.group(0)} / {status.group(1).title()}"
         identity["Playbook / version"] = _normalize_playbook_identity(identity.get("Playbook / version", ""))
+        identity["Plugin package / version"] = _normalize_plugin_identity(
+            identity.get("Plugin package / version", "")
+        )
+        identity["Prompt template / revision / conformance"] = _normalize_prompt_identity(
+            identity.get("Prompt template / revision / conformance", "")
+        )
         identity["Coordinator model/effort"] = _normalize_model_effort(identity.get("Coordinator model/effort", ""))
+        profiles = [str(identity.get(field, "")).strip().lower() for field in (
+            "Requested profile", "Activated profile", "Executed profile"
+        )]
+        if (
+            str(identity.get("Profile status", "")).strip().lower() in {"conformant", "passed"}
+            and len(set(profiles)) == 1
+            and profiles[0] in {"standard", "deep"}
+        ):
+            identity["Profile status"] = "executed"
+    ledger_by_worker: dict[str, dict[str, object]] = {}
     for row in packet.get("workers", []):
         if not isinstance(row, dict):
             continue
@@ -98,17 +136,39 @@ def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> 
         if role in ROLE_LABELS:
             row["Role"] = ROLE_LABELS[role]
         row["Configured model/effort"] = _normalize_model_effort(row.get("Configured model/effort", ""))
+        ledger_by_worker[str(row.get("Worker", "")).strip().lower()] = row
+    for row in packet.get("worker_results", []):
+        if not isinstance(row, dict):
+            continue
+        ledger = ledger_by_worker.get(str(row.get("Worker", "")).strip().lower())
+        if ledger:
+            row["Actual model/effort"] = ledger.get("Provider-observed model/effort", "")
+    durable_artifacts = packet.get("durable_artifacts", [])
+    if isinstance(durable_artifacts, list):
+        packet["durable_artifacts"] = [
+            row for row in durable_artifacts
+            if not isinstance(row, dict)
+            or not str(row.get("Status", "")).strip().lower().startswith(("omitted", "not created"))
+        ]
     for row in closure.get("runtime_closure", []):
         if not isinstance(row, dict):
             continue
         handles = UUID_PATTERN.findall(str(row.get("Completed worker handles", "")))
         if handles:
             row["Completed worker handles"] = ", ".join(dict.fromkeys(handles))
+            evidence = str(row.get("Closure evidence or blocker", ""))
+            if str(row.get("Runtime status", "")).strip().lower() == "released" and any(
+                handle.lower() not in evidence.lower() for handle in handles
+            ):
+                row["Closure evidence or blocker"] = f"{evidence.rstrip('.')} Completed handles: {', '.join(handles)}."
     handoff = packet.get("handoff")
     if isinstance(handoff, dict):
         handoff["workflow_result"] = re.sub(
             r"^\s*Workflow result:\s*", "", str(handoff.get("workflow_result", "")), flags=re.IGNORECASE
         )
+        execution = str(handoff.get("execution", "")).strip()
+        if "validation passed" not in execution.lower():
+            handoff["execution"] = f"validation passed; {execution}"
 
 
 def _validate_handoff(packet: dict[str, object]) -> None:
@@ -458,6 +518,26 @@ def self_test() -> None:
                     "execution": "standard/planning; validation passed; workers not started; source changes none; runtime pending/unknown",
                     "provenance": f"plugin Not applicable; framework revision {'a' * 40} (clean); playbook sentry_issue_remediation 0.4.7."},
     }
+    v28 = json.loads(V28_STABILIZATION_FIXTURE.read_text())
+    normalization = v28["packet_normalization"]
+    normalization_packet = {
+        "identity": {
+            "Plugin package / version": normalization["plugin_before"],
+            "Prompt template / revision / conformance": normalization["prompt_before"],
+        },
+        "workers": [
+            {"Role": role, "Configured model/effort": "gpt-5.6-luna/high"}
+            for role in normalization["roles"]
+        ],
+    }
+    _normalize_packet(normalization_packet, {"runtime_closure": []})
+    assert normalization_packet["identity"]["Plugin package / version"] == normalization["plugin_after"]
+    assert (
+        normalization_packet["identity"]["Prompt template / revision / conformance"]
+        == normalization["prompt_after"]
+    )
+    assert [row["Role"] for row in normalization_packet["workers"]] == list(normalization["roles"].values())
+
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)
         source = root / "packet.json"

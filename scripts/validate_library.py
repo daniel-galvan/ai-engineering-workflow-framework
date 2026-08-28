@@ -71,6 +71,7 @@ RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
 PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
 FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
+V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 PROFILE_STATUSES = {"requested", "in_progress", "executed", "not_executed", "blocked"}
 PROFILES = {"standard", "deep"}
@@ -429,6 +430,7 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
             decision_type = blocker.get("decision_type")
             implications = blocker.get("fix_implications")
             evidence_refs = blocker.get("evidence_refs")
+            contradicting_refs = blocker.get("contradicting_evidence_refs")
             if decision_type not in BLOCKING_DECISION_TYPES:
                 errors.append(f"blocking unknown {index} has invalid decision_type")
             if not isinstance(blocker.get("question"), str) or not blocker["question"].strip():
@@ -447,6 +449,15 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
                 or not all(isinstance(value, str) and value.strip() for value in evidence_refs)
             ):
                 errors.append(f"blocking unknown {index} requires evidence_refs")
+            if blocker.get("invalidates_supported_change") is True and (
+                not isinstance(contradicting_refs, list)
+                or not contradicting_refs
+                or not all(isinstance(value, str) and value.strip() for value in contradicting_refs)
+            ):
+                errors.append(
+                    f"blocking unknown {index} that invalidates a supported change requires "
+                    "contradicting_evidence_refs"
+                )
         if boundary and intended_change and not all(
             isinstance(blocker, dict) and blocker.get("invalidates_supported_change") is True
             for blocker in blockers
@@ -1276,6 +1287,19 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     overcautious_errors = fix_design_result_errors(overcautious_fix)
     assert any("materially different fixes" in error for error in overcautious_errors)
     assert any("cannot defer an established boundary" in error for error in overcautious_errors)
+    v28 = json.loads(V28_STABILIZATION_FIXTURE.read_text())
+    assert fix_design_result_errors(
+        v28["fix_design_result"], required_input_marker="normalized_evidence.md"
+    ) == []
+    invalid_v28 = {
+        **v28["fix_design_result"],
+        "plan_readiness": "awaiting_input",
+        "implementation_plan_action": "omit",
+        "blocking_unknowns": [v28["invalid_runtime_blocker"]],
+    }
+    assert any(
+        "contradicting_evidence_refs" in error for error in fix_design_result_errors(invalid_v28)
+    )
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "work_record.md"
         (path.parent / "role_bindings.json").write_text(json.dumps({
@@ -2224,8 +2248,8 @@ for phrase in (
     "fix_design_result.json",
     "# Contract Delta",
     "materially different fix implications",
-    "parallel with evidence in standard",
-    "must consume the completed `normalized_evidence.md` artifact before returning a terminal",
+    "Standard does not parallelize those two dependent stages",
+    "artifact exists and passes artifact validation",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
@@ -2272,8 +2296,10 @@ for phrase in (
     "Coordinator initialization: complete",
     "--pre-release",
     "pending closure probe",
+    "analytical_contract_failure",
+    "finalization_contract_failure",
     "Profile status: executed",
-    "activate Fix Design immediately",
+    "before activating Fix Design",
     "inputs_consumed",
 ):
     if phrase not in sentry_orchestrator:
@@ -2291,6 +2317,7 @@ for phrase in (
     "implementation_plan_action: omit",
     "fix_design_result.json",
     "invalidates_supported_change",
+    "contradicting_evidence_refs",
     "Do not run the",
 ):
     if phrase not in sentry_architect:

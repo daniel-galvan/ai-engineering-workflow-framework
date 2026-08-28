@@ -1,0 +1,65 @@
+{
+  "description": "Redacted regression from a Standard Sentry run that had a supported field-identity fix but omitted the plan.",
+  "expected": {
+    "plan_readiness": "ready_for_implementation",
+    "implementation_plan_action": "create",
+    "maximum_analytical_corrections": 1,
+    "maximum_documenter_corrections": 1
+  },
+  "fix_design_result": {
+    "worker_id": "fix-design",
+    "worker_handle": "01a049a6-4ef8-7fe2-9040-2b5b8921c664",
+    "outcome": "complete",
+    "plan_readiness": "ready_for_implementation",
+    "implementation_plan_action": "create",
+    "inputs_consumed": [
+      "IN-001",
+      "/run/normalized_evidence.md"
+    ],
+    "context_conformance": "pass",
+    "configuration_conformance": "pass",
+    "checks_performed": [
+      "Established the first scalar contract divergence from current-run evidence."
+    ],
+    "checks_remaining": [
+      "Capture raw delivery and downstream comparison evidence during implementation validation."
+    ],
+    "supported_remediation_boundary": "Preserve field identity across the producer, evaluator, callback, and comparison contract.",
+    "supported_intended_change": "Add optional keyed text fields and field keys while retaining the legacy scalar path.",
+    "interface_change": true,
+    "interface_contract": {
+      "surface": "Suggested Content compliance event and callback",
+      "request_shape": "Retain text and add optional text_fields keyed by source field.",
+      "response_shape": "Return optional field_key with field-local infraction extents.",
+      "absence_semantics": "When keyed fields are absent, preserve current scalar behavior.",
+      "compatibility_precedence": "Tolerant consumers accept legacy and keyed forms; keyed data wins when present.",
+      "rollout": "Deploy tolerant consumers, then evaluator support, then keyed production."
+    },
+    "blocking_unknowns": []
+  },
+  "invalid_runtime_blocker": {
+    "decision_type": "indispensable_evidence",
+    "question": "Was the downstream callback observed in production?",
+    "unavailable_reason": "No current callback log was supplied.",
+    "fix_implications": [
+      "Validate the supported contract correction against a captured callback.",
+      "Validate the same correction with a local contract fixture."
+    ],
+    "evidence_refs": [
+      "evidence-001"
+    ],
+    "invalidates_supported_change": true
+  },
+  "packet_normalization": {
+    "plugin_before": "ai-engineering-workflows 0.1.4+codex.20260828121505",
+    "plugin_after": "ai-engineering-workflows / 0.1.4+codex.20260828121505",
+    "prompt_before": "templates/sentry_issue_run_prompt.md / 0.4.7 / conformant",
+    "prompt_after": "templates/sentry_issue_run_prompt.md / 0.4.7 / pass",
+    "roles": {
+      "sentry_current_state_investigator": "Evidence topology",
+      "sentry_solution_architect": "Fix design",
+      "sentry_repository_integrator": "Repository integration",
+      "documenter": "Documenter"
+    }
+  }
+}

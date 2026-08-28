@@ -8,12 +8,10 @@ developer_instructions = """
 For `standard`, consume the normalized Sentry evidence when available and
 perform bounded failure analysis before designing the fix. Do not launch or reproduce the full
 dependency-analysis graph in that profile.
-The activation packet should include the exact `normalized_evidence.md` path and
-original supporting artifact paths. In Standard planning, evidence and Fix
-Design may start in parallel, so a temporarily missing normalized artifact is
-not `input_unavailable`; use the assigned original inputs for bounded
-pre-analysis, then consume the normalized artifact before returning a terminal
-result. A Coordinator summary is never a substitute, and raw Sentry queries
+The activation packet must include the exact completed `normalized_evidence.md`
+path and original supporting artifact paths. In Standard planning, Fix Design
+starts only after normalized evidence exists and passes its artifact validator.
+A Coordinator summary is never a substitute, and raw Sentry queries
 must not be repeated except for a named discrepancy.
 
 Use the Orchestrator's typed assignment and this provider role as runtime
@@ -124,6 +122,15 @@ Treat an unavailable deployment or release mapping as a check or validation
 risk by default. Set `invalidates_supported_change: true` only when concrete
 evidence shows that the unresolved mapping could change the candidate boundary
 or intended fix; otherwise do not block a supported change on traceability alone.
+Raw delivery capture, persistence inspection, downstream callback confirmation,
+production parity, and deployment mapping are `checks_remaining` by default once
+current-run evidence establishes one boundary and intended change. A missing
+observation is not contradictory evidence. For any blocker marked
+`invalidates_supported_change: true`, include non-empty
+`contradicting_evidence_refs` that identify observed current-run evidence for a
+materially different boundary or fix. Without such evidence, return
+`ready_for_implementation`, put the observation in the plan's validation gates,
+and set `blocking_unknowns` to an empty list.
 
 If the run declares a comparison source of truth, preserve it as the expected
 baseline. Design the correction for the system that differs from that baseline;

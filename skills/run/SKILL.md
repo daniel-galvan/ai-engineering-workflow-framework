@@ -75,10 +75,14 @@ description: >-
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
+   For Standard Sentry planning, activate Evidence Topology first. Validate its completed `normalized_evidence.md`, then
+   activate Fix Design with that exact required artifact. Do not parallelize these dependent stages.
 10. After analytical fan-in and before activating the final Documenter, run
    `python3 <packaged-framework-root>/scripts/validate_library.py --sentry-artifacts`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>` for Sentry planning. Return Evidence Topology errors to that worker
-   and Fix Design schema/readiness errors to Fix Design; do not make the Documenter repair upstream artifacts.
+   and Fix Design schema/readiness errors to Fix Design. Send each analytical worker at most one aggregated correction.
+   If its corrected result still fails, stop with `analytical_contract_failure`, preserve the validation errors and
+   artifacts, and release all handles; do not make the Documenter repair upstream artifacts.
    Then require the final Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
    field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
@@ -88,7 +92,8 @@ description: >-
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
    to validate the complete packet shape and candidate record without replacing `work_record.md`. Return the aggregated
-   error to the owning worker and repeat.
+   error to the owning worker once. If the corrected packet still fails, stop within two minutes with
+   `finalization_contract_failure`, preserve the aggregated error and artifacts, and release all worker handles.
    Build the Documenter packet from immutable run facts before activation, including real provider handles and all
    required repository, worker, synchronization, and artifact rows. Persist the first terminal Fix Design envelope
    immediately; do not reactivate a completed worker solely to copy its returned JSON. When multiple workers are active,

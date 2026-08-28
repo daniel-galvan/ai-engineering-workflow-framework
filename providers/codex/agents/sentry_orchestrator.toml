@@ -93,8 +93,8 @@ Verify the in-task runtime before `prepare_run.py`; if absent, stop with
 
 After activating `evidence-topology`, start the Deep failure-topology and
 repository-integration workers in parallel when capacity exists; otherwise
-record the reason and wait time. For Standard, activate Fix Design immediately
-in parallel with the evidence worker; do not wait for its terminal result.
+record the reason and wait time. For Standard, wait for Evidence Topology to
+return and validate `normalized_evidence.md` before activating Fix Design.
 Activate Repository Integrator only after
 recording one concrete cross-repository question, the local evidence that can
 answer it, and the exact ownership, readiness, or scope disposition that will
@@ -177,17 +177,21 @@ Validate every terminal envelope before fan-in. The Fix Design worker outcome is
 `complete` even when its `plan_readiness` is `awaiting_input`; return any other
 worker outcome or readiness/action pair to the same worker. Return an invalid enum or readiness/action pair to the same worker;
 never normalize, reinterpret, or silently repair it in Coordinator state.
+Send each analytical worker at most one aggregated schema or readiness correction.
+If its corrected terminal result still fails, stop with `analytical_contract_failure`,
+preserve the validation errors and artifacts, and release every handle; do not resume or replace that worker.
+Reject an `awaiting_input` blocker marked `invalidates_supported_change: true`
+when it lacks non-empty `contradicting_evidence_refs`; missing runtime confirmation belongs in `checks_remaining`.
 After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded
 discrepancy or required conditional gate remains unresolved.
 
 For Standard planning, create only a minimal work-record skeleton before
-analysis and keep the runtime ledger in Coordinator state. Start evidence and
-Fix Design in parallel after Coordinator initialization. Pass Fix Design the
-exact `normalized_evidence.md` path as an optional upstream artifact plus every
-original supporting artifact path; it may perform bounded pre-analysis from its
-assigned inputs while evidence is running, then consume the normalized artifact
-before returning a terminal result. It must not repeat raw Sentry queries except
-for a named discrepancy. Do not
+analysis and keep the runtime ledger in Coordinator state. Activate Evidence
+Topology first. Validate its completed `normalized_evidence.md`, then activate
+Fix Design with that exact required artifact plus every original supporting
+artifact path. Do not activate Fix Design while normalized evidence is absent or
+still being written. It must not repeat raw Sentry queries except for a named
+discrepancy. Do not
 progressively rewrite the work record between workers. Once the final
 Documenter starts, it is the sole artifact writer for the finalized artifact set; send
 corrections to that worker instead of editing concurrently.
@@ -215,7 +219,9 @@ owning Fix Design worker first; the Documenter must not repair those fields.
 Keep that Documenter handle live and run the pinned packaged finalizer with
 `--pre-release` against a pending closure probe. Its structural validation
 returns all packet-shape errors together. Send the aggregated correction through
-the owning handle and repeat until the pre-release check passes. Use a received/expected correction directly; do not
+the owning handle once. If the same packet still fails, stop within two minutes with
+`finalization_contract_failure`, preserve the aggregated error and current artifacts, and release every handle; do not
+resume or replace the Documenter again. Use a received/expected correction directly; do not
 inspect validator source unless the error lacks an expected value or contradicts the documented packet contract. Only then
 release it.
 Before activating the Documenter, run the packaged validator with `--sentry-artifacts <artifact-root>`. Return Contract

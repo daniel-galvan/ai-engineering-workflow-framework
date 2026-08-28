@@ -116,12 +116,12 @@ Runtime bootstrap:
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
   the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
-- For Standard planning, create one minimal work-record skeleton. Start the evidence worker and Fix Design in parallel
-  after initialization; retain intermediate ledgers in Coordinator state. Once activated, the final Documenter is the
+- For Standard planning, create one minimal work-record skeleton. Start the evidence worker after initialization;
+  validate completed `normalized_evidence.md`, then activate Fix Design with that exact artifact. Retain intermediate
+  ledgers in Coordinator state. Once activated, the final Documenter is the
   sole artifact writer for the finalized artifact set.
-- Pass Fix Design the exact `normalized_evidence.md` path as an optional upstream artifact and every original
-  supporting artifact path. It may perform bounded pre-analysis from its assigned inputs while evidence is running,
-  then must consume the normalized artifact before returning a terminal result; do not replace either with a
+- Pass Fix Design the exact validated `normalized_evidence.md` path as a required upstream artifact and every original
+  supporting artifact path. Do not activate it while normalized evidence is absent or still being written; do not replace either with a
   Coordinator-written summary.
 - Require normalized evidence to contain the playbook's canonical `# Contract Delta` table with the exact five boundary
   rows and evidence references.
@@ -146,10 +146,9 @@ Runtime bootstrap:
   `scripts/finalize_work_record.py --pre-release` against a pending closure probe and returns any error to the same
   worker. After the pre-release check passes, release the worker, write exact provider closure rows to
   `runtime_closure.json`, then run the finalizer normally; neither role patches terminal Markdown by hand.
-- If finalization finds an inconsistency, return the exact error to the same Documenter for a corrected packet; the
-  Coordinator must not edit the packet or rendered record.
-- Keep the final Documenter live until content, readiness, artifact disposition, and terminal state pass verification.
-  Send corrections to that same handle and close it only after the revised terminal result passes.
+- If finalization finds inconsistencies, return the aggregated error to the same Documenter once; the Coordinator must
+  not edit the packet or rendered record. If the corrected packet still fails, stop within two minutes with
+  `finalization_contract_failure`, preserve the error and artifacts, and release all handles.
 - Before release, reconcile the final artifact and answer with the durable record. Workflow state, profile status,
   workflow/engineering outcome, plan action, worker outcomes, active handles, artifacts, and runtime closure must agree;
   return stale `pending` or `active` values to the same Documenter for correction.
@@ -165,10 +164,14 @@ Runtime bootstrap:
   persists it verbatim as `fix_design_result.json` and copies the contract into the plan.
 - `awaiting_input` means `omit` and produces a Clarification Brief. Every blocker must identify its decision type,
   question, unavailable reason, evidence, and at least two materially different fix implications. Do not defer an
-  established boundary and intended change unless every blocker is evidenced to invalidate that change. Only
+  established boundary and intended change unless every blocker is evidenced to invalidate that change. Any blocker
+  marked `invalidates_supported_change: true` must include `contradicting_evidence_refs` to observed current-run
+  evidence for a materially different boundary or fix; a missing observation is not contradictory evidence. Only
   `ready_for_implementation` permits the Documenter to create a plan.
 - Validate each terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
-  never normalize or silently repair it in Coordinator state.
+  never normalize or silently repair it in Coordinator state. Send each analytical worker at most one aggregated
+  correction. If its corrected result still fails, stop with `analytical_contract_failure`, preserve the errors and
+  artifacts, and release all handles; do not resume or replace that worker.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):
