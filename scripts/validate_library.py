@@ -462,6 +462,18 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
     return errors
 
 
+def _contains_hypothesis(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if key in {"hypothesis", "hypotheses"} and nested:
+                return True
+            if _contains_hypothesis(nested):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_hypothesis(item) for item in value)
+    return False
+
+
 def validate_sentry_artifacts(root: Path) -> None:
     errors: list[str] = []
     evidence = root / "normalized_evidence.md"
@@ -798,6 +810,14 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             stale = stale or ("active" in barrier and "no active" not in barrier)
             if stale:
                 fail(f"{path}: released runtime closure cannot retain pending synchronization barrier")
+        for row in markdown_table(text, "# Durable Artifacts"):
+            artifact_name = re.sub(r"[_-]+", " ", row.get("Artifact", "").strip().lower())
+            if "runtime closure" in artifact_name and row.get("Status", "").strip().lower() != "released":
+                fail(f"{path}: released runtime closure requires the runtime-closure artifact status Released")
+        for row in table_rows["# Worker Result Summary"]:
+            blockers = row.get("Uncertainties / blockers", "").strip().lower()
+            if re.search(r"runtime closure pending", blockers):
+                fail(f"{path}: released runtime closure cannot retain pending worker-result closure text")
     if identity["Workflow outcome"] == "completed" and not _ALLOW_UNRELEASED:
         for row in table_rows["# Worker Runtime Closure"]:
             if row.get("Runtime status", "").strip().lower() != "released":
@@ -865,6 +885,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         if not fix_result_path.is_file():
             fail(f"{path}: completed Sentry Fix Design requires fix_design_result.json")
         else:
+            fix_result: object = {}
             try:
                 fix_result = json.loads(fix_result_path.read_text())
             except (json.JSONDecodeError, OSError) as error:
@@ -872,6 +893,12 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fix_result = {}
             for error in fix_design_result_errors(fix_result, required_input_marker="normalized_evidence.md"):
                 fail(f"{path}: {error}")
+            if not isinstance(fix_result, dict):
+                fix_result = {}
+            if _contains_hypothesis(fix_result):
+                handoff_text = fenced_section(text, "# Final Handoff")
+                if not re.search(r"^Best current explanations:\s*$", handoff_text, re.MULTILINE):
+                    fail(f"{path}: Final Handoff must include Best current explanations when Fix Design returns a hypothesis")
             readiness = fix_result.get("plan_readiness")
             expected_identity = {
                 "ready_for_implementation": {
@@ -1102,6 +1129,17 @@ def self_test_reasoning_records() -> None:
 | Field | Value |
 | --- | --- |
 | Last Updated | 2026-08-26T00:00:00Z |
+# Run Isolation and Finalization
+| Field | Value |
+| --- | --- |
+| Concurrent-run decision | Isolated run |
+| Related-run check | No related run reused |
+| Final reconciliation | Passed; runtime closure released with no active handles |
+| Finalization schema | Passed |
+# Durable Artifacts
+| Artifact | Path | Status | Purpose |
+| --- | --- | --- | --- |
+| runtime_closure.json | runtime_closure.json | Released | Provider receipt |
 # Evaluation Run Continuation Ledger
 | Sequence | Type | Trigger or new evidence | New input IDs | Previous terminal state | Recorded at | Outcome |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1199,6 +1237,8 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         "blocking_unknowns": [],
     }
     assert fix_design_result_errors(ready_fix) == []
+    assert _contains_hypothesis({"checks_performed": [{"hypothesis": "contract loss"}]})
+    assert not _contains_hypothesis({"checks_performed": ["verified fact"]})
     assert any(
         "normalized_evidence.md" in error
         for error in fix_design_result_errors(ready_fix, required_input_marker="normalized_evidence.md")
@@ -1287,6 +1327,13 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         assert_invalid(
             valid.replace("## Evaluation Worker Timing Ledger", "## Missing Evaluation Worker Timing Ledger"),
             "Evaluation Worker Timing Ledger must contain populated timing rows",
+        )
+        assert_invalid(
+            valid.replace(
+                "| runtime_closure.json | runtime_closure.json | Released | Provider receipt |",
+                "| runtime_closure.json | runtime_closure.json | Pending | Provider receipt |",
+            ),
+            "runtime-closure artifact status Released",
         )
         assert_invalid(
             valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |"),

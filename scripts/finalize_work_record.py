@@ -214,8 +214,17 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             finalization["Final reconciliation"] = "Passed; runtime closure released with no active handles"
         finalization["Finalization schema"] = "Passed"
     for row in packet.get("durable_artifacts", []):
-        if isinstance(row, dict) and "runtime closure" in str(row.get("Artifact", "")).lower():
+        if not isinstance(row, dict):
+            continue
+        artifact_name = re.sub(r"[_-]+", " ", str(row.get("Artifact", "")).lower())
+        if "runtime closure" in artifact_name:
             row["Status"] = "Released"
+    for row in packet.get("worker_results", []):
+        if not isinstance(row, dict):
+            continue
+        blockers = str(row.get("Uncertainties / blockers", ""))
+        if re.fullmatch(r"\s*runtime closure pending(?: coordinator receipt)?\s*", blockers, re.IGNORECASE):
+            row["Uncertainties / blockers"] = "None"
     for row in packet.get("synchronization", []):
         if not isinstance(row, dict):
             continue
@@ -409,8 +418,10 @@ def self_test() -> None:
         "finalization": {"Concurrent-run decision": "Not applicable", "Active related run or work item": "None",
                          "Related-run check": "Current task", "Durable artifact root": "/tmp/.thoughts/ITEM-1",
                          "Final reconciliation": "Pending; runtime closure not yet reconciled", "Finalization schema": "Passed"},
-        "durable_artifacts": [{"Artifact": "Work record", "Path": "work_record.md", "Status": "Created",
-                               "Purpose": "Terminal handoff"}],
+        "durable_artifacts": [
+            {"Artifact": "Work record", "Path": "work_record.md", "Status": "Created", "Purpose": "Terminal handoff"},
+            {"Artifact": "runtime_closure.json", "Path": "runtime_closure.json", "Status": "Pending", "Purpose": "Provider receipt"},
+        ],
         "workers": [{"Worker": "Coordinator", "Role": "Orchestrator", "Assigned inputs": "IN-001",
                      "Mode": "investigation", "Depth": "standard", "Skills": "workflow", "Tools": "local",
                      "Capacity": "current task", "Configured model/effort": "active session",
@@ -425,7 +436,7 @@ def self_test() -> None:
                              "Closure evidence or blocker": "provider release confirmation for coordinator"}],
         "worker_results": [{"Worker": "Coordinator", "Outcome": "blocked", "Confidence": "High",
                             "Unique contribution": "Stopped safely", "Evidence / claim refs": "E-001 / C-001",
-                            "Uncertainties / blockers": "In-task runtime absent", "Actual model/effort": "Unknown",
+                            "Uncertainties / blockers": "Runtime closure pending Coordinator receipt", "Actual model/effort": "Unknown",
                             "Usage/credits": "Unknown"}],
         "evidence": [{"Evidence ID": "E-001", "Source": "runtime check", "Summary": "Runtime absent",
                       "Confidence": "High", "Uncertainty": "None", "Status": "Verified"}],
@@ -466,6 +477,9 @@ def self_test() -> None:
         assert "| Passed; runtime closure released |" in rendered
         assert "Final reconciliation | Pending" not in rendered
         assert "runtime pending" not in rendered.lower()
+        assert "runtime closure pending" not in rendered.lower()
+        assert "| runtime_closure.json |" in rendered
+        assert "| Released | Provider receipt |" in rendered
         pending = {"runtime_closure": [dict(packet["runtime_closure"][0], **{
             "Runtime status": "Pending",
             "Closure evidence or blocker": "provider release pending",

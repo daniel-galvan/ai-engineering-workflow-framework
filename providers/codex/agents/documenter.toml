@@ -121,6 +121,8 @@ final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
 pending` values after the packet says the barrier passed. The final record,
 artifact list, plan action, and workflow/engineering outcome must agree with the final packet.
 Copy every artifact path exactly from the final packet.
+Do not omit or reconstruct immutable packet tables. If a required row, handle, identity value, or synchronization entry
+is absent from the Coordinator packet, return a packet-input error instead of emitting a partial packet.
 Active artifacts must be direct children of the declared current-run artifact
 root. Do not recursively inspect or reuse `runs/` archives unless the packet
 explicitly declares continuation or recovery.

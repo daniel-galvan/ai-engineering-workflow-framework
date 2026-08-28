@@ -221,6 +221,12 @@ release it.
 Before activating the Documenter, run the packaged validator with `--sentry-artifacts <artifact-root>`. Return Contract
 Delta errors to Evidence Topology and Fix Design schema/readiness/interface errors to Fix Design. Activate Documenter
 only after this check passes.
+Before the first Documenter activation, assemble one finalized packet from immutable run facts. Populate every identity,
+repository, worker, synchronization, artifact, handle, and outcome row; never send placeholder handles or empty
+structural tables. When Fix Design returns a terminal envelope, persist that exact JSON immediately; do not resume a
+completed worker only to re-emit a result already returned to the Coordinator. When several workers are active, use
+one provider-supported multi-handle or event-driven wait with bounded backoff rather than alternating unscoped and
+per-handle polling.
 Update the runtime-closure row with the exact provider handle and provider
 release confirmation, then rerun the finalizer with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line
 `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block verbatim as the final answer.

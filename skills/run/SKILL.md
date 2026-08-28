@@ -89,6 +89,10 @@ description: >-
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
    to validate the complete packet shape and candidate record without replacing `work_record.md`. Return the aggregated
    error to the owning worker and repeat.
+   Build the Documenter packet from immutable run facts before activation, including real provider handles and all
+   required repository, worker, synchronization, and artifact rows. Persist the first terminal Fix Design envelope
+   immediately; do not reactivate a completed worker solely to copy its returned JSON. When multiple workers are active,
+   use one provider-supported multi-handle or event-driven wait with bounded backoff.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
