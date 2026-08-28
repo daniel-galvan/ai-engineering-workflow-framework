@@ -1,6 +1,6 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.4.5
+version: 0.4.6
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-27
@@ -494,6 +494,24 @@ repository.
 
 Review the generated prompt before running it. The user remains responsible for the selected repository, scope,
 permissions, lifecycle, profile, and approvals.
+
+### Declare an evaluation or benchmark
+
+Evaluation and benchmarking are deferred while the normal workflow stabilizes. For an intentional experimental run,
+add this block to the populated playbook prompt:
+
+```text
+Run this as an explicit evaluation run.        # or: Run this as a benchmark evaluation.
+Evaluation run ID: <UNIQUE-ID>
+Framework revision: <FULL-GIT-COMMIT>
+Framework worktree status: clean
+Role-policy baseline ID: <BASELINE-ID>
+Record provider-observed timing and usage when available; never estimate missing values.
+```
+
+Use a new evaluation run ID for every attempt. Keep the prompt, framework commit, playbook version, profile, lifecycle,
+provider/model configuration, and relevant repository revisions constant when comparing attempts. Evaluation telemetry
+uses `templates/evaluation_work_record_addendum.md`; normal runs omit it.
 
 ## Verify the framework
 

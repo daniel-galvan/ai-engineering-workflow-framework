@@ -1,6 +1,6 @@
 ---
 title: Engineering Implementation Plan
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -76,6 +76,15 @@ in-scope changes, and explicit exclusions.
 
 Record the confirmed cause or best-supported hypothesis, evidence references, current behavior, expected behavior,
 residual uncertainty, and confidence. Preserve the evidence, claim, and decision IDs that support the plan.
+
+# Interface Contract
+
+Complete this table when the change crosses an API, event, payload, schema, or other repository boundary. Copy the exact
+contract from the Fix Design result. Use `Not applicable` only when `interface_change` is `false`.
+
+| Surface | Request shape | Response shape | Absence semantics | Compatibility / precedence | Rollout |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
 
 # 3. Source Change Plan
 

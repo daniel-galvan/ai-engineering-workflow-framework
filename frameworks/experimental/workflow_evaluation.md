@@ -1,13 +1,13 @@
 ---
 title: Workflow Evaluation
-version: 0.4.3
-status: Pilot
+version: 0.4.4
+status: Experimental / Deferred
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 depends_on:
-  - ../contracts/workflow_execution.md
-  - ../contracts/claims.md
-  - ../templates/work_record.md
+  - ../../contracts/workflow_execution.md
+  - ../../contracts/claims.md
+  - ../../templates/evaluation_work_record_addendum.md
 ---
 
 # Workflow Evaluation
@@ -17,6 +17,17 @@ depends_on:
 Evaluation is opt-in, not a delivery gate, and does not replace software validation. Complete it only when the request
 explicitly declares an evaluation or benchmark run. Normal workflow runs omit evaluation telemetry and use the work
 record only for engineering evidence and execution status.
+
+This feature is deferred while the normal workflow stabilizes. Do not enable it for ordinary engineering runs or use it
+as a prerequisite for core workflow completion.
+
+## How to trigger evaluation
+
+Declare the mode directly in the run prompt, for example: `Run this as an explicit evaluation run.` or `Run this as a
+benchmark evaluation.` Populate a new evaluation run ID, the full framework commit, a clean framework status, and the
+role-policy baseline ID. Use the same prompt, playbook, profile, lifecycle, provider/model configuration, and repository
+revision when comparing runs. A completed normal run cannot be converted after the fact because missing provider
+timestamps, activation history, and usage must not be reconstructed.
 
 ## Pilot Method
 
@@ -82,7 +93,7 @@ run did not expose enough evidence to assess the measure.
 | Prompt conformance | Pass / Fail | Canonical template revision and missing or altered required fields. |
 | Repository evidence eligibility | Per repository | Branch, revision, user-selected ref, release mapping, and accepted/caveated/rejected status. |
 | Memory facts admitted | Count | Unassigned memory or historical facts/citations that entered current-run outputs; must be zero. |
-| Artifact volume | Count and bytes | Durable artifacts produced by the run. |
+| Artifact count | Count | Durable artifacts produced by the run. |
 | Finding-to-plan ratio | Findings / change sets / plans | Whether distinct findings produced shared or duplicate remediation plans. |
 
 Derive instance, activation, error, and revision counts from the chronological activation ledger. A successful `spawn`
@@ -100,7 +111,7 @@ terminal times were observable but recorded as `Unknown` or `Unavailable`.
 
 When the turn-start timestamp is missing and no provider timestamp covers the complete turn, required metrics are
 `invalid`. A shortened stage window must not be reported as wall time, and the run cannot claim metrics or process
-conformance. Artifact bytes must be recomputed after the final handoff revision.
+conformance.
 
 Process quality cannot be rated `met` when the Coordinator changes a technical worker's diagnosis, remediation
 boundary, or readiness disposition without returning it for technical review, or when a handoff worker completed before
@@ -114,8 +125,7 @@ Documenter artifact instead of returning the inconsistency. Process quality also
 Process quality and Efficiency also cannot be rated `met` when configured worker model or effort was replaced by
 Coordinator inheritance, workers reread the complete framework without a named ambiguity, or a worker repeats verified
 source mapping without a recorded discrepancy. The same applies when provider session timestamps were available but
-worker-authored timestamps were used, the Coordinator and final Documenter edited the same artifact concurrently, or
-artifact size targets were exceeded without recording the bytes and reason.
+worker-authored timestamps were used, or the Coordinator and final Documenter edited the same artifact concurrently.
 
 Process quality cannot be rated `met` when a result that failed `context_conformance` entered fan-in, a required worker
 ran after provider configuration could not be resolved or bound, the Documenter created a plan after Fix Design returned

@@ -131,5 +131,6 @@ descendants is not a successful execution of the selected profile.
 Agent configuration selects model and reasoning effort; it does not expose credit accounting. Record provider-reported
 usage when the execution surface exposes it. Never estimate credits from token counts or invent missing values.
 
-Use the [workflow evaluation](../../frameworks/workflow_evaluation.md) to compare real pilot runs. Do not change this
+Use the [experimental workflow evaluation](../../frameworks/experimental/workflow_evaluation.md) to compare real pilot
+runs. Do not change this
 policy from one run alone.

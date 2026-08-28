@@ -133,6 +133,9 @@ def prepare_run(
     elif not record.exists():
         template = "sentry_work_record.md" if playbook == "sentry_issue_remediation" else "work_record.md"
         shutil.copyfile(ROOT / "templates" / template, record)
+    packet_path = artifact_root / "finalization_packet.json"
+    if not continuation and not packet_path.exists():
+        shutil.copyfile(ROOT / "templates" / "finalization_packet.json", packet_path)
     manifest = resolve_bindings(playbook, runtime_agents.resolve() if runtime_agents else None)
     manifest_path = artifact_root / "role_bindings.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -140,6 +143,7 @@ def prepare_run(
         "status": "prepared",
         "artifact_root": str(artifact_root),
         "work_record": str(record),
+        "finalization_packet": str(packet_path),
         "role_binding_manifest": str(manifest_path),
         "archived_prior_run": archived,
         **manifest,
@@ -154,7 +158,9 @@ def self_test() -> None:
         first = prepare_run(execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False)
         assert first["playbook"] == "sentry_issue_remediation"
         assert first["bindings"]["sentry_solution_architect"]["model"] == "gpt-5.6-sol"
-        assert Path(first["work_record"]).stat().st_size < 10 * 1024
+        assert json.loads(Path(first["finalization_packet"]).read_text()) == json.loads(
+            (ROOT / "templates" / "finalization_packet.json").read_text()
+        )
         record = Path(first["work_record"])
         record.write_text(
             record.read_text().replace("| Run ID | |", "| Run ID | run-1 |").replace(

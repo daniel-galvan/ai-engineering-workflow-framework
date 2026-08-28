@@ -63,19 +63,25 @@ description: >-
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
-10. Before terminal or blocked handoff, require the final Documenter to write structured
-   `finalization_packet.json`. While that Documenter remains active, create a pending closure probe using the
+10. Before terminal or blocked handoff, require the final Documenter to populate the prepared
+   `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
+   field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
+   Documenter remains active, create a pending closure probe using the
    `templates/runtime_closure.json` schema and run:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
-   to validate the packet without replacing `work_record.md`. Return any error to the same Documenter and repeat.
+   to validate the complete packet shape and candidate record without replacing `work_record.md`. Return the aggregated
+   error to the owning worker and repeat.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json`, then run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
+   The persisted packet is the Documenter's pre-release source snapshot. `runtime_closure.json` is the provider receipt,
+   and the rendered `work_record.md` is the authoritative terminal state; do not require the source packet to be
+   rewritten after provider release.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
    failure. Return packet, path, table, rendering, or closure errors to the same Documenter. Return errors naming Fix

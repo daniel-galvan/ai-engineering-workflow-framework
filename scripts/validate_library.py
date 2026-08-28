@@ -31,6 +31,15 @@ POLICY_EFFORTS = {
     "Ultra": "ultra",
 }
 MAX_MARKDOWN_PROSE_WIDTH = 120
+LARGE_WORK_RECORD_BYTES = 64 * 1024
+INTERFACE_CONTRACT_FIELDS = (
+    "surface",
+    "request_shape",
+    "response_shape",
+    "absence_semantics",
+    "compatibility_precedence",
+    "rollout",
+)
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
 }
@@ -48,7 +57,8 @@ WORKFLOW_GUIDANCE = ROOT / "contracts" / "workflow_execution_guidance.md"
 WORKFLOW_VOCABULARY = ROOT / "contracts" / "workflow_vocabulary.md"
 PORTABLE_HANDOFF_CONTRACT = ROOT / "contracts" / "portable_implementation_handoff.md"
 CLAIMS_CONTRACT = ROOT / "contracts" / "claims.md"
-WORKFLOW_EVALUATION = ROOT / "frameworks" / "workflow_evaluation.md"
+WORKFLOW_EVALUATION = ROOT / "frameworks" / "experimental" / "workflow_evaluation.md"
+EVALUATION_ADDENDUM = ROOT / "templates" / "evaluation_work_record_addendum.md"
 CODEX_POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
 CODEX_ADAPTER = ROOT / "providers" / "codex.md"
 CODEX_AGENT_DIR = ROOT / "providers" / "codex" / "agents"
@@ -141,6 +151,14 @@ def frontmatter(text: str) -> list[str]:
         return lines[1 : lines.index("---", 1)]
     except ValueError:
         return []
+
+
+def frontmatter_value(path: Path, field: str) -> str | None:
+    prefix = f"{field}:"
+    return next(
+        (line.split(":", 1)[1].strip() for line in frontmatter(path.read_text()) if line.startswith(prefix)),
+        None,
+    )
 
 
 def markdown_table(text: str, heading: str) -> list[dict[str, str]]:
@@ -320,6 +338,8 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
         "checks_remaining",
         "supported_remediation_boundary",
         "supported_intended_change",
+        "interface_change",
+        "interface_contract",
         "blocking_unknowns",
     }
     missing = sorted(field for field in required if field not in data)
@@ -353,11 +373,15 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
     for field in ("checks_performed", "checks_remaining", "blocking_unknowns"):
         if not isinstance(data[field], list):
             errors.append(f"fix design {field} must be a list")
+    if not isinstance(data["interface_change"], bool):
+        errors.append("fix design interface_change must be true or false")
     if errors:
         return errors
     boundary = data["supported_remediation_boundary"]
     intended_change = data["supported_intended_change"]
     blockers = data["blocking_unknowns"]
+    interface_change = data["interface_change"]
+    interface_contract = data["interface_contract"]
     if bool(boundary.strip()) != bool(intended_change.strip()):
         errors.append("supported remediation boundary and intended change must be provided together")
     if readiness == "ready_for_implementation":
@@ -367,6 +391,16 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
             errors.append("ready fix design requires a supported intended change")
         if blockers:
             errors.append("ready fix design cannot retain blocking_unknowns")
+        if interface_change:
+            if not isinstance(interface_contract, dict):
+                errors.append("ready interface change requires interface_contract")
+            else:
+                for field in INTERFACE_CONTRACT_FIELDS:
+                    value = interface_contract.get(field)
+                    if not isinstance(value, str) or not value.strip():
+                        errors.append(f"interface_contract {field} must be a non-empty string")
+        elif interface_contract is not None:
+            errors.append("non-interface change requires interface_contract: null")
     elif readiness == "awaiting_input":
         if not data["checks_performed"]:
             errors.append("awaiting_input requires at least one performed discriminating check")
@@ -480,6 +514,11 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     if not path.is_file():
         fail(f"work record does not exist: {path}")
         return ""
+    if path.stat().st_size > LARGE_WORK_RECORD_BYTES:
+        print(
+            f"WARNING: {path} is unusually large; remove duplicated evidence when safe",
+            file=sys.stderr,
+        )
     text = path.read_text()
     identity = {
         row.get("Field", ""): row.get("Value", "")
@@ -511,7 +550,6 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             fail(f"{path}: Playbook Selection {field} must contain run-specific evidence")
     required_identity = (
         "Run ID",
-        "Evaluation run ID",
         "Playbook / version",
         "Framework commit / status",
         "Plugin package / version",
@@ -545,8 +583,9 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         fail(f"{path}: unresolved Run Identity placeholders: {', '.join(unresolved)}")
     for error in terminal_semantics_errors(identity):
         fail(f"{path}: {error}")
-    evaluation_run = identity["Evaluation run ID"] != "Not applicable"
-    if evaluation_run and identity["Evaluation run ID"] in {"Unknown", "None"}:
+    evaluation_run_id = identity.get("Evaluation run ID", "Not applicable")
+    evaluation_run = evaluation_run_id != "Not applicable"
+    if evaluation_run and evaluation_run_id in {"Unknown", "None"}:
         fail(f"{path}: Evaluation run ID must identify the evaluated run")
     if evaluation_run and identity["Role-policy baseline ID"] in {"Unknown", "None", "Not applicable"}:
         fail(f"{path}: Role-policy baseline ID must identify the evaluated baseline")
@@ -609,20 +648,19 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             ):
                 fail(f"{path}: role binding manifest differs from provider definition for {agent}")
     expected_prompt = prompt_by_playbook.get(playbook_name)
-    if expected_prompt and not identity["Prompt template / revision / conformance"].startswith(expected_prompt):
-        fail(f"{path}: Prompt template must match {expected_prompt} for {playbook_name}")
+    if expected_prompt:
+        prompt_identity = identity["Prompt template / revision / conformance"].split(" / ", 2)
+        expected_version = frontmatter_value(ROOT / expected_prompt, "version")
+        if len(prompt_identity) != 3 or prompt_identity[0] != expected_prompt:
+            fail(f"{path}: Prompt template must match {expected_prompt} for {playbook_name}")
+        elif prompt_identity[1] != expected_version:
+            fail(f"{path}: Prompt template revision must be {expected_version} for {playbook_name}")
+        elif not re.fullmatch(r"(?:pass|fail(?:[:;].+)?)", prompt_identity[2], re.IGNORECASE):
+            fail(f"{path}: Prompt template conformance must be pass or fail with details")
     finalization = {
         row.get("Field", ""): row.get("Value", "")
         for row in markdown_table(text, "# Run Isolation and Finalization")
     }
-    if playbook_name == "sentry_issue_remediation" and path.stat().st_size > 10 * 1024:
-        budget_exception = finalization.get("Work-record budget exception", "").strip().lower()
-        if (
-            not budget_exception
-            or budget_exception in {"none", "not applicable", "n/a"}
-            or "byte count and reason required" in budget_exception
-        ):
-            fail(f"{path}: Sentry work records over 10 KB require a byte-count and compaction exception")
     repositories = markdown_table(text, "# Repository Evidence Eligibility")
     if not repositories or any(not row.get("Full revision") for row in repositories):
         fail(f"{path}: every relevant repository must record its full revision")
@@ -723,9 +761,6 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         outcome = row.get("Outcome", "").strip().lower()
         if "Outcome" in row and outcome not in WORKER_OUTCOMES:
             fail(f"{path}: invalid worker outcome: {outcome}")
-        for field in ("Elapsed", "Wait"):
-            if row.get(field, "").strip().lower() in {"completed", "terminal", "released", "running"}:
-                fail(f"{path}: Worker Execution Ledger {field} must be a duration or availability value, not a state")
         if codex_run and row.get("Worker", "").strip().lower() not in {"coordinator", "orchestrator"}:
             role = row.get("Role", "").strip()
             agent = SENTRY_ROLE_AGENTS.get(role) if playbook_name == "sentry_issue_remediation" else None
@@ -787,6 +822,21 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             if readiness == "ready_for_implementation":
                 if not plan.is_file():
                     fail(f"{path}: ready Fix Design requires implementation_plan.md")
+                elif fix_result.get("interface_change"):
+                    contract_rows = markdown_table(plan.read_text(), "# Interface Contract")
+                    interface_contract = fix_result.get("interface_contract", {})
+                    plan_fields = {
+                        "Surface": "surface",
+                        "Request shape": "request_shape",
+                        "Response shape": "response_shape",
+                        "Absence semantics": "absence_semantics",
+                        "Compatibility / precedence": "compatibility_precedence",
+                        "Rollout": "rollout",
+                    }
+                    if len(contract_rows) != 1 or any(not contract_rows[0].get(field) for field in plan_fields):
+                        fail(f"{path}: ready interface change requires one populated # Interface Contract row")
+                    elif any(contract_rows[0][field] != interface_contract[key] for field, key in plan_fields.items()):
+                        fail(f"{path}: implementation plan Interface Contract must match fix_design_result.json")
                 if clarification.exists():
                     fail(f"{path}: ready Fix Design cannot retain clarification_brief.md")
             elif readiness == "awaiting_input":
@@ -948,7 +998,7 @@ def self_test_reasoning_records() -> None:
 | Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.0 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.3 / pass |
 | Role-policy baseline ID | codex-role-policy-v20260827032839 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -962,9 +1012,9 @@ def self_test_reasoning_records() -> None:
 | Workflow outcome | completed |
 | Engineering outcome | solved |
 # Worker Execution Ledger
-| Worker | Role | Configured model/effort | Provider-observed model/effort | Elapsed | Wait |
-| --- | --- | --- | --- | --- | --- |
-| Coordinator | Orchestrator | active session | active session | PT1S | PT0S |
+| Worker | Role | Configured model/effort | Provider-observed model/effort | Usage |
+| --- | --- | --- | --- | --- |
+| Coordinator | Orchestrator | active session | active session | Unknown |
 # Work Item
 | Field | Value |
 | --- | --- |
@@ -1061,6 +1111,8 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         "checks_remaining": ["Verify production parity before release."],
         "supported_remediation_boundary": "Outbound contract loses one required field.",
         "supported_intended_change": "Preserve the required field across the contract.",
+        "interface_change": False,
+        "interface_contract": None,
         "blocking_unknowns": [],
     }
     assert fix_design_result_errors(ready_fix) == []
@@ -1161,6 +1213,13 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace(
+                "templates/feature_delivery_run_prompt.md / 0.4.3 / pass",
+                "templates/feature_delivery_run_prompt.md / framework revision 0123456789abcdef / pass",
+            ),
+            "Prompt template revision must be 0.4.3",
+        )
+        assert_invalid(
+            valid.replace(
                 "provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012",
                 "all workers released",
             ),
@@ -1190,8 +1249,9 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "completed workflow requires released runtime closure",
         )
         bound_worker = valid.replace(
-            "| Coordinator | Orchestrator | active session | active session | PT1S | PT0S |",
-            "| evidence-topology | Current-State Investigator / Sentry Evidence | gpt-5.6-luna / low | gpt-5.6-luna / low | PT1S | PT0S |",
+            "| Coordinator | Orchestrator | active session | active session | Unknown |",
+            "| evidence-topology | Current-State Investigator / Sentry Evidence | gpt-5.6-luna / low | "
+            "gpt-5.6-luna / low | Unknown |",
         )
         assert_invalid(bound_worker, "configured model/effort must be gpt-5.6-luna / high")
         multiple = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |")
@@ -1655,8 +1715,8 @@ for template in (FINALIZATION_PACKET_TEMPLATE, RUNTIME_CLOSURE_TEMPLATE):
             json.loads(template.read_text())
         except json.JSONDecodeError as error:
             fail(f"{template.relative_to(ROOT)} is invalid JSON: {error}")
-if not SENTRY_WORK_RECORD_TEMPLATE.is_file() or SENTRY_WORK_RECORD_TEMPLATE.stat().st_size >= 10 * 1024:
-    fail("templates/sentry_work_record.md must exist and remain below the Sentry work-record budget")
+if not SENTRY_WORK_RECORD_TEMPLATE.is_file():
+    fail("templates/sentry_work_record.md is missing")
 run_skill = RUN_SKILL.read_text()
 for phrase in (
     "scripts/run_preflight.py",
@@ -1727,13 +1787,10 @@ if "# Input Register" not in work_record_template:
     fail("templates/work_record.md is missing input provenance")
 if "| Input ID |" not in work_record_template or "| Assigned inputs |" not in work_record_template:
     fail("templates/work_record.md is missing input assignment tracking")
-for phrase in (
-    "# Evaluation Run Continuation Ledger",
-    "# Evaluation Worker Activation Ledger",
-    "## Evaluation Worker Timing Ledger",
-):
-    if phrase not in work_record_template:
-        fail(f"templates/work_record.md is missing terminal runtime ledger: {phrase}")
+if "evaluation_work_record_addendum.md" not in work_record_template:
+    fail("templates/work_record.md is missing the optional evaluation boundary")
+if not EVALUATION_ADDENDUM.is_file():
+    fail("templates/evaluation_work_record_addendum.md is missing")
 if "# Delivery Activation Gate" not in work_record_template:
     fail("templates/work_record.md is missing the delivery activation gate")
 if "# Implementation Conformance Check" not in work_record_template:
@@ -1794,15 +1851,16 @@ implementation_plan_template = (ROOT / "templates" / "implementation_plan.md").r
 if "The plan does not authorize implementation" not in implementation_plan_template:
     fail("templates/implementation_plan.md is missing the delivery activation rule")
 if not WORKFLOW_EVALUATION.exists():
-    fail("frameworks/workflow_evaluation.md is missing")
+    fail("frameworks/experimental/workflow_evaluation.md is missing")
 workflow_evaluation = WORKFLOW_EVALUATION.read_text()
 for heading in ("# Workflow Evaluation", "## Pilot Method", "## Comparison Rules"):
     if heading not in workflow_evaluation:
-        fail(f"frameworks/workflow_evaluation.md is missing {heading}")
+        fail(f"frameworks/experimental/workflow_evaluation.md is missing {heading}")
 if "recorded role-policy baseline" not in workflow_evaluation:
-    fail("frameworks/workflow_evaluation.md is missing baseline comparison control")
-if "# Workflow Evaluation" not in work_record_template:
-    fail("templates/work_record.md is missing workflow evaluation")
+    fail("frameworks/experimental/workflow_evaluation.md is missing baseline comparison control")
+evaluation_addendum = EVALUATION_ADDENDUM.read_text()
+if "# Workflow Evaluation" not in evaluation_addendum:
+    fail("templates/evaluation_work_record_addendum.md is missing workflow evaluation")
 for phrase in (
     "Engineering outcome",
     "Clarifications",
@@ -1820,13 +1878,13 @@ for phrase in (
     "Failed spawns",
     "Handle discrepancies",
     "Replacement workers",
-    "Artifact volume",
+    "Artifact count",
     "Finding-to-plan ratio",
 ):
     if phrase not in workflow_evaluation:
-        fail(f"frameworks/workflow_evaluation.md is missing outcome/burden metric: {phrase}")
-    if phrase not in ("Artifact volume", "Finding-to-plan ratio") and phrase not in work_record_template:
-        fail(f"templates/work_record.md is missing outcome/burden metric: {phrase}")
+        fail(f"frameworks/experimental/workflow_evaluation.md is missing outcome/burden metric: {phrase}")
+    if phrase != "Finding-to-plan ratio" and phrase not in evaluation_addendum:
+        fail(f"templates/evaluation_work_record_addendum.md is missing outcome/burden metric: {phrase}")
 
 for phrase in (
     "MUST NOT manually reproduce or edit the handle",
@@ -1874,7 +1932,7 @@ for phrase in (
     "this route uses three delegated workers",
     "The Coordinator performs initialization directly",
     "pilot soft target is 10 minutes end to end",
-    "combined pilot target is 15 KB",
+    "Normal runs have no byte-count field or hard size gate",
     "checkout is not the execution repository",
     "not change source operations back to the original checkout",
     "identifier equality during fan-in",
@@ -1908,9 +1966,9 @@ for phrase in (
         fail(f"contracts/workflow_execution.md is missing wall-time boundary: {phrase}")
 
 if "reported wall time omits Coordinator or documentation" not in workflow_evaluation:
-    fail("frameworks/workflow_evaluation.md is missing complete wall-time evaluation")
+    fail("experimental workflow evaluation is missing complete wall-time evaluation")
 if "reconstructed from worker-stage estimates" not in workflow_evaluation:
-    fail("frameworks/workflow_evaluation.md is missing direct wall-time evaluation")
+    fail("experimental workflow evaluation is missing direct wall-time evaluation")
 
 implementation_plan = (ROOT / "templates" / "implementation_plan.md").read_text()
 if "Exact tool, version, source, executable path or approved isolated-bootstrap method" not in implementation_plan:
@@ -2000,13 +2058,11 @@ for phrase in (
     "one smallest available check",
     "do not run unit or integration tests merely",
     "Best current explanations",
-    "target 30 KB combined",
-    "target 10 KB for the work record",
-    "Work-record budget exception",
+    "Normal runs have no byte-count field or hard size gate",
     "exclusively owns raw Sentry queries",
     "`limit: 1` when supported",
     "keep the plan `Draft`",
-    "finalization budgets",
+    "Reference",
     "one explicit cross-repository question",
     "canonical durable artifacts",
     "run_already_active",
@@ -2164,7 +2220,7 @@ for text, label in (
     (documenter_role, "roles/documenter.md"),
     (documenter_agent, "providers/codex/agents/documenter.toml"),
 ):
-    if "Standard Sentry planning" not in text or "30 KB combined" not in text or "10 KB" not in text:
+    if "Standard Sentry planning" not in text or "Normal runs do not record byte counts or budget exceptions" not in text:
         fail(f"{label} is missing Standard Sentry artifact control")
     if (
         "runtime-managed worktrees are not" not in text
@@ -2177,7 +2233,7 @@ for phrase in ("do not patch `work_record.md`", "finish within two minutes", "so
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing bounded finalization control: {phrase}")
 
-for phrase in ("finalization budgets", "finalized packet", "reserve `plan_only`"):
+for phrase in ("pre-release source snapshot", "finalized packet", "reserve `plan_only`"):
     if phrase not in documenter_agent:
         fail(f"providers/codex/agents/documenter.toml is missing final-handoff control: {phrase}")
 
@@ -2257,15 +2313,15 @@ for phrase in (
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")
 
 if "Coordinator changes a technical worker's diagnosis" not in workflow_evaluation:
-    fail("frameworks/workflow_evaluation.md is missing coordinator-authority evaluation")
+    fail("experimental workflow evaluation is missing coordinator-authority evaluation")
 for phrase in ("duplicates delegated technical", "counts itself as a worker activation attempt", "reported as a blocked workflow"):
     if phrase not in workflow_evaluation:
-        fail(f"frameworks/workflow_evaluation.md is missing run-quality control: {phrase}")
+        fail(f"experimental workflow evaluation is missing run-quality control: {phrase}")
 if "planning runs unit or integration tests that cannot change" not in workflow_evaluation:
-    fail("frameworks/workflow_evaluation.md is missing planning-test efficiency control")
+    fail("experimental workflow evaluation is missing planning-test efficiency control")
 for phrase in ("Coordination errors", "Handoff revisions", "required metrics are", "`plan_only` is reported"):
     if phrase not in workflow_evaluation:
-        fail(f"frameworks/workflow_evaluation.md is missing metrics-validity control: {phrase}")
+        fail(f"experimental workflow evaluation is missing metrics-validity control: {phrase}")
 for phrase in (
     "failed `context_conformance`",
     "provider configuration could not be resolved",
@@ -2278,7 +2334,7 @@ for phrase in (
     "Invalid metrics must still report",
 ):
     if phrase not in workflow_evaluation:
-        fail(f"frameworks/workflow_evaluation.md is missing conformance evaluation: {phrase}")
+        fail(f"experimental workflow evaluation is missing conformance evaluation: {phrase}")
 
 for phrase in ("Planning normally designs these checks", "focused regression that reproduces the verified failure"):
     if phrase not in implementation_plan:
@@ -2296,10 +2352,11 @@ if "Plugin package / version" not in work_record_template:
 for phrase in (
     "Repository Evidence Eligibility",
     "Prompt template / revision / conformance",
-    "Post-finalization Coordinator edits",
 ):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing run-control evidence: {phrase}")
+if "Post-finalization Coordinator edits" not in evaluation_addendum:
+    fail("templates/evaluation_work_record_addendum.md is missing evaluation control evidence")
 for phrase in (
     "initial hypothesis: an experimental baseline",
     "Orchestrator | `gpt-5.6-luna` | Extra High | `xhigh`",

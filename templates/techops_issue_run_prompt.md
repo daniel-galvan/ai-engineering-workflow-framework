@@ -24,7 +24,6 @@ Work item: <TECHOPS-JIRA-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
 Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
-
 Execution profile: standard
 Lifecycle: planning
 The selected execution profile is mandatory; do not silently downgrade it.

@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.6
+version: 0.4.7
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-27
@@ -37,9 +37,6 @@ Sentry issue: <SENTRY-ISSUE-ID-OR-URL-OR-NOT-PROVIDED>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/sentry_issue_remediation.md
 Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
-Evaluation run ID (evaluation/benchmark runs only; otherwise Not applicable): <EVALUATION-RUN-ID>
-Role-policy baseline ID (evaluation/benchmark runs only): <BASELINE-ID-OR-NOT-APPLICABLE>
-
 Execution profile: standard
 Lifecycle: planning
 The selected execution profile is mandatory; do not silently downgrade it.
@@ -151,8 +148,8 @@ Runtime bootstrap:
   `runtime_closure.json`, then run the finalizer normally; neither role patches terminal Markdown by hand.
 - If finalization finds an inconsistency, return the exact error to the same Documenter for a corrected packet; the
   Coordinator must not edit the packet or rendered record.
-- Keep the final Documenter live until content, counts, timing, and byte totals pass verification. Send corrections to
-  that same handle and close it only after the revised terminal result passes.
+- Keep the final Documenter live until content, readiness, artifact disposition, and terminal state pass verification.
+  Send corrections to that same handle and close it only after the revised terminal result passes.
 - Before release, reconcile the final artifact and answer with the durable record. Workflow state, profile status,
   workflow/engineering outcome, plan action, worker outcomes, active handles, artifacts, and runtime closure must agree;
   return stale `pending` or `active` values to the same Documenter for correction.
@@ -162,8 +159,10 @@ Runtime bootstrap:
 - Use canonical Sentry artifacts: `normalized_evidence.md`, `fix_design_result.json`, and `clarification_brief.md` when
   the result is `awaiting_input`; create `implementation_plan.md` only when the readiness gate allows it.
 - The fix-design result must be one structured JSON object containing the shared identity, input, conformance, checks,
-  supported boundary/change, `plan_readiness`, `implementation_plan_action`, and blocking-unknown fields. The
-  Documenter persists it verbatim as `fix_design_result.json`.
+  supported boundary/change, `interface_change`, `interface_contract`, `plan_readiness`,
+  `implementation_plan_action`, and blocking-unknown fields. For an interface change, the contract must state the exact
+  surface, request and response shapes, absence semantics, compatibility precedence, and rollout. The Documenter
+  persists it verbatim as `fix_design_result.json` and copies the contract into the plan.
 - `awaiting_input` means `omit` and produces a Clarification Brief. Every blocker must identify its decision type,
   question, unavailable reason, evidence, and at least two materially different fix implications. Do not defer an
   established boundary and intended change unless every blocker is evidenced to invalidate that change. Only

@@ -204,6 +204,8 @@ role-policy baseline, role-binding manifest path, requested/activated/executed
 profile, profile status, lifecycle, and the exact canonical worker role names
 used by the manifest. The Documenter must not infer or replace missing values
 with `Not applicable`.
+Read prompt and playbook revisions from their frontmatter `version` fields; do
+not use the framework commit as either document revision.
 Include evaluation identity and provider-observed telemetry only for an explicit evaluation or benchmark run.
 If final verification finds a packet, path, table, or rendering inconsistency,
 return it to that same Documenter before closure; do not edit the finalized
@@ -211,11 +213,17 @@ artifact yourself. If the error names Fix Design technical content, worker
 identity, readiness, blockers, diagnosis, or remediation boundary, resume the
 owning Fix Design worker first; the Documenter must not repair those fields.
 Keep that Documenter handle live and run the pinned packaged finalizer with
-`--pre-release` against a pending closure probe. Send corrections through the
-handle and repeat until the pre-release check passes. Only then release it.
+`--pre-release` against a pending closure probe. Its structural validation
+returns all packet-shape errors together. Send the aggregated correction through
+the owning handle and repeat until the pre-release check passes. Only then
+release it.
 Update the runtime-closure row with the exact provider handle and provider
 release confirmation, then rerun the finalizer with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line
 `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block verbatim as the final answer.
+Treat `finalization_packet.json` as the pre-release source snapshot,
+`runtime_closure.json` as the provider receipt, and rendered `work_record.md` as
+the authoritative terminal state. Do not reopen the Documenter only to rewrite
+pre-release closure wording in the persisted packet.
 Before releasing that handle, compare the final artifact and answer with the
 durable record. Workflow state, profile status, workflow outcome, engineering
 outcome, plan action, worker outcomes, active handles, artifacts, and runtime

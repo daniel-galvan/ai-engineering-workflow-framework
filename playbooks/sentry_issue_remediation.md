@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.6
+version: 0.4.7
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -331,18 +331,12 @@ the Documenter records a Clarification Brief and MUST NOT create a conditional
 plan. Only `plan_readiness: ready_for_implementation` with action `create`
 permits the plan artifact.
 
-For Standard planning, target 30 KB combined across normalized evidence, fix design, `work_record.md`, and any
-`implementation_plan.md`; target 10 KB for the work record. Evidence owns event details, fix design owns hypotheses and
-the proposed boundary, the work record owns decisions and execution state, and the plan owns only the selected change,
-gates, and validation. Treat these as finalization budgets: reference material instead of repeating it, and compact
-before handoff. Exceed a budget only when further compaction would remove required evidence; recording a reason does not
-replace the compaction attempt.
-
-Measure current artifacts before final Documenter activation. If either target is exceeded, the Documenter MUST compact
-repeated content before creating another artifact. A remaining `Work-record budget exception` must name the
-indispensable evidence, actual bytes, and reason; Process quality and Efficiency are not `met`. The Documenter writes
-structured `finalization_packet.json`; packaged `scripts/finalize_work_record.py` is the only terminal work-record
-writer and replaces the record atomically only after validation passes.
+For Standard planning, evidence owns event details, Fix Design owns hypotheses and the proposed boundary, the work
+record owns decisions and execution state, and the plan owns only the selected change, gates, and validation. Reference
+the owning artifact instead of repeating it. Normal runs have no byte-count field or hard size gate; the validator may
+emit a non-blocking internal warning for an unusually large work record. The Documenter writes structured
+`finalization_packet.json`; packaged `scripts/finalize_work_record.py` is the only terminal work-record writer and
+replaces the record atomically only after validation passes.
 
 ## Execution Flow
 
@@ -374,8 +368,9 @@ switch, or detach another framework worktree to make a stale prompt match.
 
 For Standard planning, initialization writes only a minimal work-record skeleton. On a preflight block, populate the
 required reasoning tables once and validate the blocked record once; do not progressively repair the artifact. After a
-successful activation, the Coordinator keeps intermediate worker and timing ledgers in runtime state and passes them
-to the final Documenter; it does not progressively rewrite the record between analytical workers.
+successful activation, the Coordinator keeps intermediate worker state in runtime and passes it to the final
+Documenter; it does not progressively rewrite the record between analytical workers. Evaluation timing remains limited
+to an explicitly declared experimental evaluation or benchmark run.
 
 After preflight, run packaged `scripts/prepare_run.py` once with the execution repository, work item, playbook name,
 and optional verified runtime-agent directory. Its `role_bindings.json` output is the worker spawn source of truth. A
@@ -543,10 +538,12 @@ Artifacts section with a relative link to the plan. Do not implement until the w
 
 Fix Design returns a complete structured result with `worker_id`, `worker_handle`, `outcome`, `plan_readiness`,
 `implementation_plan_action`, `inputs_consumed`, `context_conformance`, `configuration_conformance`,
-`checks_performed`, `checks_remaining`, `supported_remediation_boundary`, `supported_intended_change`, and
-`blocking_unknowns`. The Documenter persists that result verbatim as `fix_design_result.json` and creates the selected
-plan or Clarification Brief from the separately labeled content in the same terminal envelope; Fix Design does not edit
-durable artifacts.
+`checks_performed`, `checks_remaining`, `supported_remediation_boundary`, `supported_intended_change`,
+`interface_change`, `interface_contract`, and `blocking_unknowns`. For an API, event, payload, schema, or other
+interface change, the contract identifies the exact surface, request and response shapes, absence semantics,
+compatibility precedence, and rollout. The Documenter persists that result verbatim as `fix_design_result.json` and
+creates the selected plan or Clarification Brief from the separately labeled content in the same terminal envelope; Fix
+Design does not edit durable artifacts.
 
 If the evidence supports more than one credible fix, record the alternatives, tradeoffs, validation impact, and a
 recommendation in the implementation plan when a safe recommendation is possible. Do not ask the user to resolve a
@@ -665,7 +662,7 @@ For Standard Sentry planning, use these canonical durable artifacts when applica
 - `.thoughts/<WORK-ITEM-ID>/implementation_plan.md` only when `plan_readiness=ready_for_implementation`
 
 Final reconciliation validates this artifact set by name and disposition. An `awaiting_input` result without
-`clarification_brief.md` fails finalization even when the artifact count and byte total otherwise reconcile.
+`clarification_brief.md` fails finalization even when every other artifact is present.
 
 The handoff must not imply that implementation or validation completed when the workflow stopped at an approval or
 unavailable-environment gate.

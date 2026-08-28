@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.6
+version: 0.4.7
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -135,7 +135,7 @@ the source of truth.
 | `INV-30` | A managed worktree of the declared repository MUST be the source checkout, while durable artifacts remain under the declared repository path. | [Durable Artifact Root](#durable-artifact-root) |
 | `INV-31` | After delegation, the owning technical worker MUST perform the assigned investigation; the Coordinator may repeat it only for a recorded discrepancy. | [Stage Completion and Fan-In](#stage-completion-and-fan-in) |
 | `INV-32` | Provider-configured worker model and effort MUST be bound explicitly when the runtime otherwise inherits Coordinator settings. | [Profile Execution Semantics](#profile-execution-semantics) |
-| `INV-33` | A final handoff MUST reconcile durable artifact state with fan-in, runtime closure, counts, timing, and engineering outcome before release. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
+| `INV-33` | A final handoff MUST reconcile durable artifact state with fan-in, runtime closure, worker outcomes, and engineering outcome before release. Evaluation runs additionally reconcile declared metrics and timing. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-34` | A remediation run sharing an execution repository with another active run MUST use an isolated managed worktree and run artifact root. | [Concurrent Run Isolation](#concurrent-run-isolation) |
 | `INV-35` | Every worker activation MUST include a compact value/source/authority manifest for its assigned Input IDs. | [Input Delivery and Consumption Gate](#input-delivery-and-consumption-gate) |
 | `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
@@ -449,8 +449,10 @@ by the Orchestrator at fan-in.
 | `implementation_plan_action` | Conditional | Fix-design instruction to `create` or `omit` the implementation plan. |
 | `supported_remediation_boundary` | Conditional | Fix-design boundary supported by current-run evidence. |
 | `supported_intended_change` | Conditional | Fix-design change supported by current-run evidence. |
+| `interface_change` | Conditional | Boolean stating whether the fix changes an API, event, payload, schema, or other interface. |
+| `interface_contract` | Conditional | Exact surface, request/response shapes, absence semantics, compatibility precedence, and rollout; `null` when no interface changes. |
 | `blocking_unknowns` | Conditional | Structured decisions or indispensable evidence that can select a materially different fix. |
-| `timing`           | Yes         | Coordinator-observed activation, start, terminal, elapsed, and wait timestamps; provider timing may supplement them. |
+| `timing`           | Evaluation only | Coordinator-observed activation, start, terminal, elapsed, and wait timestamps for an explicitly declared evaluation or benchmark run. |
 | `usage`            | Recommended | Provider-reported tokens, duration, credits, or `Unknown`.      |
 | `errors_blockers`  | Yes         | Errors, blockers, or `None`.                                    |
 
@@ -466,6 +468,8 @@ enum or pair to the same worker; never normalize, reinterpret, or silently repai
 unknowns. `awaiting_input` requires at least one discriminating check and a structured blocker naming its decision type,
 question, unavailable reason, evidence, and at least two materially different fix implications. It MUST NOT defer an
 already supported boundary and intended change unless the evidence shows that each blocker invalidates that change.
+When `interface_change` is true, readiness also requires an exact `interface_contract`; unresolved field names, shapes,
+absence semantics, compatibility precedence, or rollout keep the plan at `awaiting_input`.
 
 Coordinator-observed activation and terminal timestamps are always available and MUST be recorded. When the provider
 does not expose a distinct start time or queue wait, use activation as start and record provider queue wait as
@@ -1034,12 +1038,14 @@ durable artifact paths and required artifact-set disposition; worker result summ
 displayed hypotheses; ownership; next action; and final reconciliation. Explicit evaluation runs additionally retain
 evaluation identity, continuation, activation, timing, and evaluation results. Empty
 explanatory sections MAY be omitted. A
-smaller record that omits any required terminal field fails finalization; a larger record that duplicates evidence
-fails the applicable artifact budget unless the recorded exception is valid.
+smaller record that omits any required terminal field fails finalization. Normal runs reference the owning evidence,
+design, or plan artifact instead of duplicating it; record size is advisory and never a user-facing metric or gate.
 
 Before releasing a terminal or blocked handoff, the Coordinator MUST run the packaged finalizer in `--pre-release` mode
 against a pending closure probe while the final Documenter handle is still active. It runs the framework validator
-against the candidate record without replacing `work_record.md`. A nonzero result is a handoff conformance failure.
+against the complete packet shape and candidate record without replacing `work_record.md`. The prepared packet skeleton
+is the Documenter's pre-release source snapshot; `runtime_closure.json` is the provider receipt, and the rendered
+`work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance failure.
 Return the packet and exact error to the same Documenter and repeat the pre-release check. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
 `plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and

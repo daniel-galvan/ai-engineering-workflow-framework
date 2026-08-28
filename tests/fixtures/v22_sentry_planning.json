@@ -1,0 +1,324 @@
+{
+  "description": "Redacted structural regression derived from a successful standard Sentry planning run.",
+  "files": {
+    "finalization_packet.json": {
+      "work_item": {
+        "ID": "EXAMPLE-1",
+        "Title": "Preserve field identity across an event contract",
+        "Last Updated": "2026-08-27T00:00:00Z"
+      },
+      "playbook_selection": {
+        "Primary evidence": "Current-run occurrence and bounded repository evidence",
+        "Primary goal": "Plan an additive contract correction",
+        "Selected playbook": "sentry_issue_remediation",
+        "Closest alternative": "Incident diagnosis",
+        "Why this playbook": "Current evidence supports planning with an approval-gated remediation."
+      },
+      "inputs": [
+        {
+          "Input ID": "I-001",
+          "Input or artifact": "Current-run occurrence",
+          "Source or path": "redacted-current-run-evidence",
+          "Authority": "Current-run evidence",
+          "Status": "Consumed"
+        },
+        {
+          "Input ID": "I-002",
+          "Input or artifact": "Normalized evidence",
+          "Source or path": "__ARTIFACT_ROOT__/normalized_evidence.md",
+          "Authority": "Evidence worker output",
+          "Status": "Consumed by fix-design"
+        }
+      ],
+      "repositories": [
+        {
+          "Repository role": "Execution",
+          "Declared path": "/example/source",
+          "Resolved path": "/example/source",
+          "Branch / detached": "main",
+          "Full revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "Clean status": "Clean",
+          "User-selected ref": "main",
+          "Release mapping": "Not applicable",
+          "Evidence eligibility": "Eligible bounded evidence"
+        },
+        {
+          "Repository role": "Contract consumer",
+          "Declared path": "/example/consumer",
+          "Resolved path": "/example/consumer",
+          "Branch / detached": "main",
+          "Full revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "Clean status": "Clean",
+          "User-selected ref": "main",
+          "Release mapping": "Not applicable",
+          "Evidence eligibility": "Eligible bounded evidence"
+        }
+      ],
+      "identity": {
+        "Run ID": "run-v22-regression",
+        "Evaluation run ID": "Not applicable",
+        "Playbook / version": "sentry_issue_remediation / 0.4.7",
+        "Framework commit / status": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa / Clean",
+        "Plugin package / version": "ai-engineering-workflow-framework / fixture",
+        "Provider/runtime configuration": "Not provided",
+        "Provider configuration source/status": "Bundled provider definitions / resolved",
+        "Prompt template / revision / conformance": "templates/sentry_issue_run_prompt.md / 0.4.7 / pass",
+        "Role-policy baseline ID": "codex-role-policy-v20260827032839",
+        "Role binding manifest": "__ARTIFACT_ROOT__/role_bindings.json",
+        "Provider / model configuration": "Codex / Worker Execution Ledger",
+        "Requested profile": "standard",
+        "Activated profile": "standard",
+        "Executed profile": "standard",
+        "Profile status": "executed",
+        "Lifecycle": "planning",
+        "State": "ready_for_implementation",
+        "Engineering state": "understood",
+        "Workflow outcome": "completed",
+        "Engineering outcome": "plan_only"
+      },
+      "finalization": {
+        "Concurrent-run decision": "Fresh isolated run",
+        "Active related run or work item": "None",
+        "Related-run check": "Complete",
+        "Durable artifact root": "__ARTIFACT_ROOT__",
+        "Final reconciliation": "Pending; runtime closure not yet reconciled",
+        "Finalization schema": "Passed"
+      },
+      "durable_artifacts": [
+        {
+          "Artifact": "Normalized evidence",
+          "Path": "__ARTIFACT_ROOT__/normalized_evidence.md",
+          "Status": "Preserved",
+          "Purpose": "Current-run evidence"
+        },
+        {
+          "Artifact": "Fix design result",
+          "Path": "__ARTIFACT_ROOT__/fix_design_result.json",
+          "Status": "Created",
+          "Purpose": "Readiness and exact interface contract"
+        },
+        {
+          "Artifact": "Implementation plan",
+          "Path": "__ARTIFACT_ROOT__/implementation_plan.md",
+          "Status": "Created",
+          "Purpose": "Approval-gated implementation instructions"
+        },
+        {
+          "Artifact": "Role bindings",
+          "Path": "__ARTIFACT_ROOT__/role_bindings.json",
+          "Status": "Created",
+          "Purpose": "Exact worker bindings"
+        }
+      ],
+      "workers": [
+        {
+          "Worker": "evidence-topology",
+          "Role": "Evidence topology",
+          "Assigned inputs": "I-001",
+          "Mode": "fresh context",
+          "Depth": "standard",
+          "Skills": "Not exposed",
+          "Tools": "Not exposed",
+          "Capacity": "Not exposed",
+          "Configured model/effort": "gpt-5.6-luna / high",
+          "Provider-observed model/effort": "Not exposed; explicit launch binding recorded",
+          "Usage": "Not exposed",
+          "Depends on": "None",
+          "Outcome": "complete",
+          "Confidence": "high"
+        },
+        {
+          "Worker": "fix-design",
+          "Role": "Fix design",
+          "Assigned inputs": "I-001; I-002",
+          "Mode": "fresh context",
+          "Depth": "standard",
+          "Skills": "Not exposed",
+          "Tools": "Not exposed",
+          "Capacity": "Not exposed",
+          "Configured model/effort": "gpt-5.6-sol / low",
+          "Provider-observed model/effort": "Not exposed; explicit launch binding recorded",
+          "Usage": "Not exposed",
+          "Depends on": "evidence-topology",
+          "Outcome": "complete",
+          "Confidence": "high"
+        },
+        {
+          "Worker": "final documenter",
+          "Role": "Documenter",
+          "Assigned inputs": "I-001; I-002 and worker results",
+          "Mode": "fresh context",
+          "Depth": "standard",
+          "Skills": "Not exposed",
+          "Tools": "Not exposed",
+          "Capacity": "Not exposed",
+          "Configured model/effort": "gpt-5.6-luna / low",
+          "Provider-observed model/effort": "Not exposed; explicit launch binding recorded",
+          "Usage": "Not exposed",
+          "Depends on": "evidence-topology; fix-design",
+          "Outcome": "complete",
+          "Confidence": "high"
+        }
+      ],
+      "synchronization": [
+        {
+          "Stage": "Worker fan-in and final documentation",
+          "Workers launched": "evidence-topology; fix-design; final documenter",
+          "Launch mode / exception": "Exact manifest bindings",
+          "Worker outcomes": "Analytical workers complete; final documenter terminal",
+          "Results summarized": "Complete",
+          "Barrier status": "Fan-in complete; runtime closure pending until Documenter release"
+        }
+      ],
+      "worker_results": [
+        {
+          "Worker": "evidence-topology",
+          "Outcome": "complete",
+          "Confidence": "high",
+          "Unique contribution": "Established the first contract divergence",
+          "Evidence / claim refs": "E-001; C-001",
+          "Uncertainties / blockers": "None blocking planning",
+          "Actual model/effort": "Not exposed; explicit launch binding recorded",
+          "Usage/credits": "Not exposed"
+        },
+        {
+          "Worker": "fix-design",
+          "Outcome": "complete",
+          "Confidence": "high",
+          "Unique contribution": "Defined the additive interface contract and validation boundary",
+          "Evidence / claim refs": "E-001; C-001",
+          "Uncertainties / blockers": "None",
+          "Actual model/effort": "Not exposed; explicit launch binding recorded",
+          "Usage/credits": "Not exposed"
+        }
+      ],
+      "evidence": [
+        {
+          "Evidence ID": "E-001",
+          "Source": "Current-run occurrence and source inspection",
+          "Summary": "The producer retains field identity while the event contract is scalar.",
+          "Confidence": "High",
+          "Uncertainty": "Deployment parity remains a rollout check.",
+          "Status": "Verified"
+        }
+      ],
+      "claims": [
+        {
+          "Claim ID": "C-001",
+          "Claim": "The current interface loses required field identity.",
+          "Evidence refs": "E-001",
+          "Confidence": "High",
+          "Uncertainty": "None blocking planning",
+          "Status": "Supported"
+        }
+      ],
+      "decisions": [
+        {
+          "Decision ID": "D-001",
+          "Decision": "Use an additive keyed interface and preserve the scalar path.",
+          "Claim refs": "C-001",
+          "Owner": "Engineering owner",
+          "Status": "Proposed"
+        }
+      ],
+      "actions": [
+        {
+          "Action ID": "A-001",
+          "Action": "Approve the plan and enter remediation.",
+          "Decision ref": "D-001",
+          "Owner": "Engineering owner",
+          "Status": "Pending approval"
+        }
+      ],
+      "handoff": {
+        "workflow_result": "Ready for implementation",
+        "implementation_plan": "Created; implementation requires explicit approval",
+        "established": [
+          "The current interface loses field identity.",
+          "The additive compatibility boundary is specified."
+        ],
+        "best_current_explanations": [
+          "Contract representation loss is the strongest explanation."
+        ],
+        "next_action": {
+          "owner": "Engineering owner",
+          "action": "Approve the plan and start remediation.",
+          "complete_when": "The exact keyed contract passes focused and compatibility tests."
+        },
+        "artifacts": [
+          "__ARTIFACT_ROOT__/normalized_evidence.md",
+          "__ARTIFACT_ROOT__/fix_design_result.json",
+          "__ARTIFACT_ROOT__/implementation_plan.md",
+          "__ARTIFACT_ROOT__/role_bindings.json"
+        ],
+        "execution": "standard/planning; validation passed; analytical workers complete; runtime pending/unknown; source changes none",
+        "provenance": "plugin ai-engineering-workflow-framework/fixture; framework aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa clean; playbook sentry_issue_remediation 0.4.7"
+      }
+    },
+    "runtime_closure.json": {
+      "runtime_closure": [
+        {
+          "Run or stage": "Current run",
+          "Completed worker handles": "01a00000-0000-7000-8000-000000000001; 01a00000-0000-7000-8000-000000000002; 01a00000-0000-7000-8000-000000000003",
+          "Runtime status": "Released",
+          "Remaining active handles": "None",
+          "Closure evidence or blocker": "Provider release confirmed for 01a00000-0000-7000-8000-000000000001, 01a00000-0000-7000-8000-000000000002, and 01a00000-0000-7000-8000-000000000003."
+        }
+      ]
+    },
+    "role_bindings.json": {
+      "baseline_id": "codex-role-policy-v20260827032839",
+      "playbook": "sentry_issue_remediation",
+      "bindings": {
+        "sentry_current_state_investigator": {
+          "definition": "__FRAMEWORK_ROOT__/providers/codex/agents/sentry_current_state_investigator.toml",
+          "model": "gpt-5.6-luna",
+          "effort": "high"
+        },
+        "sentry_solution_architect": {
+          "definition": "__FRAMEWORK_ROOT__/providers/codex/agents/sentry_solution_architect.toml",
+          "model": "gpt-5.6-sol",
+          "effort": "low"
+        },
+        "documenter": {
+          "definition": "__FRAMEWORK_ROOT__/providers/codex/agents/documenter.toml",
+          "model": "gpt-5.6-luna",
+          "effort": "low"
+        }
+      }
+    },
+    "fix_design_result.json": {
+      "worker_id": "fix-design",
+      "worker_handle": "01a00000-0000-7000-8000-000000000002",
+      "outcome": "complete",
+      "plan_readiness": "ready_for_implementation",
+      "implementation_plan_action": "create",
+      "inputs_consumed": [
+        "I-001",
+        "__ARTIFACT_ROOT__/normalized_evidence.md"
+      ],
+      "context_conformance": "pass",
+      "configuration_conformance": "pass",
+      "checks_performed": [
+        "Compared the producer and consumer contract representations."
+      ],
+      "checks_remaining": [
+        "Run focused compatibility tests during remediation."
+      ],
+      "supported_remediation_boundary": "Add keyed field identity across the producer, event, consumer, and return path while retaining the scalar path.",
+      "supported_intended_change": "Add the specified text_by_field and extents_by_field shapes without changing existing comparison behavior.",
+      "interface_change": true,
+      "interface_contract": {
+        "surface": "suggested_content event detail",
+        "request_shape": "text_by_field object<string,string>",
+        "response_shape": "infractions[].extents_by_field object<string,array<[integer,integer]>>",
+        "absence_semantics": "Missing keyed fields use the legacy scalar path; empty objects mean no keyed values.",
+        "compatibility_precedence": "Keyed fields are authoritative when present; otherwise use scalar text and legacy extents.",
+        "rollout": "Deploy consumers before producers and keep scalar fields until all consumers support keyed fields."
+      },
+      "blocking_unknowns": []
+    },
+    "normalized_evidence.md": "# Normalized Evidence\n\n# Contract Delta\n\n| Boundary | Representation | Field identity / coordinate space | Evidence refs |\n| --- | --- | --- | --- |\n| Baseline | field-keyed text | field-local coordinates | E-001 |\n| Outbound | scalar text | field identity lost | E-001 |\n| Destination input | scalar text | no field identity | E-001 |\n| Return | scalar extents | no field identity | E-001 |\n| Semantic input equivalence | not_equivalent | Not applicable | E-001 |\n",
+    "implementation_plan.md": "# Engineering Implementation Plan\n\n# Interface Contract\n\n| Surface | Request shape | Response shape | Absence semantics | Compatibility / precedence | Rollout |\n| --- | --- | --- | --- | --- | --- |\n| suggested_content event detail | text_by_field object<string,string> | infractions[].extents_by_field object<string,array<[integer,integer]>> | Missing keyed fields use the legacy scalar path; empty objects mean no keyed values. | Keyed fields are authoritative when present; otherwise use scalar text and legacy extents. | Deploy consumers before producers and keep scalar fields until all consumers support keyed fields. |\n"
+  }
+}

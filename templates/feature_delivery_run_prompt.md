@@ -24,7 +24,6 @@ Work item: <JIRA-TICKET-ID-OR-URL>
 Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/feature_delivery.md
 Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
-
 Execution profile: standard
 Lifecycle: planning
 

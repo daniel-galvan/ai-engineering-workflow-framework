@@ -61,8 +61,7 @@
     "Related-run check": "",
     "Durable artifact root": "",
     "Final reconciliation": "",
-    "Finalization schema": "",
-    "Work-record budget exception": "None"
+    "Finalization schema": ""
   },
   "durable_artifacts": [
     {
@@ -84,8 +83,6 @@
       "Capacity": "",
       "Configured model/effort": "",
       "Provider-observed model/effort": "",
-      "Elapsed": "",
-      "Wait": "",
       "Usage": "",
       "Depends on": "",
       "Outcome": "",

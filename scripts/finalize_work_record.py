@@ -14,6 +14,39 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
+PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
+CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
+V22_FIXTURE = ROOT / "tests" / "fixtures" / "v22_sentry_planning.json"
+
+
+def _shape_errors(value: object, template: object, path: str) -> list[str]:
+    if isinstance(template, dict):
+        if not isinstance(value, dict):
+            return [f"{path} must be an object"]
+        errors = [f"{path}.{key} is missing" for key in template if key not in value]
+        for key in template.keys() & value.keys():
+            errors.extend(_shape_errors(value[key], template[key], f"{path}.{key}"))
+        return errors
+    if isinstance(template, list):
+        if not isinstance(value, list):
+            return [f"{path} must be a list"]
+        if template:
+            return [
+                error
+                for index, item in enumerate(value)
+                for error in _shape_errors(item, template[0], f"{path}[{index}]")
+            ]
+        return []
+    if not isinstance(value, type(template)):
+        return [f"{path} must be {type(template).__name__}"]
+    return []
+
+
+def _validate_shapes(packet: object, closure: object) -> None:
+    errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
+    errors.extend(_shape_errors(closure, json.loads(CLOSURE_TEMPLATE.read_text()), "closure"))
+    if errors:
+        raise ValueError("packet_schema_invalid: " + "; ".join(errors))
 
 
 def _cell(value: object) -> str:
@@ -33,7 +66,12 @@ def _table(headers: tuple[str, ...], rows: list[dict[str, object]]) -> str:
 
 
 def _mapping_table(values: dict[str, object]) -> str:
-    return _table(("Field", "Value"), [{"Field": key, "Value": value} for key, value in values.items()])
+    visible = {
+        key: value
+        for key, value in values.items()
+        if not (key == "Evaluation run ID" and str(value).strip().lower() == "not applicable")
+    }
+    return _table(("Field", "Value"), [{"Field": key, "Value": value} for key, value in visible.items()])
 
 
 def _section(title: str, body: str) -> str:
@@ -133,7 +171,7 @@ Provenance: {handoff['provenance']}
         )),
         _section("Worker Execution Ledger", _table(
             ("Worker", "Role", "Assigned inputs", "Mode", "Depth", "Skills", "Tools", "Capacity",
-             "Configured model/effort", "Provider-observed model/effort", "Elapsed", "Wait", "Usage", "Depends on",
+             "Configured model/effort", "Provider-observed model/effort", "Usage", "Depends on",
              "Outcome", "Confidence"), packet["workers"]
         )),
         _section("Worker Synchronization", _table(
@@ -168,6 +206,7 @@ Provenance: {handoff['provenance']}
 def finalize(packet_path: Path, closure_path: Path, record_path: Path, *, pre_release: bool = False) -> None:
     packet = json.loads(packet_path.read_text())
     closure = json.loads(closure_path.read_text())
+    _validate_shapes(packet, closure)
     _reconcile_runtime_state(packet, closure["runtime_closure"])
     rendered = render(packet)
     record_path.parent.mkdir(parents=True, exist_ok=True)
@@ -215,11 +254,11 @@ def self_test() -> None:
                           "Evidence eligibility": "Accepted"}],
         "identity": {
             "Run ID": "run-001", "Evaluation run ID": "Not applicable",
-            "Playbook / version": "playbooks/sentry_issue_remediation.md / 0.4.6",
+            "Playbook / version": "playbooks/sentry_issue_remediation.md / 0.4.7",
             "Framework commit / status": f"{'a' * 40} / Clean", "Plugin package / version": "Not applicable",
             "Provider/runtime configuration": "Not provided",
             "Provider configuration source/status": "manual / resolved",
-            "Prompt template / revision / conformance": "templates/sentry_issue_run_prompt.md / 0.4.6 / pass",
+            "Prompt template / revision / conformance": "templates/sentry_issue_run_prompt.md / 0.4.7 / pass",
             "Role-policy baseline ID": "Not applicable", "Role binding manifest": "Not applicable",
             "Provider / model configuration": "Manual / Worker Execution Ledger", "Requested profile": "standard",
             "Activated profile": "None", "Executed profile": "None", "Profile status": "blocked",
@@ -228,15 +267,14 @@ def self_test() -> None:
         },
         "finalization": {"Concurrent-run decision": "Not applicable", "Active related run or work item": "None",
                          "Related-run check": "Current task", "Durable artifact root": "/tmp/.thoughts/ITEM-1",
-                         "Final reconciliation": "Pending; runtime closure not yet reconciled", "Finalization schema": "Passed",
-                         "Work-record budget exception": "None"},
+                         "Final reconciliation": "Pending; runtime closure not yet reconciled", "Finalization schema": "Passed"},
         "durable_artifacts": [{"Artifact": "Work record", "Path": "work_record.md", "Status": "Created",
                                "Purpose": "Terminal handoff"}],
         "workers": [{"Worker": "Coordinator", "Role": "Orchestrator", "Assigned inputs": "IN-001",
                      "Mode": "investigation", "Depth": "standard", "Skills": "workflow", "Tools": "local",
                      "Capacity": "current task", "Configured model/effort": "active session",
-                     "Provider-observed model/effort": "Unknown", "Elapsed": "PT1S", "Wait": "PT0S",
-                     "Usage": "Unknown", "Depends on": "None", "Outcome": "complete", "Confidence": "High"}],
+                     "Provider-observed model/effort": "Unknown", "Usage": "Unknown", "Depends on": "None",
+                     "Outcome": "complete", "Confidence": "High"}],
         "synchronization": [{"Stage": "Initialization", "Workers launched": "None",
                              "Launch mode / exception": "worker_runtime_unavailable", "Worker outcomes": "Not applicable",
                              "Results summarized": "Yes", "Barrier status": "Passed; runtime closure pending/unknown"}],
@@ -256,12 +294,12 @@ def self_test() -> None:
         "actions": [{"Action ID": "A-001", "Action": "Retry with in-task runtime", "Decision ref": "D-001",
                      "Owner": "User", "Status": "Proposed"}],
         "handoff": {"workflow_result": "Worker runtime unavailable", "implementation_plan": "omitted; run blocked",
-                    "established": ["No user-owned tasks were created."], "next_action": {
+                    "established": ["No user-owned tasks were created."], "best_current_explanations": [], "next_action": {
                         "owner": "User", "action": "Retry when in-task workers are available.",
                         "complete_when": "The worker graph starts in the current task."},
                     "artifacts": ["work_record.md"],
                     "execution": "standard/planning; validation passed; workers not started; source changes none; runtime pending/unknown",
-                    "provenance": f"plugin Not applicable; framework revision {'a' * 40} (clean); playbook sentry_issue_remediation 0.4.6."},
+                    "provenance": f"plugin Not applicable; framework revision {'a' * 40} (clean); playbook sentry_issue_remediation 0.4.7."},
     }
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)
@@ -318,6 +356,39 @@ def self_test() -> None:
         else:
             raise AssertionError("invalid packet must fail")
         assert record.read_text() == before
+
+        fixture = json.loads(
+            V22_FIXTURE.read_text()
+            .replace("__FRAMEWORK_ROOT__", str(ROOT))
+            .replace("__ARTIFACT_ROOT__", str(root))
+        )
+        for name, content in fixture["files"].items():
+            target = root / name
+            target.write_text(content if isinstance(content, str) else json.dumps(content, indent=2) + "\n")
+        fixture_packet = root / "finalization_packet.json"
+        fixture_closure = root / "runtime_closure.json"
+        fixture_record = root / "v22_work_record.md"
+        packet_before = fixture_packet.read_text()
+        finalize(fixture_packet, fixture_closure, fixture_record)
+        fixture_rendered = fixture_record.read_text()
+        assert "Workflow result: Ready for implementation" in fixture_rendered
+        assert "templates/sentry_issue_run_prompt.md / 0.4.7 / pass" in fixture_rendered
+        assert "runtime closure released" in fixture_rendered
+        assert "Work-record budget exception" not in fixture_rendered
+        assert fixture_packet.read_text() == packet_before
+
+        malformed = json.loads(fixture_packet.read_text())
+        del malformed["identity"]["State"]
+        del malformed["handoff"]["next_action"]
+        fixture_packet.write_text(json.dumps(malformed))
+        try:
+            finalize(fixture_packet, fixture_closure, fixture_record)
+        except ValueError as error:
+            message = str(error)
+            assert "packet.identity.State is missing" in message
+            assert "packet.handoff.next_action is missing" in message
+        else:
+            raise AssertionError("packet validation must report every structural error in one pass")
     print("finalize_work_record self-test: passed")
 
 

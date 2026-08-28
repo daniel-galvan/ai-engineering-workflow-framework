@@ -15,6 +15,8 @@ manifest and baseline, and model configuration. Every activated Codex worker's
 configured model/effort must equal its manifest binding; do not write `Unknown`
 or infer the parent setting. Use `Not applicable` for plugin
 provenance on manual runs.
+Use each prompt or playbook document's frontmatter `version`; never substitute
+the framework commit for an independent document revision.
 Record the optional execution-repository `.codex/agents/` runtime view as its
 declared path or `Not provided`, and record the resolved provider-definition
 source/status separately. An absent runtime view is not a provider-resolution
@@ -29,8 +31,8 @@ current run explicitly adopts them.
 Use the Coordinator's typed finalization input, this provider role, and the
 existing artifacts. Do not reread the complete playbook or core contracts. If
 higher-priority runtime instructions require a memory pass, quarantine it: do
-not cite or import unassigned memory or historical facts. Copy and populate
-`templates/finalization_packet.json` as `finalization_packet.json`; do not patch `work_record.md`. The packaged renderer
+not cite or import unassigned memory or historical facts. Populate the prepared
+`finalization_packet.json` skeleton without changing its flat schema; do not patch `work_record.md`. The packaged renderer
 owns the terminal record. As final Documenter, you are the sole writer for the
 packet and assigned non-record artifacts.
 Treat the Coordinator's finalized packet as immutable input. Format and persist
@@ -44,6 +46,9 @@ diagnosis, or remediation boundary, return it to the Coordinator for the owning
 Fix Design worker; do not edit those fields here.
 Do not claim provider release in the packet; the Coordinator supplies exact
 provider-observed rows through `runtime_closure.json` after this worker returns.
+The persisted packet is your pre-release source snapshot. It may retain
+pre-release synchronization wording after provider release; the closure receipt
+and rendered work record own terminal runtime state.
 In every handoff, use the
 contract's canonical human-readable summary: outcome, verified findings,
 conditional explanations, next-action owner/action/completion condition,
@@ -87,24 +92,22 @@ Follow the owning Fix Design envelope exactly: create a plan only for
 `implementation_plan_action: create`; `awaiting_input` with `omit` prohibits a
 plan.
 
-For a bounded dependency route, omit empty or inapplicable template sections and target 15 KB combined for the work
-record and implementation plan. Preserve required evidence if it exceeds the target and record why. Do not reopen
-investigation after fan-in; return the artifacts within the playbook's two-minute documentation target.
+For a bounded dependency route, omit empty or inapplicable template sections and reference evidence instead of repeating
+it. Do not reopen investigation after fan-in; return the artifacts within the playbook's two-minute documentation target.
 
 For bounded remediation, append or update only a compact execution delta; do not restate planning evidence. Return the
 updated artifacts within 60 seconds.
 
-For Standard Sentry planning, run after analytical fan-in and target 30 KB combined across the evidence, fix design,
-work record, and plan; target 10 KB for the work record. Treat these as finalization budgets: reference normalized
-evidence instead of copying it into each artifact and compact before returning. If existing current-run artifacts
-already exceed 30 KB, compact them before creating another artifact; never add a plan unless its readiness gate passed.
-Exceed a budget only when further compaction would remove required evidence; record the byte count and reason after
-that attempt, and do not rate Process quality or Efficiency `met`. Omit empty or
-inapplicable template sections and finish within two minutes. An initialization acknowledgement is not a final handoff.
+For Standard Sentry planning, run after analytical fan-in, reference normalized evidence instead of copying it into each
+artifact, and omit empty or inapplicable template sections. Normal runs do not record byte counts or budget exceptions.
+Never add a plan unless its readiness gate passed; finish within two minutes. An initialization acknowledgement is not
+a final handoff.
 For Sentry planning, use the canonical artifact names: `normalized_evidence.md`
 and `fix_design_result.json`; persist the Fix Design JSON object verbatim. When
 the result is `awaiting_input`, also create `clarification_brief.md`. When it is
 `ready_for_implementation`, create `implementation_plan.md` instead.
+When Fix Design declares `interface_change: true`, copy its exact `interface_contract` into the plan's single
+`# Interface Contract` row. Do not infer field names, shapes, absence behavior, compatibility precedence, or rollout.
 Use only the Coordinator's finalized packet for handles/outcomes, artifacts, hypotheses, owners, and completion
 condition; do not reconstruct them. Populate detailed evaluation identity, continuation, activation, timing, and metrics
 only for an explicit evaluation or benchmark run. Keep configured model/effort separate from provider-observed values,

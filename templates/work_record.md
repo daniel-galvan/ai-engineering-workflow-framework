@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.4
+version: 0.4.5
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-08-27
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -147,21 +147,11 @@ production, or current-main behavior.
 | Durable artifact root | `.thoughts/<WORK-ITEM-ID>/` |
 | Final reconciliation | Pending / Passed / Failed; state, artifacts, outcomes, and runtime closure agree |
 | Finalization schema | Pending / Passed / Failed; required terminal fields and playbook artifact set are present |
-| Work-record budget exception | None / byte count and reason required when a Sentry work record exceeds 10 KB |
 
 Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engineering-outcome terms from
 `../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
 `awaiting_input`, workflow outcome `completed`, and engineering outcome `partially_solved`; it is not `blocked`. Use
 `plan_only` only when the run produced a usable implementation plan.
-
-# Evaluation Run Continuation Ledger
-
-Complete this section only for an explicitly declared evaluation or benchmark run. A continuation adds only its new
-input IDs and worker activity; it MUST NOT retroactively assign those inputs to an earlier activation.
-
-| Sequence | Type | Trigger or new evidence | New input IDs | Previous terminal state | Recorded at | Outcome |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | Initial / Continuation | | IN-### / None | None / state | RFC 3339 | |
 
 # Durable Artifacts
 
@@ -189,9 +179,9 @@ Lifecycle and Profile. Keep configured model and effort separate from provider-o
 
 Record every worker or subagent that materially contributes to the work.
 
-| Worker | Role | Assigned inputs | Mode | Depth | Skills | Tools | Capacity | Configured model/effort | Provider-observed model/effort | Elapsed | Wait | Usage | Depends on | Outcome | Confidence |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | IN-### | | | | | | | | | | | | | |
+| Worker | Role | Assigned inputs | Mode | Depth | Skills | Tools | Capacity | Configured model/effort | Provider-observed model/effort | Usage | Depends on | Outcome | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| | | IN-### | | | | | | | | | | | |
 
 Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
 never estimate credit consumption. For model and effort, retain the exact
@@ -199,22 +189,8 @@ configured binding and record provider-observed values when returned. If
 applied telemetry is unavailable, use an explicit
 `Not exposed; ...` marker; never relabel the
 configured binding or treat a self-reported model or effort as provider-observed telemetry.
-`Elapsed` and `Wait` contain durations or availability values, never lifecycle states such as `Completed` or `Released`.
-
-# Evaluation Worker Activation Ledger
-
-Complete this section only for an explicitly declared evaluation or benchmark run. Record provider-observed actions;
-never reconstruct missing timestamps or counts.
-
-| Sequence | Continuation | Worker | Provider handle | Action | Input IDs | Observed at | Outcome or error |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 1 | | | spawn / resume / send / wait / close | IN-### / None | RFC 3339 | |
-
-## Evaluation Worker Timing Ledger
-
-| Worker | Provider handle | Activated | Started | Terminal | Elapsed | Queue / dependency wait | Spawn attempts | Replacement or duplicate reason |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | | |
+Normal runs do not collect activation or timing ledgers. Explicit evaluation or benchmark runs append
+`evaluation_work_record_addendum.md`.
 
 # Worker Synchronization
 
@@ -328,57 +304,8 @@ playbook <name and independent document version>.
 
 ---
 
-# Workflow Evaluation
-
-Complete this section only when the request explicitly declares an evaluation or benchmark run. Normal workflow runs
-omit it. Reuse the evaluation ledgers above; do not duplicate them here. See
-[`../frameworks/workflow_evaluation.md`](../frameworks/workflow_evaluation.md).
-
-| Complexity tags | Duration | Worker retries | Worker corrections | Review cycles | Validation failures |
-| --- | --- | --- | --- | --- | --- |
-| Bounded / Cross-repository / High-risk / Unknown | | | | | |
-
-| Logical workers | Actual instances | Activation attempts | Failed spawns | Handle discrepancies | Replacement workers | Artifacts count / bytes |
-| --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | |
-
-| Findings | Change sets | Plans | Duplicate plans |
-| --- | --- | --- | --- |
-| | | | |
-
-| Human interaction | Measure | Evidence / reason |
-| --- | --- | --- |
-| Clarifications | Count | |
-| Approvals | Count | |
-| Manual corrections | Count | |
-| Reruns | Count | |
-| Human review effort | Minutes | |
-
-| Control or timing measure | Measure | Evidence / reason |
-| --- | --- | --- |
-| Instruction violations | Count | |
-| Authoritative inputs ignored | Count | |
-| Supplied inputs not consumed | Count | |
-| Unapproved plan deviations | Count | |
-| Worker elapsed time | Per worker | Worker Execution Ledger |
-| Worker wait time | Per worker | Worker Execution Ledger |
-| Coordination errors | Count | Pre-provider command, quoting, routing, ledger, or orchestration errors and retries |
-| Post-closure polls | Count | Wait or status calls issued after the corresponding handle was released; included in coordination errors |
-| Handoff revisions | Count | Returns to the final Documenter after its first terminal result |
-| Post-finalization Coordinator edits | Count | Must be zero except the single provider-observed runtime-closure receipt update |
-| Metrics status | Valid / Invalid | Timestamp, count, timing, and artifact-byte reconciliation |
-
-| Dimension | Rating | Evidence / notes |
-| --- | --- | --- |
-| Process quality | Met / Partial / Not met / Not applicable | |
-| Control fidelity | Met / Partial / Not met / Not applicable | |
-| Reasoning quality | Met / Partial / Not met / Not applicable | |
-| Engineering quality | Met / Partial / Not met / Not applicable | |
-| Efficiency | Met / Partial / Not met / Not applicable | |
-| Engineering outcome | Solved / Partially Solved / Plan Only / Blocked / Incorrect | |
-
-Record the smallest improvement or policy question only when this run provides evidence for it. Do not tune model or
-effort from one run alone.
+Evaluation runs append the separate evaluation addendum only when explicitly declared; see
+`../frameworks/experimental/workflow_evaluation.md`.
 
 ---
 

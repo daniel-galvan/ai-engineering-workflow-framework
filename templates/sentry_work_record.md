@@ -1,6 +1,6 @@
 ---
 title: Compact Sentry Work Record
-version: 0.4.6
+version: 0.4.7
 status: Pilot
 ---
 
@@ -38,12 +38,12 @@ status: Pilot
 | --- | --- |
 | Run ID | |
 | Evaluation run ID | Not applicable |
-| Playbook / version | playbooks/sentry_issue_remediation.md / 0.4.6 |
+| Playbook / version | playbooks/sentry_issue_remediation.md / 0.4.7 |
 | Framework commit / status | |
 | Plugin package / version | |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | |
-| Prompt template / revision / conformance | templates/sentry_issue_run_prompt.md / 0.4.6 / pending |
+| Prompt template / revision / conformance | templates/sentry_issue_run_prompt.md / 0.4.7 / pending |
 | Role-policy baseline ID | |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -72,7 +72,6 @@ status: Pilot
 | Durable artifact root | |
 | Final reconciliation | Pending |
 | Finalization schema | Pending |
-| Work-record budget exception | None |
 
 # Durable Artifacts
 
@@ -155,5 +154,5 @@ Artifacts:
 
 Execution: standard/planning; validation pending; workers incomplete; runtime not released;
 source or external changes none.
-Provenance: plugin pending; framework revision pending; playbook sentry_issue_remediation 0.4.6.
+Provenance: plugin pending; framework revision pending; playbook sentry_issue_remediation 0.4.7.
 ```

@@ -98,8 +98,8 @@ discrepancy recorded in the result envelope.
 
 For the Vulnerability Investigation bounded dependency route, initialize in the Coordinator and activate exactly three
 delegated workers: combined dependency investigation, remediation design, and final Documenter. Search only the prompt's
-affected component root. Target 10 minutes end to end; after analytical fan-in, perform only artifact, metric, runtime
-closure, and final-answer verification unless a named discrepancy could change the plan.
+affected component root. Target 10 minutes end to end; after analytical fan-in, perform only artifact, runtime-closure,
+and final-answer verification unless a named discrepancy could change the plan.
 
 A `wait_agent` timeout is a polling boundary, not a worker failure. Keep a
 `pending_init` or `running` worker active, wait again, and do not call `close_agent`

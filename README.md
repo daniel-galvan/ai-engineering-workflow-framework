@@ -179,6 +179,7 @@ Use this reading path:
 contracts/       shared execution and reasoning semantics
 examples/        safe, generic scenario guides
 frameworks/      reusable engineering method
+  experimental/  deferred, opt-in methods excluded from normal runs
 integrations/    external evidence and work-item sources
 playbooks/       scenario workflows
 providers/       platform adapters and agent definitions
@@ -187,6 +188,7 @@ scripts/         package preflight, run preparation, and deterministic framework
 skills/          provider-neutral capabilities and the explicit Codex launcher
 strategies/      coordination approaches
 templates/       canonical prompts and durable work artifacts
+tests/           redacted regression fixtures
 ```
 
 The Codex plugin is a thin package over the same repository: [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json)
@@ -217,11 +219,18 @@ For terminal handoff, the Documenter writes structured `finalization_packet.json
 Coordinator runs `scripts/finalize_work_record.py --pre-release` with a pending closure probe and returns any error to
 the same Documenter. After that check passes, the Coordinator releases the worker, writes exact provider closure rows
 to `runtime_closure.json`, and runs the finalizer normally. The helper renders and atomically replaces `work_record.md`
-only after validation accepts it. A nonzero result returns the packet and exact error to the same Documenter; never
-repair terminal Markdown by hand.
+only after validation accepts it. The packet remains the pre-release source snapshot, the closure file is the provider
+receipt, and the rendered record is the authoritative terminal state. A nonzero result returns the aggregated error to
+the owning worker; never repair terminal Markdown by hand.
 
-Document facts, limitations, and [workflow evaluation](frameworks/workflow_evaluation.md) in the work record. Exercise
-changes against real work items, then simplify. See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
+Document facts and limitations in the work record. Exercise changes against real work items, then simplify. See
+[CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
+
+Evaluation and benchmarking are deliberately deferred from the normal workflow while the pilot stabilizes. Ordinary
+runs keep only core execution, provenance, outcome, and artifact controls. Add the evaluation addendum only when a
+prompt explicitly declares an evaluation or benchmark; it must not be used to retrofit telemetry that the run did not
+observe. See the [experimental evaluation guide](frameworks/experimental/workflow_evaluation.md) and
+[`evaluation_work_record_addendum.md`](templates/evaluation_work_record_addendum.md).
 
 ## Versioning
 

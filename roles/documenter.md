@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.4.3
+version: 0.4.4
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -283,12 +283,12 @@ The Documenter is complete when:
 * Risks are recorded.
 * Worker result fan-in and runtime closure are both recorded.
 * The final answer uses the contract's canonical human-readable handoff. Normal runs omit metrics and worker timing.
-* For a bounded dependency route, empty or inapplicable template sections are omitted and the two artifacts target
-  15 KB combined; evidence is never deleted merely to meet the target.
+* For a bounded dependency route, empty or inapplicable template sections are omitted and evidence is referenced instead
+  of repeated.
 * For bounded remediation, update the existing artifacts with a compact execution delta instead of restating planning
   evidence, targeting completion within 60 seconds.
-* For Standard Sentry planning, run after analytical fan-in and target 30 KB combined across evidence, fix design, work
-  record, and plan, with a 10 KB work-record target. Reference evidence instead of copying it into every artifact.
+* For Standard Sentry planning, run after analytical fan-in and reference evidence instead of copying it into every
+  artifact. Normal runs do not record byte counts or budget exceptions.
 * Resolve final consistency findings returned by the Coordinator before terminal handoff; the Coordinator does not edit
   the finalized artifacts.
 * Handoff information is complete.
