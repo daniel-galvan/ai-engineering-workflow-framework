@@ -1,0 +1,73 @@
+{
+  "source_task": "01a04a6c-3d49-7452-841a-46975e688d68",
+  "malformed_fix_design_result": {
+    "worker_id": "fix-design",
+    "worker_handle": "01a04a7f-2b1e-7ab0-b6c9-e59d389cfab9",
+    "outcome": "complete",
+    "plan_readiness": "ready_for_implementation",
+    "implementation_plan_action": "create",
+    "inputs_consumed": [
+      {
+        "input_id": "UPSTREAM-001",
+        "disposition": "Consumed exact validated normalized_evidence.md."
+      },
+      {
+        "input_id": "INPUT-001",
+        "disposition": "Consumed as authoritative result identity."
+      }
+    ],
+    "context_conformance": "pass",
+    "configuration_conformance": "pass; explicit launch binding gpt-5.6-sol/low",
+    "checks_performed": [
+      "Compared the keyed baseline with the scalar transport contract."
+    ],
+    "checks_remaining": [
+      "Verify tolerant-consumer deployment before keyed producer rollout.",
+      "Validate canary comparison telemetry against the baseline."
+    ],
+    "supported_remediation_boundary": "Suggested Content request and response contract.",
+    "supported_intended_change": "Preserve field identity and field-local extents.",
+    "interface_change": true,
+    "interface_contract": {
+      "request_addition": {
+        "field": "text_fields",
+        "required": false,
+        "legacy_fallback": "When absent, evaluate scalar text exactly as today. Scalar text remains populated during rollout."
+      },
+      "response_addition": {
+        "path": "infractions[].field_key",
+        "required": false,
+        "legacy_fallback": "Missing field_key maps to the legacy extent key."
+      },
+      "invariants": [
+        "Do not concatenate fields without coordinate translation.",
+        "Preserve mixed-version compatibility."
+      ]
+    },
+    "blocking_unknowns": [
+      {
+        "id": "U-001",
+        "unknown": "Exact production release",
+        "blocks": "production causal attribution only",
+        "invalidates_supported_boundary_or_change": false
+      }
+    ]
+  },
+  "expected_changes": [
+    "inputs_consumed objects converted to equivalent strings",
+    "explicitly non-blocking unknowns moved to checks_remaining",
+    "legacy interface contract augmented with canonical string fields"
+  ],
+  "expected_inputs_consumed": [
+    "UPSTREAM-001: Consumed exact validated normalized_evidence.md.",
+    "INPUT-001: Consumed as authoritative result identity."
+  ],
+  "expected_interface_fields": [
+    "surface",
+    "request_shape",
+    "response_shape",
+    "absence_semantics",
+    "compatibility_precedence",
+    "rollout"
+  ]
+}

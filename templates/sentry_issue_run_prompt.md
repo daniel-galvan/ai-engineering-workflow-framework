@@ -126,8 +126,9 @@ Runtime bootstrap:
   ledgers in Coordinator state. Once activated, the final Documenter is the
   sole artifact writer for the finalized artifact set.
 - Pass Fix Design `UPSTREAM-001`, the exact validated `normalized_evidence.md` path, and every original
-  supporting artifact path. Do not activate it while normalized evidence is absent or still being written; do not replace either with a
-  Coordinator-written summary.
+  supporting artifact path, plus the prepared `fix_design_result_contract.json`. Do not activate it while normalized
+  evidence is absent or still being written; do not replace either with a Coordinator-written summary. Immediately
+  send the provider-returned activation handle to Fix Design; it must not finalize before receiving that exact value.
 - Require normalized evidence to contain the playbook's canonical Contract Delta table with its Markdown separator,
   exact five boundary rows, and evidence references. Accept any Markdown heading level for `Contract Delta`.
 - Select `live_sentry` from an explicit Sentry issue URL or separately identified Sentry issue ID. When this Sentry
@@ -177,8 +178,11 @@ Runtime bootstrap:
   marked `invalidates_supported_change: true` must include `contradicting_evidence_refs` to observed current-run
   evidence for a materially different boundary or fix; a missing observation is not contradictory evidence. Only
   `ready_for_implementation` permits the Documenter to create a plan.
-- Validate each terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
-  never normalize or silently repair it in Coordinator state. Send each analytical worker at most one aggregated
+- Before validating Fix Design, run packaged `normalize_fix_design_result.py --artifact-root <artifact-root>`. This
+  explicit producer-format repair may only convert equivalent values to the canonical contract and does not consume the
+  analytical correction allowance. Return a blocked or still-invalid result to the same worker. Never semantically
+  normalize or silently reinterpret readiness, outcomes, evidence, boundaries, or intended changes. Send each
+  analytical worker at most one aggregated
   correction. If its corrected result still fails, stop with `analytical_contract_failure`, preserve the errors and
   artifacts, and release all handles; do not resume or replace that worker.
 - After an analytical contract failure, mechanically finalize the packet, closure receipt, and authoritative work

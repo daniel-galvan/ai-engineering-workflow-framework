@@ -473,7 +473,10 @@ is checking a stated discrepancy. The envelope's `outcome` is a worker outcome; 
 
 The Coordinator MUST validate every terminal envelope before fan-in. For Fix Design,
 `ready_for_implementation` pairs only with `create`, and `awaiting_input` pairs only with `omit`. Return an invalid
-enum or pair to the same worker; never normalize, reinterpret, or silently repair it in Coordinator state.
+enum or pair to the same worker. A selected playbook MAY name one packaged producer-format normalizer that runs before
+validation, records its changes, and converts only explicitly equivalent representations to canonical field types; that
+mechanical repair does not consume an analytical correction. Never semantically normalize, reinterpret, or silently
+repair readiness, outcomes, evidence, boundaries, intended changes, or blockers in Coordinator state.
 `ready_for_implementation` requires a supported remediation boundary, a supported intended change, and no blocking
 unknowns. `awaiting_input` requires at least one discriminating check and a structured blocker naming its decision type,
 question, unavailable reason, evidence, and at least two materially different fix implications. It MUST NOT defer an

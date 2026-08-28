@@ -84,9 +84,16 @@ description: >-
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
    For Standard Sentry planning, activate Evidence Topology first. Validate its completed `normalized_evidence.md`, then
-   activate Fix Design with that exact required artifact. Do not parallelize these dependent stages. Require Evidence
-   Topology to run `validate_library.py --normalized-evidence <artifact-path>` before its first terminal response.
+   activate Fix Design with that exact required artifact and the `fix_design_result_contract` path returned by
+   `prepare_run.py`. Do not parallelize these dependent stages. Immediately send Fix Design its provider-returned
+   activation handle and require it to wait for that value before finalizing its envelope. Require Evidence Topology to
+   run `validate_library.py --normalized-evidence <artifact-path>` before its first terminal response.
 10. After analytical fan-in and before activating the final Documenter, run
+   `python3 <packaged-framework-root>/scripts/normalize_fix_design_result.py --artifact-root`
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>`. This deterministic producer-format repair runs before validation
+   and does not consume the analytical correction allowance. It may only preserve equivalent values in canonical field
+   types; a blocked normalization is returned to Fix Design with the other aggregated errors.
+   Then run
    `python3 <packaged-framework-root>/scripts/validate_library.py --sentry-artifacts`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>` for Sentry planning. Return Evidence Topology errors to that worker
    and Fix Design schema/readiness errors to Fix Design. Send each analytical worker at most one aggregated correction.

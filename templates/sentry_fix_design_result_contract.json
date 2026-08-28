@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "artifact": "fix_design_result.json",
+  "required_fields": {
+    "worker_id": "non-empty string",
+    "worker_handle": "exact activation handle as a non-empty string",
+    "outcome": "exact string: complete",
+    "plan_readiness": "ready_for_implementation or awaiting_input",
+    "implementation_plan_action": "create when ready_for_implementation; omit when awaiting_input",
+    "inputs_consumed": "non-empty list of strings; include UPSTREAM-001 or the exact normalized_evidence.md path",
+    "context_conformance": "exact string: pass",
+    "configuration_conformance": "non-empty string",
+    "checks_performed": "list",
+    "checks_remaining": "list",
+    "supported_remediation_boundary": "string",
+    "supported_intended_change": "string",
+    "interface_change": "boolean",
+    "interface_contract": "null when interface_change is false; canonical object when true",
+    "blocking_unknowns": "list"
+  },
+  "interface_contract_when_true": {
+    "surface": "non-empty string",
+    "request_shape": "non-empty string",
+    "response_shape": "non-empty string",
+    "absence_semantics": "non-empty string",
+    "compatibility_precedence": "non-empty string",
+    "rollout": "non-empty string"
+  },
+  "valid_non_interface_example": {
+    "worker_id": "fix-design",
+    "worker_handle": "<EXACT-ACTIVATION-HANDLE>",
+    "outcome": "complete",
+    "plan_readiness": "ready_for_implementation",
+    "implementation_plan_action": "create",
+    "inputs_consumed": [
+      "UPSTREAM-001: consumed validated normalized_evidence.md"
+    ],
+    "context_conformance": "pass",
+    "configuration_conformance": "<CONFIGURATION-CONFORMANCE>",
+    "checks_performed": [],
+    "checks_remaining": [],
+    "supported_remediation_boundary": "<SUPPORTED-BOUNDARY>",
+    "supported_intended_change": "<SUPPORTED-CHANGE>",
+    "interface_change": false,
+    "interface_contract": null,
+    "blocking_unknowns": []
+  }
+}

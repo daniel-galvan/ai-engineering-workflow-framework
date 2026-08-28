@@ -558,7 +558,13 @@ The result uses the exact activation handle and shared terminal outcome
 `complete`. String fields remain strings, list fields remain lists, and
 `interface_change` remains a boolean. `inputs_consumed` MUST include either the
 canonical normalized-evidence Input ID `UPSTREAM-001` or the exact validated
-`normalized_evidence.md` path; the activation packet delivers both.
+`normalized_evidence.md` path; the activation packet delivers both plus the
+prepared `fix_design_result_contract.json`. Before validation, the Coordinator
+runs packaged `normalize_fix_design_result.py --artifact-root <artifact-root>`.
+This explicit producer-format repair may only convert equivalent representations
+to canonical field types and does not consume the analytical correction
+allowance; it never changes readiness, outcomes, evidence, the selected
+boundary, or the intended change.
 
 If the evidence supports more than one credible fix, record the alternatives, tradeoffs, validation impact, and a
 recommendation in the implementation plan when a safe recommendation is possible. Do not ask the user to resolve a

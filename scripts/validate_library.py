@@ -71,10 +71,13 @@ RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
 RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
 PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
 FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
+NORMALIZE_FIX_DESIGN_RESULT = ROOT / "scripts" / "normalize_fix_design_result.py"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
+SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
+V32_FIX_DESIGN_RECOVERY_FIXTURE = ROOT / "tests" / "fixtures" / "v32_sentry_fix_design_recovery.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 PROFILE_STATUSES = {"requested", "in_progress", "executed", "not_executed", "blocked"}
 PROFILES = {"standard", "deep"}
@@ -1382,6 +1385,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     )
     for field in ("surface", "request_shape", "response_shape", "rollout"):
         assert f"interface_contract {field} must be a non-empty string" in structured_errors
+    v32 = json.loads(V32_FIX_DESIGN_RECOVERY_FIXTURE.read_text())
+    assert "fix design inputs_consumed must be a non-empty list" in fix_design_result_errors(
+        v32["malformed_fix_design_result"], required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+    )
     invalid_v28 = {
         **v28["fix_design_result"],
         "plan_readiness": "awaiting_input",
@@ -1969,6 +1976,20 @@ if not PREPARE_RUN.is_file():
     fail("scripts/prepare_run.py is missing")
 if not FINALIZE_WORK_RECORD.is_file():
     fail("scripts/finalize_work_record.py is missing")
+if not NORMALIZE_FIX_DESIGN_RESULT.is_file():
+    fail("scripts/normalize_fix_design_result.py is missing")
+else:
+    normalizer_self_test = subprocess.run(
+        ["python3", str(NORMALIZE_FIX_DESIGN_RESULT), "--self-test"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if normalizer_self_test.returncode:
+        fail(
+            "scripts/normalize_fix_design_result.py self-test failed: "
+            + (normalizer_self_test.stdout + normalizer_self_test.stderr).strip()
+        )
 for template in (FINALIZATION_PACKET_TEMPLATE, RUNTIME_CLOSURE_TEMPLATE):
     if not template.is_file():
         fail(f"{template.relative_to(ROOT)} is missing")
@@ -1977,6 +1998,33 @@ for template in (FINALIZATION_PACKET_TEMPLATE, RUNTIME_CLOSURE_TEMPLATE):
             json.loads(template.read_text())
         except json.JSONDecodeError as error:
             fail(f"{template.relative_to(ROOT)} is invalid JSON: {error}")
+if not SENTRY_FIX_DESIGN_CONTRACT.is_file():
+    fail("templates/sentry_fix_design_result_contract.json is missing")
+else:
+    try:
+        fix_design_contract = json.loads(SENTRY_FIX_DESIGN_CONTRACT.read_text())
+    except json.JSONDecodeError as error:
+        fail(f"templates/sentry_fix_design_result_contract.json is invalid JSON: {error}")
+    else:
+        contract_fields = set(fix_design_contract.get("required_fields", {}))
+        if contract_fields != {
+            "worker_id",
+            "worker_handle",
+            "outcome",
+            "plan_readiness",
+            "implementation_plan_action",
+            "inputs_consumed",
+            "context_conformance",
+            "configuration_conformance",
+            "checks_performed",
+            "checks_remaining",
+            "supported_remediation_boundary",
+            "supported_intended_change",
+            "interface_change",
+            "interface_contract",
+            "blocking_unknowns",
+        }:
+            fail("templates/sentry_fix_design_result_contract.json has an invalid required-field set")
 if not SENTRY_WORK_RECORD_TEMPLATE.is_file():
     fail("templates/sentry_work_record.md is missing")
 run_skill = RUN_SKILL.read_text()
@@ -2002,6 +2050,7 @@ for phrase in (
     "`fork_thread`",
     "`send_message_to_thread`",
     "scripts/finalize_work_record.py",
+    "scripts/normalize_fix_design_result.py",
     "finalization_packet.json",
     "preflight even when the app hides stdout",
     "do not rerun it solely",
@@ -2399,7 +2448,8 @@ for phrase in (
     "clarification_brief.md",
     "plugin_revision_mismatch",
     "never spawn or delegate an `initialize` worker",
-    "never normalize, reinterpret, or silently repair it",
+    "Never semantically normalize or silently",
+    "normalize_fix_design_result.py",
     "Workflow-framework validation: passed",
     "fork_context: false",
     "Coordinator initialization: complete",
@@ -2435,6 +2485,7 @@ for phrase in (
     "exact activation handle",
     "includes either `UPSTREAM-001`",
     "supported_remediation_boundary` and `supported_intended_change` as strings",
+    "fix_design_result_contract.json",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
@@ -2481,7 +2532,8 @@ for phrase in (
     "canonical Sentry artifacts",
     "plugin_revision_mismatch",
     "never spawn or delegate an `initialize` worker",
-    "never normalize or silently repair it",
+    "Never semantically",
+    "normalize_fix_design_result.py",
     "Implementation plan",
     "fork_context: false",
     "fix_design_result.json",
@@ -2491,6 +2543,7 @@ for phrase in (
     ".thoughts/<WORK-ITEM-ID>/",
     "skill or plugin enable/disable directive",
     "Pass Fix Design `UPSTREAM-001`",
+    "fix_design_result_contract.json",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
@@ -2599,7 +2652,7 @@ for phrase in (
     "Keep the final Documenter handle live",
     "implementation_plan_action",
     "provider_configuration_unavailable",
-    "never normalize, reinterpret, or silently repair it",
+    "Never semantically normalize",
     "Workflow-framework validation: passed",
     "fork_context: false",
     "Coordinator initialization: complete",

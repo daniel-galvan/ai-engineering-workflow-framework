@@ -93,7 +93,10 @@ Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
 the Documenter: `awaiting_input` requires `omit`; only
 `ready_for_implementation` permits `create`.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
-never normalize, reinterpret, or silently repair it in Coordinator state.
+run a packaged producer-format normalizer before validation only when the selected playbook explicitly names it. That
+normalizer records its changes and may convert only equivalent representations to canonical field types without
+consuming an analytical correction. Never semantically normalize, reinterpret, or silently repair readiness, outcomes,
+evidence, boundaries, intended changes, or blockers in Coordinator state.
 
 Start ready independent workers in parallel when capacity exists; otherwise
 record the runtime or dependency reason and wait time. Give each Deep worker a

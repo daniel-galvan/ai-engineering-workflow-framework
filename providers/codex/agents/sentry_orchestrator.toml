@@ -191,8 +191,15 @@ when a plan was actually created; never emit `passed` as a profile status or
 `incomplete` for a completed clarification handoff.
 Validate every terminal envelope before fan-in. The Fix Design worker outcome is
 `complete` even when its `plan_readiness` is `awaiting_input`; return any other
-worker outcome or readiness/action pair to the same worker. Return an invalid enum or readiness/action pair to the same worker;
-never normalize, reinterpret, or silently repair it in Coordinator state.
+worker outcome or readiness/action pair to the same worker. Pass Fix Design the
+prepared `fix_design_result_contract.json` and immediately send its exact
+provider-returned activation handle; the worker must wait for that value before
+finalizing. Before validation, run packaged `normalize_fix_design_result.py
+--artifact-root <artifact-root>`. This explicit producer-format repair may only
+convert equivalent values to canonical field types and does not consume the
+analytical correction allowance. Never semantically normalize or silently
+reinterpret readiness, outcomes, evidence, boundaries, or intended changes.
+Return an invalid enum or readiness/action pair to the same worker.
 Send each analytical worker at most one aggregated schema or readiness correction.
 If its corrected terminal result still fails, stop with `analytical_contract_failure`,
 preserve the validation errors and artifacts, and release every handle; do not resume or replace that worker. Count a

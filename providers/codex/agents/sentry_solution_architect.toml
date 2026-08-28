@@ -99,7 +99,10 @@ non-interface change, set `interface_change` to `false` and
 `interface_contract` to `null`.
 
 Return one JSON object for the Coordinator's finalized packet and the Documenter
-to persist verbatim as `fix_design_result.json`. It must contain:
+to persist verbatim as `fix_design_result.json`. The activation packet supplies
+the prepared `fix_design_result_contract.json`; follow its exact field types and
+canonical interface shape. Do not finalize until the Coordinator supplies the
+exact provider-returned activation handle. The result must contain:
 `worker_id` as a non-empty string; `worker_handle` as the exact activation handle
 supplied by the Coordinator; `outcome` as the exact string `complete`;
 `plan_readiness`; `implementation_plan_action`; `inputs_consumed` as a
