@@ -41,8 +41,14 @@ description: >-
    when the user explicitly says continue or resume. This one step
    archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
    Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its
-   baseline ID, and stop if a required binding is absent. The active main session remains the Orchestrator with its
+   baseline ID and `provider_tool_mapping`, and stop if a required binding is absent. Framework tool IDs are abstract
+   capability classes, not literal Codex tool names. Tell each worker to use the manifest's concrete mapping and never
+   search `ALL_TOOLS` for a literal framework tool ID or block merely because that name is absent. A capability is
+   unavailable only when its mapped operation is absent or an attempted in-scope operation fails. The active main
+   session remains the Orchestrator with its
    already-selected model and effort; do not claim that the Orchestrator agent TOML changed the parent session.
+   Record that active parent-session model and effort exactly as `Coordinator model/effort` so repeated-run comparisons
+   expose Coordinator configuration differences.
    The Coordinator is the only role that performs package preflight and run preparation. Activate every delegated
    worker with `fork_context: false` or the provider-equivalent fresh-context option. Start its packet with
    `Coordinator initialization: complete` and explicitly prohibit rerunning this skill, `run_preflight.py`, or
@@ -74,7 +80,7 @@ description: >-
    to validate the complete packet shape and candidate record without replacing `work_record.md`. Return the aggregated
    error to the owning worker and repeat.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
-   observations as `runtime_closure.json`, then run
+   observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
@@ -87,6 +93,8 @@ description: >-
    failure. Return packet, path, table, rendering, or closure errors to the same Documenter. Return errors naming Fix
    Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning
    Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.
+   Treat finalizer errors as self-contained received/expected corrections. Do not read or search validator source unless
+   an error lacks an expected value or contradicts the documented packet contract.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; do not regenerate or replace it with a compact status list. Before sending, verify the exact ordered labels

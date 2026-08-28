@@ -45,7 +45,7 @@ error names Fix Design technical content, worker identity, readiness, blockers,
 diagnosis, or remediation boundary, return it to the Coordinator for the owning
 Fix Design worker; do not edit those fields here.
 Do not claim provider release in the packet; the Coordinator supplies exact
-provider-observed rows through `runtime_closure.json` after this worker returns.
+provider-observed rows with `Receipt owner: Coordinator` through `runtime_closure.json` after this worker returns.
 The persisted packet is your pre-release source snapshot. It may retain
 pre-release synchronization wording after provider release; the closure receipt
 and rendered work record own terminal runtime state.

@@ -1,0 +1,19 @@
+{
+  "regression": "v25 must not treat provider-neutral capability IDs as literal Codex tool names",
+  "expected_codex_mapping": {
+    "artifact_write": "apply_patch",
+    "build_run": "exec_command",
+    "dependency_inspect": "exec_command",
+    "diff_review": "exec_command",
+    "history_read": "exec_command",
+    "repository_read": "exec_command",
+    "repository_search": "exec_command",
+    "repository_write": "apply_patch",
+    "runtime_observe": "connected runtime tool or exec_command for local runtime evidence",
+    "security_scan": "configured scanner or connector",
+    "test_run": "exec_command",
+    "work_item_read": "supplied context, connected work-item tool, or exec_command",
+    "work_record_read": "exec_command",
+    "work_record_write": "apply_patch"
+  }
+}

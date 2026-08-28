@@ -17,6 +17,18 @@ VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
 CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 V22_FIXTURE = ROOT / "tests" / "fixtures" / "v22_sentry_planning.json"
+UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+MODEL_EFFORT_PATTERN = re.compile(
+    r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)\s*$", re.IGNORECASE
+)
+ROLE_LABELS = {
+    "evidence-topology": "Evidence topology",
+    "fix-design": "Fix design",
+    "failure-topology": "Failure topology",
+    "repository-integration": "Repository integration",
+    "handoff": "Documenter",
+    "documenter": "Documenter",
+}
 
 
 def _shape_errors(value: object, template: object, path: str) -> list[str]:
@@ -47,6 +59,104 @@ def _validate_shapes(packet: object, closure: object) -> None:
     errors.extend(_shape_errors(closure, json.loads(CLOSURE_TEMPLATE.read_text()), "closure"))
     if errors:
         raise ValueError("packet_schema_invalid: " + "; ".join(errors))
+
+
+def _normalize_model_effort(value: object) -> object:
+    match = MODEL_EFFORT_PATTERN.fullmatch(str(value))
+    return f"{match.group(1)} / {match.group(2).lower()}" if match else value
+
+
+def _normalize_playbook_identity(value: object) -> object:
+    parts = str(value).split(" / ", 1)
+    if len(parts) != 2 or parts[0].endswith(".md"):
+        return value
+    supplied = parts[0].strip().lower().replace(" ", "_")
+    for path in (ROOT / "playbooks").glob("*.md"):
+        title = re.search(r"^title:\s*(.+)$", path.read_text(), re.MULTILINE)
+        names = {path.stem.lower()}
+        if title:
+            names.add(title.group(1).strip().lower().replace(" ", "_"))
+        if supplied in names:
+            return f"playbooks/{path.name} / {parts[1].strip()}"
+    return value
+
+
+def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> None:
+    identity = packet.get("identity", {})
+    if isinstance(identity, dict):
+        framework = str(identity.get("Framework commit / status", ""))
+        revision = re.search(r"[0-9a-fA-F]{40}", framework)
+        status = re.search(r"\b(Clean|Dirty)\b", framework, re.IGNORECASE)
+        if revision and status:
+            identity["Framework commit / status"] = f"{revision.group(0)} / {status.group(1).title()}"
+        identity["Playbook / version"] = _normalize_playbook_identity(identity.get("Playbook / version", ""))
+        identity["Coordinator model/effort"] = _normalize_model_effort(identity.get("Coordinator model/effort", ""))
+    for row in packet.get("workers", []):
+        if not isinstance(row, dict):
+            continue
+        role = str(row.get("Role", "")).strip().lower()
+        if role in ROLE_LABELS:
+            row["Role"] = ROLE_LABELS[role]
+        row["Configured model/effort"] = _normalize_model_effort(row.get("Configured model/effort", ""))
+    for row in closure.get("runtime_closure", []):
+        if not isinstance(row, dict):
+            continue
+        handles = UUID_PATTERN.findall(str(row.get("Completed worker handles", "")))
+        if handles:
+            row["Completed worker handles"] = ", ".join(dict.fromkeys(handles))
+
+
+def _validate_handoff(packet: dict[str, object]) -> None:
+    handoff = packet.get("handoff", {})
+    if not isinstance(handoff, dict):
+        raise ValueError("packet.handoff must be an object")
+    established = handoff.get("established", [])
+    if not established:
+        raise ValueError("packet.handoff.established must contain at least one human-readable finding")
+    for index, item in enumerate(established):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"packet.handoff.established[{index}] must be a non-empty string")
+        if "\n" in item:
+            raise ValueError(
+                f"packet.handoff.established[{index}] must be one human-readable sentence, not a multiline block"
+            )
+        if re.fullmatch(r"[A-Z]+-\d+", item.strip()):
+            raise ValueError(
+                f"packet.handoff.established[{index}] received internal ID {item!r}; "
+                "expected a human-readable finding"
+            )
+    for index, item in enumerate(handoff.get("best_current_explanations", [])):
+        if not isinstance(item, (str, dict)):
+            raise ValueError(
+                f"packet.handoff.best_current_explanations[{index}] must be text or a structured explanation"
+            )
+    for index, item in enumerate(handoff.get("artifacts", [])):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"packet.handoff.artifacts[{index}] must be a non-empty path or Markdown link")
+
+
+def _explanation_text(item: object) -> str:
+    if not isinstance(item, dict):
+        return str(item)
+    explanation = str(item.get("explanation", "")).strip()
+    confidence = str(item.get("confidence", "")).strip()
+    reason = str(item.get("reason", "")).strip()
+    if not explanation:
+        raise ValueError("structured handoff explanation is missing explanation")
+    if any("\n" in value for value in (explanation, confidence, reason)):
+        raise ValueError("structured handoff explanation fields must be single-line text")
+    suffix = "; ".join(part for part in (f"confidence: {confidence}" if confidence else "", reason) if part)
+    return f"{explanation} ({suffix})" if suffix else explanation
+
+
+def _artifact_link(item: object, artifact_root: object) -> str:
+    value = str(item).strip()
+    if value.startswith("[") and "](" in value and value.endswith(")"):
+        return value
+    path = Path(value)
+    if not path.is_absolute():
+        path = Path(str(artifact_root)) / path
+    return f"[{path.name}]({path})"
 
 
 def _cell(value: object) -> str:
@@ -122,9 +232,14 @@ def render(packet: dict[str, object]) -> str:
     explanations = handoff.get("best_current_explanations", [])
     explanation_block = ""
     if explanations:
-        explanation_block = "\nBest current explanations:\n" + "".join(f"- {item}\n" for item in explanations)
+        explanation_block = "\nBest current explanations:\n" + "".join(
+            f"- {_explanation_text(item)}\n" for item in explanations
+        )
     established = "".join(f"- {item}\n" for item in handoff["established"])
-    artifacts = "".join(f"- {item}\n" for item in handoff["artifacts"])
+    artifacts = "".join(
+        f"- {_artifact_link(item, packet['finalization']['Durable artifact root'])}\n"
+        for item in handoff["artifacts"]
+    )
     runtime = "released" if _runtime_released(packet["runtime_closure"]) else "not released"
     execution = str(handoff["execution"])
     if not re.search(r"\bruntime\s+released\b", execution, flags=re.IGNORECASE):
@@ -179,7 +294,7 @@ Provenance: {handoff['provenance']}
              "Barrier status"), packet["synchronization"]
         )),
         _section("Worker Runtime Closure", _table(
-            ("Run or stage", "Completed worker handles", "Runtime status", "Remaining active handles",
+            ("Run or stage", "Receipt owner", "Completed worker handles", "Runtime status", "Remaining active handles",
              "Closure evidence or blocker"), packet["runtime_closure"]
         )),
         _section("Worker Result Summary", _table(
@@ -207,6 +322,8 @@ def finalize(packet_path: Path, closure_path: Path, record_path: Path, *, pre_re
     packet = json.loads(packet_path.read_text())
     closure = json.loads(closure_path.read_text())
     _validate_shapes(packet, closure)
+    _normalize_packet(packet, closure)
+    _validate_handoff(packet)
     _reconcile_runtime_state(packet, closure["runtime_closure"])
     rendered = render(packet)
     record_path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,7 +377,8 @@ def self_test() -> None:
             "Provider configuration source/status": "manual / resolved",
             "Prompt template / revision / conformance": "templates/sentry_issue_run_prompt.md / 0.4.7 / pass",
             "Role-policy baseline ID": "Not applicable", "Role binding manifest": "Not applicable",
-            "Provider / model configuration": "Manual / Worker Execution Ledger", "Requested profile": "standard",
+            "Provider / model configuration": "Manual / Worker Execution Ledger",
+            "Coordinator model/effort": "Not applicable", "Requested profile": "standard",
             "Activated profile": "None", "Executed profile": "None", "Profile status": "blocked",
             "Lifecycle": "planning", "State": "blocked", "Engineering state": "unknown",
             "Workflow outcome": "blocked", "Engineering outcome": "blocked",
@@ -278,7 +396,8 @@ def self_test() -> None:
         "synchronization": [{"Stage": "Initialization", "Workers launched": "None",
                              "Launch mode / exception": "worker_runtime_unavailable", "Worker outcomes": "Not applicable",
                              "Results summarized": "Yes", "Barrier status": "Passed; runtime closure pending/unknown"}],
-        "runtime_closure": [{"Run or stage": "Current run", "Completed worker handles": "coordinator",
+        "runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
+                             "Completed worker handles": "coordinator",
                              "Runtime status": "Released", "Remaining active handles": "None",
                              "Closure evidence or blocker": "provider release confirmation for coordinator"}],
         "worker_results": [{"Worker": "Coordinator", "Outcome": "blocked", "Confidence": "High",
@@ -294,7 +413,11 @@ def self_test() -> None:
         "actions": [{"Action ID": "A-001", "Action": "Retry with in-task runtime", "Decision ref": "D-001",
                      "Owner": "User", "Status": "Proposed"}],
         "handoff": {"workflow_result": "Worker runtime unavailable", "implementation_plan": "omitted; run blocked",
-                    "established": ["No user-owned tasks were created."], "best_current_explanations": [], "next_action": {
+                    "established": ["No user-owned tasks were created."], "best_current_explanations": [{
+                        "explanation": "The in-task worker runtime was unavailable.",
+                        "confidence": "high",
+                        "reason": "The provider exposed no worker activation capability.",
+                    }], "next_action": {
                         "owner": "User", "action": "Retry when in-task workers are available.",
                         "complete_when": "The worker graph starts in the current task."},
                     "artifacts": ["work_record.md"],
@@ -311,6 +434,9 @@ def self_test() -> None:
         finalize(source, closure, record)
         assert "Workflow result: Worker runtime unavailable" in record.read_text()
         rendered = record.read_text()
+        assert "{'explanation':" not in rendered
+        assert "confidence: high" in rendered
+        assert "[work_record.md](/tmp/.thoughts/ITEM-1/work_record.md)" in rendered
         assert "Final reconciliation | Passed; runtime closure released with no active handles |" in rendered
         assert "| Passed; runtime closure released |" in rendered
         assert "Final reconciliation | Pending" not in rendered
@@ -344,6 +470,16 @@ def self_test() -> None:
             assert "invalid Profile status" in str(error)
         else:
             raise AssertionError("pre-release validation must reject invalid identity")
+        invalid_summary = json.loads(source.read_text())
+        invalid_summary["identity"]["Profile status"] = "blocked"
+        invalid_summary["handoff"]["established"] = ["C-001"]
+        source.write_text(json.dumps(invalid_summary))
+        try:
+            finalize(source, pending_closure, pre_release_record, pre_release=True)
+        except ValueError as error:
+            assert "expected a human-readable finding" in str(error)
+        else:
+            raise AssertionError("finalization must reject claim-ID-only summaries")
         source.write_text(json.dumps(packet))
         invalid = dict(packet)
         invalid["evidence"] = []
@@ -362,6 +498,18 @@ def self_test() -> None:
             .replace("__FRAMEWORK_ROOT__", str(ROOT))
             .replace("__ARTIFACT_ROOT__", str(root))
         )
+        fixture_packet_data = fixture["files"]["finalization_packet.json"]
+        fixture_packet_data["identity"]["Framework commit / status"] = f"{'a' * 40} Clean; preflight passed"
+        fixture_packet_data["identity"]["Playbook / version"] = "Sentry Issue Remediation / 0.4.7"
+        fixture_packet_data["identity"]["Coordinator model/effort"] = "gpt-5.6-luna/medium"
+        for worker in fixture_packet_data["workers"]:
+            worker["Configured model/effort"] = worker["Configured model/effort"].replace(" / ", "/")
+        fixture_closure_data = fixture["files"]["runtime_closure.json"]["runtime_closure"][0]
+        fixture_closure_data["Completed worker handles"] = (
+            "evidence 01a00000-0000-7000-8000-000000000001; "
+            "fix 01a00000-0000-7000-8000-000000000002; "
+            "documenter 01a00000-0000-7000-8000-000000000003"
+        )
         for name, content in fixture["files"].items():
             target = root / name
             target.write_text(content if isinstance(content, str) else json.dumps(content, indent=2) + "\n")
@@ -373,6 +521,10 @@ def self_test() -> None:
         fixture_rendered = fixture_record.read_text()
         assert "Workflow result: Ready for implementation" in fixture_rendered
         assert "templates/sentry_issue_run_prompt.md / 0.4.7 / pass" in fixture_rendered
+        assert f"{'a' * 40} / Clean" in fixture_rendered
+        assert "playbooks/sentry_issue_remediation.md / 0.4.7" in fixture_rendered
+        assert "gpt-5.6-luna / medium" in fixture_rendered
+        assert "evidence 01a00000" not in fixture_rendered
         assert "runtime closure released" in fixture_rendered
         assert "Work-record budget exception" not in fixture_rendered
         assert fixture_packet.read_text() == packet_before

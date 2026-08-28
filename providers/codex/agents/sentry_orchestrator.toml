@@ -215,7 +215,8 @@ owning Fix Design worker first; the Documenter must not repair those fields.
 Keep that Documenter handle live and run the pinned packaged finalizer with
 `--pre-release` against a pending closure probe. Its structural validation
 returns all packet-shape errors together. Send the aggregated correction through
-the owning handle and repeat until the pre-release check passes. Only then
+the owning handle and repeat until the pre-release check passes. Use a received/expected correction directly; do not
+inspect validator source unless the error lacks an expected value or contradicts the documented packet contract. Only then
 release it.
 Update the runtime-closure row with the exact provider handle and provider
 release confirmation, then rerun the finalizer with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line

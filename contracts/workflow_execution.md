@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.7
+version: 0.4.8
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -1004,7 +1004,8 @@ pass the packaged finalizer in `--pre-release` mode. Before release, provide a p
 the pre-release check validates the packet and candidate record without replacing `work_record.md`. Send every packet
 correction to that same handle and collect the revised result. Only after the pre-release check passes, release the
 handle, then write one provider-observed `runtime_closure.json` receipt. The receipt contains only the exact closure
-table rows from `templates/runtime_closure.json` and is not a second interpretation of the workflow outcome.
+table rows from `templates/runtime_closure.json`, records `Receipt owner: Coordinator`, and is not a second
+interpretation of the workflow outcome. A Documenter-authored or ownerless released receipt fails finalization.
 
 Once the final Documenter is activated, it is the sole writer for its assigned non-record artifacts and packet. The
 Coordinator invokes the renderer but MUST NOT edit the packet or rendered record.
@@ -1026,6 +1027,11 @@ immutable once passed to the Documenter. The Documenter serializes these values 
 normalize, reinterpret, or reconstruct them. After the Documenter returns and is released, the Coordinator invokes
 `scripts/finalize_work_record.py` with the packet, closure receipt, and record paths. An inconsistent packet is a
 validation error returned to the Documenter, not authority to decide a different state or outcome.
+
+The renderer may canonicalize mechanically equivalent representations such as spacing around model/effort separators,
+known playbook title-to-path identity, framework commit/status separators, escaped Markdown table pipes, canonical role
+labels, and labeled provider UUID lists. It MUST NOT infer engineering facts, worker completion, provider release, or a
+different workflow outcome.
 
 The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. With
 `--emit-handoff`, the standalone validator checks its ordered labels, verifies that its state and outcomes equal the Run

@@ -1,6 +1,6 @@
 ---
 title: Compact Sentry Work Record
-version: 0.4.7
+version: 0.4.8
 status: Pilot
 ---
 
@@ -47,6 +47,7 @@ status: Pilot
 | Role-policy baseline ID | |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
+| Coordinator model/effort | Active parent-session model / effort |
 | Requested profile | standard |
 | Activated profile | None |
 | Executed profile | None |
@@ -97,9 +98,9 @@ status: Pilot
 
 # Worker Runtime Closure
 
-| Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
-| --- | --- | --- | --- | --- |
-| Current run | None | Pending | None | Workers not activated |
+| Run or stage | Receipt owner | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
+| --- | --- | --- | --- | --- | --- |
+| Current run | Coordinator | None | Pending | None | Workers not activated |
 
 # Worker Result Summary
 

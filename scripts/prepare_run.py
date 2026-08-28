@@ -39,6 +39,22 @@ GENERIC_AGENTS = (
     "documenter",
 )
 PLAYBOOKS = {path.stem for path in (ROOT / "playbooks").glob("*.md")}
+CODEX_TOOL_MAPPING = {
+    "work_item_read": "supplied context, connected work-item tool, or exec_command",
+    "work_record_read": "exec_command",
+    "work_record_write": "apply_patch",
+    "repository_read": "exec_command",
+    "repository_search": "exec_command",
+    "history_read": "exec_command",
+    "dependency_inspect": "exec_command",
+    "security_scan": "configured scanner or connector",
+    "artifact_write": "apply_patch",
+    "repository_write": "apply_patch",
+    "build_run": "exec_command",
+    "test_run": "exec_command",
+    "diff_review": "exec_command",
+    "runtime_observe": "connected runtime tool or exec_command for local runtime evidence",
+}
 
 
 def _table_value(text: str, field: str) -> str | None:
@@ -85,6 +101,7 @@ def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, ob
     return {
         "baseline_id": _baseline_id(),
         "playbook": playbook,
+        "provider_tool_mapping": CODEX_TOOL_MAPPING,
         "bindings": {name: _agent_binding(name, runtime_agents) for name in names},
     }
 
@@ -158,6 +175,9 @@ def self_test() -> None:
         first = prepare_run(execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False)
         assert first["playbook"] == "sentry_issue_remediation"
         assert first["bindings"]["sentry_solution_architect"]["model"] == "gpt-5.6-sol"
+        assert first["provider_tool_mapping"]["repository_read"] == "exec_command"
+        fixture = json.loads((ROOT / "tests" / "fixtures" / "v25_capability_mapping.json").read_text())
+        assert first["provider_tool_mapping"] == fixture["expected_codex_mapping"]
         assert json.loads(Path(first["finalization_packet"]).read_text()) == json.loads(
             (ROOT / "templates" / "finalization_packet.json").read_text()
         )

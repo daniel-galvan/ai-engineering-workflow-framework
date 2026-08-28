@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.5
+version: 0.4.6
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-27
@@ -120,6 +120,7 @@ production, or current-main behavior.
 | Role-policy baseline ID | Provider baseline ID or `Not applicable` |
 | Role binding manifest | `.thoughts/<WORK-ITEM-ID>/role_bindings.json` or `Not applicable` for a non-Codex provider |
 | Provider / model configuration | Provider name / Worker Execution Ledger |
+| Coordinator model/effort | Active parent-session model / effort; do not infer from Orchestrator agent configuration |
 | Requested profile | `standard` / `deep` |
 | Activated profile | `standard` / `deep` / `None` |
 | Executed profile | `standard` / `deep` / `None` |
@@ -256,9 +257,9 @@ Record the provider-handle closure barrier separately from result fan-in. `termi
 Record exact provider-returned handles and provider close/release confirmations. Role names or circular statements that
 all workers were released are not closure evidence.
 
-| Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
-| --- | --- | --- | --- | --- |
-| | | Pending / Released / Unknown / Blocked | | |
+| Run or stage | Receipt owner | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
+| --- | --- | --- | --- | --- | --- |
+| | Coordinator | | Pending / Released / Unknown / Blocked | | |
 
 Do not start a new lifecycle run while the previous run has active handles. Reuse its durable artifacts after closure;
 do not reuse live worker handles.

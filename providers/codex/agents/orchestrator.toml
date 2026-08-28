@@ -123,7 +123,8 @@ post-closure poll.
 Keep the final Documenter live through consistency validation. Run the
 preflight-pinned packaged finalizer with `--pre-release` against a pending
 closure probe before releasing it. Send corrections to that same handle, collect
-its revised terminal result, and repeat until the pre-release check passes. If
+its revised terminal result, and repeat until the pre-release check passes. Use a received/expected correction directly;
+do not inspect validator source unless the error lacks an expected value or contradicts the documented packet contract. If
 that packaged root disappears or changes, stop with `plugin_revision_mismatch`;
 do not discover another installed package. Close the handle only after validation
 passes. Then update the runtime-closure row with the exact provider handle and

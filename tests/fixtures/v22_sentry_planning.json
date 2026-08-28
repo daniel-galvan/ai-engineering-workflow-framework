@@ -66,6 +66,7 @@
         "Role-policy baseline ID": "codex-role-policy-v20260827032839",
         "Role binding manifest": "__ARTIFACT_ROOT__/role_bindings.json",
         "Provider / model configuration": "Codex / Worker Execution Ledger",
+        "Coordinator model/effort": "gpt-5.6-luna / medium",
         "Requested profile": "standard",
         "Activated profile": "standard",
         "Executed profile": "standard",
@@ -259,6 +260,7 @@
       "runtime_closure": [
         {
           "Run or stage": "Current run",
+          "Receipt owner": "Coordinator",
           "Completed worker handles": "01a00000-0000-7000-8000-000000000001; 01a00000-0000-7000-8000-000000000002; 01a00000-0000-7000-8000-000000000003",
           "Runtime status": "Released",
           "Remaining active handles": "None",

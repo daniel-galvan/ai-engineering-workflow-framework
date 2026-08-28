@@ -2,6 +2,7 @@
   "runtime_closure": [
     {
       "Run or stage": "",
+      "Receipt owner": "Coordinator",
       "Completed worker handles": "",
       "Runtime status": "",
       "Remaining active handles": "",

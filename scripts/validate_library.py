@@ -135,7 +135,23 @@ def fail(message: str) -> None:
 
 
 def table_cells(line: str) -> list[str]:
-    return [cell.strip() for cell in line.strip()[1:-1].split("|")]
+    content = line.strip()[1:-1]
+    cells: list[str] = []
+    current: list[str] = []
+    index = 0
+    while index < len(content):
+        if content[index:index + 2] == r"\|":
+            current.append("|")
+            index += 2
+            continue
+        if content[index] == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(content[index])
+        index += 1
+    cells.append("".join(current).strip())
+    return cells
 
 
 def is_table_row(line: str) -> bool:
@@ -559,6 +575,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         "Role-policy baseline ID",
         "Role binding manifest",
         "Provider / model configuration",
+        "Coordinator model/effort",
         "Requested profile",
         "Activated profile",
         "Executed profile",
@@ -607,9 +624,20 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     )
     if " / " not in provider_model:
         fail(f"{path}: Provider / model configuration must identify the provider and its ledger")
+    coordinator_model = identity["Coordinator model/effort"].strip()
+    if codex_run and not re.fullmatch(
+        r"\S+ / (?:none|minimal|low|medium|high|xhigh|max|ultra)", coordinator_model, re.IGNORECASE
+    ):
+        fail(
+            f"{path}: Coordinator model/effort received {coordinator_model!r}; expected "
+            "'<active model> / <active effort>'"
+        )
     framework_identity = identity["Framework commit / status"]
     if not re.fullmatch(r"[0-9a-fA-F]{40} / (?:Clean|Dirty)", framework_identity):
-        fail(f"{path}: Framework commit / status must contain the full commit and Clean or Dirty")
+        fail(
+            f"{path}: Framework commit / status received {framework_identity!r}; "
+            "expected '<40-character Git SHA> / <Clean|Dirty>'"
+        )
     plugin_identity = identity["Plugin package / version"]
     if plugin_identity != "Not applicable" and not re.fullmatch(r"[^\s/]+ / \S+", plugin_identity):
         fail(f"{path}: Plugin package / version must contain an exact package and version")
@@ -678,6 +706,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         ),
         "# Worker Runtime Closure": (
             "Run or stage",
+            "Receipt owner",
             "Completed worker handles",
             "Runtime status",
         ),
@@ -695,6 +724,11 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         if not rows or any(not row.get(field) for row in rows for field in fields):
             fail(f"{path}: {heading} must contain populated terminal rows")
     for row in table_rows["# Worker Runtime Closure"]:
+        receipt_owner = row.get("Receipt owner", "").strip()
+        if receipt_owner != "Coordinator":
+            fail(
+                f"{path}: runtime closure Receipt owner received {receipt_owner!r}; expected 'Coordinator'"
+            )
         if row.get("Runtime status", "").strip().lower() == "released":
             if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
                 fail(f"{path}: released runtime closure must have no active handles")
@@ -710,9 +744,16 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 and not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", handle)
                 for handle in handles
             ):
-                fail(f"{path}: Codex runtime closure must use exact provider UUID handles")
-            if any(handle and handle not in closure_evidence for handle in handles):
-                fail(f"{path}: provider release evidence must identify every completed handle")
+                fail(
+                    f"{path}: Completed worker handles received {row.get('Completed worker handles', '')!r}; "
+                    "expected bare provider UUIDs separated by commas or semicolons"
+                )
+            missing_handles = [handle for handle in handles if handle and handle not in closure_evidence]
+            if missing_handles:
+                fail(
+                    f"{path}: Closure evidence or blocker must identify completed handles: "
+                    f"{', '.join(missing_handles)}"
+                )
     runtime_released = bool(table_rows["# Worker Runtime Closure"]) and all(
         row.get("Runtime status", "").strip().lower() == "released"
         and row.get("Remaining active handles", "").strip().lower() in {"none", "0"}
@@ -774,7 +815,10 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             configured = row.get("Configured model/effort", "").strip().lower()
             expected = f"{binding['model']} / {binding['effort']}".lower()
             if configured != expected:
-                fail(f"{path}: {row.get('Worker', role)} configured model/effort must be {expected}")
+                fail(
+                    f"{path}: {row.get('Worker', role)} configured model/effort received {configured!r}; "
+                    f"expected {expected!r}"
+                )
             observed = row.get("Provider-observed model/effort", "").strip().lower()
             if observed in UNOBSERVED_MODEL_VALUES:
                 fail(
@@ -834,7 +878,11 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                         "Rollout": "rollout",
                     }
                     if len(contract_rows) != 1 or any(not contract_rows[0].get(field) for field in plan_fields):
-                        fail(f"{path}: ready interface change requires one populated # Interface Contract row")
+                        fail(
+                            f"{path}: # Interface Contract received {len(contract_rows)} parseable rows; expected one "
+                            "populated row with Surface, Request shape, Response shape, Absence semantics, "
+                            "Compatibility / precedence, and Rollout; escape field-internal pipes as \\|"
+                        )
                     elif any(contract_rows[0][field] != interface_contract[key] for field, key in plan_fields.items()):
                         fail(f"{path}: implementation plan Interface Contract must match fix_design_result.json")
                 if clarification.exists():
@@ -980,6 +1028,9 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> str:
 
 
 def self_test_reasoning_records() -> None:
+    assert table_cells(r"| Field | message \| link_title \| link_summary |") == [
+        "Field", "message | link_title | link_summary"
+    ]
     valid = """# Playbook Selection
 | Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
 | --- | --- | --- | --- | --- |
@@ -1002,6 +1053,7 @@ def self_test_reasoning_records() -> None:
 | Role-policy baseline ID | codex-role-policy-v20260827032839 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
+| Coordinator model/effort | gpt-5.6-luna / medium |
 | Requested profile | standard |
 | Activated profile | standard |
 | Executed profile | standard |
@@ -1032,9 +1084,9 @@ def self_test_reasoning_records() -> None:
 | --- | --- | --- | --- | --- | --- |
 | Coordinator | coordinator | 2026-08-26T00:00:00Z | 2026-08-26T00:00:00Z | 2026-08-26T00:00:01Z | PT1S |
 # Worker Runtime Closure
-| Run or stage | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
-| --- | --- | --- | --- | --- |
-| Final | 01a04174-7f58-7a12-b91d-9d171c43f012 | Released | None | provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012 |
+| Run or stage | Receipt owner | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
+| --- | --- | --- | --- | --- | --- |
+| Final | Coordinator | 01a04174-7f58-7a12-b91d-9d171c43f012 | Released | None | provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012 |
 # Worker Result Summary
 | Worker | Outcome | Confidence | Unique contribution |
 | --- | --- | --- | --- |
@@ -1226,11 +1278,15 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "requires provider release evidence",
         )
         assert_invalid(
+            valid.replace("| Final | Coordinator |", "| Final | Documenter |"),
+            "runtime closure Receipt owner received 'Documenter'; expected 'Coordinator'",
+        )
+        assert_invalid(
             valid.replace(
                 "provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012",
                 "provider release confirmation",
             ),
-            "must identify every completed handle",
+            "Closure evidence or blocker must identify completed handles",
         )
         assert_invalid(
             valid.replace("| Workflow outcome | completed |", "| Workflow outcome | incomplete |", 1),
@@ -1253,7 +1309,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "| evidence-topology | Current-State Investigator / Sentry Evidence | gpt-5.6-luna / low | "
             "gpt-5.6-luna / low | Unknown |",
         )
-        assert_invalid(bound_worker, "configured model/effort must be gpt-5.6-luna / high")
+        assert_invalid(bound_worker, "configured model/effort received 'gpt-5.6-luna / low'; expected 'gpt-5.6-luna / high'")
         multiple = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |")
         multiple = multiple.replace(
             "| Role-policy baseline ID | codex-role-policy-v20260827032839 |",
@@ -1729,6 +1785,8 @@ for phrase in (
     "derives the package root from its own location",
     "scripts/prepare_run.py",
     "role_bindings.json",
+    "provider_tool_mapping",
+    "literal framework tool ID",
     "fork_context: false",
     "Coordinator initialization: complete",
     "worker_runtime_unavailable",
@@ -1757,9 +1815,13 @@ for phrase in (
     "Never use `create_thread`",
     "`fork_thread`",
     "`send_message_to_thread`",
+    "provider_tool_mapping",
+    "literal framework tool ID",
 ):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
+if '"Receipt owner": "Coordinator"' not in RUNTIME_CLOSURE_TEMPLATE.read_text():
+    fail("templates/runtime_closure.json must assign the provider receipt to the Coordinator")
 for phrase in (
     "finalization_packet.json",
     "scripts/finalize_work_record.py",
