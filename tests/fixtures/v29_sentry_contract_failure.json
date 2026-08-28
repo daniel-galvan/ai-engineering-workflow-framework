@@ -1,0 +1,5 @@
+{
+  "malformed_normalized_evidence": "# Normalized Evidence\n\n## Contract Delta\n| Boundary | Representation | Field identity / coordinate space | Evidence refs |\n| Baseline | field-keyed text | field-local coordinates | E-001 |\n| Outbound | scalar text | field identity lost | E-001 |\n| Destination input | scalar text | no field identity | E-001 |\n| Return | scalar extents | no field identity | E-001 |\n| Semantic input equivalence | not_equivalent | Not applicable | E-001 |\n",
+  "valid_normalized_evidence": "# Normalized Evidence\n\n## Contract Delta\n| Boundary | Representation | Field identity / coordinate space | Evidence refs |\n| --- | --- | --- | --- |\n| Baseline | field-keyed text | field-local coordinates | E-001 |\n| Outbound | scalar text | field identity lost | E-001 |\n| Destination input | scalar text | no field identity | E-001 |\n| Return | scalar extents | no field identity | E-001 |\n| Semantic input equivalence | not_equivalent | Not applicable | E-001 |\n",
+  "expected_malformed_error": "contract delta table requires a Markdown separator row immediately after the header"
+}

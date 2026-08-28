@@ -410,7 +410,11 @@ Orchestrator does not pre-query Sentry or duplicate repository exploration. Use 
 only the latest event first (`limit: 1` when supported).
 Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
 uses the current-run artifact without broad Sentry discovery; `mixed` uses both. An explicit Sentry issue URL or a
-separately identified Sentry issue ID selects live lookup; the work-item key alone does not. Standard planning permits
+separately identified Sentry issue ID selects live lookup. When this Sentry playbook is explicitly selected and the
+prompt describes the reported occurrence as a Sentry issue, a Sentry-shaped work-item key is a candidate issue ID:
+attempt direct resolution once, without search. If it resolves, use `live_sentry` or `mixed`; if it does not, retain
+`supplied_occurrence` and the bounded uncertainty. Never state that the key is not a Sentry identifier before attempting
+that direct resolution. Standard planning permits
 one tool discovery call and at most three Sentry data queries total: direct issue resolution, latest event, and one
 justified discriminating follow-up. Stop each query after 30 seconds and stop Sentry investigation after 90 seconds
 total. Return the bounded partial result when a limit is reached; a timeout does not authorize broader searches.
@@ -441,12 +445,17 @@ The artifact MUST contain this compact table, using `Not established` for unevid
 ```text
 # Contract Delta
 | Boundary | Representation | Field identity / coordinate space | Evidence refs |
+| --- | --- | --- | --- |
 | Baseline | ... | ... | ... |
 | Outbound | ... | ... | ... |
 | Destination input | ... | ... | ... |
 | Return | ... | ... | ... |
 | Semantic input equivalence | equivalent / not_equivalent / not_established | Not applicable | ... |
 ```
+
+Before returning, the evidence worker MUST run
+`python3 <packaged-framework-root>/scripts/validate_library.py --normalized-evidence <artifact-path>` and correct the
+artifact within its initial activation when validation fails. This producer-side check is not an analytical correction.
 
 The Orchestrator also records and passes through each prompt-supplied artifact and material
 context as consumed, unavailable, conflicting, or out of scope. The original

@@ -38,8 +38,9 @@ description: >-
    if higher-priority runtime instructions force a memory pass, quarantine it from evidence, decisions, and worker
    input.
 6. Relative to the verified packaged framework root, read the selected playbook, `contracts/workflow_execution.md`,
-   `contracts/claims.md`, and the canonical run template declared by the playbook. Load the Codex provider adapter and
-   model policy only when provider configuration is needed.
+   `contracts/claims.md`, and the canonical run template declared by the playbook once. Do not also read a checkout copy
+   or restart a document from line 1 after reading an earlier range. Load the Codex provider adapter and model policy
+   only when provider configuration is needed.
 7. Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
    runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
    when the user explicitly says continue or resume. This one step
@@ -76,13 +77,19 @@ description: >-
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
    For Standard Sentry planning, activate Evidence Topology first. Validate its completed `normalized_evidence.md`, then
-   activate Fix Design with that exact required artifact. Do not parallelize these dependent stages.
+   activate Fix Design with that exact required artifact. Do not parallelize these dependent stages. Require Evidence
+   Topology to run `validate_library.py --normalized-evidence <artifact-path>` before its first terminal response.
 10. After analytical fan-in and before activating the final Documenter, run
    `python3 <packaged-framework-root>/scripts/validate_library.py --sentry-artifacts`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>` for Sentry planning. Return Evidence Topology errors to that worker
    and Fix Design schema/readiness errors to Fix Design. Send each analytical worker at most one aggregated correction.
    If its corrected result still fails, stop with `analytical_contract_failure`, preserve the validation errors and
-   artifacts, and release all handles; do not make the Documenter repair upstream artifacts.
+   artifacts, and release all handles; do not make the Documenter repair upstream artifacts. Count the correction only
+   after a terminal response and revalidation. Then mechanically finalize the packet, runtime closure receipt, and work
+   record before answering; never leave the prepared record in `intake` or `Pending`. Run
+   `finalize_work_record.py --packet <packet> --closure <closure> --record <record> --analytical-failure <error>`
+   `--completed-handle <released-handle> --coordinator-model-effort <model/effort>`
+   `--framework-revision <preflight-sha> --framework-status <clean|dirty> --evidence-artifact <artifact>`.
    Then require the final Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
    field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that

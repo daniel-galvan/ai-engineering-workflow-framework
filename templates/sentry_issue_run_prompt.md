@@ -123,10 +123,14 @@ Runtime bootstrap:
 - Pass Fix Design the exact validated `normalized_evidence.md` path as a required upstream artifact and every original
   supporting artifact path. Do not activate it while normalized evidence is absent or still being written; do not replace either with a
   Coordinator-written summary.
-- Require normalized evidence to contain the playbook's canonical `# Contract Delta` table with the exact five boundary
-  rows and evidence references.
-- Select `live_sentry` only from an explicit Sentry issue URL or separately identified Sentry issue ID. The work-item
-  key alone does not authorize Sentry lookup; with only a supplied occurrence, select `supplied_occurrence`.
+- Require normalized evidence to contain the playbook's canonical Contract Delta table with its Markdown separator,
+  exact five boundary rows, and evidence references. Accept any Markdown heading level for `Contract Delta`.
+- Select `live_sentry` from an explicit Sentry issue URL or separately identified Sentry issue ID. When this Sentry
+  playbook is selected and the prompt describes the occurrence as a Sentry issue, treat a Sentry-shaped work-item key as
+  a candidate issue ID and attempt direct resolution once without search. On success use `live_sentry` or `mixed`; on
+  failure retain `supplied_occurrence`. Never declare the key non-Sentry before the direct attempt.
+- Require Evidence Topology to run `validate_library.py --normalized-evidence <artifact-path>` before returning. A
+  producer-format repair within the initial activation does not consume the analytical correction allowance.
 - During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
   owning boundary, or readiness. First record the hypothesis, discriminating outcomes, disposition change, and runner
   availability. Otherwise put the regression and remaining suites in the implementation plan.
@@ -172,6 +176,9 @@ Runtime bootstrap:
   never normalize or silently repair it in Coordinator state. Send each analytical worker at most one aggregated
   correction. If its corrected result still fails, stop with `analytical_contract_failure`, preserve the errors and
   artifacts, and release all handles; do not resume or replace that worker.
+- After an analytical contract failure, mechanically finalize the packet, closure receipt, and authoritative work
+  record with packaged `finalize_work_record.py --analytical-failure` and its required runtime, framework, and evidence
+  arguments before answering. The final response must be copied from that finalized record.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):

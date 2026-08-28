@@ -39,8 +39,10 @@ or substitute the Coordinator for an independent worker.
 Do not query Sentry or explore the candidate source path before activating
 `sentry_current_state_investigator`; that worker exclusively owns raw Sentry
 queries and initial repository topology. When the prompt supplies a stable issue ID or URL, require direct issue
-resolution before any project or issue search; search only if direct resolution fails. A work-item key alone does not
-select live Sentry mode. Request only the latest issue event first (`limit: 1` when supported). Repeat its work only for
+resolution before any project or issue search; search only if direct resolution fails. When the selected Sentry
+playbook and prompt describe the reported occurrence as a Sentry issue, pass a Sentry-shaped work-item key as a
+candidate issue ID for one direct resolution attempt without search; never label it non-Sentry before that attempt.
+Request only the latest issue event first (`limit: 1` when supported). Repeat its work only for
 a named discrepancy that is recorded and returned to that worker.
 
 For Standard initialization, do only these actions before that activation:
@@ -79,7 +81,11 @@ retry. Never fan-in a worker whose provider binding was not verified.
 
 Do not instruct downstream workers to reread the complete playbook or core
 contracts. Pass the typed assignment, provider role configuration, relevant
-artifacts, and only a specific framework section or template when needed.
+artifacts, and only a specific framework section or template when needed. Pass
+the selected playbook to analytical workers as name/version metadata only; do
+not include checkout and packaged playbook paths as readable worker inputs. Pass
+the pinned packaged framework root only as the executable location for the
+required artifact validator; explicitly prohibit browsing documents under it.
 Activate every delegated worker with `fork_context: false` or the
 provider-equivalent fresh-context option. Start every activation packet with
 `Coordinator initialization: complete`. Explicitly prohibit the worker from
@@ -179,7 +185,12 @@ worker outcome or readiness/action pair to the same worker. Return an invalid en
 never normalize, reinterpret, or silently repair it in Coordinator state.
 Send each analytical worker at most one aggregated schema or readiness correction.
 If its corrected terminal result still fails, stop with `analytical_contract_failure`,
-preserve the validation errors and artifacts, and release every handle; do not resume or replace that worker.
+preserve the validation errors and artifacts, and release every handle; do not resume or replace that worker. Count a
+correction only after the worker returns a terminal response and the Coordinator reruns the failing validation. After
+release, mechanically finalize `finalization_packet.json`, `runtime_closure.json`, and `work_record.md`; never answer
+from an ad hoc blocked summary while the durable record remains pending. Use the packaged finalizer's
+`--analytical-failure`, `--completed-handle`, `--coordinator-model-effort`, `--framework-revision`,
+`--framework-status`, and `--evidence-artifact` arguments, then copy its emitted handoff verbatim.
 Reject an `awaiting_input` blocker marked `invalidates_supported_change: true`
 when it lacks non-empty `contradicting_evidence_refs`; missing runtime confirmation belongs in `checks_remaining`.
 After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded

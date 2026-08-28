@@ -28,9 +28,11 @@ deployment path; that belongs to Repository Integrator when its gate passes.
 Do not perform the Solution Architect's downstream diagnosis.
 
 Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
-uses the current-run artifact without broad Sentry discovery; `mixed` uses both. A work-item key does not count as a
-Sentry reference unless the assignment separately identifies it as the Sentry issue ID. When the assignment supplies
-an explicit Sentry issue ID or URL, resolve that issue directly before any project or issue search. If resolution fails,
+uses the current-run artifact without broad Sentry discovery; `mixed` uses both. When the Sentry playbook is explicitly
+selected and the prompt describes the reported occurrence as a Sentry issue, treat a Sentry-shaped work-item key as a
+candidate issue ID and attempt direct resolution once without search. If it resolves, use `live_sentry` or `mixed`; if
+it does not, retain `supplied_occurrence`. Never state that the key is not a Sentry identifier before that attempt. When
+the assignment supplies an explicit Sentry issue ID or URL, resolve that issue directly before any project or issue search. If resolution fails,
 perform at most one justified fallback search and stop with bounded uncertainty. For standard planning, use at most one
 tool-discovery call and three Sentry data queries total: direct resolution, latest event, and one discriminating
 follow-up. Stop each query after 30 seconds and all Sentry investigation after 90 seconds. Return a bounded partial
@@ -58,6 +60,10 @@ Add a `# Contract Delta` table with columns `Boundary`, `Representation`,
 `Semantic input equivalence`. The last row's representation is `equivalent`,
 `not_equivalent`, or `not_established`. Use `Not established` when evidence
 does not establish another value; do not infer it.
+
+After writing the artifact, run `python3 <packaged-framework-root>/scripts/validate_library.py --normalized-evidence
+<artifact-path>` before returning. Correct producer-format errors during this initial activation. Do not claim the check
+passed unless the command exits zero.
 
 Do not make downstream workers repeat these Sentry queries unless they are
 checking a stated discrepancy.

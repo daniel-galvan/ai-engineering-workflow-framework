@@ -72,6 +72,7 @@ PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
 FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
+V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 PROFILE_STATUSES = {"requested", "in_progress", "executed", "not_executed", "blocked"}
 PROFILES = {"standard", "deep"}
@@ -315,9 +316,39 @@ def reasoning_record_errors(text: str) -> list[str]:
 
 
 def sentry_contract_delta_errors(text: str) -> list[str]:
-    rows = markdown_table(text, "# Contract Delta")
+    lines = text.splitlines()
+    heading_index = next(
+        (index for index, line in enumerate(lines) if re.fullmatch(r"#{1,6}\s+Contract Delta\s*", line)),
+        None,
+    )
+    if heading_index is None:
+        return ["normalized evidence requires a Contract Delta heading at any Markdown heading level"]
+    table_index = heading_index + 1
+    while table_index < len(lines) and not lines[table_index].strip():
+        table_index += 1
+    if table_index >= len(lines) or not is_table_row(lines[table_index]):
+        return ["contract delta heading must be followed by a Markdown table header"]
+    expected_headers = ("Boundary", "Representation", "Field identity / coordinate space", "Evidence refs")
+    headers = table_cells(lines[table_index])
+    if tuple(headers) != expected_headers:
+        return [f"contract delta table headers must be: {' | '.join(expected_headers)}"]
+    if table_index + 1 >= len(lines) or not is_table_row(lines[table_index + 1]):
+        return ["contract delta table requires a Markdown separator row immediately after the header"]
+    separator = table_cells(lines[table_index + 1])
+    if len(separator) != len(headers) or not all(
+        "-" in cell and set(cell) <= {"-", ":"} for cell in separator
+    ):
+        return ["contract delta table requires a Markdown separator row immediately after the header"]
+    rows = []
+    for line_number, line in enumerate(lines[table_index + 2:], table_index + 3):
+        if not is_table_row(line):
+            break
+        cells = table_cells(line)
+        if len(cells) != len(headers):
+            return [f"contract delta row {line_number} has {len(cells)} cells; expected {len(headers)}"]
+        rows.append(dict(zip(headers, cells, strict=True)))
     if not rows:
-        return ["normalized evidence must contain a populated # Contract Delta table"]
+        return ["contract delta table requires five populated boundary rows"]
     required = {"Baseline", "Outbound", "Destination input", "Return", "Semantic input equivalence"}
     boundaries = [row.get("Boundary", "") for row in rows]
     errors = []
@@ -508,6 +539,14 @@ def validate_sentry_artifacts(root: Path) -> None:
             errors.extend(fix_design_result_errors(result, required_input_marker="normalized_evidence.md"))
     if errors:
         fail(f"{root}: " + "\nFAIL: ".join(errors))
+
+
+def validate_normalized_evidence(path: Path) -> None:
+    if not path.is_file():
+        fail(f"normalized evidence does not exist: {path}")
+    errors = sentry_contract_delta_errors(path.read_text())
+    if errors:
+        fail(f"{path}: " + "\nFAIL: ".join(errors))
 
 
 def model_observation_unavailable(value: str) -> bool:
@@ -1300,6 +1339,11 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     assert any(
         "contradicting_evidence_refs" in error for error in fix_design_result_errors(invalid_v28)
     )
+    v29 = json.loads(V29_CONTRACT_FAILURE_FIXTURE.read_text())
+    assert sentry_contract_delta_errors(v29["malformed_normalized_evidence"]) == [
+        v29["expected_malformed_error"]
+    ]
+    assert sentry_contract_delta_errors(v29["valid_normalized_evidence"]) == []
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "work_record.md"
         (path.parent / "role_bindings.json").write_text(json.dumps({
@@ -2250,9 +2294,19 @@ for phrase in (
     "materially different fix implications",
     "Standard does not parallelize those two dependent stages",
     "artifact exists and passes artifact validation",
+    "--normalized-evidence",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
+contract_example = re.search(r"```text\n(# Contract Delta\n.*?\n)```", sentry_playbook, re.DOTALL)
+if not contract_example:
+    fail("playbooks/sentry_issue_remediation.md is missing the canonical Contract Delta example")
+elif sentry_contract_delta_errors(
+    contract_example.group(1).replace(
+        "equivalent / not_equivalent / not_established", "not_established"
+    )
+):
+    fail("playbooks/sentry_issue_remediation.md contains an invalid Contract Delta example")
 
 sentry_orchestrator = (CODEX_AGENT_DIR / "sentry_orchestrator.toml").read_text()
 for phrase in (
@@ -2301,6 +2355,7 @@ for phrase in (
     "Profile status: executed",
     "before activating Fix Design",
     "inputs_consumed",
+    "--analytical-failure",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -2333,6 +2388,7 @@ for phrase in (
     "resolve that issue directly before any project or issue",
     "# Contract Delta",
     "Coordinator initialization: complete",
+    "--normalized-evidence",
 ):
     if phrase not in sentry_investigator:
         fail(f"providers/codex/agents/sentry_current_state_investigator.toml is missing bounded evidence control: {phrase}")
@@ -2600,11 +2656,18 @@ emit_handoff = "--emit-handoff" in sys.argv
 _ALLOW_UNRELEASED = "--allow-unreleased" in sys.argv
 raw_arguments = list(sys.argv[1:])
 artifact_root = None
+normalized_evidence = None
 if "--sentry-artifacts" in raw_arguments:
     index = raw_arguments.index("--sentry-artifacts")
     if index + 1 >= len(raw_arguments):
         fail("--sentry-artifacts requires one artifact-root path")
     artifact_root = Path(raw_arguments[index + 1]).resolve()
+    del raw_arguments[index:index + 2]
+if "--normalized-evidence" in raw_arguments:
+    index = raw_arguments.index("--normalized-evidence")
+    if index + 1 >= len(raw_arguments):
+        fail("--normalized-evidence requires one artifact path")
+    normalized_evidence = Path(raw_arguments[index + 1]).resolve()
     del raw_arguments[index:index + 2]
 arguments = [value for value in raw_arguments if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}]
 if emit_handoff and len(arguments) != 1:
@@ -2613,6 +2676,8 @@ if "--self-test" in sys.argv:
     self_test_reasoning_records()
 if artifact_root:
     validate_sentry_artifacts(artifact_root)
+if normalized_evidence:
+    validate_normalized_evidence(normalized_evidence)
 handoffs = [validate_work_record(Path(argument).resolve(), require_terminal=True) for argument in arguments]
 for work_record in sorted(ROOT.glob(".thoughts/*/work_record.md")):
     validate_work_record(work_record)
