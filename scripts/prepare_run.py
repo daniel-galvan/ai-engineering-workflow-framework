@@ -98,9 +98,17 @@ def _agent_binding(name: str, runtime_agents: Path | None) -> dict[str, str]:
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     names = SENTRY_AGENTS if playbook == "sentry_issue_remediation" else GENERIC_AGENTS
+    runtime_files = [runtime_agents / f"{name}.toml" for name in names] if runtime_agents else []
+    resolved_runtime = [path for path in runtime_files if path.is_file()]
+    if resolved_runtime:
+        symlink_count = sum(path.is_symlink() for path in resolved_runtime)
+        provider_status = f"runtime / resolved ({len(resolved_runtime)} definitions; {symlink_count} symlinked)"
+    else:
+        provider_status = "bundled / resolved"
     return {
         "baseline_id": _baseline_id(),
         "playbook": playbook,
+        "provider_configuration_source_status": provider_status,
         "provider_tool_mapping": CODEX_TOOL_MAPPING,
         "bindings": {name: _agent_binding(name, runtime_agents) for name in names},
     }
@@ -178,6 +186,13 @@ def self_test() -> None:
         assert first["provider_tool_mapping"]["repository_read"] == "exec_command"
         fixture = json.loads((ROOT / "tests" / "fixtures" / "v25_capability_mapping.json").read_text())
         assert first["provider_tool_mapping"] == fixture["expected_codex_mapping"]
+        assert first["provider_configuration_source_status"] == "bundled / resolved"
+        runtime = execution / "agents"
+        runtime.mkdir()
+        for name in SENTRY_AGENTS:
+            (runtime / f"{name}.toml").symlink_to(BUNDLED_AGENTS / f"{name}.toml")
+        linked = resolve_bindings("sentry_issue_remediation", runtime)
+        assert linked["provider_configuration_source_status"] == "runtime / resolved (9 definitions; 9 symlinked)"
         assert json.loads(Path(first["finalization_packet"]).read_text()) == json.loads(
             (ROOT / "templates" / "finalization_packet.json").read_text()
         )

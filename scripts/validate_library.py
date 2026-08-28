@@ -462,6 +462,31 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
     return errors
 
 
+def validate_sentry_artifacts(root: Path) -> None:
+    errors: list[str] = []
+    evidence = root / "normalized_evidence.md"
+    design = root / "fix_design_result.json"
+    if not evidence.is_file():
+        errors.append("normalized_evidence.md is missing")
+    else:
+        evidence_text = evidence.read_text()
+        errors.extend(sentry_contract_delta_errors(evidence_text))
+        for marker in PROHIBITED_CONTEXT_MARKERS:
+            if marker in evidence_text:
+                errors.append(f"normalized evidence contains prohibited context marker: {marker}")
+    if not design.is_file():
+        errors.append("fix_design_result.json is missing")
+    else:
+        try:
+            result = json.loads(design.read_text())
+        except (json.JSONDecodeError, OSError) as error:
+            errors.append(f"invalid fix_design_result.json: {error}")
+        else:
+            errors.extend(fix_design_result_errors(result, required_input_marker="normalized_evidence.md"))
+    if errors:
+        fail(f"{root}: " + "\nFAIL: ".join(errors))
+
+
 def model_observation_unavailable(value: str) -> bool:
     normalized = " ".join(value.strip().lower().split())
     return any(
@@ -765,6 +790,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         stale = stale or ("active" in reconciliation and "no active" not in reconciliation)
         if stale:
             fail(f"{path}: released runtime closure cannot retain pending final reconciliation")
+        if finalization.get("Finalization schema", "").strip().lower() != "passed":
+            fail(f"{path}: released runtime closure requires Finalization schema Passed")
         for row in markdown_table(text, "# Worker Synchronization"):
             barrier = row.get("Barrier status", "").strip().lower()
             stale = any(token in barrier for token in ("pending", "unknown", "in progress"))
@@ -883,7 +910,9 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                             "populated row with Surface, Request shape, Response shape, Absence semantics, "
                             "Compatibility / precedence, and Rollout; escape field-internal pipes as \\|"
                         )
-                    elif any(contract_rows[0][field] != interface_contract[key] for field, key in plan_fields.items()):
+                    elif isinstance(interface_contract, dict) and all(key in interface_contract for key in plan_fields.values()) and any(
+                        contract_rows[0][field] != interface_contract[key] for field, key in plan_fields.items()
+                    ):
                         fail(f"{path}: implementation plan Interface Contract must match fix_design_result.json")
                 if clarification.exists():
                     fail(f"{path}: ready Fix Design cannot retain clarification_brief.md")
@@ -968,6 +997,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     positions = [handoff.find(label) for label in required_handoff]
     if not handoff or any(position < 0 for position in positions) or positions != sorted(positions):
         fail(f"{path}: Final Handoff must contain the canonical ordered labels")
+    if re.search(r"^Workflow result:\s*Workflow result:", handoff, re.MULTILINE | re.IGNORECASE):
+        fail(f"{path}: Final Handoff must contain exactly one Workflow result prefix")
     for label, field in (
         ("- State:", "State"),
         ("- Workflow outcome:", "Workflow outcome"),
@@ -1178,6 +1209,13 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     malformed_fix.pop("worker_handle")
     malformed_errors = fix_design_result_errors(malformed_fix)
     assert any("fix design result is missing fields: worker_handle" in error for error in malformed_errors)
+    malformed_interface = {
+        **ready_fix_with_evidence,
+        "interface_change": True,
+        "interface_contract": {"surface": "Event payload"},
+    }
+    interface_errors = fix_design_result_errors(malformed_interface)
+    assert "interface_contract request_shape must be a non-empty string" in interface_errors
     assert model_observation_unavailable("Not exposed; explicit launch binding was recorded")
     assert not model_observation_unavailable("Unknown")
     overcautious_fix = {
@@ -2486,13 +2524,21 @@ for name in ("generic.md", "claude.md", "cursor.md", "codex.md"):
 
 emit_handoff = "--emit-handoff" in sys.argv
 _ALLOW_UNRELEASED = "--allow-unreleased" in sys.argv
-arguments = [
-    value for value in sys.argv[1:] if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}
-]
+raw_arguments = list(sys.argv[1:])
+artifact_root = None
+if "--sentry-artifacts" in raw_arguments:
+    index = raw_arguments.index("--sentry-artifacts")
+    if index + 1 >= len(raw_arguments):
+        fail("--sentry-artifacts requires one artifact-root path")
+    artifact_root = Path(raw_arguments[index + 1]).resolve()
+    del raw_arguments[index:index + 2]
+arguments = [value for value in raw_arguments if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}]
 if emit_handoff and len(arguments) != 1:
     fail("--emit-handoff requires exactly one terminal work record")
 if "--self-test" in sys.argv:
     self_test_reasoning_records()
+if artifact_root:
+    validate_sentry_artifacts(artifact_root)
 handoffs = [validate_work_record(Path(argument).resolve(), require_terminal=True) for argument in arguments]
 for work_record in sorted(ROOT.glob(".thoughts/*/work_record.md")):
     validate_work_record(work_record)

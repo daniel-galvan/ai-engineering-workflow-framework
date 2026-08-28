@@ -104,6 +104,11 @@ def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> 
         handles = UUID_PATTERN.findall(str(row.get("Completed worker handles", "")))
         if handles:
             row["Completed worker handles"] = ", ".join(dict.fromkeys(handles))
+    handoff = packet.get("handoff")
+    if isinstance(handoff, dict):
+        handoff["workflow_result"] = re.sub(
+            r"^\s*Workflow result:\s*", "", str(handoff.get("workflow_result", "")), flags=re.IGNORECASE
+        )
 
 
 def _validate_handoff(packet: dict[str, object]) -> None:
@@ -207,6 +212,10 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
         stale = stale or ("active" in reconciliation and "no active" not in reconciliation)
         if stale and "failed" not in reconciliation:
             finalization["Final reconciliation"] = "Passed; runtime closure released with no active handles"
+        finalization["Finalization schema"] = "Passed"
+    for row in packet.get("durable_artifacts", []):
+        if isinstance(row, dict) and "runtime closure" in str(row.get("Artifact", "")).lower():
+            row["Status"] = "Released"
     for row in packet.get("synchronization", []):
         if not isinstance(row, dict):
             continue
@@ -225,6 +234,20 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             flags=re.IGNORECASE,
         )
         handoff["execution"] = execution
+        next_action = handoff.get("next_action")
+        if isinstance(next_action, dict):
+            next_action["action"] = re.sub(
+                r"^Run pre-release finalizer, create (?:the )?runtime closure receipt, and\s+",
+                "",
+                str(next_action.get("action", "")),
+                flags=re.IGNORECASE,
+            )
+            next_action["complete_when"] = re.sub(
+                r"^Final reconciliation and finalization schema are no longer Pending and\s+",
+                "",
+                str(next_action.get("complete_when", "")),
+                flags=re.IGNORECASE,
+            )
 
 
 def render(packet: dict[str, object]) -> str:
@@ -241,7 +264,7 @@ def render(packet: dict[str, object]) -> str:
         for item in handoff["artifacts"]
     )
     runtime = "released" if _runtime_released(packet["runtime_closure"]) else "not released"
-    execution = str(handoff["execution"])
+    execution = str(handoff["execution"]).rstrip(" .;")
     if not re.search(r"\bruntime\s+released\b", execution, flags=re.IGNORECASE):
         execution = f"{execution}; runtime {runtime}"
     handoff_text = f"""```text
@@ -412,7 +435,7 @@ def self_test() -> None:
                        "Owner": "Coordinator", "Status": "Applied"}],
         "actions": [{"Action ID": "A-001", "Action": "Retry with in-task runtime", "Decision ref": "D-001",
                      "Owner": "User", "Status": "Proposed"}],
-        "handoff": {"workflow_result": "Worker runtime unavailable", "implementation_plan": "omitted; run blocked",
+        "handoff": {"workflow_result": "Workflow result: Worker runtime unavailable", "implementation_plan": "omitted; run blocked",
                     "established": ["No user-owned tasks were created."], "best_current_explanations": [{
                         "explanation": "The in-task worker runtime was unavailable.",
                         "confidence": "high",
@@ -438,6 +461,8 @@ def self_test() -> None:
         assert "confidence: high" in rendered
         assert "[work_record.md](/tmp/.thoughts/ITEM-1/work_record.md)" in rendered
         assert "Final reconciliation | Passed; runtime closure released with no active handles |" in rendered
+        assert "Finalization schema | Passed |" in rendered
+        assert "Workflow result: Workflow result:" not in rendered
         assert "| Passed; runtime closure released |" in rendered
         assert "Final reconciliation | Pending" not in rendered
         assert "runtime pending" not in rendered.lower()
@@ -502,6 +527,12 @@ def self_test() -> None:
         fixture_packet_data["identity"]["Framework commit / status"] = f"{'a' * 40} Clean; preflight passed"
         fixture_packet_data["identity"]["Playbook / version"] = "Sentry Issue Remediation / 0.4.7"
         fixture_packet_data["identity"]["Coordinator model/effort"] = "gpt-5.6-luna/medium"
+        fixture_packet_data["handoff"]["workflow_result"] = "Workflow result: Ready for implementation"
+        fixture_packet_data["handoff"]["next_action"] = {
+            "owner": "Coordinator",
+            "action": "Run pre-release finalizer, create runtime closure receipt, and obtain implementation approval.",
+            "complete_when": "Final reconciliation and finalization schema are no longer Pending and implementation is approved.",
+        }
         for worker in fixture_packet_data["workers"]:
             worker["Configured model/effort"] = worker["Configured model/effort"].replace(" / ", "/")
         fixture_closure_data = fixture["files"]["runtime_closure.json"]["runtime_closure"][0]
@@ -526,6 +557,9 @@ def self_test() -> None:
         assert "gpt-5.6-luna / medium" in fixture_rendered
         assert "evidence 01a00000" not in fixture_rendered
         assert "runtime closure released" in fixture_rendered
+        assert "Workflow result: Workflow result:" not in fixture_rendered
+        assert "Finalization schema | Passed |" in fixture_rendered
+        assert "Action: obtain implementation approval." in fixture_rendered
         assert "Work-record budget exception" not in fixture_rendered
         assert fixture_packet.read_text() == packet_before
 

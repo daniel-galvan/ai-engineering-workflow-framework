@@ -41,6 +41,11 @@ branch or its runner is known unavailable, defer it. Do not repair the test
 environment, install tools, or run a broad suite. Put the regression and
 remaining validation in the implementation plan.
 
+For an interface change, separate the required semantic behavior from proposed wire names and shapes. Call a wire
+contract exact only when current-run evidence establishes it; otherwise label the representation proposed and record
+the concrete confirmation check. A proposed field name, decoder behavior, retry classification, merge identity, or
+absence rule is not an established fact merely because it is a reasonable design.
+
 Keep event emitter, comparison owner, baseline producer, deployed route owner,
 candidate divergence owner, and confirmed defect owner separate. Sentry
 attribution is not defect ownership. A local checkout that rejects the observed

@@ -33,6 +33,10 @@ description: >-
    Read the catalog only when no playbook was supplied or the supplied path is unavailable or materially contradicted by
    the evidence. Make the requested profile and lifecycle explicit; when omitted, record the playbook defaults
    (`standard` + `planning`) before worker activation.
+   Treat every new framework run as current-run-only unless the user explicitly requests continuation, recovery, or an
+   evaluation that names historical inputs. After preflight, do not read memory or prior-run artifacts for convenience;
+   if higher-priority runtime instructions force a memory pass, quarantine it from evidence, decisions, and worker
+   input.
 6. Relative to the verified packaged framework root, read the selected playbook, `contracts/workflow_execution.md`,
    `contracts/claims.md`, and the canonical run template declared by the playbook. Load the Codex provider adapter and
    model policy only when provider configuration is needed.
@@ -40,6 +44,8 @@ description: >-
    runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
    when the user explicitly says continue or resume. This one step
    archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
+   Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
+   `find -type f` result because a valid runtime view may consist of symlinked definitions.
    Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its
    baseline ID and `provider_tool_mapping`, and stop if a required binding is absent. Framework tool IDs are abstract
    capability classes, not literal Codex tool names. Tell each worker to use the manifest's concrete mapping and never
@@ -69,7 +75,11 @@ description: >-
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
-10. Before terminal or blocked handoff, require the final Documenter to populate the prepared
+10. After analytical fan-in and before activating the final Documenter, run
+   `python3 <packaged-framework-root>/scripts/validate_library.py --sentry-artifacts`
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>` for Sentry planning. Return Evidence Topology errors to that worker
+   and Fix Design schema/readiness errors to Fix Design; do not make the Documenter repair upstream artifacts.
+   Then require the final Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
    field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
    Documenter remains active, create a pending closure probe using the
@@ -87,7 +97,9 @@ description: >-
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
    The persisted packet is the Documenter's pre-release source snapshot. `runtime_closure.json` is the provider receipt,
    and the rendered `work_record.md` is the authoritative terminal state; do not require the source packet to be
-   rewritten after provider release.
+   rewritten after provider release. The finalizer mechanically owns released runtime status, final reconciliation,
+   finalization-schema status, runtime-closure artifact status, and removal of obsolete finalization steps from the next
+   action.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
    failure. Return packet, path, table, rendering, or closure errors to the same Documenter. Return errors naming Fix

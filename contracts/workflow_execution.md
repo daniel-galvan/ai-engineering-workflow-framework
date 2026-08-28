@@ -994,6 +994,9 @@ benchmark run may append those blocks from provider-observed data. Never reconst
 
 The final Documenter owns the implementation plan, clarification brief, and structured `finalization_packet.json`,
 populated from `templates/finalization_packet.json`.
+For Sentry planning, the Coordinator MUST run `scripts/validate_library.py --sentry-artifacts <artifact-root>` after
+analytical fan-in and before Documenter activation. Evidence-format errors return to Evidence Topology; Fix Design
+schema, readiness, worker identity, or interface errors return to Fix Design. The Documenter never repairs them.
 The packaged `scripts/finalize_work_record.py` renderer is the only writer of the terminal `work_record.md`. It renders
 the packet into canonical Markdown, runs the packaged validator, and atomically replaces the record only after
 validation passes. If rendering or validation fails, the Coordinator MUST return the exact error to the same
@@ -1030,8 +1033,10 @@ validation error returned to the Documenter, not authority to decide a different
 
 The renderer may canonicalize mechanically equivalent representations such as spacing around model/effort separators,
 known playbook title-to-path identity, framework commit/status separators, escaped Markdown table pipes, canonical role
-labels, and labeled provider UUID lists. It MUST NOT infer engineering facts, worker completion, provider release, or a
-different workflow outcome.
+labels, labeled provider UUID lists, one `Workflow result:` prefix, and released terminal bookkeeping. Released terminal
+bookkeeping includes final reconciliation, finalization-schema status, runtime-closure artifact status, and removal of
+obsolete finalization steps from an otherwise valid next action. It MUST NOT infer engineering facts, worker completion,
+provider release, or a different workflow outcome.
 
 The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. With
 `--emit-handoff`, the standalone validator checks its ordered labels, verifies that its state and outcomes equal the Run

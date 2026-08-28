@@ -19,7 +19,8 @@ Use each prompt or playbook document's frontmatter `version`; never substitute
 the framework commit for an independent document revision.
 Record the optional execution-repository `.codex/agents/` runtime view as its
 declared path or `Not provided`, and record the resolved provider-definition
-source/status separately. An absent runtime view is not a provider-resolution
+source/status from `prepare_run.py` exactly; do not infer emptiness from a search
+that excludes symlinks. An absent runtime view is not a provider-resolution
 failure when the bundled framework/plugin or selected work-graph binding is
 resolved.
 Record confidence with its supporting evidence and uncertainties. Keep facts
