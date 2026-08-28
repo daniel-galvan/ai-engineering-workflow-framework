@@ -50,6 +50,10 @@ value, source, authority, and expected use; IDs without values are not delivered
 inputs. Reconcile those assignments with `inputs_consumed` before accepting a
 terminal result. If an authoritative input was omitted, return the worker once
 with the missing IDs; never ask the user to repeat the information.
+Pass every explicit current-run skill or plugin enable/disable directive to
+every worker packet. A disabled skill or plugin must not be loaded, invoked, or
+reactivated by a worker. These directives remain authoritative across fresh
+worker contexts and correction turns.
 Quarantine any memory pass required by higher-priority runtime instructions.
 Reject a result when unassigned memory or historical material appears in its
 artifact, citation, claim, hypothesis, decision, or conclusion. Worker

@@ -143,6 +143,7 @@ the source of truth.
 | `INV-38` | A new run MUST start from fresh current-run artifacts; only an explicit continuation may reuse the current record. Evaluation telemetry is required only for declared evaluation runs. | [Run Identity and Continuation](#run-identity-and-continuation) |
 | `INV-39` | Worker model and effort MUST come from the prepared role-binding manifest and match the activation record. | [Profile Execution Semantics](#profile-execution-semantics) |
 | `INV-40` | Delegated workers MUST start in fresh context and MUST NOT repeat Coordinator initialization. | [Worker Contract](#worker-contract) |
+| `INV-41` | Explicit current-run skill or plugin enable/disable directives MUST be propagated to every worker and correction turn. | [Authoritative Run Inputs](#authoritative-run-inputs) |
 
 ---
 
@@ -187,6 +188,13 @@ it appears in the confirmed-decisions section or run constraints. It means the w
 the expected baseline and investigate why the rules engine differs; it must not ask whether FanMgmt rows should instead
 be merged, discarded, or treated as duplicates unless the user explicitly requests that decision.
 
+An explicit current-run skill or plugin enable/disable directive is also an
+authoritative run constraint. The Coordinator MUST record it and include it in
+every delegated worker packet, including fresh-context activations and
+correction turns. A worker MUST NOT load, invoke, or reactivate a disabled skill
+or plugin. When no explicit directive exists, normal provider and skill trigger
+rules apply.
+
 ## Context Preservation and Classification
 
 All user-supplied context is workflow input. The Coordinator and prompt-preparation step must not discard material
@@ -226,7 +234,9 @@ mapping is internal bookkeeping and does not require user approval.
 When recovering an older work record without Input IDs, assign IDs before activating new workers. Preserve existing IDs
 and never renumber them after a worker has referenced them.
 
-Every result envelope MUST reference the Input IDs actually used in `inputs_consumed`. Before accepting a terminal
+Every result envelope MUST reference the Input IDs actually used in `inputs_consumed`. When a canonical Input ID and a
+resolved artifact path identify the same delivered input, a stage-specific validator MAY accept either representation,
+but the activation packet MUST deliver both. Before accepting a terminal
 result, the Coordinator MUST reconcile assigned and consumed inputs. An assigned authoritative decision or constraint
 that is neither consumed nor explicitly recorded as unavailable, conflicting, or out of scope makes the result
 incomplete. Return the worker once with the missing Input IDs; never ask the user to repeat the underlying information.

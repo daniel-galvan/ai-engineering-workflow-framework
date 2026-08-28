@@ -33,6 +33,9 @@ description: >-
    Read the catalog only when no playbook was supplied or the supplied path is unavailable or materially contradicted by
    the evidence. Make the requested profile and lifecycle explicit; when omitted, record the playbook defaults
    (`standard` + `planning`) before worker activation.
+   Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
+   Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
+   disabled skill or plugin.
    Treat every new framework run as current-run-only unless the user explicitly requests continuation, recovery, or an
    evaluation that names historical inputs. After preflight, do not read memory or prior-run artifacts for convenience;
    if higher-priority runtime instructions force a memory pass, quarantine it from evidence, decisions, and worker
@@ -92,7 +95,9 @@ description: >-
    after a terminal response and revalidation. Then mechanically finalize the packet, runtime closure receipt, and work
    record before answering; never leave the prepared record in `intake` or `Pending`. Run
    `finalize_work_record.py --packet <packet> --closure <closure> --record <record> --analytical-failure <error>`
-   `--completed-handle <released-handle> --coordinator-model-effort <model/effort>`
+   `--analytical-failure-stage <evidence_topology|repository_integration|fix_design>`
+   `--completed-handle <released-handle>` once for every released analytical worker, then
+   `--coordinator-model-effort <model/effort>`
    `--framework-revision <preflight-sha> --framework-status <clean|dirty> --evidence-artifact <artifact>`.
    Then require the final Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template

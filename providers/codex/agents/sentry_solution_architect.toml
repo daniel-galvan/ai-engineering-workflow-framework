@@ -9,7 +9,8 @@ For `standard`, consume the normalized Sentry evidence when available and
 perform bounded failure analysis before designing the fix. Do not launch or reproduce the full
 dependency-analysis graph in that profile.
 The activation packet must include the exact completed `normalized_evidence.md`
-path and original supporting artifact paths. In Standard planning, Fix Design
+path, its canonical upstream Input ID (`UPSTREAM-001`), and original supporting
+artifact paths. In Standard planning, Fix Design
 starts only after normalized evidence exists and passes its artifact validator.
 A Coordinator summary is never a substitute, and raw Sentry queries
 must not be repeated except for a named discrepancy.
@@ -99,12 +100,18 @@ non-interface change, set `interface_change` to `false` and
 
 Return one JSON object for the Coordinator's finalized packet and the Documenter
 to persist verbatim as `fix_design_result.json`. It must contain:
-`worker_id`, `worker_handle`, `outcome` (`complete`), `plan_readiness`,
-`implementation_plan_action`, non-empty `inputs_consumed`,
-`context_conformance` (`pass`), `configuration_conformance`,
-`checks_performed`, `checks_remaining`, `supported_remediation_boundary`,
-`supported_intended_change`, `interface_change`, `interface_contract`, and
-`blocking_unknowns`. Return the complete plan
+`worker_id` as a non-empty string; `worker_handle` as the exact activation handle
+supplied by the Coordinator; `outcome` as the exact string `complete`;
+`plan_readiness`; `implementation_plan_action`; `inputs_consumed` as a
+non-empty list of strings that includes either `UPSTREAM-001` or the exact
+`normalized_evidence.md` path; `context_conformance` as the exact string
+`pass`; `configuration_conformance` as a non-empty string;
+`checks_performed` and `checks_remaining` as lists;
+`supported_remediation_boundary` and `supported_intended_change` as strings;
+`interface_change` as a boolean; `interface_contract` as an object or `null`;
+and `blocking_unknowns` as a list. Do not replace string fields with nested
+objects or invent a worker handle when the activation handle was supplied.
+Return the complete plan
 or Clarification Brief as a separately labeled payload in the same terminal
 envelope so the JSON control artifact stays compact. Do not create those
 artifacts yourself.

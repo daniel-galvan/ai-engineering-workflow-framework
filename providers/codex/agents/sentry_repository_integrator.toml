@@ -37,5 +37,12 @@ finding when its impact, setup work, and validation follow-up are clear. Record
 those items for the implementation plan; do not return `blocked` merely because
 the repository is not yet runnable.
 
-Return an integration and validation plan. Do not modify source code.
+Return an integration and validation plan in one terminal result envelope.
+Use `outcome: complete` for a completed assigned investigation, even when the
+answer is negative or no repository change is needed. Use only the shared
+terminal outcome enum; never return `answered`. Set `worker_handle` to the exact
+activation handle supplied by the Coordinator, and report assigned Input IDs
+and artifacts actually used as a list of strings in `inputs_consumed`. The
+worker handle requirement is the exact activation handle from the packet.
+Do not modify source code.
 """

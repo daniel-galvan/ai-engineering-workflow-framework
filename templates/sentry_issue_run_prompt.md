@@ -116,6 +116,8 @@ Runtime bootstrap:
   Record the method and timestamp; when neither is available, record `Unknown; detection unavailable`, not `None`.
 - Every activation packet must include each assigned Input ID's short value, source, authority, and expected use. An ID
   without its value is not a delivered input; reconcile all assigned IDs with `inputs_consumed`.
+- Pass every explicit current-run skill or plugin enable/disable directive to every worker and correction turn. A
+  disabled skill or plugin must not be loaded, invoked, or reactivated.
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
   the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
@@ -123,7 +125,7 @@ Runtime bootstrap:
   validate completed `normalized_evidence.md`, then activate Fix Design with that exact artifact. Retain intermediate
   ledgers in Coordinator state. Once activated, the final Documenter is the
   sole artifact writer for the finalized artifact set.
-- Pass Fix Design the exact validated `normalized_evidence.md` path as a required upstream artifact and every original
+- Pass Fix Design `UPSTREAM-001`, the exact validated `normalized_evidence.md` path, and every original
   supporting artifact path. Do not activate it while normalized evidence is absent or still being written; do not replace either with a
   Coordinator-written summary.
 - Require normalized evidence to contain the playbook's canonical Contract Delta table with its Markdown separator,
@@ -180,7 +182,9 @@ Runtime bootstrap:
   correction. If its corrected result still fails, stop with `analytical_contract_failure`, preserve the errors and
   artifacts, and release all handles; do not resume or replace that worker.
 - After an analytical contract failure, mechanically finalize the packet, closure receipt, and authoritative work
-  record with packaged `finalize_work_record.py --analytical-failure` and its required runtime, framework, and evidence
+  record with packaged `finalize_work_record.py --analytical-failure`, the exact
+  `--analytical-failure-stage`, and one `--completed-handle` for every released
+  analytical worker, plus its required runtime, framework, and evidence
   arguments before answering. The final response must be copied from that finalized record.
 
 Additional repositories and working directories (optional; the execution

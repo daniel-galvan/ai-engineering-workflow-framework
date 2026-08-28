@@ -40,6 +40,7 @@ INTERFACE_CONTRACT_FIELDS = (
     "compatibility_precedence",
     "rollout",
 )
+SENTRY_EVIDENCE_INPUT_MARKERS = ("UPSTREAM-001", "normalized_evidence.md")
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
 }
@@ -73,6 +74,7 @@ FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
+V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 PROFILE_STATUSES = {"requested", "in_progress", "executed", "not_executed", "blocked"}
 PROFILES = {"standard", "deep"}
@@ -369,7 +371,9 @@ def sentry_contract_delta_errors(text: str) -> list[str]:
     return errors
 
 
-def fix_design_result_errors(data: object, *, required_input_marker: str | None = None) -> list[str]:
+def fix_design_result_errors(
+    data: object, *, required_input_markers: tuple[str, ...] = ()
+) -> list[str]:
     if not isinstance(data, dict):
         return ["fix_design_result.json must contain one object"]
     errors = []
@@ -405,14 +409,22 @@ def fix_design_result_errors(data: object, *, required_input_marker: str | None 
     for field in ("worker_id", "worker_handle", "configuration_conformance"):
         if not isinstance(data[field], str) or not data[field].strip():
             errors.append(f"fix design {field} must be a non-empty string")
+    if isinstance(data["worker_handle"], str) and data["worker_handle"].strip().lower() in {
+        "not exposed", "unknown", "none", "not applicable",
+    }:
+        errors.append("fix design worker_handle must contain the exact activation handle")
     if (
         not isinstance(data["inputs_consumed"], list)
         or not data["inputs_consumed"]
         or not all(isinstance(value, str) and value.strip() for value in data["inputs_consumed"])
     ):
         errors.append("fix design inputs_consumed must be a non-empty list")
-    elif required_input_marker and not any(required_input_marker in value for value in data["inputs_consumed"]):
-        errors.append(f"fix design inputs_consumed must include {required_input_marker}")
+    elif required_input_markers and not any(
+        marker in value for value in data["inputs_consumed"] for marker in required_input_markers
+    ):
+        errors.append(
+            "fix design inputs_consumed must include " + " or ".join(required_input_markers)
+        )
     if data["context_conformance"] != "pass":
         errors.append("fix design context_conformance must pass")
     for field in ("supported_remediation_boundary", "supported_intended_change"):
@@ -536,7 +548,9 @@ def validate_sentry_artifacts(root: Path) -> None:
         except (json.JSONDecodeError, OSError) as error:
             errors.append(f"invalid fix_design_result.json: {error}")
         else:
-            errors.extend(fix_design_result_errors(result, required_input_marker="normalized_evidence.md"))
+            errors.extend(
+                fix_design_result_errors(result, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS)
+            )
     if errors:
         fail(f"{root}: " + "\nFAIL: ".join(errors))
 
@@ -928,7 +942,15 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         row for row in worker_rows
         if SENTRY_ROLE_AGENTS.get(row.get("Role", "").strip()) == "sentry_solution_architect"
     ]
-    if playbook_name == "sentry_issue_remediation" and fix_worker_rows:
+    handoff_text = fenced_section(text, "# Final Handoff")
+    analytical_contract_failure = (
+        identity["State"] == "blocked"
+        and "analytical contract failure" in handoff_text.lower()
+    )
+    if playbook_name == "sentry_issue_remediation" and fix_worker_rows and analytical_contract_failure:
+        if not any(row.get("Outcome", "").strip().lower() == "failed" for row in fix_worker_rows):
+            fail(f"{path}: failed Fix Design contract must record worker outcome failed")
+    elif playbook_name == "sentry_issue_remediation" and fix_worker_rows:
         if any(row.get("Outcome", "").strip().lower() != "complete" for row in fix_worker_rows):
             fail(f"{path}: Sentry Fix Design worker outcome must be complete; use plan_readiness for awaiting_input")
         fix_result_path = path.parent / "fix_design_result.json"
@@ -941,12 +963,13 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             except (json.JSONDecodeError, OSError) as error:
                 fail(f"{path}: invalid fix_design_result.json: {error}")
                 fix_result = {}
-            for error in fix_design_result_errors(fix_result, required_input_marker="normalized_evidence.md"):
+            for error in fix_design_result_errors(
+                fix_result, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+            ):
                 fail(f"{path}: {error}")
             if not isinstance(fix_result, dict):
                 fix_result = {}
             if _contains_hypothesis(fix_result):
-                handoff_text = fenced_section(text, "# Final Handoff")
                 if not re.search(r"^Best current explanations:\s*$", handoff_text, re.MULTILINE):
                     fail(f"{path}: Final Handoff must include Best current explanations when Fix Design returns a hypothesis")
             readiness = fix_result.get("plan_readiness")
@@ -1291,10 +1314,14 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     assert not _contains_hypothesis({"checks_performed": ["verified fact"]})
     assert any(
         "normalized_evidence.md" in error
-        for error in fix_design_result_errors(ready_fix, required_input_marker="normalized_evidence.md")
+        for error in fix_design_result_errors(
+            ready_fix, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+        )
     )
     ready_fix_with_evidence = {**ready_fix, "inputs_consumed": ["IN-001", "/run/normalized_evidence.md"]}
-    assert fix_design_result_errors(ready_fix_with_evidence, required_input_marker="normalized_evidence.md") == []
+    assert fix_design_result_errors(
+        ready_fix_with_evidence, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+    ) == []
     malformed_fix = dict(ready_fix)
     malformed_fix.pop("worker_handle")
     malformed_errors = fix_design_result_errors(malformed_fix)
@@ -1328,8 +1355,33 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     assert any("cannot defer an established boundary" in error for error in overcautious_errors)
     v28 = json.loads(V28_STABILIZATION_FIXTURE.read_text())
     assert fix_design_result_errors(
-        v28["fix_design_result"], required_input_marker="normalized_evidence.md"
+        v28["fix_design_result"], required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
     ) == []
+    v31 = json.loads(V31_FIX_DESIGN_FIXTURE.read_text())
+    assert fix_design_result_errors(
+        v31["fix_design_result"], required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+    ) == []
+    v31_missing_handle = {**v31["fix_design_result"], "worker_handle": "not exposed"}
+    assert "fix design worker_handle must contain the exact activation handle" in fix_design_result_errors(
+        v31_missing_handle, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+    )
+    v31_structured_interface = {
+        **v31["fix_design_result"],
+        "interface_change": True,
+        "interface_contract": {
+            "surface": ["event", "response"],
+            "request_shape": {"text_fields": []},
+            "response_shape": {"infractions": []},
+            "absence_semantics": "Legacy fallback",
+            "compatibility_precedence": "Keyed fields win",
+            "rollout": ["Consumer first", "Producer second"],
+        },
+    }
+    structured_errors = fix_design_result_errors(
+        v31_structured_interface, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+    )
+    for field in ("surface", "request_shape", "response_shape", "rollout"):
+        assert f"interface_contract {field} must be a non-empty string" in structured_errors
     invalid_v28 = {
         **v28["fix_design_result"],
         "plan_readiness": "awaiting_input",
@@ -1801,7 +1853,7 @@ for phrase in (
 workflow_contract = WORKFLOW_CONTRACT.read_text()
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
-for invariant_id in range(1, 41):
+for invariant_id in range(1, 42):
     if f"`INV-{invariant_id:02d}`" not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing INV-{invariant_id:02d}")
 invariant_ids = re.findall(r"\| `(INV-\d{2})` \|", workflow_contract)
@@ -1897,6 +1949,7 @@ for phrase in (
     "Every worker activation MUST include a compact value/source/authority manifest",
     "Evaluation identity, role-policy baseline, detailed",
     "run_already_active",
+    "skill or plugin enable/disable directive",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing wait/profile semantics: {phrase}")
@@ -1953,6 +2006,8 @@ for phrase in (
     "preflight even when the app hides stdout",
     "do not rerun it solely",
     "--pre-release",
+    "--analytical-failure-stage",
+    "skill or plugin enable/disable directive",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
@@ -2356,6 +2411,9 @@ for phrase in (
     "before activating Fix Design",
     "inputs_consumed",
     "--analytical-failure",
+    "--analytical-failure-stage",
+    "canonical `UPSTREAM-001` Input ID",
+    "skill or plugin enable/disable directive",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -2374,6 +2432,9 @@ for phrase in (
     "invalidates_supported_change",
     "contradicting_evidence_refs",
     "Do not run the",
+    "exact activation handle",
+    "includes either `UPSTREAM-001`",
+    "supported_remediation_boundary` and `supported_intended_change` as strings",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
@@ -2428,6 +2489,8 @@ for phrase in (
     "Work item: <STABLE-WORK-ITEM-ID-OR-URL>",
     "Sentry issue: <SENTRY-ISSUE-ID-OR-URL-OR-NOT-PROVIDED>",
     ".thoughts/<WORK-ITEM-ID>/",
+    "skill or plugin enable/disable directive",
+    "Pass Fix Design `UPSTREAM-001`",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")
@@ -2500,6 +2563,9 @@ for phrase in (
     "Check runner availability",
     "decision_changed",
     "low-value integration check",
+    "never return `answered`",
+    "exact activation handle",
+    "list of strings in `inputs_consumed`",
 ):
     if phrase not in sentry_repository_integrator_agent:
         fail(f"providers/codex/agents/sentry_repository_integrator.toml is missing Standard activation/test control: {phrase}")

@@ -554,6 +554,12 @@ compatibility precedence, and rollout. The Documenter persists that result verba
 creates the selected plan or Clarification Brief from the separately labeled content in the same terminal envelope; Fix
 Design does not edit durable artifacts.
 
+The result uses the exact activation handle and shared terminal outcome
+`complete`. String fields remain strings, list fields remain lists, and
+`interface_change` remains a boolean. `inputs_consumed` MUST include either the
+canonical normalized-evidence Input ID `UPSTREAM-001` or the exact validated
+`normalized_evidence.md` path; the activation packet delivers both.
+
 If the evidence supports more than one credible fix, record the alternatives, tradeoffs, validation impact, and a
 recommendation in the implementation plan when a safe recommendation is possible. Do not ask the user to resolve a
 technical hypothesis that the workers can investigate or validate. Use the shared Clarification Brief and hand off

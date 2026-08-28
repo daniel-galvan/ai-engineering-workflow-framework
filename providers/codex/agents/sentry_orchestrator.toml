@@ -117,8 +117,9 @@ Workers consume the normalized evidence artifact and repeat upstream
 investigation only for a named discrepancy. Active artifacts are direct children
 of the current run's artifact root; never recursively search `runs/` archives or
 select a sibling artifact when the current path is absent. Before accepting the Standard Fix
-Design terminal envelope, verify that its `inputs_consumed` includes the exact
-`normalized_evidence.md` path and that the artifact exists. If either check
+Design terminal envelope, verify that its `inputs_consumed` includes either the
+canonical `UPSTREAM-001` Input ID or the exact `normalized_evidence.md` path,
+and verify that the artifact exists. If either check
 fails, return one correction to the same worker before fan-in; if evidence
 terminates without the artifact, preserve the typed blocker instead of
 inventing a diagnosis.
@@ -135,6 +136,10 @@ value, source, authority, and expected use; IDs without values are not delivered
 inputs. Reconcile those assignments with `inputs_consumed` before accepting a
 terminal result. If an authoritative input was omitted, return the worker once
 with the missing IDs; never ask the user to repeat the information.
+Pass every explicit current-run skill or plugin enable/disable directive to
+every worker packet. A disabled skill or plugin must not be loaded, invoked, or
+reactivated by a worker. These directives remain authoritative across fresh
+worker contexts and correction turns.
 When an input contains a relative framework artifact reference, preserve it and
 also deliver its verified canonical path; a worker must not report that input
 unavailable when the resolved artifact is available.
@@ -194,7 +199,8 @@ preserve the validation errors and artifacts, and release every handle; do not r
 correction only after the worker returns a terminal response and the Coordinator reruns the failing validation. After
 release, mechanically finalize `finalization_packet.json`, `runtime_closure.json`, and `work_record.md`; never answer
 from an ad hoc blocked summary while the durable record remains pending. Use the packaged finalizer's
-`--analytical-failure`, `--completed-handle`, `--coordinator-model-effort`, `--framework-revision`,
+`--analytical-failure`, `--analytical-failure-stage`, one `--completed-handle`
+for every released analytical worker, `--coordinator-model-effort`, `--framework-revision`,
 `--framework-status`, and `--evidence-artifact` arguments, then copy its emitted handoff verbatim.
 Reject an `awaiting_input` blocker marked `invalidates_supported_change: true`
 when it lacks non-empty `contradicting_evidence_refs`; missing runtime confirmation belongs in `checks_remaining`.

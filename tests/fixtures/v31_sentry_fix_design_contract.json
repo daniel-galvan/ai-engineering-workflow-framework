@@ -1,0 +1,27 @@
+{
+  "fix_design_result": {
+    "worker_id": "sentry_solution_architect",
+    "worker_handle": "01a04a25-9231-7531-a89d-0b1252f894fe",
+    "outcome": "complete",
+    "plan_readiness": "ready_for_implementation",
+    "implementation_plan_action": "create",
+    "inputs_consumed": [
+      "IN-001",
+      "UPSTREAM-001",
+      "INTEGRATOR-001"
+    ],
+    "context_conformance": "pass",
+    "configuration_conformance": "gpt-5.6-sol / low; provider telemetry not exposed",
+    "checks_performed": [
+      "Compared fanmgmt keyed baseline input with the scalar Supervision path."
+    ],
+    "checks_remaining": [
+      "Verify occurrence-specific arrays before claiming production causal closure."
+    ],
+    "supported_remediation_boundary": "Preserve field identity across the SUGGESTED_CONTENT contract.",
+    "supported_intended_change": "Add optional keyed text and return field-local infraction identity.",
+    "interface_change": false,
+    "interface_contract": null,
+    "blocking_unknowns": []
+  }
+}

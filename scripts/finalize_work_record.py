@@ -20,6 +20,7 @@ CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 V22_FIXTURE = ROOT / "tests" / "fixtures" / "v22_sentry_planning.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
+V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)\s*$", re.IGNORECASE
@@ -35,6 +36,54 @@ ROLE_LABELS = {
     "sentry_solution_architect": "Fix design",
     "sentry_repository_integrator": "Repository integration",
 }
+ANALYTICAL_FAILURE_STAGES = {
+    "evidence_topology": {
+        "binding": "sentry_current_state_investigator",
+        "worker": "evidence-topology",
+        "role": "Evidence topology",
+        "validation_stage": "Evidence validation",
+        "implementation_plan": "omitted; normalized evidence failed validation",
+        "established": "Evidence Topology produced an artifact, but its required contract validation failed.",
+        "claim": "Fix Design cannot start from invalid normalized evidence.",
+        "action": "Correct the evidence contract before retrying planning.",
+        "complete_when": "Normalized evidence passes before Fix Design activation.",
+    },
+    "repository_integration": {
+        "binding": "sentry_repository_integrator",
+        "worker": "repository-integration",
+        "role": "Repository integration",
+        "validation_stage": "Repository integration validation",
+        "implementation_plan": "omitted; repository-integration result failed validation",
+        "established": "Normalized evidence passed, but the Repository Integration result failed its terminal contract.",
+        "claim": "Fix Design cannot consume an invalid repository-integration result.",
+        "action": "Correct the repository-integration result contract and resume from existing evidence.",
+        "complete_when": "Repository Integration passes before Fix Design activation.",
+    },
+    "fix_design": {
+        "binding": "sentry_solution_architect",
+        "worker": "fix-design",
+        "role": "Fix design",
+        "validation_stage": "Fix design validation",
+        "implementation_plan": "omitted; Fix Design result failed envelope validation",
+        "established": "Normalized evidence passed and Fix Design returned, but its terminal envelope failed validation.",
+        "claim": "The existing Fix Design output cannot enter fan-in until its result envelope passes validation.",
+        "action": "Correct the Fix Design result envelope and finalize the existing analytical outputs.",
+        "complete_when": "The existing Fix Design result passes without rerunning completed analytical workers.",
+    },
+}
+
+
+def _material_rows(value: object, identity_field: str) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    rows = [row for row in value if isinstance(row, dict)]
+    return rows if any(str(row.get(identity_field, "")).strip() for row in rows) else []
+
+
+def _append_unique_artifact(rows: list[dict[str, object]], row: dict[str, object]) -> None:
+    path = str(row["Path"])
+    if not any(str(existing.get("Path", "")) == path for existing in rows):
+        rows.append(row)
 
 
 def _shape_errors(value: object, template: object, path: str) -> list[str]:
@@ -453,18 +502,20 @@ def prepare_analytical_failure(
     record_path: Path,
     *,
     reason: str,
+    failure_stage: str,
     completed_handles: list[str],
     coordinator_model_effort: str,
     framework_revision: str,
     framework_status: str,
     evidence_artifact: Path,
 ) -> None:
+    stage = ANALYTICAL_FAILURE_STAGES[failure_stage]
     packet = json.loads(packet_path.read_text())
     artifact_root = packet_path.parent
     execution_repository = artifact_root.parent.parent
     manifest_path = artifact_root / "role_bindings.json"
     manifest = json.loads(manifest_path.read_text())
-    binding = manifest["bindings"]["sentry_current_state_investigator"]
+    binding = manifest["bindings"][stage["binding"]]
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     work_item = str(packet["work_item"]["ID"])
     git_revision = subprocess.run(
@@ -487,20 +538,22 @@ def prepare_analytical_failure(
         "Closest alternative": "feature_delivery",
         "Why this playbook": "The run investigates a reported Sentry occurrence before implementation.",
     })
-    packet["inputs"] = [{
-        "Input ID": "IN-001", "Input or artifact": "Current Sentry occurrence",
-        "Source or path": str(evidence_artifact), "Authority": "Current-run evidence", "Status": "Consumed",
-    }]
-    packet["repositories"] = [{
-        "Repository role": "Execution", "Declared path": str(execution_repository),
-        "Resolved path": str(execution_repository), "Branch / detached": git_branch,
-        "Full revision": git_revision, "Clean status": "Dirty" if git_status else "Clean",
-        "User-selected ref": "Current checkout", "Release mapping": "Unknown",
-        "Evidence eligibility": "Accepted for current-run repository evidence",
-    }]
+    if not _material_rows(packet.get("inputs"), "Input ID"):
+        packet["inputs"] = [{
+            "Input ID": "IN-001", "Input or artifact": "Current Sentry occurrence",
+            "Source or path": str(evidence_artifact), "Authority": "Current-run evidence", "Status": "Consumed",
+        }]
+    if not _material_rows(packet.get("repositories"), "Repository role"):
+        packet["repositories"] = [{
+            "Repository role": "Execution", "Declared path": str(execution_repository),
+            "Resolved path": str(execution_repository), "Branch / detached": git_branch,
+            "Full revision": git_revision, "Clean status": "Dirty" if git_status else "Clean",
+            "User-selected ref": "Current checkout", "Release mapping": "Unknown",
+            "Evidence eligibility": "Accepted for current-run repository evidence",
+        }]
     prompt_identity = str(packet["identity"]["Prompt template / revision / conformance"])
     if prompt_identity.endswith(" / pending"):
-        prompt_identity = prompt_identity.removesuffix(" / pending") + f" / fail: {reason}"
+        prompt_identity = prompt_identity.removesuffix(" / pending") + " / pass"
     packet["identity"].update({
         "Run ID": f"{work_item}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
         "Framework commit / status": f"{framework_revision} / {framework_status.title()}",
@@ -513,12 +566,13 @@ def prepare_analytical_failure(
     packet["finalization"].update({
         "Concurrent-run decision": "Current isolated run", "Active related run or work item": "None",
         "Related-run check": "Completed during initialization", "Durable artifact root": str(artifact_root),
-        "Final reconciliation": "Passed; analytical failure preserved and runtime released",
+        "Final reconciliation": f"Passed; analytical_contract_failure at {failure_stage} preserved and runtime released",
         "Finalization schema": "Passed",
     })
-    packet["durable_artifacts"] = [
+    artifacts = _material_rows(packet.get("durable_artifacts"), "Artifact")
+    for artifact in (
         {"Artifact": "Normalized evidence", "Path": str(evidence_artifact), "Status": "Preserved",
-         "Purpose": "Current-run evidence and failed validation input"},
+         "Purpose": "Current-run analytical evidence"},
         {"Artifact": "Role bindings", "Path": str(manifest_path), "Status": "Created",
          "Purpose": "Exact worker bindings"},
         {"Artifact": "Finalization packet", "Path": str(packet_path), "Status": "Created",
@@ -527,34 +581,57 @@ def prepare_analytical_failure(
          "Purpose": "Provider closure receipt"},
         {"Artifact": "Work record", "Path": str(record_path), "Status": "Created",
          "Purpose": "Authoritative terminal handoff"},
-    ]
+    ):
+        _append_unique_artifact(artifacts, artifact)
+    packet["durable_artifacts"] = artifacts
     configured = f"{binding['model']} / {binding['effort']}"
-    worker_handle = ", ".join(completed_handles) if completed_handles else "None"
-    packet["workers"] = [{
-        "Worker": "evidence-topology", "Role": "Evidence topology", "Assigned inputs": "IN-001",
-        "Mode": "investigation", "Depth": "standard", "Skills": "Sentry evidence topology",
-        "Tools": "Mapped provider operations", "Capacity": "one worker", "Configured model/effort": configured,
-        "Provider-observed model/effort": configured, "Usage": "Provider telemetry unavailable",
-        "Depends on": "Coordinator initialization", "Outcome": "failed", "Confidence": "High",
-    }]
-    packet["synchronization"] = [{
-        "Stage": "Evidence validation", "Workers launched": "evidence-topology",
+    normalized_handles = list(dict.fromkeys(completed_handles))
+    worker_handle = ", ".join(normalized_handles) if normalized_handles else "None"
+    workers = _material_rows(packet.get("workers"), "Worker")
+    failed_worker = next(
+        (row for row in workers if str(row.get("Worker", "")).strip() == stage["worker"]), None
+    )
+    if failed_worker:
+        failed_worker["Outcome"] = "failed"
+        failed_worker["Confidence"] = "High"
+    else:
+        workers.append({
+            "Worker": stage["worker"], "Role": stage["role"], "Assigned inputs": "IN-001",
+            "Mode": "investigation", "Depth": "standard", "Skills": "Bounded Sentry analysis",
+            "Tools": "Mapped provider operations", "Capacity": "one worker", "Configured model/effort": configured,
+            "Provider-observed model/effort": configured, "Usage": "Provider telemetry unavailable",
+            "Depends on": "Coordinator initialization", "Outcome": "failed", "Confidence": "High",
+        })
+    packet["workers"] = workers
+    synchronization = _material_rows(packet.get("synchronization"), "Stage")
+    synchronization.append({
+        "Stage": stage["validation_stage"], "Workers launched": stage["worker"],
         "Launch mode / exception": "Sequential Standard activation", "Worker outcomes": "failed",
         "Results summarized": "Yes", "Barrier status": f"Failed: {reason}",
-    }]
-    packet["worker_results"] = [{
-        "Worker": "evidence-topology", "Outcome": "failed", "Confidence": "High",
-        "Unique contribution": "Produced current-run normalized evidence before contract validation failed",
+    })
+    packet["synchronization"] = synchronization
+    worker_results = _material_rows(packet.get("worker_results"), "Worker")
+    failed_result = next(
+        (row for row in worker_results if str(row.get("Worker", "")).strip() == stage["worker"]), None
+    )
+    result_row = {
+        "Worker": stage["worker"], "Outcome": "failed", "Confidence": "High",
+        "Unique contribution": f"Returned {stage['role']} output before terminal contract validation failed",
         "Evidence / claim refs": "E-001 / C-001", "Uncertainties / blockers": reason,
         "Actual model/effort": configured, "Usage/credits": "Provider telemetry unavailable",
-    }]
+    }
+    if failed_result:
+        failed_result.update(result_row)
+    else:
+        worker_results.append(result_row)
+    packet["worker_results"] = worker_results
     packet["evidence"] = [{
         "Evidence ID": "E-001", "Source": str(evidence_artifact),
-        "Summary": f"Normalized evidence failed its producer contract: {reason}", "Confidence": "High",
+        "Summary": f"{stage['role']} failed its terminal contract: {reason}", "Confidence": "High",
         "Uncertainty": "None", "Status": "Verified",
     }]
     packet["claims"] = [{
-        "Claim ID": "C-001", "Claim": "Fix Design cannot start from invalid normalized evidence.",
+        "Claim ID": "C-001", "Claim": stage["claim"],
         "Evidence refs": "E-001", "Confidence": "High", "Uncertainty": "None", "Status": "Supported",
     }]
     packet["decisions"] = [{
@@ -562,17 +639,17 @@ def prepare_analytical_failure(
         "Claim refs": "C-001", "Owner": "Coordinator", "Status": "Applied",
     }]
     packet["actions"] = [{
-        "Action ID": "A-001", "Action": "Correct the evidence contract before retrying planning.",
+        "Action ID": "A-001", "Action": stage["action"],
         "Decision ref": "D-001", "Owner": "Framework maintainer", "Status": "Proposed",
     }]
     packet["handoff"] = {
         "workflow_result": "Planning stopped on analytical contract failure",
-        "implementation_plan": "omitted; normalized evidence failed validation",
-        "established": ["Evidence Topology produced an artifact, but its required contract validation failed."],
+        "implementation_plan": stage["implementation_plan"],
+        "established": [stage["established"]],
         "best_current_explanations": [{"explanation": reason, "confidence": "high",
                                        "reason": "The packaged validator reproduced the failure."}],
-        "next_action": {"owner": "Framework maintainer", "action": "Correct the evidence contract and retry.",
-                        "complete_when": "Normalized evidence passes before Fix Design activation."},
+        "next_action": {"owner": "Framework maintainer", "action": stage["action"],
+                        "complete_when": stage["complete_when"]},
         "artifacts": [str(evidence_artifact), str(record_path)],
         "execution": (
             "standard/planning; finalization validation passed; analytical validation failed; "
@@ -590,6 +667,15 @@ def prepare_analytical_failure(
             f"Provider release confirmed after analytical contract failure. Completed handles: {worker_handle}."
         ),
     }]}
+    if closure_path.is_file():
+        existing_closure = json.loads(closure_path.read_text())
+        rows = _material_rows(existing_closure.get("runtime_closure"), "Run or stage")
+        if rows and all(
+            str(row.get("Runtime status", "")).strip().lower() == "released"
+            and str(row.get("Remaining active handles", "")).strip().lower() in {"none", "0"}
+            for row in rows
+        ):
+            closure = existing_closure
     packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     closure_path.write_text(json.dumps(closure, indent=2) + "\n")
     finalize(packet_path, closure_path, record_path)
@@ -847,6 +933,7 @@ def self_test() -> None:
         prepare_analytical_failure(
             failure_packet, failure_closure, failure_record,
             reason="contract delta separator missing",
+            failure_stage="evidence_topology",
             completed_handles=["01a049e8-689e-7273-bd17-403d4d9a5022"],
             coordinator_model_effort="gpt-5.6-luna / xhigh", framework_revision=framework_revision,
             framework_status="dirty", evidence_artifact=evidence,
@@ -857,6 +944,74 @@ def self_test() -> None:
         assert "| Runtime status |" in failure_text and "| Released | None |" in failure_text
         assert "Workflow result: Planning stopped on analytical contract failure" in failure_text
         assert "Workflow result: Pending" not in failure_text
+
+        prepared_fix = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
+             "--execution-repository", str(execution_repository), "--work-item", "ITEM-FIX",
+             "--playbook", "sentry_issue_remediation"],
+            capture_output=True, text=True, check=True,
+        )
+        fix_root = Path(json.loads(prepared_fix.stdout)["artifact_root"])
+        fix_evidence = fix_root / "normalized_evidence.md"
+        fix_evidence.write_text(json.loads(V29_CONTRACT_FAILURE_FIXTURE.read_text())["valid_normalized_evidence"])
+        (fix_root / "fix_design_result.json").write_text(V31_FIX_DESIGN_FIXTURE.read_text())
+        fix_packet_path = fix_root / "finalization_packet.json"
+        fix_packet = json.loads(fix_packet_path.read_text())
+        fix_manifest = json.loads((fix_root / "role_bindings.json").read_text())["bindings"]
+        worker_specs = (
+            ("evidence-topology", "Evidence topology", "sentry_current_state_investigator"),
+            ("repository-integration", "Repository integration", "sentry_repository_integrator"),
+            ("fix-design", "Fix design", "sentry_solution_architect"),
+        )
+        fix_packet["workers"] = []
+        fix_packet["worker_results"] = []
+        for worker, role, agent in worker_specs:
+            model_effort = f"{fix_manifest[agent]['model']} / {fix_manifest[agent]['effort']}"
+            fix_packet["workers"].append({
+                "Worker": worker, "Role": role, "Assigned inputs": "IN-001",
+                "Mode": "investigation", "Depth": "standard", "Skills": "Bounded Sentry analysis",
+                "Tools": "Mapped provider operations", "Capacity": "one worker",
+                "Configured model/effort": model_effort, "Provider-observed model/effort": model_effort,
+                "Usage": "Provider telemetry unavailable", "Depends on": "Prior stage",
+                "Outcome": "complete", "Confidence": "High",
+            })
+            fix_packet["worker_results"].append({
+                "Worker": worker, "Outcome": "complete", "Confidence": "High",
+                "Unique contribution": f"Completed {role}", "Evidence / claim refs": "E-001 / C-001",
+                "Uncertainties / blockers": "None", "Actual model/effort": model_effort,
+                "Usage/credits": "Provider telemetry unavailable",
+            })
+        fix_packet["synchronization"] = [{
+            "Stage": "Analytical fan-in", "Workers launched": "all analytical workers",
+            "Launch mode / exception": "Dependency ordered", "Worker outcomes": "complete",
+            "Results summarized": "Yes", "Barrier status": "Pending Fix Design validation",
+        }]
+        fix_packet_path.write_text(json.dumps(fix_packet, indent=2) + "\n")
+        fix_handles = [
+            "01a04a1a-aa1d-7a62-9dde-f16dfac04be2",
+            "01a04a20-70f2-7d51-aad4-5e17acd9f7a1",
+            "01a04a25-9231-7531-a89d-0b1252f894fe",
+        ]
+        fix_closure = fix_root / "runtime_closure.json"
+        fix_closure.write_text(json.dumps({"runtime_closure": [{
+            "Run or stage": "Current run", "Receipt owner": "Coordinator",
+            "Completed worker handles": ", ".join(fix_handles), "Runtime status": "Released",
+            "Remaining active handles": "None",
+            "Closure evidence or blocker": f"Provider release confirmed. Completed handles: {', '.join(fix_handles)}.",
+        }]}, indent=2) + "\n")
+        fix_record = fix_root / "work_record.md"
+        prepare_analytical_failure(
+            fix_packet_path, fix_closure, fix_record,
+            reason="legacy validator required a literal normalized_evidence.md path",
+            failure_stage="fix_design", completed_handles=fix_handles,
+            coordinator_model_effort="gpt-5.6-luna / xhigh", framework_revision=framework_revision,
+            framework_status="dirty", evidence_artifact=fix_evidence,
+        )
+        fix_text = fix_record.read_text()
+        assert "Normalized evidence passed and Fix Design returned" in fix_text
+        assert "normalized evidence failed validation" not in fix_text
+        assert "| repository-integration |" in fix_text
+        assert all(handle in fix_text for handle in fix_handles)
     print("finalize_work_record self-test: passed")
 
 
@@ -867,6 +1022,7 @@ def main() -> int:
     parser.add_argument("--record", type=Path)
     parser.add_argument("--pre-release", action="store_true")
     parser.add_argument("--analytical-failure")
+    parser.add_argument("--analytical-failure-stage", choices=tuple(ANALYTICAL_FAILURE_STAGES))
     parser.add_argument("--completed-handle", action="append", default=[])
     parser.add_argument("--coordinator-model-effort")
     parser.add_argument("--framework-revision")
@@ -881,15 +1037,17 @@ def main() -> int:
         parser.error("--packet, --closure, and --record are required")
     try:
         if args.analytical_failure:
-            if not all((args.coordinator_model_effort, args.framework_revision, args.framework_status,
+            if not all((args.analytical_failure_stage, args.coordinator_model_effort,
+                        args.framework_revision, args.framework_status,
                         args.evidence_artifact)):
                 parser.error(
-                    "--analytical-failure requires --coordinator-model-effort, --framework-revision, "
-                    "--framework-status, and --evidence-artifact"
+                    "--analytical-failure requires --analytical-failure-stage, --coordinator-model-effort, "
+                    "--framework-revision, --framework-status, and --evidence-artifact"
                 )
             prepare_analytical_failure(
                 args.packet.resolve(), args.closure.resolve(), args.record.resolve(),
-                reason=args.analytical_failure, completed_handles=args.completed_handle,
+                reason=args.analytical_failure, failure_stage=args.analytical_failure_stage,
+                completed_handles=args.completed_handle,
                 coordinator_model_effort=args.coordinator_model_effort,
                 framework_revision=args.framework_revision, framework_status=args.framework_status,
                 evidence_artifact=args.evidence_artifact.resolve(),
