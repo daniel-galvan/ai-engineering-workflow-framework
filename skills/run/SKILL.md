@@ -45,6 +45,10 @@ description: >-
    runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
    when the user explicitly says continue or resume. This one step
    archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
+   If a new `Start` returns `existing_run_not_terminal`, check provider-visible tasks and worker handles. When the prior
+   task is idle and no active handle or artifact writer remains, rerun once with `--archive-stale-run`; this preserves
+   every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run. If activity is present or cannot be
+   verified, stop with `run_already_active`. Do not tell the user to request continuation when they requested a new run.
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
    Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its

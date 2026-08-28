@@ -172,15 +172,18 @@ def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, ob
     }
 
 
-def _archive_terminal_run(artifact_root: Path) -> str | None:
+def _archive_existing_run(artifact_root: Path, archive_stale_run: bool) -> str | None:
     record = artifact_root / "work_record.md"
     if not record.is_file():
         return None
     text = record.read_text()
     state = _table_value(text, "State")
     if state not in TERMINAL_STATES:
-        raise ValueError("existing_run_not_terminal")
-    run_id = _table_value(text, "Run ID")
+        if not archive_stale_run:
+            raise ValueError("existing_run_not_terminal")
+        run_id = datetime.now(UTC).strftime("stale-%Y%m%dT%H%M%SZ")
+    else:
+        run_id = _table_value(text, "Run ID")
     if not run_id or run_id in {"Unknown", "None"}:
         run_id = datetime.now(UTC).strftime("run-%Y%m%dT%H%M%SZ")
     destination = artifact_root / "runs" / re.sub(r"[^A-Za-z0-9._-]", "_", run_id)
@@ -200,15 +203,18 @@ def prepare_run(
     playbook: str,
     runtime_agents: Path | None,
     continuation: bool,
+    archive_stale_run: bool = False,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
         raise ValueError("invalid_work_item")
     if not execution_repository.resolve().is_dir():
         raise ValueError("execution_repository_unavailable")
+    if continuation and archive_stale_run:
+        raise ValueError("continuation_cannot_archive_stale_run")
     artifact_root = execution_repository.resolve() / ".thoughts" / work_item
     artifact_root.mkdir(parents=True, exist_ok=True)
-    archived = None if continuation else _archive_terminal_run(artifact_root)
+    archived = None if continuation else _archive_existing_run(artifact_root, archive_stale_run)
     record = artifact_root / "work_record.md"
     if continuation:
         if not record.is_file():
@@ -267,6 +273,22 @@ def self_test() -> None:
         second = prepare_run(execution, "ITEM-1", "sentry_issue_remediation", None, False)
         assert second["archived_prior_run"].endswith("runs/run-1")
         assert Path(second["work_record"]).is_file()
+        stale = prepare_run(execution, "ITEM-STALE", "sentry_issue_remediation", None, False)
+        stale_artifact = Path(stale["artifact_root"]) / "normalized_evidence.md"
+        stale_artifact.write_text("preserved stale evidence\n")
+        try:
+            prepare_run(execution, "ITEM-STALE", "sentry_issue_remediation", None, False)
+        except ValueError as error:
+            assert str(error) == "existing_run_not_terminal"
+        else:
+            raise AssertionError("unverified nonterminal run must block")
+        recovered = prepare_run(
+            execution, "ITEM-STALE", "sentry_issue_remediation", None, False, archive_stale_run=True
+        )
+        archived_stale = Path(recovered["archived_prior_run"])
+        assert archived_stale.name.startswith("stale-")
+        assert (archived_stale / "normalized_evidence.md").read_text() == "preserved stale evidence\n"
+        assert _table_value(Path(recovered["work_record"]).read_text(), "State") == "intake"
         try:
             prepare_run(execution, "ITEM-2", "playbooks/unknown.md", None, False)
         except ValueError as error:
@@ -283,6 +305,7 @@ def main() -> int:
     parser.add_argument("--playbook")
     parser.add_argument("--runtime-agents", type=Path)
     parser.add_argument("--continuation", action="store_true")
+    parser.add_argument("--archive-stale-run", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -297,6 +320,7 @@ def main() -> int:
             args.playbook,
             args.runtime_agents,
             args.continuation,
+            args.archive_stale_run,
         )
     except ValueError as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

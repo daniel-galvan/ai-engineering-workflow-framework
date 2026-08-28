@@ -78,6 +78,9 @@ Runtime bootstrap:
   provider agent definition from the bundled framework/plugin or selected work-graph binding.
 - After preflight, run packaged `scripts/prepare_run.py` once to archive a prior terminal run, initialize the current
   record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly.
+  If a new `Start` returns `existing_run_not_terminal`, inspect provider-visible task and worker-handle state. When the
+  prior task is idle and no active writer remains, rerun once with `--archive-stale-run`; preserve the old files under
+  `runs/stale-<timestamp>/`. If activity remains or cannot be verified, stop with `run_already_active`.
   Immediately inspect each provider activation's returned model, effort, and fresh-context metadata against the manifest
   when the runtime exposes those values. If applied model/effort telemetry is unavailable, record `Not exposed; ...`
   together with the exact explicit launch binding; unavailable telemetry alone is not a mismatch. A returned mismatch or

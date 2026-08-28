@@ -28,8 +28,13 @@ display payload.
 After package preflight, run the packaged `scripts/prepare_run.py` once. It archives a prior terminal run unless this is
 an explicit continuation, creates the artifact root and minimal work record, and writes `role_bindings.json`. Use that
 manifest as the only worker model/effort source. Do not manually reconstruct bindings or let workers inherit this
-session's settings. The current main session remains the Orchestrator with its already-selected model and effort; never spawn or delegate an `initialize` worker. Execute the requested profile exactly. For
-`standard`, do not start `sentry_dependency_analyst`; the Solution Architect
+session's settings. The current main session remains the Orchestrator with its already-selected model and effort.
+The Coordinator must never spawn or delegate an `initialize` worker. Execute the requested profile exactly.
+If a new `Start` returns `existing_run_not_terminal`, check provider-visible task status and worker handles. If the prior
+task is idle and no handle or artifact writer remains, rerun preparation once with `--archive-stale-run`; preserve all
+old artifacts in the returned archive. If activity exists or cannot be verified, stop with `run_already_active`. Never
+reinterpret a requested new run as continuation.
+For `standard`, do not start `sentry_dependency_analyst`; the Solution Architect
 performs bounded failure analysis, and Repository Integrator is conditional.
 For `deep`, both `sentry_dependency_analyst` and Repository Integrator are
 required. Activate every required worker, preserve dependencies, collect
