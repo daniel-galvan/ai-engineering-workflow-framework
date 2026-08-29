@@ -18,6 +18,7 @@ BUNDLED_AGENTS = ROOT / "providers" / "codex" / "agents"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
 SENTRY_FIX_DESIGN_NORMALIZER = ROOT / "scripts" / "normalize_fix_design_result.py"
+SENTRY_PLANNING_FINALIZER = ROOT / "scripts" / "finalize_sentry_planning.py"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 SENTRY_AGENTS = (
     "sentry_orchestrator",
@@ -234,7 +235,11 @@ def prepare_run(
             "fix_design": {
                 "contract": str(fix_design_contract),
                 "normalizer": str(SENTRY_FIX_DESIGN_NORMALIZER),
-            }
+            },
+            "standard_ready_finalization": {
+                "finalizer": str(SENTRY_PLANNING_FINALIZER),
+                "owner": "Coordinator",
+            },
         }
     manifest_path = artifact_root / "role_bindings.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -271,6 +276,9 @@ def self_test() -> None:
         prepared_manifest = json.loads(Path(first["role_binding_manifest"]).read_text())
         assert prepared_manifest["worker_contracts"]["fix_design"]["normalizer"] == str(
             SENTRY_FIX_DESIGN_NORMALIZER
+        )
+        assert prepared_manifest["worker_contracts"]["standard_ready_finalization"]["finalizer"] == str(
+            SENTRY_PLANNING_FINALIZER
         )
         runtime = execution / "agents"
         runtime.mkdir()

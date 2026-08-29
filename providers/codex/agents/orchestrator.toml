@@ -87,10 +87,11 @@ Verify the in-task runtime before `prepare_run.py`; if absent, stop with
 `worker_runtime_unavailable` without creating user-owned tasks.
 
 For planning, perform initialization directly; never activate or delegate an `initialize` worker. Activate one final
-Documenter after analytical fan-in.
+Documenter after analytical fan-in unless the selected playbook defines a deterministic terminal path, such as Standard
+Sentry `ready_for_implementation/create`.
 
 Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
-the Documenter: `awaiting_input` requires `omit`; only
+the selected finalizer or Documenter: `awaiting_input` requires `omit`; only
 `ready_for_implementation` permits `create`.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
 run a packaged producer-format normalizer before validation only when the selected playbook explicitly names it. That
@@ -120,14 +121,14 @@ Store every provider-returned worker handle exactly; never manually reproduce or
 returns `not_found`, reconcile the handle against the original spawn result, durable artifacts, and
 provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
 time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
-continuation, add only new inputs; never retroactively assign them to earlier workers. Use one Documenter handle through finalization; if the runtime
+continuation, add only new inputs; never retroactively assign them to earlier workers. On Documenter-owned paths, use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
 Count every successful provider activation, including that Documenter. A
 malformed call rejected before activation is a coordination error.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
 post-closure poll.
 
-Keep the final Documenter live through consistency validation. Run the
+On Documenter-owned paths, keep the final Documenter live through consistency validation. Run the
 preflight-pinned packaged finalizer with `--pre-release` against a pending
 closure probe before releasing it. Send corrections to that same handle, collect
 its revised terminal result, and repeat until the pre-release check passes. Use a received/expected correction directly;

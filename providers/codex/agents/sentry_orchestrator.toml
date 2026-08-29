@@ -73,7 +73,7 @@ record the method and RFC 3339 timestamp. If neither can be checked, record `Unk
 
 Use each named provider agent definition from `role_bindings.json` before activation. Pass its exact `model` and
 `effort` explicitly; this binds configuration and is not an adaptive override. For Standard, bind `sentry_current_state_investigator`,
-`sentry_solution_architect`, and `documenter` exactly as configured. Record and
+`sentry_solution_architect`, and, only for Documenter-owned paths, `documenter` exactly as configured. Record and
 fail policy conformance on any observed mismatch. If a definition cannot be
 resolved or the provider cannot apply it, stop with
 `provider_configuration_unavailable`; do not activate an inherited-default worker.
@@ -169,21 +169,25 @@ Store every provider-returned worker handle exactly; never manually reproduce or
 returns `not_found`, reconcile the handle against the original spawn result, durable artifacts, and
 provider status before starting a replacement. Record coordinator-observed activation and terminal timestamps, elapsed
 time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
-continuation, add only new inputs and do not retroactively alter earlier assignments. Use one Documenter handle through finalization; if the runtime
-cannot update that worker, activate only one final Documenter after fan-in.
-Count every successful activation, including the final Documenter. Treat a
+continuation, add only new inputs and do not retroactively alter earlier assignments. On a Documenter-owned path, use
+one Documenter handle through finalization; if the runtime cannot update that worker, activate only one final Documenter
+after fan-in. Count every successful activation, including any final Documenter. Treat a
 malformed call rejected before activation as a coordination error.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
 post-closure poll.
 
-For Sentry planning, activate one final Documenter after analytical fan-in; do
-not satisfy handoff with an initialization acknowledgement. The Coordinator
-must not write or promote the technical plan. Return a Draft/readiness dispute
-to the Solution Architect or an independent Reviewer.
+For Standard Sentry planning, do not activate a Documenter when Fix Design returns
+`ready_for_implementation/create`. After validation, release Evidence Topology and Fix Design, then run the
+`standard_ready_finalization.finalizer` from `role_bindings.json` exactly once with the artifact root, Evidence handle,
+active Coordinator model/effort, preflight framework revision/status, and relevant repository paths. The finalizer owns
+`implementation_plan.md`, `finalization_packet.json`, `runtime_closure.json`, and terminal `work_record.md`; do not
+pre-render or patch them. Pass `--provider-release-confirmed` only after both analytical release operations succeed. Use
+one final Documenter after analytical fan-in for Standard `awaiting_input`, Deep planning,
+and remediation. Never satisfy handoff with an initialization acknowledgement. The Coordinator must not write or
+promote the technical plan. Return a Draft/readiness dispute to the Solution Architect or an independent Reviewer.
 Require Fix Design to return `plan_readiness` and
-`implementation_plan_action`. Pass them unchanged to the Documenter:
-`awaiting_input` requires `omit`; only `ready_for_implementation` permits
-`create`.
+`implementation_plan_action`. Pass them unchanged to the finalizer or Documenter:
+`awaiting_input` requires `omit`; only `ready_for_implementation` permits `create`.
 When analytical fan-in completes but evidence or a decision is still required,
 use `State: awaiting_input`, `Profile status: executed`, `Workflow outcome:
 completed`, and `Engineering outcome: partially_solved`. Use `plan_only` only
@@ -213,6 +217,10 @@ Reject an `awaiting_input` blocker marked `invalidates_supported_change: true`
 when it lacks non-empty `contradicting_evidence_refs`; missing runtime confirmation belongs in `checks_remaining`.
 After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded
 discrepancy or required conditional gate remains unresolved.
+After Fix Design returns `ready_for_implementation` with action `create`, require complete structured `plan` content,
+release the two analytical handles, and invoke deterministic finalization. A nonzero result is
+`finalization_contract_failure`; preserve the exact error and artifacts instead of activating a Documenter fallback or
+patching generated content.
 
 For Standard planning, create only a minimal work-record skeleton before
 analysis and keep the runtime ledger in Coordinator state. Activate Evidence
@@ -221,11 +229,11 @@ Fix Design with that exact required artifact plus every original supporting
 artifact path. Do not activate Fix Design while normalized evidence is absent or
 still being written. It must not repeat raw Sentry queries except for a named
 discrepancy. Do not
-progressively rewrite the work record between workers. Once the final
-Documenter starts, it is the sole artifact writer for the finalized artifact set; send
-corrections to that worker instead of editing concurrently.
+progressively rewrite the work record between workers. For a ready Standard result, the packaged finalizer is the sole
+writer for the finalized artifact set. Once a final Documenter starts on another path, it is the sole artifact writer;
+send corrections to that worker instead of editing concurrently.
 
-Pass worker handles and outcomes, final workflow/engineering outcomes, displayed
+On Documenter-owned paths, pass worker handles and outcomes, final workflow/engineering outcomes, displayed
 hypotheses, internal owner, next-action owner, and completion condition to the
 final Documenter as one finalized packet.
 Include the related-run check, required terminal-field checklist, and required artifact-set
@@ -240,7 +248,7 @@ with `Not applicable`.
 Read prompt and playbook revisions from their frontmatter `version` fields; do
 not use the framework commit as either document revision.
 Include evaluation identity and provider-observed telemetry only for an explicit evaluation or benchmark run.
-If final verification finds a packet, path, table, or rendering inconsistency,
+On a Documenter-owned path, if final verification finds a packet, path, table, or rendering inconsistency,
 return it to that same Documenter before closure; do not edit the finalized
 artifact yourself. If the error names Fix Design technical content, worker
 identity, readiness, blockers, diagnosis, or remediation boundary, resume the
@@ -253,10 +261,10 @@ the owning handle once. If the same packet still fails, stop within two minutes 
 resume or replace the Documenter again. Use a received/expected correction directly; do not
 inspect validator source unless the error lacks an expected value or contradicts the documented packet contract. Only then
 release it.
-Before activating the Documenter, run the packaged validator with `--sentry-artifacts <artifact-root>`. Return Contract
+Before finalization, run the packaged validator with `--sentry-artifacts <artifact-root>`. Return Contract
 Delta errors to Evidence Topology and Fix Design schema/readiness/interface errors to Fix Design. Activate Documenter
-only after this check passes.
-Before the first Documenter activation, assemble one finalized packet from immutable run facts. Populate every identity,
+only on its defined paths and only after this check passes.
+Before the first Documenter activation on a Documenter-owned path, assemble one finalized packet from immutable run facts. Populate every identity,
 repository, worker, synchronization, artifact, handle, and outcome row; never send placeholder handles or empty
 structural tables. When Fix Design returns a terminal envelope, persist that exact JSON immediately; do not resume a
 completed worker only to re-emit a result already returned to the Coordinator. When several workers are active, use

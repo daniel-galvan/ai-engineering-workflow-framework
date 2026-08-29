@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.7
+version: 0.4.8
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-08-28
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -96,8 +96,10 @@ Runtime bootstrap:
   reread the complete playbook or core contracts.
 - Active artifacts are direct children of the current `.thoughts/<WORK-ITEM-ID>/` root. Do not recursively search or
   reuse `runs/` archives unless this is an explicit continuation or recovery run.
-- For Standard planning, activate one final Documenter after analytical fan-in. An initialization acknowledgement does
-  not satisfy final handoff.
+- For Standard planning, do not activate a Documenter when Fix Design returns
+  `ready_for_implementation` with action `create`. The packaged deterministic Standard finalizer owns plan and terminal
+  rendering for that path. Retain the final Documenter for `awaiting_input`, Deep planning, and remediation. An
+  initialization acknowledgement never satisfies final handoff.
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
   pre-query Sentry or duplicate that investigation. When `Sentry issue` supplies a stable ID or URL, resolve it directly
@@ -123,8 +125,9 @@ Runtime bootstrap:
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
 - For Standard planning, create one minimal work-record skeleton. Start the evidence worker after initialization;
   validate completed `normalized_evidence.md`, then activate Fix Design with that exact artifact. Retain intermediate
-  ledgers in Coordinator state. Once activated, the final Documenter is the
-  sole artifact writer for the finalized artifact set.
+  ledgers in Coordinator state. For a ready plan, the packaged deterministic finalizer is the sole writer of the plan,
+  final packet, closure receipt, and terminal work record. For `awaiting_input`, the final Documenter remains the sole
+  writer of its finalized artifact set.
 - Pass Fix Design `UPSTREAM-001`, the exact validated `normalized_evidence.md` path, and every original
   supporting artifact path, plus the prepared `fix_design_result_contract.json`. Do not activate it while normalized
   evidence is absent or still being written; do not replace either with a Coordinator-written summary. Immediately
@@ -150,13 +153,25 @@ Runtime bootstrap:
   appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
-- Pass the final Documenter one immutable finalized packet. It populates `templates/finalization_packet.json` as the
+- When Standard Fix Design returns `ready_for_implementation` with action `create`, first validate
+  `normalized_evidence.md` and `fix_design_result.json`, then release Evidence Topology and Fix Design. Run the
+  `standard_ready_finalization.finalizer` recorded in `role_bindings.json` exactly once. Pass the artifact root, the
+  exact Evidence Topology handle, the active Coordinator model/effort, the preflight framework revision/status, and
+  every relevant repository as `--repository 'ROLE=/absolute/path'`. Pass `--provider-release-confirmed` only after
+  both analytical release operations succeed. The script copies the exact interface contract
+  from `fix_design_result.json` into one `# Interface Contract` row and renders `implementation_plan.md`,
+  `finalization_packet.json`, `runtime_closure.json`, and `work_record.md`. Do not activate a Documenter, create a
+  candidate plan/packet, run pre-release finalization, or patch generated Markdown on this path. A nonzero result is
+  `finalization_contract_failure`; preserve the artifacts and error instead of adding a model-based fallback.
+- For `awaiting_input`, Deep planning, or remediation, pass the final Documenter one immutable finalized packet. It
+  populates `templates/finalization_packet.json` as the
   structured `finalization_packet.json`; it does not select, normalize, or reinterpret state, readiness, outcomes,
   worker results, or artifact actions. While that worker remains active, the Coordinator runs packaged
   `scripts/finalize_work_record.py --pre-release` against a pending closure probe and returns any error to the same
   worker. After the pre-release check passes, release the worker, write exact provider closure rows to
   `runtime_closure.json`, then run the finalizer normally; neither role patches terminal Markdown by hand.
-- If finalization finds inconsistencies, return the aggregated error to the same Documenter once; the Coordinator must
+- On a Documenter-owned path, if finalization finds inconsistencies, return the aggregated error to the same Documenter
+  once; the Coordinator must
   not edit the packet or rendered record. If the corrected packet still fails, stop within two minutes with
   `finalization_contract_failure`, preserve the error and artifacts, and release all handles.
 - Before release, reconcile the final artifact and answer with the durable record. Workflow state, profile status,
@@ -170,14 +185,17 @@ Runtime bootstrap:
 - The fix-design result must be one structured JSON object containing the shared identity, input, conformance, checks,
   supported boundary/change, `interface_change`, `interface_contract`, `plan_readiness`,
   `implementation_plan_action`, and blocking-unknown fields. For an interface change, the contract must state the exact
-  surface, request and response shapes, absence semantics, compatibility precedence, and rollout. The Documenter
-  persists it verbatim as `fix_design_result.json` and copies the contract into the plan.
+  surface, request and response shapes, absence semantics, compatibility precedence, and rollout. Fix Design includes
+  complete structured `plan` content in the same canonical JSON result when readiness is
+  `ready_for_implementation`; the deterministic Standard finalizer copies that content and exact contract into the
+  plan. A Documenter persists it only on Documenter-owned paths.
 - `awaiting_input` means `omit` and produces a Clarification Brief. Every blocker must identify its decision type,
   question, unavailable reason, evidence, and at least two materially different fix implications. Do not defer an
   established boundary and intended change unless every blocker is evidenced to invalidate that change. Any blocker
   marked `invalidates_supported_change: true` must include `contradicting_evidence_refs` to observed current-run
   evidence for a materially different boundary or fix; a missing observation is not contradictory evidence. Only
-  `ready_for_implementation` permits the Documenter to create a plan.
+  `ready_for_implementation` permits deterministic Standard plan creation; other profiles and lifecycles follow their
+  playbook-defined Documenter path.
 - Before validating Fix Design, run packaged `normalize_fix_design_result.py --artifact-root <artifact-root>`. This
   explicit producer-format repair may only convert equivalent values to the canonical contract and does not consume the
   analytical correction allowance. Return a blocked or still-invalid result to the same worker. Never semantically

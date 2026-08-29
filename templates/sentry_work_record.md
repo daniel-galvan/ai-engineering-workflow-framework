@@ -1,6 +1,6 @@
 ---
 title: Compact Sentry Work Record
-version: 0.4.8
+version: 0.4.9
 status: Pilot
 ---
 
@@ -38,12 +38,12 @@ status: Pilot
 | --- | --- |
 | Run ID | |
 | Evaluation run ID | Not applicable |
-| Playbook / version | playbooks/sentry_issue_remediation.md / 0.4.7 |
+| Playbook / version | playbooks/sentry_issue_remediation.md / 0.4.8 |
 | Framework commit / status | |
 | Plugin package / version | |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | |
-| Prompt template / revision / conformance | templates/sentry_issue_run_prompt.md / 0.4.7 / pending |
+| Prompt template / revision / conformance | templates/sentry_issue_run_prompt.md / 0.4.8 / pending |
 | Role-policy baseline ID | |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |

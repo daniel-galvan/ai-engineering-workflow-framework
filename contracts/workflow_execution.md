@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.8
+version: 0.4.9
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-08-28
 ---
 
 # Workflow Execution Contract
@@ -605,9 +605,11 @@ a feasible implementation scope.
 
 The Coordinator may reconcile envelopes and enforce gates, but MUST NOT change a technical worker's diagnosis, proposed
 boundary, or plan-readiness disposition. Return a disputed result to the owning worker or an independent Reviewer.
-The final Documenter MUST follow the owning fix-design worker's `implementation_plan_action`. When readiness is
+The final artifact writer MUST follow the owning fix-design worker's `implementation_plan_action`. When readiness is
 `awaiting_input`, the action is `omit`; record a Clarification Brief and do not create a conditional implementation
-plan. Only `ready_for_implementation` permits `create`.
+plan. Only `ready_for_implementation` permits `create`. A selected playbook MAY define deterministic rendering instead
+of a Documenter for a specific terminal path; that renderer MUST copy the validated technical result without semantic
+reinterpretation.
 
 ## Production-Parity Prioritization
 
@@ -1005,18 +1007,24 @@ unknown.”
 Normal runs MUST NOT include `Run metrics` or `Worker timing` in the final answer. An explicitly declared evaluation or
 benchmark run may append those blocks from provider-observed data. Never reconstruct missing timing or usage.
 
-The final Documenter owns the implementation plan, clarification brief, and structured `finalization_packet.json`,
-populated from `templates/finalization_packet.json`.
+The final Documenter normally owns the implementation plan, clarification brief, and structured
+`finalization_packet.json`, populated from `templates/finalization_packet.json`. Standard Sentry planning with
+`ready_for_implementation/create` is the bounded exception: packaged `scripts/finalize_sentry_planning.py` renders the
+validated Fix Design `plan`, copies every interface-contract cell exactly, completes the packet and closure receipt, and
+invokes the terminal work-record renderer without a Documenter activation.
 For Sentry planning, the Coordinator MUST run `scripts/validate_library.py --sentry-artifacts <artifact-root>` after
-analytical fan-in and before Documenter activation. Evidence-format errors return to Evidence Topology; Fix Design
-schema, readiness, worker identity, or interface errors return to Fix Design. The Documenter never repairs them.
+analytical fan-in and before finalization. Evidence-format errors return to Evidence Topology; Fix Design schema,
+readiness, worker identity, plan, or interface errors return to Fix Design. A Documenter never repairs them.
 The packaged `scripts/finalize_work_record.py` renderer is the only writer of the terminal `work_record.md`. It renders
 the packet into canonical Markdown, runs the packaged validator, and atomically replaces the record only after
 validation passes. If rendering or validation fails, the Coordinator MUST return the exact error to the same
-Documenter for a corrected packet; neither agent may patch the terminal Markdown by hand.
+Documenter for a corrected packet on a Documenter-owned path; neither agent may patch the terminal Markdown by hand.
+On the deterministic Standard ready path, a nonzero result is `finalization_contract_failure`; do not add a Documenter
+fallback or patch generated artifacts.
 
-Keep the final Documenter handle live until artifact content, plan action, outcomes, and required artifact disposition
-pass the packaged finalizer in `--pre-release` mode. Before release, provide a pending closure probe in the same schema;
+On Documenter-owned paths, keep the final Documenter handle live until artifact content, plan action, outcomes, and
+required artifact disposition pass the packaged finalizer in `--pre-release` mode. Before release, provide a pending
+closure probe in the same schema;
 the pre-release check validates the packet and candidate record without replacing `work_record.md`. Send every packet
 correction to that same handle and collect the revised result. Only after the pre-release check passes, release the
 handle, then write one provider-observed `runtime_closure.json` receipt. The receipt contains only the exact closure
@@ -1028,7 +1036,7 @@ Coordinator invokes the renderer but MUST NOT edit the packet or rendered record
 
 ## Final Handoff Reconciliation
 
-Before releasing the final Documenter, the Coordinator MUST compare the final artifact and final answer with the runtime
+Before releasing a final Documenter, the Coordinator MUST compare the final artifact and final answer with the runtime
 record. The following values must agree: workflow state, profile status, workflow outcome, engineering outcome, plan
 action, worker outcomes, remaining active handles, artifact paths, and runtime closure. A released handoff MUST contain
 no stale `pending`, `active`, `in_progress`, or
@@ -1036,13 +1044,13 @@ no stale `pending`, `active`, `in_progress`, or
 terminal result, and repeat the comparison before release. A final answer that
 contradicts the durable record is a handoff conformance failure even when the worker graph itself completed.
 
-Before the first final Documenter activation, the Coordinator MUST pass one finalized packet containing worker
-outcomes, workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner, action,
-completion condition, plugin package/version, framework Git revision/status, and playbook name/version. The packet is
-immutable once passed to the Documenter. The Documenter serializes these values as structured JSON; it does not select,
-normalize, reinterpret, or reconstruct them. After the Documenter returns and is released, the Coordinator invokes
-`scripts/finalize_work_record.py` with the packet, closure receipt, and record paths. An inconsistent packet is a
-validation error returned to the Documenter, not authority to decide a different state or outcome.
+Before the first final Documenter activation on a Documenter-owned path, the Coordinator MUST pass one finalized packet
+containing worker outcomes, workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner,
+action, completion condition, plugin package/version, framework Git revision/status, and playbook name/version. The
+packet is immutable once passed to the Documenter. The Documenter serializes these values as structured JSON; it does
+not select, normalize, reinterpret, or reconstruct them. After the Documenter returns and is released, the Coordinator
+invokes `scripts/finalize_work_record.py` with the packet, closure receipt, and record paths. An inconsistent packet is
+a validation error returned to the Documenter, not authority to decide a different state or outcome.
 
 The renderer may canonicalize mechanically equivalent representations such as spacing around model/effort separators,
 known playbook title-to-path identity, framework commit/status separators, escaped Markdown table pipes, canonical role
@@ -1065,11 +1073,12 @@ explanatory sections MAY be omitted. A
 smaller record that omits any required terminal field fails finalization. Normal runs reference the owning evidence,
 design, or plan artifact instead of duplicating it; record size is advisory and never a user-facing metric or gate.
 
-Before releasing a terminal or blocked handoff, the Coordinator MUST run the packaged finalizer in `--pre-release` mode
-against a pending closure probe while the final Documenter handle is still active. It runs the framework validator
-against the complete packet shape and candidate record without replacing `work_record.md`. The prepared packet skeleton
-is the Documenter's pre-release source snapshot; `runtime_closure.json` is the provider receipt, and the rendered
-`work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance failure.
+Before releasing a Documenter-owned terminal or blocked handoff, the Coordinator MUST run the packaged finalizer in
+`--pre-release` mode against a pending closure probe while the final Documenter handle is still active. It runs the
+framework validator against the complete packet shape and candidate record without replacing `work_record.md`. The
+prepared packet skeleton is the Documenter's pre-release source snapshot; `runtime_closure.json` is the provider
+receipt. Rendered `work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance
+failure.
 Return the packet and exact error to the same Documenter and repeat the pre-release check. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
 `plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and

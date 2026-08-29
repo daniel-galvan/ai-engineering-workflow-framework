@@ -26,6 +26,23 @@
     "compatibility_precedence": "non-empty string",
     "rollout": "non-empty string"
   },
+  "plan_when_ready_for_implementation": {
+    "title": "non-empty string",
+    "scope": "list of strings",
+    "exclusions": "list of strings",
+    "root_cause": "non-empty string",
+    "residual_uncertainty": "string",
+    "exact_boundaries": "list of repository/files_symbols objects",
+    "smallest_intended_change": "list of strings",
+    "compatibility_and_absence": "list of strings",
+    "regression_test_strategy": "list of strings",
+    "ordered_steps": "non-empty list of strings",
+    "rollout": "list of strings",
+    "rollback": "list of strings",
+    "monitoring": "list of strings",
+    "risks": "list of strings",
+    "completion_criteria": "non-empty list of strings"
+  },
   "valid_non_interface_example": {
     "worker_id": "fix-design",
     "worker_handle": "<EXACT-ACTIVATION-HANDLE>",
@@ -43,6 +60,23 @@
     "supported_intended_change": "<SUPPORTED-CHANGE>",
     "interface_change": false,
     "interface_contract": null,
-    "blocking_unknowns": []
+    "blocking_unknowns": [],
+    "plan": {
+      "title": "<PLAN-TITLE>",
+      "scope": ["<IN-SCOPE>"],
+      "exclusions": ["<EXCLUSION>"],
+      "root_cause": "<ROOT-CAUSE-OR-BEST-SUPPORTED-EXPLANATION>",
+      "residual_uncertainty": "<RESIDUAL-UNCERTAINTY-OR-NONE>",
+      "exact_boundaries": [{"repository": "<REPOSITORY>", "files_symbols": ["<FILE-OR-SYMBOL>"]}],
+      "smallest_intended_change": ["<CHANGE>"],
+      "compatibility_and_absence": ["<COMPATIBILITY-RULE>"],
+      "regression_test_strategy": ["<REGRESSION-TEST>"],
+      "ordered_steps": ["1. <FIRST-STEP>"],
+      "rollout": ["<ROLLOUT-STEP>"],
+      "rollback": ["<ROLLBACK-STEP>"],
+      "monitoring": ["<MONITORING-CHECK>"],
+      "risks": ["<RISK>"],
+      "completion_criteria": ["<COMPLETION-CRITERION>"]
+    }
   }
 }

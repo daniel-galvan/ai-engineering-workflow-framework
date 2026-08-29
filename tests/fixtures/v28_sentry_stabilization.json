@@ -53,8 +53,8 @@
   "packet_normalization": {
     "plugin_before": "ai-engineering-workflows 0.1.4+codex.20260828121505",
     "plugin_after": "ai-engineering-workflows / 0.1.4+codex.20260828121505",
-    "prompt_before": "templates/sentry_issue_run_prompt.md / 0.4.7 / conformant",
-    "prompt_after": "templates/sentry_issue_run_prompt.md / 0.4.7 / pass",
+    "prompt_before": "templates/sentry_issue_run_prompt.md / 0.4.8 / conformant",
+    "prompt_after": "templates/sentry_issue_run_prompt.md / 0.4.8 / pass",
     "roles": {
       "sentry_current_state_investigator": "Evidence topology",
       "sentry_solution_architect": "Fix design",

@@ -40,6 +40,23 @@ INTERFACE_CONTRACT_FIELDS = (
     "compatibility_precedence",
     "rollout",
 )
+SENTRY_PLAN_FIELDS = (
+    "title",
+    "scope",
+    "exclusions",
+    "root_cause",
+    "residual_uncertainty",
+    "exact_boundaries",
+    "smallest_intended_change",
+    "compatibility_and_absence",
+    "regression_test_strategy",
+    "ordered_steps",
+    "rollout",
+    "rollback",
+    "monitoring",
+    "risks",
+    "completion_criteria",
+)
 SENTRY_EVIDENCE_INPUT_MARKERS = ("UPSTREAM-001", "normalized_evidence.md")
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
@@ -71,6 +88,7 @@ RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
 RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
 PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
 FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
+FINALIZE_SENTRY_PLANNING = ROOT / "scripts" / "finalize_sentry_planning.py"
 NORMALIZE_FIX_DESIGN_RESULT = ROOT / "scripts" / "normalize_fix_design_result.py"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
@@ -375,7 +393,7 @@ def sentry_contract_delta_errors(text: str) -> list[str]:
 
 
 def fix_design_result_errors(
-    data: object, *, required_input_markers: tuple[str, ...] = ()
+    data: object, *, required_input_markers: tuple[str, ...] = (), require_plan: bool = False
 ) -> list[str]:
     if not isinstance(data, dict):
         return ["fix_design_result.json must contain one object"]
@@ -464,6 +482,22 @@ def fix_design_result_errors(
                         errors.append(f"interface_contract {field} must be a non-empty string")
         elif interface_contract is not None:
             errors.append("non-interface change requires interface_contract: null")
+        plan = data.get("plan")
+        if require_plan and not isinstance(plan, dict):
+            errors.append("ready fix design requires structured plan content")
+        elif isinstance(plan, dict):
+            missing_plan_fields = [field for field in SENTRY_PLAN_FIELDS if field not in plan]
+            if missing_plan_fields:
+                errors.append("ready fix design plan is missing fields: " + ", ".join(missing_plan_fields))
+            for field in ("title", "root_cause"):
+                if field in plan and (not isinstance(plan[field], str) or not plan[field].strip()):
+                    errors.append(f"ready fix design plan {field} must be a non-empty string")
+            for field in set(SENTRY_PLAN_FIELDS) - {"title", "root_cause", "residual_uncertainty"}:
+                if field in plan and not isinstance(plan[field], list):
+                    errors.append(f"ready fix design plan {field} must be a list")
+            for field in ("ordered_steps", "completion_criteria"):
+                if field in plan and isinstance(plan[field], list) and not plan[field]:
+                    errors.append(f"ready fix design plan {field} must not be empty")
     elif readiness == "awaiting_input":
         if not data["checks_performed"]:
             errors.append("awaiting_input requires at least one performed discriminating check")
@@ -551,9 +585,19 @@ def validate_sentry_artifacts(root: Path) -> None:
         except (json.JSONDecodeError, OSError) as error:
             errors.append(f"invalid fix_design_result.json: {error}")
         else:
-            errors.extend(
-                fix_design_result_errors(result, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS)
-            )
+            manifest_path = root / "role_bindings.json"
+            require_plan = False
+            if manifest_path.is_file():
+                try:
+                    manifest = json.loads(manifest_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    manifest = {}
+                require_plan = "standard_ready_finalization" in manifest.get("worker_contracts", {})
+            errors.extend(fix_design_result_errors(
+                result,
+                required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS,
+                require_plan=require_plan,
+            ))
     if errors:
         fail(f"{root}: " + "\nFAIL: ".join(errors))
 
@@ -627,6 +671,26 @@ def _plugin_version_refresh_error() -> str | None:
         return None
     if previous_version == current_version:
         return "plugin build metadata must change when bundled package content changes"
+    return None
+
+
+def frontmatter_value_at_revision(revision: str, path: Path, field: str) -> str | None:
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError:
+        return frontmatter_value(path, field)
+    completed = subprocess.run(
+        ["git", "-C", str(ROOT), "show", f"{revision}:{relative}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode:
+        return frontmatter_value(path, field)
+    prefix = f"{field}:"
+    for line in completed.stdout.splitlines():
+        if line.startswith(prefix):
+            return line.split(":", 1)[1].strip()
     return None
 
 
@@ -782,7 +846,12 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     expected_prompt = prompt_by_playbook.get(playbook_name)
     if expected_prompt:
         prompt_identity = identity["Prompt template / revision / conformance"].split(" / ", 2)
-        expected_version = frontmatter_value(ROOT / expected_prompt, "version")
+        framework_revision, framework_status = framework_identity.split(" / ", 1)
+        expected_version = (
+            frontmatter_value_at_revision(framework_revision, ROOT / expected_prompt, "version")
+            if framework_status == "Clean"
+            else frontmatter_value(ROOT / expected_prompt, "version")
+        )
         if len(prompt_identity) != 3 or prompt_identity[0] != expected_prompt:
             fail(f"{path}: Prompt template must match {expected_prompt} for {playbook_name}")
         elif prompt_identity[1] != expected_version:
@@ -966,8 +1035,14 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             except (json.JSONDecodeError, OSError) as error:
                 fail(f"{path}: invalid fix_design_result.json: {error}")
                 fix_result = {}
+            require_plan = bool(
+                manifest
+                and "standard_ready_finalization" in manifest.get("worker_contracts", {})
+            )
             for error in fix_design_result_errors(
-                fix_result, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS
+                fix_result,
+                required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS,
+                require_plan=require_plan,
             ):
                 fail(f"{path}: {error}")
             if not isinstance(fix_result, dict):
@@ -1793,7 +1868,13 @@ for path in (ROOT / "playbooks").glob("*.md"):
         fail(f"{path.relative_to(ROOT)} is missing Deep parallelism or non-duplication rules")
     if "never activate or delegate an `initialize` worker" not in text:
         fail(f"{path.relative_to(ROOT)} delegates Coordinator initialization")
-    if not re.search(r"Activate\s+one final Documenter after analytical fan-in", text):
+    final_documenter = re.search(r"Activate\s+one final Documenter after analytical fan-in", text)
+    deterministic_sentry = (
+        path.stem == "sentry_issue_remediation"
+        and "do not activate a Documenter for that path" in text
+        and "deterministic Standard finalizer" in text
+    )
+    if not final_documenter and not deterministic_sentry:
         fail(f"{path.relative_to(ROOT)} is missing final-Documenter ownership")
     if not re.search(r"final\s+`handoff`\s+after delivery fan-in", text):
         fail(f"{path.relative_to(ROOT)} is missing final remediation handoff ownership")
@@ -1976,6 +2057,8 @@ if not PREPARE_RUN.is_file():
     fail("scripts/prepare_run.py is missing")
 if not FINALIZE_WORK_RECORD.is_file():
     fail("scripts/finalize_work_record.py is missing")
+if not FINALIZE_SENTRY_PLANNING.is_file():
+    fail("scripts/finalize_sentry_planning.py is missing")
 if not NORMALIZE_FIX_DESIGN_RESULT.is_file():
     fail("scripts/normalize_fix_design_result.py is missing")
 else:
@@ -2050,6 +2133,7 @@ for phrase in (
     "`fork_thread`",
     "`send_message_to_thread`",
     "scripts/finalize_work_record.py",
+    "scripts/finalize_sentry_planning.py",
     "scripts/normalize_fix_design_result.py",
     "finalization_packet.json",
     "preflight even when the app hides stdout",
@@ -2367,13 +2451,14 @@ if "requested profile is immutable for the run" not in sentry_playbook:
 for phrase in (
     "pilot target is 10-12 minutes",
     "15-17 minutes when cross-repository analysis",
-    "one final `handoff` after",
-    "initialization acknowledgement is not a final handoff",
+    "deterministic finalization",
+    "initialization acknowledgement",
     "exact model and reasoning effort",
     "framework_revision_mismatch",
     "make a stale prompt match",
     "minimal work-record skeleton",
     "scripts/finalize_work_record.py",
+    "scripts/finalize_sentry_planning.py",
     "one smallest available check",
     "do not run unit or integration tests merely",
     "Best current explanations",
@@ -2418,9 +2503,9 @@ for phrase in (
     "binds configuration",
     "Do not instruct downstream workers to reread",
     "minimal work-record skeleton",
-    "sole artifact writer",
+    "`standard_ready_finalization.finalizer`",
     "one final Documenter after analytical fan-in",
-    "must not write or promote the technical plan",
+    "must not write or",
     "token-based Sentry skill",
     "Do not say `Nothing technical.`",
     "Do not query Sentry",
@@ -2511,7 +2596,7 @@ for phrase in (
     "framework_revision_mismatch",
     "make a stale prompt match",
     "exact configured model",
-    "sole artifact writer",
+    "packaged deterministic finalizer is the sole writer",
     "initialization acknowledgement",
     "token-based Sentry skill",
     "under the declared execution-repository path",
@@ -2649,7 +2734,7 @@ for phrase in (
     "configuration_conformance",
     "run_prompt_nonconformant",
     "evidence_eligibility",
-    "Keep the final Documenter handle live",
+    "On Documenter-owned paths, keep the final Documenter handle live",
     "implementation_plan_action",
     "provider_configuration_unavailable",
     "Never semantically normalize",

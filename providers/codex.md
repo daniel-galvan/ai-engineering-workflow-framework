@@ -1,11 +1,11 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.4.5
+version: 0.4.6
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-08-27
+last_updated: 2026-08-28
 ---
 
 # Codex Provider Adapter
@@ -29,7 +29,8 @@ record.
 
 Sentry uses specialized agents only where its investigation differs from the generic role: orchestration, Sentry
 evidence, failure topology, repository integration, and fix design. It reuses the generic Implementer, Reviewer, Tester,
-and Documenter so delivery policy has one source of truth.
+and Documenter so delivery policy has one source of truth. Successful Standard planning is narrower: after Evidence
+Topology and Fix Design, packaged code renders the ready plan and terminal artifacts without a Documenter activation.
 
 The active Codex session is the Coordinator and performs the Orchestrator role unless the runtime explicitly supports
 nested delegation for a coordinator agent. Agent TOML files configure workers; they do not create delegation capability.
@@ -55,9 +56,11 @@ Treat a completed preflight process with exit status 0 as passed even when the a
 successful preflight solely to recover a missing display payload; retry only after timeout, nonzero exit, or an
 objectively malformed result whose status cannot be determined.
 
-Keep the final Documenter active while running the packaged finalizer in
-`--pre-release` mode with a pending closure probe. Release the worker only after
-that check passes; then record exact provider closure and run the finalizer normally.
+For Standard planning with `ready_for_implementation/create`, release the two analytical workers and run the
+`standard_ready_finalization.finalizer` recorded in `role_bindings.json`; do not activate a Documenter or use
+pre-release rendering. Keep the final Documenter active while running the packaged finalizer in `--pre-release` mode
+with a pending closure probe only for Documenter-owned paths such as `awaiting_input`, Deep planning, and remediation.
+Release that worker only after the check passes; then record exact provider closure and run the finalizer normally.
 
 Framework tool IDs are provider-neutral capability classes, not literal Codex tool names. Use the
 `provider_tool_mapping` emitted in `role_bindings.json`: repository reads, searches, history, builds, tests, and local

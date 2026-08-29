@@ -88,7 +88,7 @@ description: >-
    `prepare_run.py`. Do not parallelize these dependent stages. Immediately send Fix Design its provider-returned
    activation handle and require it to wait for that value before finalizing its envelope. Require Evidence Topology to
    run `validate_library.py --normalized-evidence <artifact-path>` before its first terminal response.
-10. After analytical fan-in and before activating the final Documenter, run
+10. After analytical fan-in, run
    `python3 <packaged-framework-root>/scripts/normalize_fix_design_result.py --artifact-root`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>`. This deterministic producer-format repair runs before validation
    and does not consume the analytical correction allowance. It may only preserve equivalent values in canonical field
@@ -106,7 +106,20 @@ description: >-
    `--completed-handle <released-handle>` once for every released analytical worker, then
    `--coordinator-model-effort <model/effort>`
    `--framework-revision <preflight-sha> --framework-status <clean|dirty> --evidence-artifact <artifact>`.
-   Then require the final Documenter to populate the prepared
+   When Standard Sentry Fix Design returns `ready_for_implementation` with action `create`, do not activate a
+   Documenter. Release the analytical handles, then run the manifest's
+   `standard_ready_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact root,
+   Evidence Topology handle, actual
+   Coordinator model/effort, preflight framework revision/status, and every relevant repository as
+   `--repository 'ROLE=/absolute/path'` and `--provider-release-confirmed` only after both analytical releases succeed.
+   That deterministic finalizer copies the exact Fix Design interface contract,
+   renders `implementation_plan.md`, creates the runtime-closure receipt, completes `finalization_packet.json`, and
+   atomically renders `work_record.md`. It is the only Standard ready-plan writer. Do not pre-render the plan, hand-edit
+   its Markdown, construct a candidate packet, run `finalize_work_record.py --pre-release`, or activate a documentation
+   worker for this path.
+   When Fix Design returns `awaiting_input` with action `omit`, use the final Documenter path below to preserve the
+   Clarification Brief behavior. Deep planning and remediation also retain their playbook-defined Documenter stage.
+   Require that final Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
    field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
    Documenter remains active, create a pending closure probe using the
@@ -134,7 +147,9 @@ description: >-
    action.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
-   failure. Return packet, path, table, rendering, or closure errors to the same Documenter. Return errors naming Fix
+   failure. On a deterministic Standard ready-plan failure, stop with `finalization_contract_failure`; do not add a
+   Documenter fallback or patch generated artifacts. For Documenter-owned paths, return packet, path, table, rendering,
+   or closure errors to the same Documenter. Return errors naming Fix
    Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning
    Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.
    Treat finalizer errors as self-contained received/expected corrections. Do not read or search validator source unless

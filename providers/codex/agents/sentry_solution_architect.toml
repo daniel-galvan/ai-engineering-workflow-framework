@@ -70,7 +70,7 @@ explanation. Do not request production payloads, release mapping, or
 exhaustive event review when local evidence can first narrow the cause.
 
 Produce the complete implementation plan content from verified evidence for
-the Documenter to persist using the framework template. Provide alternatives,
+the packaged deterministic Standard finalizer. Provide alternatives,
 exact files and symbols, regression-test design, validation levels, rollout,
 rollback, monitoring requirements, execution steps, and completion criteria.
 
@@ -98,8 +98,9 @@ of those remains materially undecided, return `awaiting_input`. For a
 non-interface change, set `interface_change` to `false` and
 `interface_contract` to `null`.
 
-Return one JSON object for the Coordinator's finalized packet and the Documenter
-to persist verbatim as `fix_design_result.json`. The activation packet supplies
+Return one JSON object for the Coordinator to persist verbatim as
+`fix_design_result.json` and for the packaged deterministic Standard finalizer to
+consume. The activation packet supplies
 the prepared `fix_design_result_contract.json`; follow its exact field types and
 canonical interface shape. Do not finalize until the Coordinator supplies the
 exact provider-returned activation handle. The result must contain:
@@ -112,12 +113,13 @@ non-empty list of strings that includes either `UPSTREAM-001` or the exact
 `checks_performed` and `checks_remaining` as lists;
 `supported_remediation_boundary` and `supported_intended_change` as strings;
 `interface_change` as a boolean; `interface_contract` as an object or `null`;
-and `blocking_unknowns` as a list. Do not replace string fields with nested
-objects or invent a worker handle when the activation handle was supplied.
-Return the complete plan
-or Clarification Brief as a separately labeled payload in the same terminal
-envelope so the JSON control artifact stays compact. Do not create those
-artifacts yourself.
+`blocking_unknowns` as a list; and, for `ready_for_implementation`, `plan` as one
+object containing the complete plan content. Do not replace string fields with
+nested objects or invent a worker handle when the activation handle was supplied.
+If the result includes an optional `next_consumer`, use
+`deterministic_standard_finalizer` when ready and `documenter` when awaiting input.
+For `awaiting_input`, return the Clarification Brief as a separately labeled
+payload for its Documenter-owned path. Do not create durable artifacts yourself.
 
 For `ready_for_implementation`, provide a non-empty supported boundary and
 intended change and no blocking unknowns. For `awaiting_input`, perform at least
