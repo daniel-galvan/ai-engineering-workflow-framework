@@ -69,7 +69,9 @@ description: >-
    `prepare_run.py`. Workers must use the current task's in-task `spawn_agent`/collaboration runtime. Never use
    `create_thread`, `fork_thread`, or `send_message_to_thread` for workers. Verify the in-task runtime before
    `prepare_run.py`; when unavailable, stop with `worker_runtime_unavailable` without creating user-owned tasks.
-8. Populate the canonical template from supplied and discoverable context. When the prompt requires current-run-only
+8. Keep the prepared Standard Sentry `work_record.md` skeleton unchanged until deterministic finalization. On other
+   paths, populate the canonical template from supplied and discoverable context. When the prompt requires
+   current-run-only
    evidence, do not read memory, historical `.thoughts` artifacts, or prior-run citations at any later stage. The
    execution repository's `.codex/agents/`
    runtime view is optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
@@ -83,10 +85,13 @@ description: >-
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
-   For Standard Sentry planning, activate Evidence Topology first. Validate its completed `normalized_evidence.md`, then
-   activate Fix Design with that exact required artifact and the `fix_design_result_contract` path returned by
-   `prepare_run.py`. Do not parallelize these dependent stages. Immediately send Fix Design its provider-returned
-   activation handle and require it to wait for that value before finalizing its envelope. Require Evidence Topology to
+   For Standard Sentry planning, activate Evidence Topology first with the exact `normalized_evidence_contract` and
+   output paths returned by `prepare_run.py`. Validate its completed `normalized_evidence.md`, then run any playbook-
+   required conditional analytical worker. Activate Fix Design with every validated analytical input, the exact
+   `fix_design_result_contract`, and its assigned `fix_design_result.json` output path. Do not parallelize these
+   dependent stages. Immediately send Fix Design its provider-returned activation handle and require it to wait for
+   that value before writing its envelope. The Coordinator validates the assigned file and never reconstructs its JSON
+   from a worker message. Require Evidence Topology to
    run `validate_library.py --normalized-evidence <artifact-path>` before its first terminal response.
 10. After analytical fan-in, run
    `python3 <packaged-framework-root>/scripts/normalize_fix_design_result.py --artifact-root`
@@ -107,14 +112,17 @@ description: >-
    `--coordinator-model-effort <model/effort>`
    `--framework-revision <preflight-sha> --framework-status <clean|dirty> --evidence-artifact <artifact>`.
    When Standard Sentry Fix Design returns `ready_for_implementation` with action `create`, do not activate a
-   Documenter. Release the analytical handles, then run the manifest's
+   Documenter. Release every activated analytical handle, then run the manifest's
    `standard_ready_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact root,
    Evidence Topology handle, actual
-   Coordinator model/effort, preflight framework revision/status, and every relevant repository as
-   `--repository 'ROLE=/absolute/path'` and `--provider-release-confirmed` only after both analytical releases succeed.
+   Coordinator model/effort, preflight framework revision/status, every relevant repository as
+   `--repository 'ROLE=/absolute/path'`, and each conditional worker as
+   `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every activated analytical release
+   succeeds.
    That deterministic finalizer copies the exact Fix Design interface contract,
-   renders `implementation_plan.md`, creates the runtime-closure receipt, completes `finalization_packet.json`, and
-   atomically renders `work_record.md`. It is the only Standard ready-plan writer. Do not pre-render the plan, hand-edit
+   stages and validates `implementation_plan.md`, the runtime-closure receipt, `finalization_packet.json`, and terminal
+   `work_record.md`, then publishes that terminal set transactionally. It is the only Standard ready-plan writer. Do not
+   pre-render the plan or hand-edit
    its Markdown, construct a candidate packet, run `finalize_work_record.py --pre-release`, or activate a documentation
    worker for this path.
    When Fix Design returns `awaiting_input` with action `omit`, use the final Documenter path below to preserve the

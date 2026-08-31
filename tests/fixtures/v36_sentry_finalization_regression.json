@@ -1,0 +1,113 @@
+{
+  "source_task": "01a058da-42fd-7502-a54b-69f83d40d037",
+  "description": "Regression for v36: string confidence, a conditional Repository Integrator, atomic finalization, and mandatory response-side identity for field-local extents.",
+  "normalized_evidence": "# Normalized Evidence\n\n# Contract Delta\n| Boundary | Representation | Field identity / coordinate space | Evidence refs |\n| --- | --- | --- | --- |\n| Baseline | keyed fanmgmt text | message, link_title, and link_summary are distinct | E-001 |\n| Outbound | scalar event text | title identity is absent | E-001 |\n| Destination input | scalar Supervision text | title coordinate space is unavailable | E-001 |\n| Return | unqualified infraction extents | source field is unavailable | E-001 |\n| Semantic input equivalence | not_equivalent | field-local baseline differs from scalar destination input | E-001 |\n",
+  "evidence_handle": "01a058e0-07fc-75d1-93fd-7a7ab0c3bd0b",
+  "conditional_workers": [
+    {
+      "worker": "repository-integration",
+      "handle": "01a058e5-fda9-7ff2-ad33-7a4d7f9c3de6"
+    }
+  ],
+  "fix_design_result": {
+    "worker_id": "fix-design",
+    "worker_handle": "01a058eb-68e3-7d51-8810-7bb2f000139b",
+    "outcome": "complete",
+    "plan_readiness": "ready_for_implementation",
+    "implementation_plan_action": "create",
+    "inputs_consumed": [
+      "UPSTREAM-001: consumed the exact validated normalized_evidence.md",
+      "INTEGRATION-001: consumed the conditional Repository Integrator result"
+    ],
+    "context_conformance": "pass",
+    "configuration_conformance": "Not exposed; explicit launch binding gpt-5.6-sol / low",
+    "checks_performed": [
+      {
+        "check": "Compared the field-local baseline with the scalar transport and unqualified return contract.",
+        "hypothesis": "Loss of field identity prevents equivalent comparison.",
+        "result": "The request and response both require field identity."
+      }
+    ],
+    "checks_remaining": [
+      "Resolve deployed release mapping before production attribution."
+    ],
+    "supported_remediation_boundary": "Preserve Suggested Content field identity across the request, Supervision scan, response, and fanmgmt comparison boundaries.",
+    "supported_intended_change": "Add optional field-local text and infraction-field identity while preserving scalar text and unqualified extents as the legacy path.",
+    "interface_change": true,
+    "interface_contract": {
+      "surface": "fanmgmt eos_run_compliance suggested-content event and Supervision CreateWorkflowItem infraction response",
+      "request_shape": "Add optional suggested_content_data.text_fields as an object mapping existing fanmgmt field keys to strings, including message, link_title, and link_summary. Keep top-level text unchanged as the legacy scalar message.",
+      "response_shape": "Add optional field to each returned infraction alongside compliance_rule and extents. Extents are relative to that exact field string, and fanmgmt converts a qualified infraction to InfractionType extents {field: extents}.",
+      "absence_semantics": "Absent text_fields retains scalar processing. Absent infraction.field retains legacy key 0 behavior and must not be inferred as link_title or link_summary.",
+      "compatibility_precedence": "Field-local input and qualified response extents take precedence when present; legacy producers and consumers retain scalar text and unqualified extents.",
+      "rollout": "Deploy tolerant consumers before field-aware producers and qualified response writers; roll back population and qualification while retaining tolerant readers."
+    },
+    "blocking_unknowns": [],
+    "confidence": "medium-high",
+    "plan": {
+      "title": "Preserve field-keyed LINK semantics across Suggested Content EOS comparison",
+      "scope": [
+        "Field-keyed request text, field-local evaluation, qualified return extents, and fanmgmt comparison."
+      ],
+      "exclusions": [
+        "No field concatenation or offset translation."
+      ],
+      "root_cause": "The baseline evaluates separate fields while transport sends scalar text and the response omits source-field identity.",
+      "residual_uncertainty": "Production release attribution remains unresolved but does not invalidate the current-source contract boundary.",
+      "exact_boundaries": [
+        {
+          "repository": "fanmgmt",
+          "files_symbols": [
+            "publisher",
+            "return mapper",
+            "comparison"
+          ]
+        },
+        {
+          "repository": "Supervision",
+          "files_symbols": [
+            "request model",
+            "rules",
+            "response model"
+          ]
+        }
+      ],
+      "smallest_intended_change": [
+        "Carry optional field-local text and response identity end to end."
+      ],
+      "compatibility_and_absence": [
+        "Absent additions retain existing scalar and unqualified behavior."
+      ],
+      "regression_test_strategy": [
+        "Verify title-only, summary-only, duplicate-local-offset, absent-map, empty-field, and legacy unqualified cases."
+      ],
+      "ordered_steps": [
+        "1. Add synthetic contract fixtures.",
+        "2. Deploy tolerant readers before writers.",
+        "3. Validate field-qualified comparisons before widening rollout."
+      ],
+      "rollout": [
+        "Deploy tolerant consumers first."
+      ],
+      "rollback": [
+        "Stop producer population and response qualification while retaining tolerant readers."
+      ],
+      "monitoring": [
+        "Track qualified and unqualified comparison outcomes without content values."
+      ],
+      "risks": [
+        "Mixed-version deployment can discard identity if writers precede readers."
+      ],
+      "completion_criteria": [
+        "Field-local and legacy cases pass focused contract tests."
+      ]
+    }
+  },
+  "invalid_unqualified_response_shape": "Keep the existing response with local extents from each source field; no new response property is required.",
+  "expected_identity_error": "field-local multi-field extents require explicit response-side field identity",
+  "expected_confidence": {
+    "level": "medium-high",
+    "basis": "The baseline evaluates separate fields while transport sends scalar text and the response omits source-field identity.",
+    "limits": "Production release attribution remains unresolved but does not invalidate the current-source contract boundary."
+  }
+}

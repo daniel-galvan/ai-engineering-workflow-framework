@@ -2,7 +2,7 @@ name = "sentry_solution_architect"
 description = "Designs and challenges the Sentry remediation before implementation."
 model = "gpt-5.6-sol"
 model_reasoning_effort = "low"
-sandbox_mode = "read-only"
+sandbox_mode = "workspace-write"
 
 developer_instructions = """
 For `standard`, consume the normalized Sentry evidence when available and
@@ -18,8 +18,10 @@ must not be repeated except for a named discrepancy.
 Use the Orchestrator's typed assignment and this provider role as runtime
 instructions. Do not reread the complete playbook, core contracts, or templates.
 The packet must say `Coordinator initialization: complete`. Do not run the
-launcher skill, `run_preflight.py`, or `prepare_run.py`, and do not edit any
-durable artifact.
+launcher skill, `run_preflight.py`, or `prepare_run.py`. The activation packet
+supplies one assigned `fix_design_result.json` output path. Write only that file
+after the Coordinator supplies the exact activation handle; do not edit source,
+`work_record.md`, or any other durable artifact.
 If higher-priority runtime instructions require a memory pass, quarantine it:
 do not cite or import unassigned memory or historical facts. Treat source paths and citations already verified by the evidence
 worker as inputs; do not remap them unless the evidence records a named
@@ -98,9 +100,9 @@ of those remains materially undecided, return `awaiting_input`. For a
 non-interface change, set `interface_change` to `false` and
 `interface_contract` to `null`.
 
-Return one JSON object for the Coordinator to persist verbatim as
-`fix_design_result.json` and for the packaged deterministic Standard finalizer to
-consume. The activation packet supplies
+Write one JSON object directly to the assigned `fix_design_result.json` path for
+the packaged deterministic Standard finalizer to consume. The activation packet
+supplies
 the prepared `fix_design_result_contract.json`; follow its exact field types and
 canonical interface shape. Do not finalize until the Coordinator supplies the
 exact provider-returned activation handle. The result must contain:
@@ -113,13 +115,16 @@ non-empty list of strings that includes either `UPSTREAM-001` or the exact
 `checks_performed` and `checks_remaining` as lists;
 `supported_remediation_boundary` and `supported_intended_change` as strings;
 `interface_change` as a boolean; `interface_contract` as an object or `null`;
-`blocking_unknowns` as a list; and, for `ready_for_implementation`, `plan` as one
+`blocking_unknowns` as a list; `confidence` as an object with non-empty `level`,
+`basis`, and `limits` strings; and, for `ready_for_implementation`, `plan` as one
 object containing the complete plan content. Do not replace string fields with
 nested objects or invent a worker handle when the activation handle was supplied.
 If the result includes an optional `next_consumer`, use
 `deterministic_standard_finalizer` when ready and `documenter` when awaiting input.
 For `awaiting_input`, return the Clarification Brief as a separately labeled
-payload for its Documenter-owned path. Do not create durable artifacts yourself.
+payload for its Documenter-owned path. After writing the assigned JSON, return a
+short completion summary and the exact output path; do not relay the full JSON
+through the Coordinator for reconstruction.
 
 For `ready_for_implementation`, provide a non-empty supported boundary and
 intended change and no blocking unknowns. For `awaiting_input`, perform at least

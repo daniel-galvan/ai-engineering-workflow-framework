@@ -196,10 +196,12 @@ declares the plugin, [`.agents/plugins/marketplace.json`](.agents/plugins/market
 [`skills/run/`](skills/run/) provides the explicit launcher, and [`scripts/run_preflight.py`](scripts/run_preflight.py)
 guards package identity before a workflow starts. [`scripts/prepare_run.py`](scripts/prepare_run.py) archives prior
 runs, creates the current record, and resolves exact worker bindings. For successful Standard Sentry planning,
-[`scripts/finalize_sentry_planning.py`](scripts/finalize_sentry_planning.py) renders the validated Fix Design result
-without a documentation worker. These files do not duplicate playbook or
-contract behavior. Because the installed plugin bundles this repository, every tracked content change refreshes the
-plugin's `+codex.<timestamp>` build metadata; validation and preflight reject a reused build identity.
+[`scripts/finalize_sentry_planning.py`](scripts/finalize_sentry_planning.py) stages and validates the complete terminal
+artifact set from the validated Fix Design result, then publishes it transactionally without a documentation worker.
+Prepared worker contracts assign `normalized_evidence.md` and `fix_design_result.json` directly to their owning workers,
+so the Coordinator validates those files instead of reconstructing large result messages. These files do not duplicate
+playbook or contract behavior. Because the installed plugin bundles this repository, every tracked content change
+refreshes the plugin's `+codex.<timestamp>` build metadata; validation and preflight reject a reused build identity.
 
 Codex users should read [providers/codex.md](providers/codex.md) and
 [providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md). The provider adapter is the source of
@@ -217,9 +219,10 @@ python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 The optional path validates a terminal work record's identity, playbook-selection evidence, repository revisions, and
 evidence-to-action references.
 
-For Standard Sentry planning that reaches `ready_for_implementation`, the Coordinator releases Evidence Topology and
-Fix Design, then runs `scripts/finalize_sentry_planning.py` once. It copies the exact structured plan and interface
-contract, creates the packet and closure receipt, and atomically renders `work_record.md`; no Documenter is activated.
+For Standard Sentry planning that reaches `ready_for_implementation`, the Coordinator releases every activated
+analytical worker, then runs `scripts/finalize_sentry_planning.py` once. It copies the exact structured plan and
+interface contract, records conditional-worker handles, stages and validates the plan, packet, closure receipt, and work
+record, then publishes the terminal set transactionally; no Documenter is activated.
 Clarification, Deep, and remediation paths retain the Documenter flow: pre-release validation while the worker remains
 active, provider closure after release, then normal terminal rendering. A nonzero result returns the exact error to its
 owning technical or documentation path; never repair generated Markdown by hand.

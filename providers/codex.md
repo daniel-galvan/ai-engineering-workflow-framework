@@ -56,11 +56,14 @@ Treat a completed preflight process with exit status 0 as passed even when the a
 successful preflight solely to recover a missing display payload; retry only after timeout, nonzero exit, or an
 objectively malformed result whose status cannot be determined.
 
-For Standard planning with `ready_for_implementation/create`, release the two analytical workers and run the
-`standard_ready_finalization.finalizer` recorded in `role_bindings.json`; do not activate a Documenter or use
+For Standard planning with `ready_for_implementation/create`, release every activated analytical worker and run the
+`standard_ready_finalization.finalizer` recorded in `role_bindings.json`, passing each conditional worker handle with
+`--completed-worker`; do not activate a Documenter or use
 pre-release rendering. Keep the final Documenter active while running the packaged finalizer in `--pre-release` mode
 with a pending closure probe only for Documenter-owned paths such as `awaiting_input`, Deep planning, and remediation.
 Release that worker only after the check passes; then record exact provider closure and run the finalizer normally.
+Evidence Topology and Fix Design receive prepared contracts and exact output paths from `role_bindings.json`. Each
+writes only its assigned artifact; the Coordinator validates those files rather than reconstructing their payloads.
 
 Framework tool IDs are provider-neutral capability classes, not literal Codex tool names. Use the
 `provider_tool_mapping` emitted in `role_bindings.json`: repository reads, searches, history, builds, tests, and local

@@ -5,11 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import redirect_stdout
 from datetime import UTC, datetime
+from io import StringIO
 from pathlib import Path
 
 from finalize_work_record import finalize
@@ -19,6 +23,15 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PLAN_TEMPLATE = ROOT / "templates" / "implementation_plan.md"
 V34_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
+V36_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
+WORKER_BINDINGS = {
+    "evidence-topology": ("sentry_current_state_investigator", "Evidence topology"),
+    "repository-integration": ("sentry_repository_integrator", "Repository integration"),
+    "fix-design": ("sentry_solution_architect", "Fix design"),
+}
+UUID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
 INTERFACE_FIELDS = (
     ("Surface", "surface"),
     ("Request shape", "request_shape"),
@@ -345,20 +358,49 @@ def _released_closure(path: Path, handles: list[str]) -> dict[str, object]:
     }]}
 
 
-def finalize_standard_sentry(
+def _completed_workers(
+    evidence_handle: str, fix_handle: str, worker_specs: list[str]
+) -> dict[str, str]:
+    workers = {"evidence-topology": evidence_handle}
+    for value in worker_specs:
+        worker, separator, handle = value.partition("=")
+        worker = worker.strip()
+        handle = handle.strip()
+        if not separator or worker not in WORKER_BINDINGS:
+            raise ValueError(
+                "completed_worker must use a known WORKER=UUID: "
+                + ", ".join(WORKER_BINDINGS)
+            )
+        if worker in workers or worker == "fix-design":
+            raise ValueError(f"duplicate completed worker: {worker}")
+        workers[worker] = handle
+    workers["fix-design"] = fix_handle
+    for worker, handle in workers.items():
+        if not UUID_PATTERN.fullmatch(handle):
+            raise ValueError(f"{worker} result is missing its exact provider UUID handle")
+    if len(set(workers.values())) != len(workers):
+        raise ValueError("completed workers must use distinct provider UUID handles")
+    return workers
+
+
+def _finalize_standard_sentry_in_place(
     artifact_root: Path,
     *,
+    execution_repository: Path,
     evidence_handle: str,
     coordinator_model_effort: str,
     framework_revision: str,
     framework_status: str,
     repository_specs: list[str],
+    completed_worker_specs: list[str] | None = None,
 ) -> None:
     artifact_root = artifact_root.resolve()
     packet_path = artifact_root / "finalization_packet.json"
     record_path = artifact_root / "work_record.md"
     evidence_path = artifact_root / "normalized_evidence.md"
+    evidence_contract_path = artifact_root / "normalized_evidence_contract.md"
     fix_path = artifact_root / "fix_design_result.json"
+    fix_contract_path = artifact_root / "fix_design_result_contract.json"
     manifest_path = artifact_root / "role_bindings.json"
     closure_path = artifact_root / "runtime_closure.json"
     plan_path = artifact_root / "implementation_plan.md"
@@ -381,11 +423,10 @@ def finalize_standard_sentry(
     ):
         raise ValueError("deterministic Standard finalization currently requires ready_for_implementation/create")
     fix_handle = str(fix.get("worker_handle", "")).strip()
-    for label, handle in (("evidence", evidence_handle), ("fix design", fix_handle)):
-        if not re.fullmatch(r"[0-9a-fA-F-]{36}", handle):
-            raise ValueError(f"{label} result is missing its exact provider UUID handle")
+    completed_workers = _completed_workers(
+        evidence_handle, fix_handle, completed_worker_specs or []
+    )
 
-    execution_repository = artifact_root.parent.parent
     repositories = _material_rows(packet.get("repositories"), "Repository role")
     if not repositories:
         specs = repository_specs or [f"Execution={execution_repository}"]
@@ -442,39 +483,60 @@ def finalize_standard_sentry(
         "Finalization schema": "Passed",
     })
 
-    evidence_model, evidence_observed = _binding(manifest, "sentry_current_state_investigator")
-    fix_model, fix_observed = _binding(manifest, "sentry_solution_architect")
-    packet["workers"] = [
-        {"Worker": "evidence-topology", "Role": "Evidence topology", "Assigned inputs": "Current-run inputs",
-         "Mode": "investigation", "Depth": "standard", "Skills": "Bounded Sentry evidence collection",
-         "Tools": "Mapped provider operations", "Capacity": "one in-task worker",
-         "Configured model/effort": evidence_model, "Provider-observed model/effort": evidence_observed,
-         "Usage": "Provider telemetry unavailable", "Depends on": "Coordinator initialization",
-         "Outcome": "complete", "Confidence": "High for recorded evidence; uncertainties explicit"},
-        {"Worker": "fix-design", "Role": "Fix design", "Assigned inputs": "UPSTREAM-001",
-         "Mode": "investigation", "Depth": "standard", "Skills": "Bounded remediation design",
-         "Tools": "Mapped provider operations", "Capacity": "one in-task worker",
-         "Configured model/effort": fix_model, "Provider-observed model/effort": fix_observed,
-         "Usage": "Provider telemetry unavailable", "Depends on": "Validated Evidence topology",
-         "Outcome": "complete", "Confidence": "High for the supported design boundary"},
-    ]
+    bindings = {
+        worker: _binding(manifest, WORKER_BINDINGS[worker][0])
+        for worker in completed_workers
+    }
+    packet["workers"] = []
+    packet["worker_results"] = []
+    for worker in completed_workers:
+        configured, observed = bindings[worker]
+        role = WORKER_BINDINGS[worker][1]
+        if worker == "evidence-topology":
+            assigned = "Current-run inputs"
+            depends_on = "Coordinator initialization"
+            skills = "Bounded Sentry evidence collection"
+            confidence = "High for recorded evidence; uncertainties explicit"
+            contribution = "Created and validated normalized_evidence.md with explicit uncertainty and Contract Delta"
+            refs = "E-001 / C-001"
+            uncertainty = "See normalized_evidence.md"
+        elif worker == "repository-integration":
+            assigned = "Validated normalized evidence and declared repositories"
+            depends_on = "Validated Evidence topology"
+            skills = "Bounded cross-repository contract verification"
+            confidence = "High for verified repository boundaries; uncertainties explicit"
+            contribution = "Verified the conditional cross-repository integration boundary consumed by Fix Design"
+            refs = "E-001 / C-001"
+            uncertainty = "See normalized_evidence.md and Fix Design checks remaining"
+        else:
+            assigned = "UPSTREAM-001 and every activated analytical result"
+            depends_on = "Validated analytical inputs"
+            skills = "Bounded remediation design"
+            confidence = "High for the supported design boundary"
+            contribution = str(fix["supported_intended_change"])
+            refs = "E-002 / C-001; C-002"
+            uncertainty = "No blocking unknowns; remaining checks are plan gates"
+        packet["workers"].append({
+            "Worker": worker, "Role": role, "Assigned inputs": assigned,
+            "Mode": "investigation", "Depth": "standard", "Skills": skills,
+            "Tools": "Mapped provider operations", "Capacity": "one in-task worker",
+            "Configured model/effort": configured, "Provider-observed model/effort": observed,
+            "Usage": "Provider telemetry unavailable", "Depends on": depends_on,
+            "Outcome": "complete", "Confidence": confidence,
+        })
+        packet["worker_results"].append({
+            "Worker": worker, "Outcome": "complete", "Confidence": confidence,
+            "Unique contribution": contribution, "Evidence / claim refs": refs,
+            "Uncertainties / blockers": uncertainty, "Actual model/effort": observed,
+            "Usage/credits": "Provider telemetry unavailable",
+        })
+    worker_names = "; ".join(completed_workers)
+    worker_outcomes = "; ".join("complete" for _ in completed_workers)
     packet["synchronization"] = [{
-        "Stage": "Standard analytical fan-in", "Workers launched": "evidence-topology; fix-design",
-        "Launch mode / exception": "Sequential dependency order", "Worker outcomes": "complete; complete",
+        "Stage": "Standard analytical fan-in", "Workers launched": worker_names,
+        "Launch mode / exception": "Dependency-ordered activation", "Worker outcomes": worker_outcomes,
         "Results summarized": "Yes; canonical artifacts consumed", "Barrier status": "Passed; runtime closure released",
     }]
-    packet["worker_results"] = [
-        {"Worker": "evidence-topology", "Outcome": "complete", "Confidence": "High for recorded evidence",
-         "Unique contribution": (
-             "Created and validated normalized_evidence.md with explicit uncertainty and Contract Delta"
-         ),
-         "Evidence / claim refs": "E-001 / C-001", "Uncertainties / blockers": "See normalized_evidence.md",
-         "Actual model/effort": evidence_observed, "Usage/credits": "Provider telemetry unavailable"},
-        {"Worker": "fix-design", "Outcome": "complete", "Confidence": "High for the supported design boundary",
-         "Unique contribution": str(fix["supported_intended_change"]), "Evidence / claim refs": "E-002 / C-001; C-002",
-         "Uncertainties / blockers": "No blocking unknowns; remaining checks are plan gates",
-         "Actual model/effort": fix_observed, "Usage/credits": "Provider telemetry unavailable"},
-    ]
     if not _material_rows(packet.get("evidence"), "Evidence ID"):
         packet["evidence"] = [
             {"Evidence ID": "E-001", "Source": str(evidence_path),
@@ -514,8 +576,14 @@ def finalize_standard_sentry(
          "Purpose": "Exact worker bindings"},
         {"Artifact": "Normalized evidence", "Path": str(evidence_path), "Status": "Created and validated",
          "Purpose": "Current-run evidence"},
+        *([{"Artifact": "Normalized evidence contract", "Path": str(evidence_contract_path),
+            "Status": "Prepared and consumed", "Purpose": "Assigned Evidence Topology output contract"}]
+          if evidence_contract_path.is_file() else []),
         {"Artifact": "Fix design result", "Path": str(fix_path), "Status": "Created and validated",
          "Purpose": "Canonical design result"},
+        *([{"Artifact": "Fix design result contract", "Path": str(fix_contract_path),
+            "Status": "Prepared and consumed", "Purpose": "Assigned Fix Design output contract"}]
+          if fix_contract_path.is_file() else []),
         {"Artifact": "Implementation plan", "Path": str(plan_path),
          "Status": "Ready for implementation; approval pending",
          "Purpose": "Approval-gated implementation design"},
@@ -549,12 +617,18 @@ def finalize_standard_sentry(
         ),
     }
 
-    handles = [evidence_handle, fix_handle]
+    handles = list(completed_workers.values())
     closure = _released_closure(closure_path, handles)
     closure_path.write_text(json.dumps(closure, indent=2) + "\n")
     packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     validation = subprocess.run(
-        [sys.executable, str(VALIDATOR), "--sentry-artifacts", str(artifact_root)],
+        [
+            sys.executable,
+            str(VALIDATOR),
+            "--allow-unreleased",
+            "--sentry-artifacts",
+            str(artifact_root),
+        ],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     if validation.returncode:
@@ -562,8 +636,109 @@ def finalize_standard_sentry(
     finalize(packet_path, closure_path, record_path)
 
 
+def _replace_file(path: Path, content: bytes) -> None:
+    with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(content)
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def finalize_standard_sentry(
+    artifact_root: Path,
+    *,
+    evidence_handle: str,
+    coordinator_model_effort: str,
+    framework_revision: str,
+    framework_status: str,
+    repository_specs: list[str],
+    completed_worker_specs: list[str] | None = None,
+) -> None:
+    artifact_root = artifact_root.resolve()
+    required_names = (
+        "finalization_packet.json",
+        "normalized_evidence.md",
+        "fix_design_result.json",
+        "role_bindings.json",
+    )
+    for name in required_names:
+        if not (artifact_root / name).is_file():
+            raise ValueError(f"required artifact is missing: {artifact_root / name}")
+
+    output_names = (
+        "implementation_plan.md",
+        "finalization_packet.json",
+        "runtime_closure.json",
+        "work_record.md",
+    )
+    with tempfile.TemporaryDirectory(prefix="workflow-sentry-stage-") as directory:
+        stage_root = (Path(directory) / "artifacts").resolve()
+        stage_root.mkdir()
+        stage_names = set(required_names) | set(output_names) | {
+            "normalized_evidence_contract.md",
+            "fix_design_result_contract.json",
+        }
+        for name in stage_names:
+            source = artifact_root / name
+            if source.is_file():
+                shutil.copyfile(source, stage_root / name)
+        with redirect_stdout(StringIO()):
+            _finalize_standard_sentry_in_place(
+                stage_root,
+                execution_repository=artifact_root.parent.parent,
+                evidence_handle=evidence_handle,
+                coordinator_model_effort=coordinator_model_effort,
+                framework_revision=framework_revision,
+                framework_status=framework_status,
+                repository_specs=repository_specs,
+                completed_worker_specs=completed_worker_specs,
+            )
+
+        stage_prefix = str(stage_root)
+        canonical_prefix = str(artifact_root)
+        candidates = {
+            name: (stage_root / name).read_text().replace(stage_prefix, canonical_prefix).encode()
+            for name in output_names
+        }
+        originals = {
+            name: (artifact_root / name).read_bytes() if (artifact_root / name).is_file() else None
+            for name in output_names
+        }
+        try:
+            for name, content in candidates.items():
+                _replace_file(artifact_root / name, content)
+            validation = subprocess.run(
+                [
+                    sys.executable,
+                    str(VALIDATOR),
+                    "--sentry-artifacts",
+                    str(artifact_root),
+                    "--emit-handoff",
+                    str(artifact_root / "work_record.md"),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if validation.returncode:
+                raise ValueError(validation.stdout.strip() or validation.stderr.strip())
+        except Exception:
+            for name, content in originals.items():
+                target = artifact_root / name
+                if content is None:
+                    target.unlink(missing_ok=True)
+                else:
+                    _replace_file(target, content)
+            raise
+        print(validation.stdout, end="")
+
+
 def self_test() -> None:
     fixture = json.loads(V34_FIXTURE.read_text())
+    v36_fixture = json.loads(V36_FIXTURE.read_text())
     with tempfile.TemporaryDirectory(prefix="workflow-sentry-finalize-") as directory:
         execution_repository = Path(directory) / "repo"
         execution_repository.mkdir()
@@ -590,6 +765,9 @@ def self_test() -> None:
         )
         framework_revision = _git(ROOT, "rev-parse", "HEAD")
         framework_status = "dirty" if _git(ROOT, "status", "--porcelain") else "clean"
+        completed_specs = [
+            f"{row['worker']}={row['handle']}" for row in v36_fixture["conditional_workers"]
+        ]
         finalize_standard_sentry(
             artifact_root,
             evidence_handle="01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
@@ -597,6 +775,7 @@ def self_test() -> None:
             framework_revision=framework_revision,
             framework_status=framework_status,
             repository_specs=[f"Execution={execution_repository}"],
+            completed_worker_specs=completed_specs,
         )
         plan_text = (artifact_root / "implementation_plan.md").read_text()
         record_text = (artifact_root / "work_record.md").read_text()
@@ -608,6 +787,57 @@ def self_test() -> None:
         assert "| documenter |" not in record_text.lower()
         assert "| State | ready_for_implementation |" in record_text
         assert "deterministic rendering passed" in record_text
+        conditional = v36_fixture["conditional_workers"][0]
+        assert f"| {conditional['worker']} |" in record_text
+        assert conditional["handle"] in (artifact_root / "runtime_closure.json").read_text()
+        output_names = (
+            "implementation_plan.md",
+            "finalization_packet.json",
+            "runtime_closure.json",
+            "work_record.md",
+        )
+        output_before_failure = {
+            name: (artifact_root / name).read_bytes() for name in output_names
+        }
+        stale_record = record_text.replace(
+            "| State | ready_for_implementation |", "| State | in_progress |", 1
+        )
+        (artifact_root / "work_record.md").write_text(stale_record)
+        terminal_validation = subprocess.run(
+            [sys.executable, str(VALIDATOR), "--sentry-artifacts", str(artifact_root)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert terminal_validation.returncode != 0
+        (artifact_root / "work_record.md").write_bytes(output_before_failure["work_record.md"])
+        valid_fix_text = (artifact_root / "fix_design_result.json").read_text()
+        invalid_fix = json.loads(json.dumps(v36_fixture["fix_design_result"]))
+        invalid_fix["confidence"] = v36_fixture["expected_confidence"]
+        invalid_fix["interface_contract"]["response_shape"] = v36_fixture[
+            "invalid_unqualified_response_shape"
+        ]
+        (artifact_root / "fix_design_result.json").write_text(json.dumps(invalid_fix, indent=2) + "\n")
+        try:
+            finalize_standard_sentry(
+                artifact_root,
+                evidence_handle="01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
+                coordinator_model_effort="gpt-5.6-luna / high",
+                framework_revision=framework_revision,
+                framework_status=framework_status,
+                repository_specs=[f"Execution={execution_repository}"],
+                completed_worker_specs=completed_specs,
+            )
+        except ValueError as error:
+            assert v36_fixture["expected_identity_error"] in str(error)
+        else:
+            raise AssertionError("invalid Fix Design must fail atomic finalization")
+        assert all(
+            (artifact_root / name).read_bytes() == content
+            for name, content in output_before_failure.items()
+        )
+        (artifact_root / "fix_design_result.json").write_text(valid_fix_text)
     print("finalize_sentry_planning self-test: passed")
 
 
@@ -620,6 +850,7 @@ def main() -> int:
     parser.add_argument("--framework-status", choices=("clean", "dirty"))
     parser.add_argument("--provider-release-confirmed", action="store_true")
     parser.add_argument("--repository", action="append", default=[], metavar="ROLE=/ABSOLUTE/PATH")
+    parser.add_argument("--completed-worker", action="append", default=[], metavar="WORKER=UUID")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -639,6 +870,7 @@ def main() -> int:
             framework_revision=args.framework_revision,
             framework_status=args.framework_status,
             repository_specs=args.repository,
+            completed_worker_specs=args.completed_worker,
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

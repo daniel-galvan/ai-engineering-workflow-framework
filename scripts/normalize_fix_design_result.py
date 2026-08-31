@@ -42,6 +42,22 @@ def normalize_fix_design_result(data: object) -> tuple[dict[str, object], list[s
     normalized = json.loads(json.dumps(data))
     changes: list[str] = []
 
+    confidence = normalized.get("confidence")
+    if _nonempty_string(confidence):
+        plan = normalized.get("plan")
+        if not isinstance(plan, dict):
+            raise ValueError("string confidence requires a structured plan for lossless normalization")
+        basis = plan.get("root_cause")
+        limits = plan.get("residual_uncertainty")
+        if not _nonempty_string(basis) or not _nonempty_string(limits):
+            raise ValueError("string confidence requires plan root_cause and residual_uncertainty")
+        normalized["confidence"] = {
+            "level": confidence.strip(),
+            "basis": basis.strip(),
+            "limits": limits.strip(),
+        }
+        changes.append("string confidence converted to the canonical object")
+
     inputs = normalized.get("inputs_consumed")
     if isinstance(inputs, list) and inputs and any(not isinstance(value, str) for value in inputs):
         converted: list[str] = []
@@ -180,6 +196,10 @@ def self_test() -> None:
     contract = normalized["interface_contract"]
     assert isinstance(contract, dict)
     assert all(_nonempty_string(contract[field]) for field in fixture["expected_interface_fields"])
+    v36 = json.loads((ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json").read_text())
+    normalized_v36, changes_v36 = normalize_fix_design_result(v36["fix_design_result"])
+    assert "string confidence converted to the canonical object" in changes_v36
+    assert normalized_v36["confidence"] == v36["expected_confidence"]
     print("normalize_fix_design_result self-test: passed")
 
 

@@ -700,11 +700,11 @@ def self_test() -> None:
                           "Evidence eligibility": "Accepted"}],
         "identity": {
             "Run ID": "run-001", "Evaluation run ID": "Not applicable",
-            "Playbook / version": "playbooks/sentry_issue_remediation.md / 0.4.8",
+            "Playbook / version": "playbooks/sentry_issue_remediation.md / 0.4.9",
             "Framework commit / status": f"{'a' * 40} / Clean", "Plugin package / version": "Not applicable",
             "Provider/runtime configuration": "Not provided",
             "Provider configuration source/status": "manual / resolved",
-            "Prompt template / revision / conformance": "templates/sentry_issue_run_prompt.md / 0.4.8 / pass",
+            "Prompt template / revision / conformance": "templates/sentry_issue_run_prompt.md / 0.4.9 / pass",
             "Role-policy baseline ID": "Not applicable", "Role binding manifest": "Not applicable",
             "Provider / model configuration": "Manual / Worker Execution Ledger",
             "Coordinator model/effort": "Not applicable", "Requested profile": "standard",
@@ -859,9 +859,9 @@ def self_test() -> None:
             V34_FINALIZATION_FIXTURE.read_text()
         )["fix_design_result"]["plan"]
         fixture_packet_data["identity"]["Framework commit / status"] = f"{'a' * 40} Clean; preflight passed"
-        fixture_packet_data["identity"]["Playbook / version"] = "Sentry Issue Remediation / 0.4.8"
+        fixture_packet_data["identity"]["Playbook / version"] = "Sentry Issue Remediation / 0.4.9"
         fixture_packet_data["identity"]["Prompt template / revision / conformance"] = (
-            "templates/sentry_issue_run_prompt.md / 0.4.8 / pass"
+            "templates/sentry_issue_run_prompt.md / 0.4.9 / pass"
         )
         fixture_packet_data["identity"]["Coordinator model/effort"] = "gpt-5.6-luna/medium"
         fixture_packet_data["handoff"]["workflow_result"] = "Workflow result: Ready for implementation"
@@ -888,9 +888,9 @@ def self_test() -> None:
         finalize(fixture_packet, fixture_closure, fixture_record)
         fixture_rendered = fixture_record.read_text()
         assert "Workflow result: Ready for implementation" in fixture_rendered
-        assert "templates/sentry_issue_run_prompt.md / 0.4.8 / pass" in fixture_rendered
+        assert "templates/sentry_issue_run_prompt.md / 0.4.9 / pass" in fixture_rendered
         assert f"{'a' * 40} / Clean" in fixture_rendered
-        assert "playbooks/sentry_issue_remediation.md / 0.4.8" in fixture_rendered
+        assert "playbooks/sentry_issue_remediation.md / 0.4.9" in fixture_rendered
         assert "gpt-5.6-luna / medium" in fixture_rendered
         assert "evidence 01a00000" not in fixture_rendered
         assert "runtime closure released" in fixture_rendered

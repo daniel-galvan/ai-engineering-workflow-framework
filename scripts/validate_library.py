@@ -92,6 +92,8 @@ FINALIZE_SENTRY_PLANNING = ROOT / "scripts" / "finalize_sentry_planning.py"
 NORMALIZE_FIX_DESIGN_RESULT = ROOT / "scripts" / "normalize_fix_design_result.py"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
+SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
+V36_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
@@ -414,8 +416,12 @@ def fix_design_result_errors(
         "interface_change",
         "interface_contract",
         "blocking_unknowns",
+        "confidence",
     }
-    missing = sorted(field for field in required if field not in data)
+    missing = sorted(
+        field for field in required
+        if field not in data and (field != "confidence" or require_plan)
+    )
     if missing:
         errors.append(f"fix design result is missing fields: {', '.join(missing)}")
         return errors
@@ -456,6 +462,14 @@ def fix_design_result_errors(
             errors.append(f"fix design {field} must be a list")
     if not isinstance(data["interface_change"], bool):
         errors.append("fix design interface_change must be true or false")
+    confidence = data.get("confidence")
+    if confidence is not None or require_plan:
+        if not isinstance(confidence, dict):
+            errors.append("fix design confidence must be an object with level, basis, and limits")
+        else:
+            for field in ("level", "basis", "limits"):
+                if not isinstance(confidence.get(field), str) or not confidence[field].strip():
+                    errors.append(f"fix design confidence {field} must be a non-empty string")
     if errors:
         return errors
     boundary = data["supported_remediation_boundary"]
@@ -480,6 +494,25 @@ def fix_design_result_errors(
                     value = interface_contract.get(field)
                     if not isinstance(value, str) or not value.strip():
                         errors.append(f"interface_contract {field} must be a non-empty string")
+                request_shape = str(interface_contract.get("request_shape", "")).lower()
+                response_shape = str(interface_contract.get("response_shape", "")).lower()
+                field_keyed = any(
+                    marker in request_shape
+                    for marker in ("field-keyed", "field keyed", "text_fields", "link_title", "link_summary")
+                )
+                local_extents = "extent" in response_shape and any(
+                    marker in response_shape for marker in ("field", "local", "source")
+                )
+                explicit_identity = (
+                    "field" in response_shape
+                    and any(marker in response_shape for marker in ("property", "key", "identity", "qualified"))
+                    and "no new response property" not in response_shape
+                    and "unqualified" not in response_shape
+                )
+                if field_keyed and local_extents and not explicit_identity:
+                    errors.append(
+                        "field-local multi-field extents require explicit response-side field identity"
+                    )
         elif interface_contract is not None:
             errors.append("non-interface change requires interface_contract: null")
         plan = data.get("plan")
@@ -600,6 +633,35 @@ def validate_sentry_artifacts(root: Path) -> None:
             ))
     if errors:
         fail(f"{root}: " + "\nFAIL: ".join(errors))
+    if _ALLOW_UNRELEASED:
+        return
+    packet_path = root / "finalization_packet.json"
+    closure_path = root / "runtime_closure.json"
+    if packet_path.is_file() and closure_path.is_file():
+        try:
+            packet = json.loads(packet_path.read_text())
+            closure = json.loads(closure_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return
+        closure_rows = closure.get("runtime_closure", [])
+        released = bool(closure_rows) and all(
+            isinstance(row, dict)
+            and str(row.get("Runtime status", "")).strip().lower() == "released"
+            and str(row.get("Remaining active handles", "")).strip().lower() in {"none", "0"}
+            for row in closure_rows
+        )
+        terminal_packet = (
+            str(packet.get("handoff", {}).get("workflow_result", "")).strip()
+            and str(packet.get("finalization", {}).get("Final reconciliation", ""))
+            .strip()
+            .lower()
+            .startswith("passed")
+        )
+        if released and terminal_packet:
+            record = root / "work_record.md"
+            if not record.is_file():
+                fail(f"{root}: released terminal artifact set requires work_record.md")
+            validate_work_record(record, require_terminal=True)
 
 
 def validate_normalized_evidence(path: Path) -> None:
@@ -1386,6 +1448,11 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         "interface_change": False,
         "interface_contract": None,
         "blocking_unknowns": [],
+        "confidence": {
+            "level": "high",
+            "basis": "The current contract comparison identifies the field loss.",
+            "limits": "Production parity remains to be verified.",
+        },
     }
     assert fix_design_result_errors(ready_fix) == []
     assert _contains_hypothesis({"checks_performed": [{"hypothesis": "contract loss"}]})
@@ -2106,8 +2173,42 @@ else:
             "interface_change",
             "interface_contract",
             "blocking_unknowns",
+            "confidence",
         }:
             fail("templates/sentry_fix_design_result_contract.json has an invalid required-field set")
+if not SENTRY_NORMALIZED_EVIDENCE_CONTRACT.is_file():
+    fail("templates/sentry_normalized_evidence_contract.md is missing")
+else:
+    normalized_evidence_contract = SENTRY_NORMALIZED_EVIDENCE_CONTRACT.read_text()
+    for phrase in (
+        "## Run Scope",
+        "## Source Register",
+        "## Confirmed Facts",
+        "## Best Current Hypotheses",
+        "## Topology",
+        "## Uncertainty and Checks Remaining",
+        "# Contract Delta",
+        "validator implementation or regression fixtures is not part",
+    ):
+        if phrase not in normalized_evidence_contract:
+            fail(f"templates/sentry_normalized_evidence_contract.md is missing {phrase}")
+if not V36_SENTRY_FINALIZATION_FIXTURE.is_file():
+    fail("tests/fixtures/v36_sentry_finalization_regression.json is missing")
+else:
+    v36_fixture = json.loads(V36_SENTRY_FINALIZATION_FIXTURE.read_text())
+    valid_v36_fix = json.loads(json.dumps(v36_fixture["fix_design_result"]))
+    valid_v36_fix["confidence"] = v36_fixture["expected_confidence"]
+    if fix_design_result_errors(valid_v36_fix, required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS, require_plan=True):
+        fail("v36 valid field-identity regression fixture must pass Fix Design validation")
+    invalid_v36_fix = json.loads(json.dumps(valid_v36_fix))
+    invalid_v36_fix["interface_contract"]["response_shape"] = v36_fixture["invalid_unqualified_response_shape"]
+    invalid_v36_errors = fix_design_result_errors(
+        invalid_v36_fix,
+        required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS,
+        require_plan=True,
+    )
+    if v36_fixture["expected_identity_error"] not in invalid_v36_errors:
+        fail("v36 unqualified-response regression fixture must fail response-side identity validation")
 if not SENTRY_WORK_RECORD_TEMPLATE.is_file():
     fail("templates/sentry_work_record.md is missing")
 run_skill = RUN_SKILL.read_text()
@@ -2571,6 +2672,7 @@ for phrase in (
     "includes either `UPSTREAM-001`",
     "supported_remediation_boundary` and `supported_intended_change` as strings",
     "fix_design_result_contract.json",
+    "assigned `fix_design_result.json`",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
@@ -2586,6 +2688,8 @@ for phrase in (
     "# Contract Delta",
     "Coordinator initialization: complete",
     "--normalized-evidence",
+    "normalized_evidence_contract.md",
+    "Do not inspect `validate_library.py`",
 ):
     if phrase not in sentry_investigator:
         fail(f"providers/codex/agents/sentry_current_state_investigator.toml is missing bounded evidence control: {phrase}")
@@ -2629,6 +2733,8 @@ for phrase in (
     "skill or plugin enable/disable directive",
     "Pass Fix Design `UPSTREAM-001`",
     "fix_design_result_contract.json",
+    "normalized_evidence_contract.md",
+    "--completed-worker",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")

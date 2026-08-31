@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "artifact": "fix_design_result.json",
   "required_fields": {
     "worker_id": "non-empty string",
@@ -16,7 +16,8 @@
     "supported_intended_change": "string",
     "interface_change": "boolean",
     "interface_contract": "null when interface_change is false; canonical object when true",
-    "blocking_unknowns": "list"
+    "blocking_unknowns": "list",
+    "confidence": "object with non-empty level, basis, and limits strings"
   },
   "interface_contract_when_true": {
     "surface": "non-empty string",
@@ -61,6 +62,11 @@
     "interface_change": false,
     "interface_contract": null,
     "blocking_unknowns": [],
+    "confidence": {
+      "level": "high",
+      "basis": "<EVIDENCE-BACKED-BASIS>",
+      "limits": "<RESIDUAL-LIMITS-OR-NONE>"
+    },
     "plan": {
       "title": "<PLAN-TITLE>",
       "scope": ["<IN-SCOPE>"],

@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.9
+version: 0.4.10
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-28
+last_updated: 2026-08-31
 ---
 
 # Workflow Execution Contract
@@ -1010,11 +1010,16 @@ benchmark run may append those blocks from provider-observed data. Never reconst
 The final Documenter normally owns the implementation plan, clarification brief, and structured
 `finalization_packet.json`, populated from `templates/finalization_packet.json`. Standard Sentry planning with
 `ready_for_implementation/create` is the bounded exception: packaged `scripts/finalize_sentry_planning.py` renders the
-validated Fix Design `plan`, copies every interface-contract cell exactly, completes the packet and closure receipt, and
-invokes the terminal work-record renderer without a Documenter activation.
+validated Fix Design `plan`, copies every interface-contract cell exactly, records every activated analytical worker,
+and stages the plan, packet, closure receipt, and terminal work record without a Documenter activation. It validates the
+staged set before transactional publication and restores the prior terminal set if canonical validation fails.
 For Sentry planning, the Coordinator MUST run `scripts/validate_library.py --sentry-artifacts <artifact-root>` after
 analytical fan-in and before finalization. Evidence-format errors return to Evidence Topology; Fix Design schema,
 readiness, worker identity, plan, or interface errors return to Fix Design. A Documenter never repairs them.
+The Evidence and Fix Design activation packets MUST include their prepared contracts and assigned output paths. Each
+worker writes only its assigned artifact. The Coordinator validates those files directly and MUST NOT reconstruct a
+large worker result from a message relay. A released terminal `--sentry-artifacts` validation also validates the
+authoritative `work_record.md`; `--allow-unreleased` is reserved for pre-publication artifact validation.
 The packaged `scripts/finalize_work_record.py` renderer is the only writer of the terminal `work_record.md`. It renders
 the packet into canonical Markdown, runs the packaged validator, and atomically replaces the record only after
 validation passes. If rendering or validation fails, the Coordinator MUST return the exact error to the same
@@ -1077,7 +1082,8 @@ Before releasing a Documenter-owned terminal or blocked handoff, the Coordinator
 `--pre-release` mode against a pending closure probe while the final Documenter handle is still active. It runs the
 framework validator against the complete packet shape and candidate record without replacing `work_record.md`. The
 prepared packet skeleton is the Documenter's pre-release source snapshot; `runtime_closure.json` is the provider
-receipt. Rendered `work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance
+receipt. A prepared Standard Sentry work-record skeleton is not progressively populated during analysis. The rendered
+and released `work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance
 failure.
 Return the packet and exact error to the same Documenter and repeat the pre-release check. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with

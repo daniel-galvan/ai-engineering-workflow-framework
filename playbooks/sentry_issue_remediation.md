@@ -1,12 +1,12 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.8
+version: 0.4.9
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-28
+last_updated: 2026-08-31
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -141,7 +141,8 @@ For Standard, target evidence-worker activation within 60 seconds of turn start.
 before activating Fix Design; Standard does not parallelize those two dependent stages. After Fix Design returns
 `awaiting_input` with `implementation_plan_action: omit`, proceed directly to the final Documenter; do not activate an
 additional technical worker unless a recorded discrepancy or required conditional gate remains unresolved.
-After Fix Design returns `ready_for_implementation` with action `create`, release the two analytical workers and use the
+After Fix Design returns `ready_for_implementation` with action `create`, release every activated analytical worker and
+use the
 packaged deterministic Standard finalizer; do not activate a Documenter for that path.
 
 The `remediation` lifecycle continues through implementation, review, validation, and stabilization after explicit
@@ -288,7 +289,8 @@ Workers use the shared result envelope defined in the execution contract. Sentry
   most one justified fallback search and stop with bounded uncertainty; do not enumerate projects or fan out across
   organizations and datasets.
 - Downstream workers consume normalized evidence artifacts.
-- Fix Design returns one canonical JSON result for the Coordinator to persist verbatim as `fix_design_result.json`.
+- Fix Design writes one canonical JSON result to its assigned `fix_design_result.json` path after receiving the exact
+  activation handle. The Coordinator validates that file and does not reconstruct it from a worker message.
 - A ready Standard result includes complete structured `plan` content. Packaged code renders it and copies the exact
   interface-contract fields; no model translates or paraphrases the plan.
 - Workers repeat Sentry or repository analysis only when they identify and record a specific discrepancy.
@@ -343,8 +345,9 @@ For Standard planning, evidence owns event details, Fix Design owns hypotheses a
 record owns decisions and execution state, and the plan owns only the selected change, gates, and validation. Reference
 the owning artifact instead of repeating it. Normal runs have no byte-count field or hard size gate; the validator may
 emit a non-blocking internal warning for an unusually large work record. For Standard ready planning,
-`scripts/finalize_sentry_planning.py` renders the plan and structured packet, then uses
-`scripts/finalize_work_record.py` for atomic terminal-record replacement. Documenter-owned paths retain the structured
+`scripts/finalize_sentry_planning.py` stages and validates the complete terminal artifact set, then publishes it
+transactionally. It uses `scripts/finalize_work_record.py` to render the terminal record in that staged set.
+Documenter-owned paths retain the structured
 packet and pre-release flow.
 
 ## Execution Flow
@@ -557,19 +560,20 @@ implement until the workflow reaches
 Fix Design returns a complete structured result with `worker_id`, `worker_handle`, `outcome`, `plan_readiness`,
 `implementation_plan_action`, `inputs_consumed`, `context_conformance`, `configuration_conformance`,
 `checks_performed`, `checks_remaining`, `supported_remediation_boundary`, `supported_intended_change`,
-`interface_change`, `interface_contract`, `blocking_unknowns`, and complete structured `plan` content when ready. For an
+`interface_change`, `interface_contract`, `blocking_unknowns`, canonical `confidence` with `level`, `basis`, and
+`limits`, and complete structured `plan` content when ready. For an
 API, event, payload, schema, or other
 interface change, the contract identifies the exact surface, request and response shapes, absence semantics,
-compatibility precedence, and rollout. The Coordinator persists that result verbatim as `fix_design_result.json`.
+compatibility precedence, and rollout. Fix Design persists that result directly as `fix_design_result.json`.
 Packaged code creates a ready Standard plan; the Documenter creates an `awaiting_input` Clarification Brief. Fix Design
-does not edit durable artifacts.
+does not edit source, the work record, or any durable artifact except its assigned Fix Design result.
 
 The result uses the exact activation handle and shared terminal outcome
 `complete`. String fields remain strings, list fields remain lists, and
 `interface_change` remains a boolean. `inputs_consumed` MUST include either the
 canonical normalized-evidence Input ID `UPSTREAM-001` or the exact validated
 `normalized_evidence.md` path; the activation packet delivers both plus the
-prepared `fix_design_result_contract.json`. Before validation, the Coordinator
+prepared `fix_design_result_contract.json` and assigned output path. Before validation, the Coordinator
 runs packaged `normalize_fix_design_result.py --artifact-root <artifact-root>`.
 This explicit producer-format repair may only convert equivalent representations
 to canonical field types and does not consume the analytical correction
@@ -691,7 +695,9 @@ For Standard Sentry planning, use these canonical durable artifacts when applica
 
 - `.thoughts/<WORK-ITEM-ID>/work_record.md`
 - `.thoughts/<WORK-ITEM-ID>/normalized_evidence.md`
+- `.thoughts/<WORK-ITEM-ID>/normalized_evidence_contract.md`
 - `.thoughts/<WORK-ITEM-ID>/fix_design_result.json`
+- `.thoughts/<WORK-ITEM-ID>/fix_design_result_contract.json`
 - `.thoughts/<WORK-ITEM-ID>/clarification_brief.md` when the result is `awaiting_input`
 - `.thoughts/<WORK-ITEM-ID>/implementation_plan.md` only when `plan_readiness=ready_for_implementation`
 

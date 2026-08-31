@@ -17,6 +17,7 @@ POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
 BUNDLED_AGENTS = ROOT / "providers" / "codex" / "agents"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
+SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
 SENTRY_FIX_DESIGN_NORMALIZER = ROOT / "scripts" / "normalize_fix_design_result.py"
 SENTRY_PLANNING_FINALIZER = ROOT / "scripts" / "finalize_sentry_planning.py"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
@@ -228,13 +229,21 @@ def prepare_run(
     resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
     manifest = resolve_bindings(playbook, resolved_runtime_agents)
     fix_design_contract = None
+    normalized_evidence_contract = None
     if playbook == "sentry_issue_remediation":
         fix_design_contract = artifact_root / "fix_design_result_contract.json"
         shutil.copyfile(SENTRY_FIX_DESIGN_CONTRACT, fix_design_contract)
+        normalized_evidence_contract = artifact_root / "normalized_evidence_contract.md"
+        shutil.copyfile(SENTRY_NORMALIZED_EVIDENCE_CONTRACT, normalized_evidence_contract)
         manifest["worker_contracts"] = {
+            "evidence_topology": {
+                "contract": str(normalized_evidence_contract),
+                "output": str(artifact_root / "normalized_evidence.md"),
+            },
             "fix_design": {
                 "contract": str(fix_design_contract),
                 "normalizer": str(SENTRY_FIX_DESIGN_NORMALIZER),
+                "output": str(artifact_root / "fix_design_result.json"),
             },
             "standard_ready_finalization": {
                 "finalizer": str(SENTRY_PLANNING_FINALIZER),
@@ -254,6 +263,9 @@ def prepare_run(
         "finalization_packet": str(packet_path),
         "role_binding_manifest": str(manifest_path),
         "fix_design_result_contract": str(fix_design_contract) if fix_design_contract else None,
+        "normalized_evidence_contract": (
+            str(normalized_evidence_contract) if normalized_evidence_contract else None
+        ),
         "archived_prior_run": archived,
         **manifest,
     }
@@ -272,6 +284,10 @@ def self_test() -> None:
         assert first["provider_tool_mapping"] == fixture["expected_codex_mapping"]
         assert first["provider_configuration_source_status"] == "bundled / resolved"
         assert Path(first["fix_design_result_contract"]).is_file()
+        assert Path(first["normalized_evidence_contract"]).is_file()
+        assert first["worker_contracts"]["evidence_topology"]["contract"] == first[
+            "normalized_evidence_contract"
+        ]
         assert first["worker_contracts"]["fix_design"]["contract"] == first["fix_design_result_contract"]
         prepared_manifest = json.loads(Path(first["role_binding_manifest"]).read_text())
         assert prepared_manifest["worker_contracts"]["fix_design"]["normalizer"] == str(

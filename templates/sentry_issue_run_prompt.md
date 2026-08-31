@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.8
+version: 0.4.9
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-28
+last_updated: 2026-08-31
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -123,15 +123,19 @@ Runtime bootstrap:
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
   the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.
-- For Standard planning, create one minimal work-record skeleton. Start the evidence worker after initialization;
-  validate completed `normalized_evidence.md`, then activate Fix Design with that exact artifact. Retain intermediate
+- For Standard planning, create one minimal work-record skeleton and do not edit it before deterministic finalization.
+  Start the evidence worker after initialization with the prepared `normalized_evidence_contract.md` and assigned
+  output path; validate completed `normalized_evidence.md`, then run any required conditional analytical worker and
+  activate Fix Design with every validated analytical input. Retain intermediate
   ledgers in Coordinator state. For a ready plan, the packaged deterministic finalizer is the sole writer of the plan,
   final packet, closure receipt, and terminal work record. For `awaiting_input`, the final Documenter remains the sole
   writer of its finalized artifact set.
-- Pass Fix Design `UPSTREAM-001`, the exact validated `normalized_evidence.md` path, and every original
-  supporting artifact path, plus the prepared `fix_design_result_contract.json`. Do not activate it while normalized
+- Pass Fix Design `UPSTREAM-001`, the exact validated `normalized_evidence.md` path, every original
+  supporting artifact path, the prepared `fix_design_result_contract.json`, and the assigned
+  `fix_design_result.json` output path. Do not activate it while normalized
   evidence is absent or still being written; do not replace either with a Coordinator-written summary. Immediately
-  send the provider-returned activation handle to Fix Design; it must not finalize before receiving that exact value.
+  send the provider-returned activation handle to Fix Design; it must not write the assigned file before receiving that
+  exact value. Validate the assigned file directly; the Coordinator must not reconstruct its JSON from a worker reply.
 - Require normalized evidence to contain the playbook's canonical Contract Delta table with its Markdown separator,
   exact five boundary rows, and evidence references. Accept any Markdown heading level for `Contract Delta`.
 - Select `live_sentry` from an explicit Sentry issue URL or separately identified Sentry issue ID. When this Sentry
@@ -154,13 +158,15 @@ Runtime bootstrap:
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
 - When Standard Fix Design returns `ready_for_implementation` with action `create`, first validate
-  `normalized_evidence.md` and `fix_design_result.json`, then release Evidence Topology and Fix Design. Run the
+  `normalized_evidence.md` and `fix_design_result.json`, then release every activated analytical worker. Run the
   `standard_ready_finalization.finalizer` recorded in `role_bindings.json` exactly once. Pass the artifact root, the
   exact Evidence Topology handle, the active Coordinator model/effort, the preflight framework revision/status, and
-  every relevant repository as `--repository 'ROLE=/absolute/path'`. Pass `--provider-release-confirmed` only after
-  both analytical release operations succeed. The script copies the exact interface contract
+  every relevant repository as `--repository 'ROLE=/absolute/path'` and each conditional analytical worker as
+  `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every analytical release succeeds.
+  The script copies the exact interface contract
   from `fix_design_result.json` into one `# Interface Contract` row and renders `implementation_plan.md`,
-  `finalization_packet.json`, `runtime_closure.json`, and `work_record.md`. Do not activate a Documenter, create a
+  stages and validates `finalization_packet.json`, `runtime_closure.json`, `implementation_plan.md`, and
+  `work_record.md`, then publishes that terminal set transactionally. Do not activate a Documenter, create a
   candidate plan/packet, run pre-release finalization, or patch generated Markdown on this path. A nonzero result is
   `finalization_contract_failure`; preserve the artifacts and error instead of adding a model-based fallback.
 - For `awaiting_input`, Deep planning, or remediation, pass the final Documenter one immutable finalized packet. It

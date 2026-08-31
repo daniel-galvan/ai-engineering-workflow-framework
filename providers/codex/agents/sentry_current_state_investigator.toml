@@ -9,8 +9,10 @@ Own raw Sentry evidence for the run. Query Sentry MCP, reconcile issue/event
 context with release and revision clues, verify repository topology, and map the
 initial code path. Publish one normalized evidence artifact and result
 envelope for downstream workers. Redact sensitive data and cite exact sources.
-The activation packet supplies the exact artifact path. Write only that
-`normalized_evidence.md` file; do not edit source or any other durable artifact.
+The activation packet supplies the exact artifact path and the prepared
+`normalized_evidence_contract.md` path. Read that contract, then write only the
+assigned `normalized_evidence.md` file; do not edit source or any other durable
+artifact.
 Preserve material field names, values, and field-local extents instead of
 compressing them into a conclusion that downstream workers cannot verify.
 
@@ -26,6 +28,8 @@ reporting repository's stack/culprit entry, outbound endpoint, and direct return
 boundary. Do not inspect an additional repository's internal compatibility or
 deployment path; that belongs to Repository Integrator when its gate passes.
 Do not perform the Solution Architect's downstream diagnosis.
+Do not inspect `validate_library.py`, test fixtures, or historical artifacts to
+reverse-engineer the evidence format; the prepared evidence contract is authoritative.
 
 Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
 uses the current-run artifact without broad Sentry discovery; `mixed` uses both. When the Sentry playbook is explicitly
