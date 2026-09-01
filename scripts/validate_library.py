@@ -87,6 +87,7 @@ RUNTIME_CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
 RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
 PREPARE_RUN = ROOT / "scripts" / "prepare_run.py"
+WORKER_RUNTIME_GUARD = ROOT / "scripts" / "validate_worker_runtime.py"
 FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
 FINALIZE_SENTRY_PLANNING = ROOT / "scripts" / "finalize_sentry_planning.py"
 NORMALIZE_FIX_DESIGN_RESULT = ROOT / "scripts" / "normalize_fix_design_result.py"
@@ -95,6 +96,7 @@ SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_cont
 SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
 V36_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
 V37_V38_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v37_v38_sentry_runtime_regressions.json"
+V40_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v40_sentry_worker_runtime.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
@@ -2195,6 +2197,22 @@ if not RUN_PREFLIGHT.is_file():
     fail("scripts/run_preflight.py is missing")
 if not PREPARE_RUN.is_file():
     fail("scripts/prepare_run.py is missing")
+if not WORKER_RUNTIME_GUARD.is_file():
+    fail("scripts/validate_worker_runtime.py is missing")
+else:
+    worker_runtime_self_test = subprocess.run(
+        ["python3", str(WORKER_RUNTIME_GUARD), "--self-test"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if worker_runtime_self_test.returncode:
+        fail(
+            "scripts/validate_worker_runtime.py self-test failed: "
+            + (worker_runtime_self_test.stdout + worker_runtime_self_test.stderr).strip()
+        )
+if not V40_RUNTIME_FIXTURE.is_file():
+    fail("tests/fixtures/v40_sentry_worker_runtime.json is missing")
 if not FINALIZE_WORK_RECORD.is_file():
     fail("scripts/finalize_work_record.py is missing")
 if not FINALIZE_SENTRY_PLANNING.is_file():
@@ -2317,6 +2335,10 @@ for phrase in (
     "skill or plugin enable/disable directive",
     "task created at or after the captured current turn start",
     "standard_planning_finalization.finalizer",
+    "worker_activation_packets.json",
+    "worker_runtime_guard",
+    "Never interrupt a live worker",
+    "artifact creation intentionally omits it",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
@@ -2334,6 +2356,8 @@ for phrase in (
     "`send_message_to_thread`",
     "provider_tool_mapping",
     "literal framework tool ID",
+    "hashed role envelope",
+    "worker_runtime_guard",
 ):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
@@ -2727,6 +2751,10 @@ for phrase in (
     "skill or plugin enable/disable directive",
     "captured current turn start is the current run",
     "observed_competing_boundaries",
+    "worker_activation_packets.json",
+    "worker_runtime_guard",
+    "validated envelope fallback",
+    "Never interrupt a live worker",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")

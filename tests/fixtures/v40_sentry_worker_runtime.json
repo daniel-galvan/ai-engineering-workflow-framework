@@ -1,0 +1,35 @@
+{
+  "source_task": "01a05ae0-d225-7421-bbd0-5d65535f4dc1",
+  "description": "Minimized v40 trace: provider role was not delivered, a running worker was interrupted, and failure finalization required an artifact that was never created.",
+  "spawn": {
+    "expected_agent": "sentry_current_state_investigator",
+    "observed_agent_role": null,
+    "observed_agent_path": null,
+    "activation_packet_delivered": false
+  },
+  "events": [
+    {
+      "action": "wait",
+      "provider_status": "running"
+    },
+    {
+      "action": "interrupt",
+      "provider_status": "running"
+    },
+    {
+      "action": "close",
+      "provider_status": "running"
+    }
+  ],
+  "analytical_failure": {
+    "requested": true,
+    "artifact_created": false,
+    "evidence_artifact_required": true
+  },
+  "expected_errors": [
+    "provider_binding_not_delivered",
+    "unsafe_interrupt_while_running",
+    "unsafe_close_while_running",
+    "analytical_failure_artifact_absent"
+  ]
+}

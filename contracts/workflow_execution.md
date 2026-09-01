@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.11
+version: 0.4.12
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -410,6 +410,9 @@ Each worker must have a stable identifier and an explicit execution profile.
 
 A delegated worker starts in fresh provider context after Coordinator initialization. Its activation packet begins
 with `Coordinator initialization: complete`, and it MUST NOT run the launcher, package preflight, or run preparation.
+When the provider runtime does not expose a named `agent_role` or `agent_path`, the prepared hashed role envelope MUST
+be included unchanged before the typed assignment and becomes the binding-delivery evidence. If provider metadata is
+present, it MUST match the selected binding. The prepared runtime guard validates the envelope before activation.
 
 | Field              | Required           | Description                                                                                                          |
 | ------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
@@ -824,6 +827,10 @@ The Coordinator MAY close a worker only after collecting its terminal result or 
 terminal failure, interruption, shutdown, or that the worker is no longer running. If a close operation reports
 `previous_status: running`, the Coordinator MUST record `coordinator_interrupted_after_wait_timeout` when applicable. It
 MUST NOT describe that worker as provider-failed or runtime-unavailable.
+
+Before interrupt, close, replacement, or fan-in, the Coordinator MUST run the prepared worker-runtime guard with the
+intended transition and latest provider-observed status. A blocked transition is authoritative. An elapsed-time target
+never overrides an active provider status.
 
 If an overall wait budget is exhausted while a required worker remains active, keep fan-in open and report the run as
 blocked or in progress with the active-worker status, owner, and exact recovery action. Do not force-close a live worker

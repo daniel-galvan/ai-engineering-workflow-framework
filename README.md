@@ -195,13 +195,18 @@ The Codex plugin is a thin package over the same repository: [`.codex-plugin/plu
 declares the plugin, [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) exposes it to Codex,
 [`skills/run/`](skills/run/) provides the explicit launcher, and [`scripts/run_preflight.py`](scripts/run_preflight.py)
 guards package identity before a workflow starts. [`scripts/prepare_run.py`](scripts/prepare_run.py) archives prior
-runs, creates the current record, and resolves exact worker bindings. For successful Standard Sentry planning,
+runs, creates the current record, resolves exact worker bindings, and emits hashed role envelopes. The launcher uses
+[`scripts/validate_worker_runtime.py`](scripts/validate_worker_runtime.py) to validate each envelope and reject unsafe
+interrupt, close, replacement, or fan-in transitions while a worker is still active. For successful Standard Sentry
+planning,
 [`scripts/finalize_sentry_planning.py`](scripts/finalize_sentry_planning.py) stages and validates the complete terminal
 artifact set from the validated Fix Design result, then publishes it transactionally without a documentation worker.
 Prepared worker contracts assign `normalized_evidence.md` and `fix_design_result.json` directly to their owning workers,
 so the Coordinator validates those files instead of reconstructing large result messages. These files do not duplicate
-playbook or contract behavior. Because the installed plugin bundles this repository, every tracked content change
-refreshes the plugin's `+codex.<timestamp>` build metadata; validation and preflight reject a reused build identity.
+playbook or contract behavior. An Evidence Topology runtime failure may finalize without a nonexistent evidence link;
+the terminal record instead cites the provider runtime receipt. Because the installed plugin bundles this repository,
+every tracked content change refreshes the plugin's `+codex.<timestamp>` build metadata; validation and preflight reject
+a reused build identity.
 
 Codex users should read [providers/codex.md](providers/codex.md) and
 [providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md). The provider adapter is the source of

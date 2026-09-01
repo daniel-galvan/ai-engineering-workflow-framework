@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.10
+version: 0.4.11
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -204,7 +204,8 @@ canonical run prompt using `Interrupted profile recovery`:
 
 A provider wait timeout or `pending_init`/`running` status is not proof that the worker stopped. Keep that worker
 active, continue waiting or request graceful finalization when supported, and do not close it or start a replacement
-from the timeout alone. Apply the shared [worker wait
+from the timeout alone. Run the prepared `worker_runtime_guard` before interrupt, close, replacement, or fan-in; its
+blocked transition result is authoritative. Apply the shared [worker wait
 rules](../contracts/workflow_execution.md#worker-wait-and-termination-semantics) before starting recovery.
 
 1. preserve the same work record, profile, lifecycle, and completed artifacts;

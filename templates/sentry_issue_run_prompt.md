@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.10
+version: 0.4.11
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-31
@@ -121,6 +121,9 @@ Runtime bootstrap:
   Record the method and timestamp; when neither is available, record `Unknown; detection unavailable`, not `None`.
 - Every activation packet must include each assigned Input ID's short value, source, authority, and expected use. An ID
   without its value is not a delivered input; reconcile all assigned IDs with `inputs_consumed`.
+- Use the exact hashed role envelope and `worker_runtime_guard` paths emitted in `role_bindings.json`. Validate the
+  envelope before spawn, include it unchanged before the typed assignment, and run the guard before interrupt, close,
+  replacement, or fan-in. A running worker must remain active; elapsed time alone never authorizes interruption.
 - Pass every explicit current-run skill or plugin enable/disable directive to every worker and correction turn. A
   disabled skill or plugin must not be loaded, invoked, or reactivated.
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
@@ -216,8 +219,9 @@ Runtime bootstrap:
 - After an analytical contract failure, mechanically finalize the packet, closure receipt, and authoritative work
   record with packaged `finalize_work_record.py --analytical-failure`, the exact
   `--analytical-failure-stage`, and one `--completed-handle` for every released
-  analytical worker, plus its required runtime, framework, and evidence
-  arguments before answering. The final response must be copied from that finalized record.
+  analytical worker, plus its required runtime and framework arguments before answering. Pass the evidence artifact
+  only when it exists; an Evidence Topology runtime failure before artifact creation omits that argument. The final
+  response must be copied from that finalized record.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):

@@ -1,7 +1,7 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.4.7
+version: 0.4.8
 status: Pilot
 owner: Engineering
 provider: codex
@@ -42,6 +42,12 @@ The Coordinator alone performs plugin preflight and run preparation. Activate ev
 `Coordinator initialization: complete` and MUST prohibit rerunning the launcher skill, `run_preflight.py`, or
 `prepare_run.py`. A worker consumes only its provider role, assignment, and named current-run inputs. It does not
 inherit the Coordinator transcript or initialize the run again.
+
+`prepare_run.py` writes a hashed role envelope for every resolved binding and records the packet paths plus
+`worker_runtime_guard` in `role_bindings.json`. Validate the selected envelope before spawning and include it unchanged
+in the worker message before the typed assignment. This is the binding-delivery fallback when the in-task runtime does
+not expose `agent_role` or `agent_path`; observed metadata must match when present. Run the same guard before interrupt,
+close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
 
 Use only Codex's in-task `spawn_agent`/collaboration runtime for delegated workers. Never use `create_thread`,
 `fork_thread`, or `send_message_to_thread`: those operations create or control user-owned tasks. Check for the

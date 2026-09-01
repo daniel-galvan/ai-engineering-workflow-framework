@@ -61,6 +61,14 @@ description: >-
    verified, stop with `run_already_active`. Do not tell the user to request continuation when they requested a new run.
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
+   Preparation also writes exact role envelopes to the direct-child `worker_activation_packets.json` bundle and records
+   its path and hash in `role_bindings.json`. Before each spawn, run the manifest's `worker_runtime_guard` with
+   `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`. Start the
+   worker message with the returned `activation_packet` envelope's literal
+   `Coordinator initialization: complete` prefix, include the complete envelope unchanged, then append only the typed
+   assignment and current-run input manifest. When spawn metadata does not expose `agent_role` or `agent_path`, this
+   exact envelope is the binding-delivery mechanism; missing metadata alone is not a reason to discard the worker.
+   Conflicting observed metadata remains `provider_configuration_unavailable`.
    Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its
    baseline ID and `provider_tool_mapping`, and stop if a required binding is absent. Framework tool IDs are abstract
    capability classes, not literal Codex tool names. Tell each worker to use the manifest's concrete mapping and never
@@ -117,7 +125,9 @@ description: >-
    `--analytical-failure-stage <evidence_topology|repository_integration|fix_design>`
    `--completed-handle <released-handle>` once for every released analytical worker, then
    `--coordinator-model-effort <model/effort>`
-   `--framework-revision <preflight-sha> --framework-status <clean|dirty> --evidence-artifact <artifact>`.
+   `--framework-revision <preflight-sha> --framework-status <clean|dirty>`. Pass
+   `--evidence-artifact <artifact>` when normalized evidence exists; an Evidence Topology runtime failure before
+   artifact creation intentionally omits it.
    When Standard Sentry Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, do not
    activate a Documenter. Release every activated analytical handle, then run the manifest's
    `standard_planning_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact
@@ -126,6 +136,10 @@ description: >-
    `--repository 'ROLE=/absolute/path'`, and each conditional worker as
    `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every activated analytical release
    succeeds.
+   Before any `interrupt_agent`, `close_agent`, or replacement, run the manifest's `worker_runtime_guard` with the
+   intended `--transition` and latest provider-observed `--provider-status`. A blocked guard result is authoritative:
+   leave a `pending_init`, `running`, `in_progress`, or `awaiting_dependency` worker active and wait again or leave the
+   run open. Never interrupt a live worker to satisfy an elapsed-time target.
    That deterministic finalizer copies the exact Fix Design disposition and, according to the validated readiness/action
    pair, creates either `implementation_plan.md` or `clarification_brief.md`. It stages and validates that artifact, the
    runtime-closure receipt, `finalization_packet.json`, and terminal `work_record.md`, then publishes the terminal set

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -20,6 +21,7 @@ SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_cont
 SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
 SENTRY_FIX_DESIGN_NORMALIZER = ROOT / "scripts" / "normalize_fix_design_result.py"
 SENTRY_PLANNING_FINALIZER = ROOT / "scripts" / "finalize_sentry_planning.py"
+WORKER_RUNTIME_GUARD = ROOT / "scripts" / "validate_worker_runtime.py"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 SENTRY_AGENTS = (
     "sentry_orchestrator",
@@ -151,10 +153,47 @@ def _agent_binding(name: str, runtime_agents: Path | None) -> dict[str, str]:
     return {
         "agent": name,
         "definition": str(source.resolve()),
+        "definition_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "model": model,
         "effort": effort,
         "source": "runtime" if runtime_file and source == runtime_file else "bundled",
     }
+
+
+def _write_activation_packets(
+    artifact_root: Path,
+    manifest: dict[str, object],
+) -> dict[str, str]:
+    worker_contracts = manifest.get("worker_contracts", {})
+    contract_by_agent = {
+        "sentry_current_state_investigator": worker_contracts.get("evidence_topology"),
+        "sentry_repository_integrator": worker_contracts.get("repository_integration"),
+        "sentry_solution_architect": worker_contracts.get("fix_design"),
+    }
+    packets: dict[str, dict[str, object]] = {}
+    for agent, binding in manifest["bindings"].items():
+        definition = Path(binding["definition"])
+        configuration = tomllib.loads(definition.read_text())
+        developer_instructions = configuration.get("developer_instructions")
+        if not isinstance(developer_instructions, str) or not developer_instructions.strip():
+            raise ValueError(f"provider_instructions_unavailable:{agent}")
+        packet = {
+            "schema_version": 1,
+            "required_prefix": "Coordinator initialization: complete",
+            "agent": agent,
+            "definition": binding["definition"],
+            "definition_sha256": binding["definition_sha256"],
+            "model": binding["model"],
+            "effort": binding["effort"],
+            "source": binding["source"],
+            "provider_tool_mapping": manifest["provider_tool_mapping"],
+            "worker_contract": contract_by_agent.get(agent),
+            "developer_instructions": developer_instructions.strip(),
+        }
+        packets[agent] = packet
+    path = artifact_root / "worker_activation_packets.json"
+    path.write_text(json.dumps({"schema_version": 1, "packets": packets}, indent=2, sort_keys=True) + "\n")
+    return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:
@@ -250,6 +289,8 @@ def prepare_run(
                 "owner": "Coordinator",
             },
         }
+    manifest["worker_runtime_guard"] = str(WORKER_RUNTIME_GUARD)
+    manifest["activation_packet_bundle"] = _write_activation_packets(artifact_root, manifest)
     manifest_path = artifact_root / "role_bindings.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     packet_path = artifact_root / "finalization_packet.json"
@@ -289,6 +330,18 @@ def self_test() -> None:
             "normalized_evidence_contract"
         ]
         assert first["worker_contracts"]["fix_design"]["contract"] == first["fix_design_result_contract"]
+        assert first["worker_runtime_guard"] == str(WORKER_RUNTIME_GUARD)
+        activation_bundle = Path(first["activation_packet_bundle"]["path"])
+        assert activation_bundle.is_file()
+        evidence_packet = json.loads(activation_bundle.read_text())["packets"][
+            "sentry_current_state_investigator"
+        ]
+        assert evidence_packet["required_prefix"] == "Coordinator initialization: complete"
+        assert evidence_packet["developer_instructions"].startswith("Own raw Sentry evidence")
+        assert evidence_packet["worker_contract"]["output"].endswith("normalized_evidence.md")
+        assert hashlib.sha256(activation_bundle.read_bytes()).hexdigest() == first[
+            "activation_packet_bundle"
+        ]["sha256"]
         prepared_manifest = json.loads(Path(first["role_binding_manifest"]).read_text())
         assert prepared_manifest["worker_contracts"]["fix_design"]["normalizer"] == str(
             SENTRY_FIX_DESIGN_NORMALIZER

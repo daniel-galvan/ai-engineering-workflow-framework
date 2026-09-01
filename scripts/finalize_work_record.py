@@ -508,7 +508,7 @@ def prepare_analytical_failure(
     coordinator_model_effort: str,
     framework_revision: str,
     framework_status: str,
-    evidence_artifact: Path,
+    evidence_artifact: Path | None,
 ) -> None:
     stage = ANALYTICAL_FAILURE_STAGES[failure_stage]
     packet = json.loads(packet_path.read_text())
@@ -517,6 +517,25 @@ def prepare_analytical_failure(
     manifest_path = artifact_root / "role_bindings.json"
     manifest = json.loads(manifest_path.read_text())
     binding = manifest["bindings"][stage["binding"]]
+    artifact_created = evidence_artifact is not None and evidence_artifact.is_file()
+    if failure_stage != "evidence_topology" and not artifact_created:
+        raise ValueError(f"evidence_artifact_required:{failure_stage}")
+    evidence_source = str(evidence_artifact) if artifact_created else "Worker runtime receipt"
+    failure_kind = "contract" if artifact_created else "runtime"
+    if artifact_created:
+        implementation_plan = stage["implementation_plan"]
+        established = stage["established"]
+        claim = stage["claim"]
+        action = stage["action"]
+        complete_when = stage["complete_when"]
+        unique_contribution = f"Returned {stage['role']} output before terminal contract validation failed"
+    else:
+        implementation_plan = "omitted; Evidence Topology produced no normalized evidence artifact"
+        established = "Evidence Topology ended without producing its assigned normalized evidence artifact."
+        claim = "Fix Design cannot start because normalized evidence was not produced."
+        action = "Correct the worker activation or runtime failure, then retry Evidence Topology."
+        complete_when = "Evidence Topology produces contract-valid normalized evidence."
+        unique_contribution = "No contract-valid artifact was produced before the terminal runtime failure"
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     work_item = str(packet["work_item"]["ID"])
     git_revision = subprocess.run(
@@ -533,7 +552,10 @@ def prepare_analytical_failure(
     ).stdout.strip()
     packet["work_item"].update({"Title": work_item, "Last Updated": now})
     packet["playbook_selection"].update({
-        "Primary evidence": "Current Sentry occurrence and normalized evidence",
+        "Primary evidence": (
+            "Current Sentry occurrence and normalized evidence"
+            if artifact_created else "Current Sentry occurrence and provider runtime receipt"
+        ),
         "Primary goal": "Evidence-backed Sentry remediation planning",
         "Selected playbook": "sentry_issue_remediation",
         "Closest alternative": "feature_delivery",
@@ -542,7 +564,8 @@ def prepare_analytical_failure(
     if not _material_rows(packet.get("inputs"), "Input ID"):
         packet["inputs"] = [{
             "Input ID": "IN-001", "Input or artifact": "Current Sentry occurrence",
-            "Source or path": str(evidence_artifact), "Authority": "Current-run evidence", "Status": "Consumed",
+            "Source or path": evidence_source, "Authority": "Current-run evidence",
+            "Status": "Consumed" if artifact_created else "Observed",
         }]
     if not _material_rows(packet.get("repositories"), "Repository role"):
         packet["repositories"] = [{
@@ -567,13 +590,13 @@ def prepare_analytical_failure(
     packet["finalization"].update({
         "Concurrent-run decision": "Current isolated run", "Active related run or work item": "None",
         "Related-run check": "Completed during initialization", "Durable artifact root": str(artifact_root),
-        "Final reconciliation": f"Passed; analytical_contract_failure at {failure_stage} preserved and runtime released",
+        "Final reconciliation": (
+            f"Passed; analytical_{failure_kind}_failure at {failure_stage} preserved and runtime released"
+        ),
         "Finalization schema": "Passed",
     })
     artifacts = _material_rows(packet.get("durable_artifacts"), "Artifact")
-    for artifact in (
-        {"Artifact": "Normalized evidence", "Path": str(evidence_artifact), "Status": "Preserved",
-         "Purpose": "Current-run analytical evidence"},
+    failure_artifacts = [
         {"Artifact": "Role bindings", "Path": str(manifest_path), "Status": "Created",
          "Purpose": "Exact worker bindings"},
         {"Artifact": "Finalization packet", "Path": str(packet_path), "Status": "Created",
@@ -582,7 +605,13 @@ def prepare_analytical_failure(
          "Purpose": "Provider closure receipt"},
         {"Artifact": "Work record", "Path": str(record_path), "Status": "Created",
          "Purpose": "Authoritative terminal handoff"},
-    ):
+    ]
+    if artifact_created:
+        failure_artifacts.insert(0, {
+            "Artifact": "Normalized evidence", "Path": str(evidence_artifact), "Status": "Preserved",
+            "Purpose": "Current-run analytical evidence",
+        })
+    for artifact in failure_artifacts:
         _append_unique_artifact(artifacts, artifact)
     packet["durable_artifacts"] = artifacts
     configured = f"{binding['model']} / {binding['effort']}"
@@ -617,7 +646,7 @@ def prepare_analytical_failure(
     )
     result_row = {
         "Worker": stage["worker"], "Outcome": "failed", "Confidence": "High",
-        "Unique contribution": f"Returned {stage['role']} output before terminal contract validation failed",
+        "Unique contribution": unique_contribution,
         "Evidence / claim refs": "E-001 / C-001", "Uncertainties / blockers": reason,
         "Actual model/effort": configured, "Usage/credits": "Provider telemetry unavailable",
     }
@@ -627,12 +656,12 @@ def prepare_analytical_failure(
         worker_results.append(result_row)
     packet["worker_results"] = worker_results
     packet["evidence"] = [{
-        "Evidence ID": "E-001", "Source": str(evidence_artifact),
-        "Summary": f"{stage['role']} failed its terminal contract: {reason}", "Confidence": "High",
+        "Evidence ID": "E-001", "Source": evidence_source,
+        "Summary": f"{stage['role']} failed its terminal {failure_kind}: {reason}", "Confidence": "High",
         "Uncertainty": "None", "Status": "Verified",
     }]
     packet["claims"] = [{
-        "Claim ID": "C-001", "Claim": stage["claim"],
+        "Claim ID": "C-001", "Claim": claim,
         "Evidence refs": "E-001", "Confidence": "High", "Uncertainty": "None", "Status": "Supported",
     }]
     packet["decisions"] = [{
@@ -640,20 +669,23 @@ def prepare_analytical_failure(
         "Claim refs": "C-001", "Owner": "Coordinator", "Status": "Applied",
     }]
     packet["actions"] = [{
-        "Action ID": "A-001", "Action": stage["action"],
+        "Action ID": "A-001", "Action": action,
         "Decision ref": "D-001", "Owner": "Framework maintainer", "Status": "Proposed",
     }]
     packet["handoff"] = {
-        "workflow_result": "Planning stopped on analytical contract failure",
-        "implementation_plan": stage["implementation_plan"],
-        "established": [stage["established"]],
+        "workflow_result": f"Planning stopped on analytical {failure_kind} failure",
+        "implementation_plan": implementation_plan,
+        "established": [established],
         "best_current_explanations": [{"explanation": reason, "confidence": "high",
-                                       "reason": "The packaged validator reproduced the failure."}],
-        "next_action": {"owner": "Framework maintainer", "action": stage["action"],
-                        "complete_when": stage["complete_when"]},
-        "artifacts": [str(evidence_artifact), str(record_path)],
+                                       "reason": (
+                                           "The packaged validator reproduced the failure."
+                                           if artifact_created else "The provider runtime receipt recorded the failure."
+                                       )}],
+        "next_action": {"owner": "Framework maintainer", "action": action,
+                        "complete_when": complete_when},
+        "artifacts": ([str(evidence_artifact)] if artifact_created else []) + [str(record_path)],
         "execution": (
-            "standard/planning; finalization validation passed; analytical validation failed; "
+            f"standard/planning; finalization validation passed; analytical {failure_kind} failed; "
             "workers incomplete; source changes none; runtime released"
         ),
         "provenance": (
@@ -665,7 +697,8 @@ def prepare_analytical_failure(
         "Run or stage": "Current run", "Receipt owner": "Coordinator",
         "Completed worker handles": worker_handle, "Runtime status": "Released",
         "Remaining active handles": "None", "Closure evidence or blocker": (
-            f"Provider release confirmed after analytical contract failure. Completed handles: {worker_handle}."
+            f"Provider release confirmed after analytical {failure_kind} failure. "
+            f"Completed handles: {worker_handle}."
         ),
     }]}
     if closure_path.is_file():
@@ -969,6 +1002,27 @@ def self_test() -> None:
         assert "Workflow result: Planning stopped on analytical contract failure" in failure_text
         assert "Workflow result: Pending" not in failure_text
 
+        prepared_without_artifact = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
+             "--execution-repository", str(execution_repository), "--work-item", "ITEM-NO-ARTIFACT",
+             "--playbook", "sentry_issue_remediation"],
+            capture_output=True, text=True, check=True,
+        )
+        missing_root = Path(json.loads(prepared_without_artifact.stdout)["artifact_root"])
+        missing_record = missing_root / "work_record.md"
+        prepare_analytical_failure(
+            missing_root / "finalization_packet.json", missing_root / "runtime_closure.json", missing_record,
+            reason="worker stopped before writing its assigned artifact",
+            failure_stage="evidence_topology", completed_handles=[],
+            coordinator_model_effort="gpt-5.6-luna / xhigh", framework_revision=framework_revision,
+            framework_status="dirty", evidence_artifact=None,
+        )
+        missing_text = missing_record.read_text()
+        assert "Workflow result: Planning stopped on analytical runtime failure" in missing_text
+        assert "Evidence Topology ended without producing its assigned normalized evidence artifact" in missing_text
+        assert "| Normalized evidence |" not in missing_text
+        assert "Worker runtime receipt" in missing_text
+
         prepared_fix = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
              "--execution-repository", str(execution_repository), "--work-item", "ITEM-FIX",
@@ -1062,19 +1116,20 @@ def main() -> int:
     try:
         if args.analytical_failure:
             if not all((args.analytical_failure_stage, args.coordinator_model_effort,
-                        args.framework_revision, args.framework_status,
-                        args.evidence_artifact)):
+                        args.framework_revision, args.framework_status)):
                 parser.error(
                     "--analytical-failure requires --analytical-failure-stage, --coordinator-model-effort, "
-                    "--framework-revision, --framework-status, and --evidence-artifact"
+                    "--framework-revision, and --framework-status"
                 )
+            if args.analytical_failure_stage != "evidence_topology" and not args.evidence_artifact:
+                parser.error("--evidence-artifact is required after Evidence Topology")
             prepare_analytical_failure(
                 args.packet.resolve(), args.closure.resolve(), args.record.resolve(),
                 reason=args.analytical_failure, failure_stage=args.analytical_failure_stage,
                 completed_handles=args.completed_handle,
                 coordinator_model_effort=args.coordinator_model_effort,
                 framework_revision=args.framework_revision, framework_status=args.framework_status,
-                evidence_artifact=args.evidence_artifact.resolve(),
+                evidence_artifact=args.evidence_artifact.resolve() if args.evidence_artifact else None,
             )
         else:
             finalize(args.packet.resolve(), args.closure.resolve(), args.record.resolve(), pre_release=args.pre_release)

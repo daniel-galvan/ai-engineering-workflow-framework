@@ -77,17 +77,24 @@ record the method and RFC 3339 timestamp. If neither can be checked, record `Unk
 `None`. Do not treat a stale artifact directory as proof of an active writer.
 
 Use each named provider agent definition from `role_bindings.json` before activation. Pass its exact `model` and
-`effort` explicitly; this binds configuration and is not an adaptive override. For Standard, bind `sentry_current_state_investigator`,
+`effort` explicitly; this binds configuration and is not an adaptive override. For Standard, bind
+`sentry_current_state_investigator`,
 `sentry_solution_architect`, and, only for Documenter-owned paths, `documenter` exactly as configured. Record and
 fail policy conformance on any observed mismatch. If a definition cannot be
 resolved or the provider cannot apply it, stop with
 `provider_configuration_unavailable`; do not activate an inherited-default worker.
+Before spawning, run the manifest's `worker_runtime_guard` against the selected envelope in the direct-child
+`worker_activation_packets.json` hashed bundle. Begin the worker message with `Coordinator initialization: complete`,
+include that complete role envelope unchanged, then append only the typed assignment and current-run input manifest.
+When the in-task spawn API does not expose `agent_role` or `agent_path`, the exact envelope is the binding-delivery
+mechanism; missing fields alone do not invalidate the worker. Observed metadata must still match when present.
 Immediately inspect the `spawnAgent` return metadata for the requested model,
 reasoning effort, and fresh-context setting. Compare it with the manifest before
 waiting for or accepting the worker. If metadata is missing, record the exact
-unavailable field and do not accept the result; if any value differs, record
-`configuration_conformance: fail`, stop that worker, and allow only one explicit
-retry. Never fan-in a worker whose provider binding was not verified.
+unavailable field and the validated envelope fallback; if any observed value differs, record
+`configuration_conformance: fail` and do not fan it in. Request graceful finalization or leave the worker active until
+the provider reports a terminal state; only then permit one explicit retry.
+Never fan-in a worker whose provider binding was not verified.
 
 Do not instruct downstream workers to reread the complete playbook or core
 contracts. Pass the typed assignment, provider role configuration, relevant
@@ -169,6 +176,9 @@ stopped status. If closure reports `previous_status: running`, record
 `coordinator_interrupted_after_wait_timeout`. A wait timeout or `running` status is
 not a recovery trigger. Interrupted recovery is allowed only after confirmed
 failure or stoppage and permits one replacement attempt.
+Before any interrupt, close, replacement, or fan-in action, run the manifest's `worker_runtime_guard` with the intended
+transition and latest provider-observed status. A blocked result is authoritative. Never interrupt a live worker to
+meet an elapsed-time target.
 
 Store every provider-returned worker handle exactly; never manually reproduce or edit it. If a wait or status lookup
 returns `not_found`, reconcile the handle against the original spawn result, durable artifacts, and
@@ -221,7 +231,8 @@ release, mechanically finalize `finalization_packet.json`, `runtime_closure.json
 from an ad hoc blocked summary while the durable record remains pending. Use the packaged finalizer's
 `--analytical-failure`, `--analytical-failure-stage`, one `--completed-handle`
 for every released analytical worker, `--coordinator-model-effort`, `--framework-revision`,
-`--framework-status`, and `--evidence-artifact` arguments, then copy its emitted handoff verbatim.
+and `--framework-status` arguments, then copy its emitted handoff verbatim. Pass `--evidence-artifact` when normalized
+evidence exists; omit it only when Evidence Topology terminates before creating the artifact.
 Reject an `awaiting_input` blocker marked `invalidates_supported_change: true` when it lacks both non-empty
 `contradicting_evidence_refs` and at least one structured `observed_competing_boundaries` entry containing a boundary,
 an affirmative current-run observation, and evidence refs. Missing runtime confirmation, unavailable release mapping,
