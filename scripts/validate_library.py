@@ -14,6 +14,11 @@ from collections import Counter
 from io import StringIO
 from pathlib import Path
 
+try:
+    from run_input_manifest import load_manifest
+except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
+    from scripts.run_input_manifest import load_manifest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
@@ -653,6 +658,50 @@ def _contains_hypothesis(value: object) -> bool:
 
 def validate_sentry_artifacts(root: Path) -> None:
     errors: list[str] = []
+    packet_path = root / "finalization_packet.json"
+    run_inputs_path = root / "run_inputs.json"
+    packet: dict[str, object] = {}
+    if packet_path.is_file():
+        try:
+            candidate = json.loads(packet_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            candidate = {}
+        if isinstance(candidate, dict):
+            packet = candidate
+    metadata = packet.get("run_input_manifest")
+    if metadata is not None or run_inputs_path.is_file():
+        if not isinstance(metadata, dict):
+            errors.append("finalization_packet.json is missing run_input_manifest metadata")
+        else:
+            declared = Path(str(metadata.get("path", "")))
+            if declared.name != "run_inputs.json":
+                errors.append("run_input_manifest metadata must reference run_inputs.json")
+            if not run_inputs_path.is_file():
+                errors.append("run_inputs.json is missing")
+            else:
+                import hashlib
+
+                if hashlib.sha256(run_inputs_path.read_bytes()).hexdigest() != str(metadata.get("sha256", "")):
+                    errors.append("run_input_manifest hash does not match finalization metadata")
+                else:
+                    try:
+                        run_inputs = load_manifest(run_inputs_path, explicit=False)
+                    except ValueError as error:
+                        errors.append(str(error))
+                    else:
+                        if run_inputs.get("status") != "explicit":
+                            errors.append("run_input_manifest_required")
+                        expected_ids = [str(value) for value in metadata.get("input_ids", [])]
+                        actual_ids = [str(row["Input ID"]) for row in run_inputs["inputs"]]
+                        if expected_ids != actual_ids:
+                            errors.append("run_input_manifest metadata does not match its inputs")
+                        packet_ids = {
+                            str(row.get("Input ID", "")) for row in packet.get("inputs", [])
+                            if isinstance(row, dict)
+                        }
+                        missing = [value for value in actual_ids if value not in packet_ids]
+                        if missing:
+                            errors.append("finalization packet dropped run inputs: " + ", ".join(missing))
     evidence = root / "normalized_evidence.md"
     design = root / "fix_design_result.json"
     if not evidence.is_file():
@@ -2180,6 +2229,9 @@ for phrase in (
     "Evaluation identity, role-policy baseline, detailed",
     "run_already_active",
     "skill or plugin enable/disable directive",
+    "current-run input manifest",
+    "Live runtime evidence is additive",
+    "run_inputs.json",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing wait/profile semantics: {phrase}")
@@ -2339,6 +2391,10 @@ for phrase in (
     "worker_runtime_guard",
     "Never interrupt a live worker",
     "artifact creation intentionally omits it",
+    "--input-manifest",
+    "run_input_manifest_required",
+    "current-run input manifest",
+    "active parent session; no dedicated Coordinator worker spawned",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
@@ -2358,6 +2414,8 @@ for phrase in (
     "literal framework tool ID",
     "hashed role envelope",
     "worker_runtime_guard",
+    "run_inputs.json",
+    "current-run input manifest",
 ):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
@@ -2377,7 +2435,10 @@ for path in (
     ROOT / "templates" / "sentry_issue_run_prompt.md",
 ):
     text = path.read_text()
-    for phrase in ("`spawn_agent`", "Never use", "`create_thread`", "`fork_thread`", "`send_message_to_thread`", "worker_runtime_unavailable"):
+    for phrase in (
+        "`spawn_agent`", "Never use", "`create_thread`", "`fork_thread`", "`send_message_to_thread`",
+        "worker_runtime_unavailable", "current-run input manifest", "run_inputs.json",
+    ):
         if phrase not in text:
             fail(f"{path.relative_to(ROOT)} is missing task-isolation control: {phrase}")
 if "| Engineering state |" not in work_record_template:

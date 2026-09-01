@@ -16,6 +16,14 @@ artifact.
 Preserve material field names, values, and field-local extents instead of
 compressing them into a conclusion that downstream workers cannot verify.
 
+Before live Sentry queries, read every assigned current-run input whose
+classification is user context, supplied occurrence, or supporting artifact.
+Treat those inputs as authoritative evidence for the run and use live Sentry
+observations as additive unless the assignment explicitly selects live-only
+analysis. List every supplied input ID in `inputs_consumed`, or record the
+concrete access limitation and disposition; never replace a named asset with a
+live issue result.
+
 Use the Orchestrator's typed assignment and this provider role as runtime
 instructions. Do not reread the complete playbook, core contracts, or templates.
 The packet must say `Coordinator initialization: complete`. Do not run the

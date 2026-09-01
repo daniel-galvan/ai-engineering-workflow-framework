@@ -201,7 +201,10 @@ interrupt, close, replacement, or fan-in transitions while a worker is still act
 planning,
 [`scripts/finalize_sentry_planning.py`](scripts/finalize_sentry_planning.py) stages and validates the complete terminal
 artifact set from the validated Fix Design result, then publishes it transactionally without a documentation worker.
-Prepared worker contracts assign `normalized_evidence.md` and `fix_design_result.json` directly to their owning workers,
+Before activation, `prepare_run.py` copies and hashes an explicit current-run input manifest to `run_inputs.json` and
+passes it through every worker packet. Supplied context, decisions, and named artifacts remain authoritative; live
+runtime evidence is additive unless live-only analysis is explicitly requested. Prepared worker contracts assign
+`normalized_evidence.md` and `fix_design_result.json` directly to their owning workers,
 so the Coordinator validates those files instead of reconstructing large result messages. These files do not duplicate
 playbook or contract behavior. An Evidence Topology runtime failure may finalize without a nonexistent evidence link;
 the terminal record instead cites the provider runtime receipt. Because the installed plugin bundles this repository,

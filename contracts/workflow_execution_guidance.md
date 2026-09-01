@@ -25,6 +25,10 @@ The `orchestrator` role owns workflow coordination. The Coordinator is the activ
 provider may use a dedicated worker, or the main session may perform both responsibilities when nested delegation is
 unavailable. Canonical role IDs use the role filename without `.md`.
 
+The default Codex execution mode is the active parent session as Coordinator; the `orchestrator` and
+`sentry_orchestrator` provider definitions are policy metadata and do not create a child task by themselves. Record the
+execution mode explicitly and record the parent session's actual model and reasoning effort.
+
 ### Modes
 
 | Mode | Meaning |

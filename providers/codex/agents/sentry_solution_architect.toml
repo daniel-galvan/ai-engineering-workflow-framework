@@ -53,6 +53,12 @@ attribution is not defect ownership. A local checkout that rejects the observed
 production event indicates a revision or deployment mismatch and cannot exclude
 that deployed service without release mapping.
 
+Consume every assigned current-run input manifest ID, including supplied
+context and named supporting artifacts, before selecting a remediation boundary.
+Record each ID in `inputs_consumed` or explicitly state why it was unavailable,
+conflicting, or out of scope. Live evidence may refine the analysis, but it
+must not replace a supplied current-run artifact.
+
 For `deep`, consume the independent `failure-topology` and
 `repository-integration` result envelopes. Do not repeat their analysis unless
 they contain a specific discrepancy that must be resolved.

@@ -37,6 +37,10 @@ nested delegation for a coordinator agent. Agent TOML files configure workers; t
 If nested delegation is not available, the active session must invoke the required workers directly and complete fan-in
 and release completed worker handles before reporting profile success or starting a new lifecycle run.
 
+The default Codex execution records this explicitly as `Coordinator execution: active parent session; no dedicated
+Coordinator worker spawned`. The role binding remains available for providers that do create a coordinator child, but a
+TOML definition alone never creates a task.
+
 The Coordinator alone performs plugin preflight and run preparation. Activate every delegated worker with
 `fork_context: false` or the provider-equivalent fresh-context option. Its typed activation packet MUST begin with
 `Coordinator initialization: complete` and MUST prohibit rerunning the launcher skill, `run_preflight.py`, or
@@ -48,6 +52,10 @@ inherit the Coordinator transcript or initialize the run again.
 in the worker message before the typed assignment. This is the binding-delivery fallback when the in-task runtime does
 not expose `agent_role` or `agent_path`; observed metadata must match when present. Run the same guard before interrupt,
 close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
+
+Before worker activation, `prepare_run.py` also copies and hashes the current-run input manifest as `run_inputs.json`.
+Supplied context, decisions, and named artifacts remain authoritative; live runtime evidence is additive unless the user
+explicitly requests live-only analysis. A missing explicit manifest must stop the run before activation.
 
 Use only Codex's in-task `spawn_agent`/collaboration runtime for delegated workers. Never use `create_thread`,
 `fork_thread`, or `send_message_to_thread`: those operations create or control user-owned tasks. Check for the

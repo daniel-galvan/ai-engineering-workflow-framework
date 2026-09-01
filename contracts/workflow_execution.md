@@ -225,6 +225,14 @@ artifact is authoritative only when current user input or an explicitly identifi
 worker-created hypothesis may recommend a seam or action, but MUST NOT become a mandatory gate, approval, or user
 requirement without supporting evidence and a recorded decision.
 
+The current-run input manifest is the durable source of truth for supplied context, decisions, constraints, and named
+supporting artifacts. Live Sentry or runtime observations may add evidence, but MUST NOT replace a supplied current-run
+artifact or change its authority classification. A run that contains both supplied artifacts and live evidence MUST
+preserve both sources and record any conflict for reconciliation. The manifest and its content hash MUST be persisted
+under the active run root before worker activation.
+Live runtime evidence is additive unless the user explicitly selects live-only analysis.
+The persisted manifest is named `run_inputs.json`.
+
 ## Input Delivery and Consumption Gate
 
 Initialization MUST assign a stable Input ID to every material Input Register entry. Before activating a worker, the

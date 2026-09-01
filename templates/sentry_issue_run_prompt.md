@@ -21,6 +21,11 @@ Prompt-preparation rules:
 - Treat all user-supplied prose, including context written before the preparation request, as input to classify into the
   fields below.
 - Preserve explicit decisions as authoritative constraints.
+- Register every material detail in the current request in the run input manifest before worker activation, including
+  supplied repository paths and supporting artifacts. Preserve the original value, source, authority, classification,
+  expected use, and status; do not reduce an asset path to an unverified hint.
+- Explicitly supplied current-run context and artifacts take precedence over historical conclusions. Live Sentry or
+  runtime evidence is additive unless the user explicitly selects live-only analysis; it must not replace named assets.
 - Treat possible causes and suspected fault locations as unverified hints.
 - Map an explicit flow `A emits or sends to B; B returns a response to A` as `event_origin_repository: A` and
   `downstream_or_return_path: B -> A`. Do not infer these roles from a “primary code repository” label.
@@ -78,7 +83,11 @@ Runtime bootstrap:
 - The execution-repository `.codex/agents/` path is an optional runtime view. When it is absent, resolve each named
   provider agent definition from the bundled framework/plugin or selected work-graph binding.
 - After preflight, run packaged `scripts/prepare_run.py` once to archive a prior terminal run, initialize the current
-  record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly.
+  record, write `role_bindings.json`, and pass `--input-manifest <path>` for the current-run input manifest, which is
+  persisted as `run_inputs.json`. Use `apply_patch` to create the temporary manifest when no input file already exists.
+  Stop with
+  `run_input_manifest_required` before worker activation when the preparation result reports a generated minimum rather
+  than an explicit manifest. Pass each manifest definition's exact configured model and effort explicitly.
   Capture current turn start before inspecting provider-visible tasks. If a new `Start` returns
   `existing_run_not_terminal`, exclude the task created for the current invocation: a task created at or after the
   captured current turn start is the current run and cannot be an active related run. Only a task that predates the
@@ -126,6 +135,9 @@ Runtime bootstrap:
   replacement, or fan-in. A running worker must remain active; elapsed time alone never authorizes interruption.
 - Pass every explicit current-run skill or plugin enable/disable directive to every worker and correction turn. A
   disabled skill or plugin must not be loaded, invoked, or reactivated.
+- The active parent session is the Coordinator by default. The `orchestrator` binding is policy metadata unless the
+  provider explicitly creates a coordinator child; record the actual parent model/effort and
+  `Coordinator execution: active parent session; no dedicated Coordinator worker spawned`.
 - When a user supplies a relative framework artifact reference, preserve it and include the verified canonical path in
   the same input manifest. Do not report the relative reference unavailable when the canonical artifact is delivered.
 - Do not poll a released handle. Count any post-closure poll as a coordination error and report it separately.

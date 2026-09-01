@@ -104,10 +104,13 @@ not infer event origin or candidate fault ownership from a field named “primar
 modify an unrelated project merely because it exists in the same monorepo. Code changes are limited to the verified
 fault boundary unless an expanded scope is approved.
 
-Confirmed user decisions and constraints are authoritative run inputs. Reporter context may identify symptoms, expected
-behavior, suspected flows, likely owners or files, reproduction clues, known exclusions, and related links. Treat the
-latter as investigation leads, not as decisions or evidence. Reconcile hints with Sentry, repository, runtime, and test
-evidence before using them as facts; do not reopen a confirmed decision as a clarification question.
+Confirmed user decisions and constraints are authoritative run inputs. The current-run input manifest is the durable
+record of every supplied decision, context item, repository path, and supporting artifact. Reporter context may identify
+symptoms, expected behavior, suspected flows, likely owners or files, reproduction clues, known exclusions, and related
+links. Treat the latter as investigation leads, not as decisions or evidence. Reconcile hints with Sentry, repository,
+runtime, and test evidence before using them as facts; do not reopen a confirmed decision as a clarification question.
+Live Sentry evidence is additive unless the user explicitly selects live-only analysis and must not replace a named
+current-run artifact.
 
 When a confirmed input identifies a comparison source of truth, use that system's result as the expected baseline and
 investigate the discrepancy in the other system. Do not ask the user to redefine the baseline or to decide that baseline
@@ -412,7 +415,8 @@ may share a clean read-only revision. When another run is active, remediation or
 requires a separate managed worktree and durable run root. A concurrent run for the same Sentry issue stops with
 `run_already_active` unless this is an explicit continuation or recovery run.
 
-Record the repository/event topology and any optional supporting artifacts.
+Record the repository/event topology and every supplied supporting artifact in the current-run input manifest before
+worker activation. Do not allow a live issue lookup to erase those inputs.
 
 ### Stage 1 — Collect Sentry Evidence
 
@@ -444,7 +448,8 @@ Use an older representative event only when the latest event is insufficient, in
 occurrence. Do not inspect every event in a high-volume issue by default. Record the selected event IDs and the reason
 for any additional sample.
 
-The evidence worker MUST write one canonical `normalized_evidence.md` artifact containing the full material field values
+The evidence worker MUST read every assigned current-run input before live lookup and write one canonical
+`normalized_evidence.md` artifact containing the full material field values
 and source references needed to preserve field-local distinctions. It includes the Sentry facts, latest event as the
 primary occurrence, any justified representative sample, initial repository/revision mapping, initial topology,
 code-path entry point, source references, and unresolved boundary questions. Standard Fix Design starts only after this

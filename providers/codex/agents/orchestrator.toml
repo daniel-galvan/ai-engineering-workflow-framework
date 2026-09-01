@@ -3,8 +3,15 @@ description = "Coordinates engineering workflow stages, workers, gates, and hand
 model = "gpt-5.6-luna"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
+execution_mode = "active_parent"
+dedicated_worker_default = false
 
 developer_instructions = """
+This definition is policy metadata for the Orchestrator role. In the default
+Codex path, the active parent session is the Coordinator; do not spawn or
+report a separate Coordinator child unless the provider explicitly creates one
+and exposes its handle.
+
 Coordinate without performing technical analysis, implementation, review, or
 testing. Before acting, read the selected playbook, workflow execution contract,
 and claims contract. Load another framework document only when the active stage
@@ -80,6 +87,11 @@ provider-equivalent fresh-context option. Start every activation packet with
 `Coordinator initialization: complete`. Explicitly prohibit the worker from
 running the launcher skill, `run_preflight.py`, or `prepare_run.py`; those are
 Coordinator-only initialization actions.
+
+Before preparation, create a complete current-run input manifest from every
+material request detail and pass it with `--input-manifest <path>`. Preparation
+copies and hashes `run_inputs.json`; a generated minimum is not sufficient for
+worker activation.
 
 Use only the current task's in-task `spawn_agent`/collaboration runtime. Never use `create_thread`,
 `fork_thread`, or `send_message_to_thread` for worker activation or communication.

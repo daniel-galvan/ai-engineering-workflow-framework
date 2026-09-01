@@ -12,6 +12,25 @@ import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
+try:
+    from run_input_manifest import (
+        DEFAULT_PRECEDENCE_RULE,
+        default_manifest,
+        load_manifest,
+        merge_manifests,
+        packet_metadata,
+        write_manifest,
+    )
+except ModuleNotFoundError:  # Imported as scripts.prepare_run from the repository root.
+    from scripts.run_input_manifest import (
+        DEFAULT_PRECEDENCE_RULE,
+        default_manifest,
+        load_manifest,
+        merge_manifests,
+        packet_metadata,
+        write_manifest,
+    )
+
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "providers" / "codex" / "model_effort_policy.md"
@@ -22,6 +41,7 @@ SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_ev
 SENTRY_FIX_DESIGN_NORMALIZER = ROOT / "scripts" / "normalize_fix_design_result.py"
 SENTRY_PLANNING_FINALIZER = ROOT / "scripts" / "finalize_sentry_planning.py"
 WORKER_RUNTIME_GUARD = ROOT / "scripts" / "validate_worker_runtime.py"
+RUN_INPUTS_FILENAME = "run_inputs.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 SENTRY_AGENTS = (
     "sentry_orchestrator",
@@ -108,7 +128,10 @@ def _initial_packet(
     playbook_path = ROOT / "playbooks" / f"{playbook}.md"
     prompt_path = ROOT / "templates" / PROMPT_TEMPLATES[playbook]
     plugin = json.loads(PLUGIN_MANIFEST.read_text())
+    input_manifest = manifest["run_input_manifest"]
     packet["work_item"]["ID"] = work_item
+    packet["inputs"] = list(input_manifest["inputs"])
+    packet["run_input_manifest"] = input_manifest
     packet["playbook_selection"]["Selected playbook"] = playbook
     packet["identity"].update({
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
@@ -121,6 +144,8 @@ def _initial_packet(
         "Role-policy baseline ID": manifest["baseline_id"],
         "Role binding manifest": str(manifest_path),
         "Provider / model configuration": "Codex / Worker Execution Ledger",
+        "Run input manifest": input_manifest["path"],
+        "Coordinator execution": "active parent session; no dedicated Coordinator worker spawned",
     })
     packet["finalization"]["Durable artifact root"] = str(artifact_root)
     packet["durable_artifacts"] = [
@@ -135,6 +160,15 @@ def _initial_packet(
             "Path": str(artifact_root / "finalization_packet.json"),
             "Status": "Prepared",
             "Purpose": "Structured finalization input",
+        },
+        {
+            "Artifact": "Run input manifest",
+            "Path": input_manifest["path"],
+            "Status": (
+                "Explicit" if input_manifest["status"] == "explicit"
+                else "Incomplete; current prompt inputs required"
+            ),
+            "Purpose": "Immutable current-run context, decisions, and supporting artifacts",
         },
     ]
     return packet
@@ -187,6 +221,8 @@ def _write_activation_packets(
             "effort": binding["effort"],
             "source": binding["source"],
             "provider_tool_mapping": manifest["provider_tool_mapping"],
+            "run_input_manifest": manifest["run_input_manifest"],
+            "coordinator_execution": manifest["coordinator_execution"],
             "worker_contract": contract_by_agent.get(agent),
             "developer_instructions": developer_instructions.strip(),
         }
@@ -194,6 +230,28 @@ def _write_activation_packets(
     path = artifact_root / "worker_activation_packets.json"
     path.write_text(json.dumps({"schema_version": 1, "packets": packets}, indent=2, sort_keys=True) + "\n")
     return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def _prepare_run_inputs(
+    artifact_root: Path,
+    work_item: str,
+    playbook: str,
+    execution_repository: Path,
+    supplied_path: Path | None,
+    continuation: bool,
+) -> tuple[dict[str, object], Path]:
+    destination = artifact_root / RUN_INPUTS_FILENAME
+    if continuation and destination.is_file():
+        current = load_manifest(destination, explicit=False)
+        if supplied_path:
+            current = merge_manifests(current, load_manifest(supplied_path, explicit=True))
+            write_manifest(destination, current)
+        return load_manifest(destination, explicit=False), destination
+    if supplied_path:
+        source = load_manifest(supplied_path, explicit=True)
+    else:
+        source = default_manifest(work_item, playbook, execution_repository.resolve())
+    return write_manifest(destination, source), destination
 
 
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:
@@ -211,6 +269,12 @@ def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, ob
         "playbook": playbook,
         "provider_configuration_source_status": provider_status,
         "provider_tool_mapping": CODEX_TOOL_MAPPING,
+        "coordinator_execution": {
+            "role": "sentry_orchestrator" if playbook == "sentry_issue_remediation" else "orchestrator",
+            "mode": "active_parent",
+            "dedicated_worker_spawned": False,
+            "description": "The active parent session performs orchestration and coordination.",
+        },
         "bindings": {name: _agent_binding(name, runtime_agents) for name in names},
     }
 
@@ -247,6 +311,7 @@ def prepare_run(
     runtime_agents: Path | None,
     continuation: bool,
     archive_stale_run: bool = False,
+    input_manifest: Path | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
@@ -267,6 +332,12 @@ def prepare_run(
         shutil.copyfile(ROOT / "templates" / template, record)
     resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
     manifest = resolve_bindings(playbook, resolved_runtime_agents)
+    run_inputs, run_inputs_path = _prepare_run_inputs(
+        artifact_root, work_item, playbook, execution_repository, input_manifest, continuation
+    )
+    manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
+    manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
+    manifest["run_input_manifest"]["precedence_rule"] = run_inputs["precedence_rule"]
     fix_design_contract = None
     normalized_evidence_contract = None
     if playbook == "sentry_issue_remediation":
@@ -297,11 +368,27 @@ def prepare_run(
     if not continuation and not packet_path.exists():
         packet = _initial_packet(artifact_root, work_item, playbook, resolved_runtime_agents, manifest, manifest_path)
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
+    elif continuation and packet_path.is_file():
+        packet = json.loads(packet_path.read_text())
+        packet["run_input_manifest"] = manifest["run_input_manifest"]
+        existing_inputs = packet.get("inputs")
+        existing_ids = {
+            str(row.get("Input ID", "")) for row in existing_inputs
+            if isinstance(row, dict)
+        } if isinstance(existing_inputs, list) else set()
+        packet["inputs"] = list(existing_inputs) if isinstance(existing_inputs, list) else []
+        packet["inputs"].extend(
+            row for row in run_inputs["inputs"] if str(row["Input ID"]) not in existing_ids
+        )
+        packet["identity"]["Run input manifest"] = manifest["run_input_manifest"]["path"]
+        packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     return {
         "status": "prepared",
         "artifact_root": str(artifact_root),
         "work_record": str(record),
         "finalization_packet": str(packet_path),
+        "run_input_manifest": str(run_inputs_path),
+        "run_input_manifest_status": run_inputs["status"],
         "role_binding_manifest": str(manifest_path),
         "fix_design_result_contract": str(fix_design_contract) if fix_design_contract else None,
         "normalized_evidence_contract": (
@@ -317,7 +404,24 @@ def self_test() -> None:
 
     with tempfile.TemporaryDirectory(prefix="workflow-prepare-") as directory:
         execution = Path(directory)
-        first = prepare_run(execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False)
+        input_source = execution / "inputs.json"
+        input_source.write_text(json.dumps({
+            "schema_version": 1,
+            "precedence_rule": DEFAULT_PRECEDENCE_RULE,
+            "inputs": [{
+                "Input ID": "USER-001",
+                "Input or artifact": "Supplied current-run context",
+                "Source or path": "Current user request",
+                "Authority": "Authoritative current-run context",
+                "Classification": "observed report or requested outcome",
+                "Expected use": "Evidence worker and Fix Design",
+                "Status": "Registered",
+            }],
+        }))
+        first = prepare_run(
+            execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False,
+            input_manifest=input_source,
+        )
         assert first["playbook"] == "sentry_issue_remediation"
         assert first["bindings"]["sentry_solution_architect"]["model"] == "gpt-5.6-sol"
         assert first["provider_tool_mapping"]["repository_read"] == "exec_command"
@@ -360,26 +464,40 @@ def self_test() -> None:
         assert prepared_packet["identity"]["Role binding manifest"] == first["role_binding_manifest"]
         assert prepared_packet["identity"]["Prompt template / revision / conformance"].endswith(" / pending")
         assert prepared_packet["durable_artifacts"][0]["Artifact"] == "Role bindings"
+        assert first["run_input_manifest_status"] == "explicit"
+        assert prepared_packet["inputs"][0]["Input ID"] == "USER-001"
+        assert prepared_packet["run_input_manifest"]["status"] == "explicit"
+        assert prepared_packet["identity"]["Coordinator execution"].startswith("active parent session")
         record = Path(first["work_record"])
         record.write_text(
             record.read_text().replace("| Run ID | |", "| Run ID | run-1 |").replace(
                 "| State | intake |", "| State | completed |"
             )
         )
-        second = prepare_run(execution, "ITEM-1", "sentry_issue_remediation", None, False)
+        second = prepare_run(
+            execution, "ITEM-1", "sentry_issue_remediation", None, False,
+            input_manifest=input_source,
+        )
         assert second["archived_prior_run"].endswith("runs/run-1")
         assert Path(second["work_record"]).is_file()
-        stale = prepare_run(execution, "ITEM-STALE", "sentry_issue_remediation", None, False)
+        stale = prepare_run(
+            execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
+            input_manifest=input_source,
+        )
         stale_artifact = Path(stale["artifact_root"]) / "normalized_evidence.md"
         stale_artifact.write_text("preserved stale evidence\n")
         try:
-            prepare_run(execution, "ITEM-STALE", "sentry_issue_remediation", None, False)
+            prepare_run(
+                execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
+                input_manifest=input_source,
+            )
         except ValueError as error:
             assert str(error) == "existing_run_not_terminal"
         else:
             raise AssertionError("unverified nonterminal run must block")
         recovered = prepare_run(
-            execution, "ITEM-STALE", "sentry_issue_remediation", None, False, archive_stale_run=True
+            execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
+            archive_stale_run=True, input_manifest=input_source,
         )
         archived_stale = Path(recovered["archived_prior_run"])
         assert archived_stale.name.startswith("stale-")
@@ -402,6 +520,11 @@ def main() -> int:
     parser.add_argument("--runtime-agents", type=Path)
     parser.add_argument("--continuation", action="store_true")
     parser.add_argument("--archive-stale-run", action="store_true")
+    parser.add_argument(
+        "--input-manifest",
+        type=Path,
+        help="JSON file containing current-run context, decisions, and supporting artifacts",
+    )
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -417,6 +540,7 @@ def main() -> int:
             args.runtime_agents,
             args.continuation,
             args.archive_stale_run,
+            args.input_manifest,
         )
     except ValueError as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

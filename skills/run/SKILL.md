@@ -47,7 +47,14 @@ description: >-
    `contracts/workflow_execution.md`, `contracts/claims.md`, and its canonical run template once. Do not also read a
    checkout copy or restart a document from line 1 after reading an earlier range. Load the Codex provider adapter and
    model policy only when provider configuration is needed.
-7. Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
+7. Before preparation, create a run-specific JSON input manifest from every material detail in the current request:
+   explicit decisions and constraints, observed reports, hypotheses, repository paths, and named supporting artifacts.
+   Use stable Input IDs and include each item's short value, source/path, authority, classification, expected use, and
+   status. Use `apply_patch` to create the temporary JSON file when no manifest file already exists, then pass it to
+   `scripts/prepare_run.py` with `--input-manifest <path>`. The helper copies and hashes it as
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/run_inputs.json`; if the prepared result reports
+   `run_input_manifest_status: generated_minimum`, stop with `run_input_manifest_required` before activating a worker.
+   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
    runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
    when the user explicitly says continue or resume. This one step
    archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
@@ -78,6 +85,9 @@ description: >-
    already-selected model and effort; do not claim that the Orchestrator agent TOML changed the parent session.
    Record that active parent-session model and effort exactly as `Coordinator model/effort` so repeated-run comparisons
    expose Coordinator configuration differences.
+   The `orchestrator`/`sentry_orchestrator` binding is policy metadata unless the provider explicitly creates a
+   coordinator child; the default Codex path uses the active parent session and must record
+   `Coordinator execution: active parent session; no dedicated Coordinator worker spawned`.
    The Coordinator is the only role that performs package preflight and run preparation. Activate every delegated
    worker with `fork_context: false` or the provider-equivalent fresh-context option. Start its packet with
    `Coordinator initialization: complete` and explicitly prohibit rerunning this skill, `run_preflight.py`, or
@@ -100,6 +110,10 @@ description: >-
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
    name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
+   The current-run input manifest is authoritative for supplied decisions, context, and artifacts. If a Sentry issue ID
+   or live runtime source is also supplied, use it as additive evidence unless the user explicitly selected live-only
+   analysis; never replace named supporting artifacts with live results. Every material input must be consumed by an
+   assigned worker or explicitly marked unavailable, conflicting, or out of scope before Fix Design can reach readiness.
    For Standard Sentry planning, activate Evidence Topology first with the exact `normalized_evidence_contract` and
    output paths returned by `prepare_run.py`. Validate its completed `normalized_evidence.md`, then run any playbook-
    required conditional analytical worker. Activate Fix Design with every validated analytical input, the exact

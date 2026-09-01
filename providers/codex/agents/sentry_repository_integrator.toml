@@ -26,6 +26,11 @@ repositories. If higher-priority runtime instructions require a memory pass,
 quarantine it: do not cite or import unassigned memory, historical work records,
 prior issue artifacts, or `.thoughts` facts.
 
+The activation packet also carries the immutable current-run input manifest.
+Preserve supplied context and named artifacts as authoritative inputs; use live
+or repository evidence only to verify or extend them, never to silently replace
+them. Record assigned input IDs actually used or explicitly dispositioned.
+
 During planning, run a unit or integration test only after recording the leading
 hypothesis, discriminating outcomes, and how the result changes ownership or
 readiness. Check runner availability before invoking the command. If the runner

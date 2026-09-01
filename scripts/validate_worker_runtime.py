@@ -44,6 +44,22 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         errors.append("provider_instructions_unavailable")
     if not packet.get("model") or not packet.get("effort"):
         errors.append("provider_binding_incomplete")
+    input_manifest = packet.get("run_input_manifest")
+    if not isinstance(input_manifest, dict):
+        errors.append("run_input_manifest_not_delivered")
+    else:
+        if input_manifest.get("status") != "explicit":
+            errors.append("run_input_manifest_required")
+        if not input_manifest.get("path") or not input_manifest.get("sha256"):
+            errors.append("run_input_manifest_metadata_incomplete")
+        if not isinstance(input_manifest.get("inputs"), list) or not input_manifest["inputs"]:
+            errors.append("run_input_manifest_inputs_missing")
+        manifest_path = Path(str(input_manifest.get("path", ""))).expanduser()
+        if manifest_path.is_file():
+            if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != str(input_manifest.get("sha256")):
+                errors.append("run_input_manifest_hash_mismatch")
+        elif manifest_path:
+            errors.append("run_input_manifest_unavailable")
     return errors
 
 
@@ -89,6 +105,9 @@ def self_test() -> None:
         definition = root / "worker.toml"
         definition.write_text('developer_instructions = "Do bounded work."\nmodel = "gpt-test"\n')
         packet = root / "worker.json"
+        manifest_path = root / "run_inputs.json"
+        manifest_path.write_text("{\"schema_version\": 1}\n")
+        manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
         packet.write_text(json.dumps({"packets": {"test_worker": {
             "required_prefix": "Coordinator initialization: complete",
             "agent": "test_worker",
@@ -97,9 +116,22 @@ def self_test() -> None:
             "developer_instructions": "Do bounded work.",
             "model": "gpt-test",
             "effort": "low",
+            "run_input_manifest": {
+                "path": str(manifest_path),
+                "sha256": manifest_sha256,
+                "status": "explicit",
+                "inputs": [{"Input ID": "USER-001", "Input or artifact": "Current context"}],
+            },
         }}}) + "\n")
         packet_sha256 = hashlib.sha256(packet.read_bytes()).hexdigest()
         assert activation_packet_errors(packet, "test_worker", packet_sha256) == []
+        generated_packet = json.loads(packet.read_text())
+        generated_packet["packets"]["test_worker"]["run_input_manifest"]["status"] = "generated_minimum"
+        packet.write_text(json.dumps(generated_packet) + "\n")
+        generated_sha256 = hashlib.sha256(packet.read_bytes()).hexdigest()
+        assert activation_packet_errors(packet, "test_worker", generated_sha256) == [
+            "run_input_manifest_required"
+        ]
         assert activation_packet_errors(packet, "test_worker", "0" * 64) == [
             "activation_packet_hash_mismatch"
         ]

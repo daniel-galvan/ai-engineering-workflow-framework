@@ -106,7 +106,8 @@ The plugin-specific files are deliberately small:
 | `skills/run/SKILL.md` | Explicit workflow launcher and package preflight sequence |
 | `skills/run/agents/openai.yaml` | Codex display metadata and explicit-invocation policy |
 | `scripts/run_preflight.py` | Fail-fast package, Git revision, and cleanliness validation |
-| `scripts/prepare_run.py` | Fresh-run archival, work-record initialization, and exact Codex role bindings |
+| `scripts/prepare_run.py` | Fresh-run archival, immutable input-manifest capture, work-record initialization, and exact Codex role bindings |
+| `scripts/run_input_manifest.py` | Input-manifest schema, precedence, hashing, and continuation merge helpers |
 | `scripts/validate_worker_runtime.py` | Hashed role-envelope validation and active-worker transition guard |
 | `templates/sentry_work_record.md` | Compact initial and terminal record surface for Sentry runs |
 
@@ -276,6 +277,35 @@ selected work-graph binding and must never inherit unverified worker settings.
 Start with `planning` for investigation, diagnosis, design, and a proposed implementation plan. Use `remediation` only
 after the plan exists and explicit implementation approval has been given.
 
+### Current-run input manifest
+
+Before a Sentry worker starts, the launcher records the material request context in a JSON manifest. Include every
+decision, constraint, observation, hypothesis, repository path, and named artifact; the launcher copies and hashes this
+file to `.thoughts/<WORK-ITEM-ID>/run_inputs.json`.
+
+```json
+{
+  "schema_version": 1,
+  "precedence_rule": "Current explicit user decisions and constraints, plus explicitly supplied current-run context and artifacts, override historical conclusions. Live runtime evidence is additive unless the user explicitly selects live-only analysis.",
+  "inputs": [
+    {
+      "Input ID": "CTX-001",
+      "Input or artifact": "FanMgmt and Supervision comparison notes",
+      "Source or path": "/absolute/path/to/assets/",
+      "Authority": "Authoritative current-run supporting artifact",
+      "Classification": "supporting artifact, reference, or data source",
+      "Expected use": "Preserve field identity and compare request contracts",
+      "Status": "Registered",
+      "path": "/absolute/path/to/assets/"
+    }
+  ]
+}
+```
+
+Pass the file with `scripts/prepare_run.py --input-manifest <path>`. A generated minimum manifest is not sufficient for
+worker activation; stop and capture the complete current-run inputs instead of allowing them to be replaced by live
+results.
+
 ## Use an implementation plan in another environment
 
 When implementation needs a DevBox or another session, use the generated `implementation_handoff.md` beside the plan. It
@@ -414,8 +444,9 @@ by a short list of anything I must review before running it.
 
 ### Sentry Issue Remediation
 
-The Sentry issue is the primary lookup target. Provide repository topology, possible fault locations, and supporting
-artifacts only when they are known; the workflow must reconcile them with Sentry evidence and current source.
+The Sentry issue is an optional live-evidence source. When the request also names current-run context or supporting
+artifacts, those supplied inputs remain authoritative and live Sentry evidence is additive unless live-only analysis is
+explicitly requested. Provide repository topology, possible fault locations, and supporting artifacts when known.
 
 ```text
 I am preparing a first-use run prompt. Do not execute the workflow, modify

@@ -3,8 +3,15 @@ description = "Coordinates the Sentry Issue Remediation workflow and worker barr
 model = "gpt-5.6-luna"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
+execution_mode = "active_parent"
+dedicated_worker_default = false
 
 developer_instructions = """
+This definition is policy metadata for the Sentry orchestrator role. In the
+default Codex path, the active parent session is the Coordinator; do not spawn
+or report a separate Coordinator child unless the provider explicitly creates
+one and exposes its handle.
+
 Coordinate Sentry Issue Remediation without performing technical analysis,
 implementation, review, or testing. For Standard planning, use the launcher and prepared worker contracts as the compact
 runtime surface; read only the selected playbook frontmatter and do not hydrate the complete playbook, workflow
@@ -27,10 +34,13 @@ Treat a completed preflight process with exit status 0 as passed even when the
 app hides stdout; do not rerun a successful preflight solely for a missing
 display payload.
 
-After package preflight, run the packaged `scripts/prepare_run.py` once. It archives a prior terminal run unless this is
-an explicit continuation, creates the artifact root and minimal work record, and writes `role_bindings.json`. Use that
-manifest as the only worker model/effort source. Do not manually reconstruct bindings or let workers inherit this
-session's settings. The current main session remains the Orchestrator with its already-selected model and effort.
+Before preparation, create a complete current-run input manifest from every material request detail and pass it with
+`--input-manifest <path>`. After package preflight, run the packaged `scripts/prepare_run.py` once. It archives a prior
+terminal run unless this is an explicit continuation, creates the artifact root and minimal work record, copies and
+hashes `run_inputs.json`, and writes `role_bindings.json`. Stop with `run_input_manifest_required` when only a generated
+minimum exists. Use that manifest as the only worker model/effort source. Do not manually reconstruct bindings or let
+workers inherit this session's settings. The current main session remains the Orchestrator with its already-selected
+model and effort.
 The Coordinator must never spawn or delegate an `initialize` worker. Execute the requested profile exactly.
 Capture current turn start before checking provider-visible tasks. If a new `Start` returns
 `existing_run_not_terminal`, exclude the task created for the current invocation: any task created at or after the
