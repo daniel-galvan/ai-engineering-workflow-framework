@@ -40,6 +40,11 @@ description: >-
    evaluation that names historical inputs. After preflight, do not read memory or prior-run artifacts for convenience;
    if higher-priority runtime instructions force a memory pass, quarantine it from evidence, decisions, and worker
    input.
+   Before analytical fan-in, audit each provider tool trace when exposed with
+   `python3 <framework-root>/scripts/validate_worker_runtime.py --trace <current-run-trace.json>`.
+   Treat `forbidden_context_reference:*` or `context_conformance_failed` as contamination and do not fan in that
+   result. If no trace is exposed, mark context conformance unverified/failed and exclude the result rather than
+   passing it from self-attestation.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
@@ -56,8 +61,9 @@ description: >-
    `run_input_manifest_status: generated_minimum`, stop with `run_input_manifest_required` before activating a worker.
    Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
    runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
-   when the user explicitly says continue or resume. This one step
-   archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
+   when the user explicitly says continue or resume. Validate the explicit manifest and provider bindings before this
+   step mutates the artifact root. This one step then archives a prior terminal run, creates the artifact root and
+   minimal work record, and writes `role_bindings.json`.
    Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
    `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
    current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be

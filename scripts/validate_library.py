@@ -100,6 +100,7 @@ PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
 SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
 V36_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
+V34_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
 V37_V38_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v37_v38_sentry_runtime_regressions.json"
 V40_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v40_sentry_worker_runtime.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
@@ -400,6 +401,92 @@ def sentry_contract_delta_errors(text: str) -> list[str]:
     if semantic and semantic not in {"equivalent", "not_equivalent", "not_established"}:
         errors.append("contract delta Semantic input equivalence has an invalid representation")
     return errors
+
+
+def _sentry_contract_delta_rows(text: str) -> dict[str, dict[str, str]]:
+    """Return the validated Contract Delta rows for semantic boundary checks."""
+    if sentry_contract_delta_errors(text):
+        return {}
+    lines = text.splitlines()
+    heading_index = next(
+        (index for index, line in enumerate(lines) if re.fullmatch(r"#{1,6}\s+Contract Delta\s*", line)),
+        None,
+    )
+    if heading_index is None:
+        return {}
+    table_index = heading_index + 1
+    while table_index < len(lines) and not lines[table_index].strip():
+        table_index += 1
+    rows: list[dict[str, str]] = []
+    for line in lines[table_index + 2 :]:
+        if not is_table_row(line):
+            break
+        cells = table_cells(line)
+        if len(cells) != 4:
+            return {}
+        rows.append(dict(zip(
+            ("Boundary", "Representation", "Field identity / coordinate space", "Evidence refs"),
+            cells,
+            strict=True,
+        )))
+    return {row["Boundary"]: row for row in rows}
+
+
+def sentry_upstream_boundary_errors(
+    normalized_evidence: str, fix_design: dict[str, object], *, require_plan: bool
+) -> list[str]:
+    """Ensure a field-loss delta cannot be finalized as a downstream-only fix."""
+    if not require_plan or fix_design.get("plan_readiness") != "ready_for_implementation":
+        return []
+    rows = _sentry_contract_delta_rows(normalized_evidence)
+    if not rows:
+        return []
+    delta_fields = ("Representation", "Field identity / coordinate space")
+    baseline = " ".join(rows.get("Baseline", {}).get(field, "") for field in delta_fields).lower()
+    outbound = " ".join(rows.get("Outbound", {}).get(field, "") for field in delta_fields).lower()
+    destination = " ".join(rows.get("Destination input", {}).get(field, "") for field in delta_fields).lower()
+    field_keyed = any(
+        marker in baseline for marker in ("field-keyed", "field keyed", "link_title", "link_summary")
+    )
+    scalar_loss = any(
+        marker in value
+        for value in (outbound, destination)
+        for marker in ("scalar", "message-only", "identity lost", "no field identity", "no outbound")
+    )
+    if not (field_keyed and scalar_loss):
+        return []
+
+    plan = fix_design.get("plan")
+    contract = fix_design.get("interface_contract")
+    boundary_rows = plan.get("exact_boundaries") if isinstance(plan, dict) else None
+    has_upstream_boundary = False
+    if isinstance(boundary_rows, list):
+        for row in boundary_rows:
+            if not isinstance(row, dict):
+                continue
+            repository = str(row.get("repository", "")).lower()
+            symbols = " ".join(str(value) for value in row.get("files_symbols", [])).lower()
+            boundary_text = f"{repository} {symbols}"
+            if "fanmgmt" in boundary_text and any(
+                marker in symbols
+                for marker in ("publisher", "workflow.py", "_publish_to_eos", "serializer", "request")
+            ):
+                has_upstream_boundary = True
+                break
+    request_shape = str(contract.get("request_shape", "")).lower() if isinstance(contract, dict) else ""
+    adds_field_keyed_request = any(
+        marker in request_shape
+        for marker in ("field-keyed", "field keyed", "text_fields", "link_title", "link_summary")
+    ) and not re.search(
+        r"\bno\s+(?:inbound\s+)?request|\b(?:no|without)\s+.*(?:field|title|summary)",
+        request_shape,
+    )
+    if has_upstream_boundary and adds_field_keyed_request:
+        return []
+    return [
+        "ready fix design must address the observed upstream field-preservation delta: "
+        "include the producer boundary and an affirmative field-keyed request change"
+    ]
 
 
 def fix_design_result_errors(
@@ -703,6 +790,7 @@ def validate_sentry_artifacts(root: Path) -> None:
                         if missing:
                             errors.append("finalization packet dropped run inputs: " + ", ".join(missing))
     evidence = root / "normalized_evidence.md"
+    evidence_text = ""
     design = root / "fix_design_result.json"
     if not evidence.is_file():
         errors.append("normalized_evidence.md is missing")
@@ -733,6 +821,10 @@ def validate_sentry_artifacts(root: Path) -> None:
                 required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS,
                 require_plan=require_plan,
             ))
+            if isinstance(result, dict):
+                errors.extend(sentry_upstream_boundary_errors(
+                    evidence_text, result, require_plan=require_plan
+                ))
     if errors:
         fail(f"{root}: " + "\nFAIL: ".join(errors))
     if _ALLOW_UNRELEASED:
@@ -1209,6 +1301,12 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 require_plan=require_plan,
             ):
                 fail(f"{path}: {error}")
+            evidence_path = path.parent / "normalized_evidence.md"
+            if isinstance(fix_result, dict) and evidence_path.is_file():
+                for error in sentry_upstream_boundary_errors(
+                    evidence_path.read_text(), fix_result, require_plan=require_plan
+                ):
+                    fail(f"{path}: {error}")
             if not isinstance(fix_result, dict):
                 fix_result = {}
             if _contains_hypothesis(fix_result):
@@ -1659,6 +1757,20 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         v29["expected_malformed_error"]
     ]
     assert sentry_contract_delta_errors(v29["valid_normalized_evidence"]) == []
+    v34 = json.loads(V34_SENTRY_FINALIZATION_FIXTURE.read_text())
+    assert sentry_upstream_boundary_errors(
+        v34["normalized_evidence"], v34["fix_design_result"], require_plan=True
+    ) == []
+    downstream_only = json.loads(json.dumps(v34["fix_design_result"]))
+    downstream_only["interface_contract"]["request_shape"] = (
+        "No inbound request-shape change; continue consuming the existing scalar message."
+    )
+    assert sentry_upstream_boundary_errors(
+        v34["normalized_evidence"], downstream_only, require_plan=True
+    ) == [
+        "ready fix design must address the observed upstream field-preservation delta: "
+        "include the producer boundary and an affirmative field-keyed request change"
+    ]
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "work_record.md"
         (path.parent / "role_bindings.json").write_text(json.dumps({
@@ -2745,6 +2857,9 @@ for phrase in (
     "Standard does not parallelize those two dependent stages",
     "artifact exists and passes artifact validation",
     "--normalized-evidence",
+    "organization slug",
+    "validate_worker_runtime.py --trace",
+    "field-preservation change",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
@@ -2814,6 +2929,9 @@ for phrase in (
     "observed_competing_boundaries",
     "worker_activation_packets.json",
     "worker_runtime_guard",
+    "validate_worker_runtime.py --trace",
+    "context-unverified",
+    "organization identity was unavailable",
     "validated envelope fallback",
     "Never interrupt a live worker",
 ):
@@ -2840,6 +2958,7 @@ for phrase in (
     "fix_design_result_contract.json",
     "assigned `fix_design_result.json`",
     "observed_competing_boundaries",
+    "field-preservation change",
     "clarification_brief",
 ):
     if phrase not in sentry_architect:
@@ -2905,6 +3024,9 @@ for phrase in (
     "--completed-worker",
     "captured current turn start is the current run",
     "observed_competing_boundaries",
+    "validate_worker_runtime.py --trace",
+    "organization slug",
+    "field-preservation change",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")

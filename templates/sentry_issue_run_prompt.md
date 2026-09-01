@@ -115,7 +115,10 @@ Runtime bootstrap:
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
   pre-query Sentry or duplicate that investigation. When `Sentry issue` supplies a stable ID or URL, resolve it directly
-  before any project or issue search. If direct resolution fails, allow one justified fallback and stop.
+  before any project or issue search. A direct issue lookup requires a stable issue identifier and organization slug
+  (or a URL that carries both); when only a work-item key is present, record `supplied_occurrence` and do not call the
+  issue endpoint with a missing organization. If the required identity is available but resolution fails, allow one
+  justified fallback and stop.
   Request the latest event first (`limit: 1` when supported). For Standard, allow one tool-discovery call.
   Allow at most three Sentry data queries, 30 seconds per query, and 90 seconds total. Never enumerate projects or fan
   out across organizations and
@@ -172,8 +175,14 @@ Runtime bootstrap:
   mapping, and evidence eligibility. Reject undeclared feature-branch behavior as baseline or production evidence.
 - Quarantine any provider-required memory pass. Reject a worker result when unassigned memory or historical material
   appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
+- Before analytical fan-in, audit each exposed provider tool trace with `validate_worker_runtime.py --trace`. Reject or
+  quarantine results containing `forbidden_context_reference:*` or `context_conformance_failed`; an unavailable trace
+  is unverified, must be marked failed, and must not be reported as a passing self-attestation.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
+- When Contract Delta shows field-keyed baseline content reduced to scalar or message-only destination input, Fix Design
+  must include the upstream producer/request boundary and an affirmative field-preservation change. A downstream-only
+  plan or an interface contract that leaves the scalar request unchanged is not ready for implementation.
 - When Standard Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, first validate
   `normalized_evidence.md` and `fix_design_result.json`, then release every activated analytical worker. Run the
   `standard_planning_finalization.finalizer` recorded in `role_bindings.json` exactly once. Pass the artifact root, the

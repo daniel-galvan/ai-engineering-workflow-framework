@@ -6,15 +6,27 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import tempfile
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 V40_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v40_sentry_worker_runtime.json"
+V41_CONTEXT_TRACE_FIXTURE = ROOT / "tests" / "fixtures" / "v41_sentry_context_trace.json"
 ACTIVE_STATUSES = {"pending_init", "running", "in_progress", "awaiting_dependency"}
 TERMINAL_STATUSES = {"completed", "failed", "stopped", "interrupted", "cancelled"}
 DESTRUCTIVE_TRANSITIONS = {"interrupt", "close", "replace"}
+TRACE_METADATA_KEYS = {
+    "description", "expected_errors", "source_task", "source_thread", "fixture", "schema_version",
+}
+FORBIDDEN_CONTEXT_PATTERNS = (
+    ("memory_path", re.compile(r"(?i)(?:^|[/\\])memory\.md(?:$|[/\\])")),
+    ("memory_directory", re.compile(r"(?i)(?:^|[/\\])\.codex[/\\]memories(?:$|[/\\])")),
+    ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries(?:$|[/\\])")),
+    ("archived_artifact", re.compile(r"(?i)(?:^|[/\\])\.thoughts[/\\][^/\\]+[/\\]runs[/\\]")),
+    ("memory_citation", re.compile(r"(?i)<oai-mem-citation>")),
+)
 
 
 def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: str) -> list[str]:
@@ -76,6 +88,36 @@ def transition_error(action: str, provider_status: str) -> str | None:
     return None
 
 
+def _trace_strings(value: object, path: tuple[str, ...] = ()):
+    """Yield strings from provider tool activity, excluding fixture metadata."""
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if str(key) in TRACE_METADATA_KEYS:
+                continue
+            yield from _trace_strings(nested, (*path, str(key)))
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            yield from _trace_strings(nested, (*path, str(index)))
+    elif isinstance(value, str):
+        yield path, value
+
+
+def context_trace_errors(trace: dict[str, object]) -> list[str]:
+    """Reject worker traces that reference unassigned memory or archived runs."""
+    if not isinstance(trace, dict):
+        return ["tool_trace_invalid"]
+    errors: list[str] = []
+    declared = str(trace.get("context_conformance", "")).strip().lower()
+    if declared in {"fail", "failed", "blocked"}:
+        errors.append("context_conformance_failed")
+    for _, value in _trace_strings(trace):
+        for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
+            if pattern.search(value):
+                errors.append(f"forbidden_context_reference:{label}")
+                break
+    return list(dict.fromkeys(errors))
+
+
 def trace_errors(trace: dict[str, object]) -> list[str]:
     errors: list[str] = []
     spawn = trace.get("spawn", {})
@@ -96,6 +138,7 @@ def trace_errors(trace: dict[str, object]) -> list[str]:
     if isinstance(failure, dict) and failure.get("requested") and not failure.get("artifact_created"):
         if failure.get("evidence_artifact_required"):
             errors.append("analytical_failure_artifact_absent")
+    errors.extend(context_trace_errors(trace))
     return errors
 
 
@@ -146,6 +189,11 @@ def self_test() -> None:
     ]
     corrected["analytical_failure"]["evidence_artifact_required"] = False
     assert trace_errors(corrected) == []
+    context_trace = json.loads(V41_CONTEXT_TRACE_FIXTURE.read_text())
+    assert trace_errors(context_trace) == context_trace["expected_errors"]
+    clean_trace = json.loads(json.dumps(context_trace))
+    clean_trace["tool_trace"] = [{"tool": "exec_command", "arguments": {"cmd": "rg -n 'J3V' current-run.md"}}]
+    assert trace_errors(clean_trace) == []
     print("validate_worker_runtime self-test: passed")
 
 

@@ -16,6 +16,11 @@ Sentry supplies production failure evidence to the Sentry Issue Remediation Play
 
 Use the narrowest operation that answers the current question:
 
+Direct issue resolution requires a stable issue ID or URL plus the Sentry organization slug. A work-item key (for
+example, a Jira-style `HEARSAYLABS-PYTHON3-J3V`) is not sufficient by itself. When the organization identity is absent,
+record the lookup as unavailable and use the supplied occurrence; do not send an issue request with an empty
+`organizationSlug`.
+
 | Need | MCP capability |
 | --- | --- |
 | Issue details | `get_sentry_resource` with `resourceType: issue` |

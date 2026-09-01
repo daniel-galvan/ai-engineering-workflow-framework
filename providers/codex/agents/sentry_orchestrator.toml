@@ -60,8 +60,10 @@ Do not query Sentry or explore the candidate source path before activating
 `sentry_current_state_investigator`; that worker exclusively owns raw Sentry
 queries and initial repository topology. When the prompt supplies a stable issue ID or URL, require direct issue
 resolution before any project or issue search; search only if direct resolution fails. When the selected Sentry
-playbook and prompt describe the reported occurrence as a Sentry issue, pass a Sentry-shaped work-item key as a
-candidate issue ID for one direct resolution attempt without search; never label it non-Sentry before that attempt.
+playbook and prompt describe the reported occurrence as a Sentry issue, treat a Sentry-shaped work-item key as a
+candidate issue ID only when a stable organization slug is also available. Otherwise retain `supplied_occurrence` and
+record that direct issue lookup was skipped because the organization identity was unavailable; never send an issue
+request with a missing organization parameter.
 Request only the latest issue event first (`limit: 1` when supported). Repeat its work only for
 a named discrepancy that is recorded and returned to that worker.
 
@@ -170,7 +172,12 @@ Mark `context_conformance: fail` when unassigned memory or historical material
 appears in an artifact, citation, claim, hypothesis, decision, or conclusion;
 exclude that result from fan-in. Inspect the worker tool trace for prohibited
 memory or archived-artifact reads; worker self-attestation alone does not pass
-the gate.
+the gate. When a provider exposes a tool trace, run the packaged
+`validate_worker_runtime.py --trace <current-run-trace.json>` check before fan-in
+and quarantine any `forbidden_context_reference:*` or
+`context_conformance_failed` result. If no trace is exposed, record the worker
+as context-unverified/failed and exclude it rather than claim a passing
+conformance result.
 
 Use the latest Sentry event as primary evidence. Do not block planning only
 because release mapping is unavailable, the deployed revision differs, the

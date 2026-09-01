@@ -239,6 +239,7 @@ def _prepare_run_inputs(
     execution_repository: Path,
     supplied_path: Path | None,
     continuation: bool,
+    validated_supplied: dict[str, object] | None = None,
 ) -> tuple[dict[str, object], Path]:
     destination = artifact_root / RUN_INPUTS_FILENAME
     if continuation and destination.is_file():
@@ -248,7 +249,7 @@ def _prepare_run_inputs(
             write_manifest(destination, current)
         return load_manifest(destination, explicit=False), destination
     if supplied_path:
-        source = load_manifest(supplied_path, explicit=True)
+        source = validated_supplied or load_manifest(supplied_path, explicit=True)
     else:
         source = default_manifest(work_item, playbook, execution_repository.resolve())
     return write_manifest(destination, source), destination
@@ -320,7 +321,13 @@ def prepare_run(
         raise ValueError("execution_repository_unavailable")
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
-    artifact_root = execution_repository.resolve() / ".thoughts" / work_item
+    resolved_execution_repository = execution_repository.resolve()
+    artifact_root = resolved_execution_repository / ".thoughts" / work_item
+    # Validate supplied input and provider bindings before creating, archiving, or
+    # overwriting any run artifact. This makes invalid retries transactional.
+    validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
+    resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
+    manifest = resolve_bindings(playbook, resolved_runtime_agents)
     artifact_root.mkdir(parents=True, exist_ok=True)
     archived = None if continuation else _archive_existing_run(artifact_root, archive_stale_run)
     record = artifact_root / "work_record.md"
@@ -330,10 +337,9 @@ def prepare_run(
     elif not record.exists():
         template = "sentry_work_record.md" if playbook == "sentry_issue_remediation" else "work_record.md"
         shutil.copyfile(ROOT / "templates" / template, record)
-    resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
-    manifest = resolve_bindings(playbook, resolved_runtime_agents)
     run_inputs, run_inputs_path = _prepare_run_inputs(
-        artifact_root, work_item, playbook, execution_repository, input_manifest, continuation
+        artifact_root, work_item, playbook, resolved_execution_repository, input_manifest, continuation,
+        validated_supplied,
     )
     manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
     manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
@@ -509,6 +515,28 @@ def self_test() -> None:
             assert str(error) == "unknown_playbook:playbooks/unknown.md"
         else:
             raise AssertionError("unknown playbook must be rejected")
+        invalid_source = execution / "invalid-inputs.json"
+        invalid_source.write_text(json.dumps({
+            "schema_version": 1,
+            "precedence_rule": "",
+            "inputs": [{
+                "Input ID": "USER-INVALID",
+                "Input or artifact": "Invalid fixture",
+                "Source or path": "Current user request",
+                "Authority": "Authoritative current-run context",
+                "Status": "Registered",
+            }],
+        }))
+        try:
+            prepare_run(
+                execution, "ITEM-INVALID", "sentry_issue_remediation", None, False,
+                input_manifest=invalid_source,
+            )
+        except ValueError as error:
+            assert str(error) == "run_input_manifest_precedence_rule_empty"
+        else:
+            raise AssertionError("invalid input manifest must be rejected before artifact creation")
+        assert not (execution / ".thoughts" / "ITEM-INVALID").exists()
     print("prepare_run self-test: passed")
 
 

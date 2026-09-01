@@ -1,0 +1,28 @@
+{
+  "source_task": "context-trace-fixture",
+  "description": "A worker tool trace containing prohibited historical-context reads.",
+  "spawn": {
+    "expected_agent": "sentry_solution_architect",
+    "observed_agent_role": "sentry_solution_architect",
+    "observed_agent_path": "providers/codex/agents/sentry_solution_architect.toml",
+    "activation_packet_delivered": true
+  },
+  "tool_trace": [
+    {
+      "tool": "exec_command",
+      "arguments": {
+        "cmd": "rg -n 'J3V|Supervision' /Users/dgalvan/.codex/memories/MEMORY.md"
+      }
+    },
+    {
+      "tool": "exec_command",
+      "arguments": {
+        "cmd": "sed -n '1,120p' /Users/dgalvan/projects/HearsayLabs/.thoughts/J3V/runs/stale-20260901T155033Z/work_record.md"
+      }
+    }
+  ],
+  "expected_errors": [
+    "forbidden_context_reference:memory_path",
+    "forbidden_context_reference:archived_artifact"
+  ]
+}

@@ -98,6 +98,14 @@ Set `plan_readiness: awaiting_input` and `implementation_plan_action: omit`.
 Set `plan_readiness: ready_for_implementation` and
 `implementation_plan_action: create` only when one evidence-supported
 remediation boundary and intended change have been selected.
+Before returning `ready_for_implementation`, compare the normalized Contract
+Delta with the proposed interface and exact boundaries. If a field-keyed
+baseline (for example `link_title` or `link_summary`) becomes scalar or
+message-only at the outbound or destination-input boundary, include the
+upstream producer/request boundary and an affirmative field-preservation change.
+A downstream-only plan or a request shape explicitly marked unchanged
+is not ready; return it for correction or use `awaiting_input` when the
+boundary remains genuinely unresolved.
 Set `interface_change` to `true` when the fix changes an API, event, payload,
 schema, or other interface. In that case, `ready_for_implementation` requires
 an `interface_contract` with exact `surface`, `request_shape`, `response_shape`,

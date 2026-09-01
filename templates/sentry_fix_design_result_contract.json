@@ -54,6 +54,7 @@
     "contradicting_evidence_refs": "required non-empty list when invalidates_supported_change is true",
     "observed_competing_boundaries": "required non-empty list when invalidates_supported_change is true; each entry has boundary, affirmative observation, and evidence_refs. Missing observations, unavailable release mapping, and possible code paths do not qualify."
   },
+  "readiness_boundary_guard": "When Contract Delta shows field-keyed baseline content reduced to scalar or message-only destination input, a ready result must include the upstream producer/request boundary and an affirmative field-preservation change; a downstream-only plan or explicitly unchanged scalar request is not ready.",
   "clarification_brief_when_awaiting_input": {
     "confirmed_facts": "non-empty list of strings",
     "strongest_hypothesis": "non-empty string",

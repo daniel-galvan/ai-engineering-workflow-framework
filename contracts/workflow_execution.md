@@ -261,6 +261,13 @@ evidence. Return a contaminated worker once with the same typed inputs and requi
 reverification. If clean isolation cannot be enforced, preserve the partial result as contaminated evidence, record the
 control failure, and stop at an incomplete outcome. Worker self-attestation alone does not pass this gate.
 
+The Coordinator MUST audit the provider's tool trace before fan-in when the provider exposes a trace or command ledger.
+Run the packaged worker-runtime validator with `--trace <current-run-trace.json>` and treat any
+`forbidden_context_reference:*` or `context_conformance_failed` result as contaminated evidence. A trace that cannot be
+obtained is unverified; mark the result failed and exclude it rather than claiming `context_conformance: pass` from
+self-attestation alone. The trace audit covers
+unassigned memory paths, rollout summaries, memory citations, and archived `.thoughts/<WORK-ITEM-ID>/runs/` artifacts.
+
 Every activation packet MUST include a compact input manifest for each assigned Input ID: the short value or fact, its
 source, its authority classification, and the expected use or disposition. Assigning an ID without passing its value is
 not input delivery. A worker may record an assigned input as unavailable or out of scope only when the packet includes
@@ -492,6 +499,10 @@ repair readiness, outcomes, evidence, boundaries, intended changes, or blockers 
 unknowns. `awaiting_input` requires at least one discriminating check and a structured blocker naming its decision type,
 question, unavailable reason, evidence, and at least two materially different fix implications. It MUST NOT defer an
 already supported boundary and intended change unless the evidence shows that each blocker invalidates that change.
+When the normalized Contract Delta establishes that field-keyed baseline content is reduced to scalar or message-only
+destination input, Fix Design MUST select an upstream producer/request boundary and an affirmative field-preservation
+change. A downstream-only plan, or an interface contract that explicitly leaves the scalar request unchanged, is not
+ready and MUST be returned for correction or changed to `awaiting_input`.
 When `interface_change` is true, readiness also requires an exact `interface_contract`; unresolved field names, shapes,
 absence semantics, compatibility precedence, or rollout keep the plan at `awaiting_input`.
 
