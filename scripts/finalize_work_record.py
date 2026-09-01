@@ -683,6 +683,16 @@ def prepare_analytical_failure(
 
 
 def self_test() -> None:
+    sentry_playbook_version = re.search(
+        r"^version: (\S+)$",
+        (ROOT / "playbooks" / "sentry_issue_remediation.md").read_text(),
+        re.MULTILINE,
+    ).group(1)
+    sentry_prompt_version = re.search(
+        r"^version: (\S+)$",
+        (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text(),
+        re.MULTILINE,
+    ).group(1)
     packet = {
         "work_item": {"ID": "ITEM-1", "Title": "Test", "Last Updated": "2026-08-27T00:00:00Z"},
         "playbook_selection": {
@@ -700,11 +710,13 @@ def self_test() -> None:
                           "Evidence eligibility": "Accepted"}],
         "identity": {
             "Run ID": "run-001", "Evaluation run ID": "Not applicable",
-            "Playbook / version": "playbooks/sentry_issue_remediation.md / 0.4.9",
+            "Playbook / version": f"playbooks/sentry_issue_remediation.md / {sentry_playbook_version}",
             "Framework commit / status": f"{'a' * 40} / Clean", "Plugin package / version": "Not applicable",
             "Provider/runtime configuration": "Not provided",
             "Provider configuration source/status": "manual / resolved",
-            "Prompt template / revision / conformance": "templates/sentry_issue_run_prompt.md / 0.4.9 / pass",
+            "Prompt template / revision / conformance": (
+                f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass"
+            ),
             "Role-policy baseline ID": "Not applicable", "Role binding manifest": "Not applicable",
             "Provider / model configuration": "Manual / Worker Execution Ledger",
             "Coordinator model/effort": "Not applicable", "Requested profile": "standard",
@@ -753,7 +765,10 @@ def self_test() -> None:
                         "complete_when": "The worker graph starts in the current task."},
                     "artifacts": ["work_record.md"],
                     "execution": "standard/planning; validation passed; workers not started; source changes none; runtime pending/unknown",
-                    "provenance": f"plugin Not applicable; framework revision {'a' * 40} (clean); playbook sentry_issue_remediation 0.4.7."},
+                    "provenance": (
+                        f"plugin Not applicable; framework revision {'a' * 40} (clean); "
+                        f"playbook sentry_issue_remediation {sentry_playbook_version}."
+                    )},
     }
     v28 = json.loads(V28_STABILIZATION_FIXTURE.read_text())
     normalization = v28["packet_normalization"]
@@ -859,9 +874,11 @@ def self_test() -> None:
             V34_FINALIZATION_FIXTURE.read_text()
         )["fix_design_result"]["plan"]
         fixture_packet_data["identity"]["Framework commit / status"] = f"{'a' * 40} Clean; preflight passed"
-        fixture_packet_data["identity"]["Playbook / version"] = "Sentry Issue Remediation / 0.4.9"
+        fixture_packet_data["identity"]["Playbook / version"] = (
+            f"Sentry Issue Remediation / {sentry_playbook_version}"
+        )
         fixture_packet_data["identity"]["Prompt template / revision / conformance"] = (
-            "templates/sentry_issue_run_prompt.md / 0.4.9 / pass"
+            f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass"
         )
         fixture_packet_data["identity"]["Coordinator model/effort"] = "gpt-5.6-luna/medium"
         fixture_packet_data["handoff"]["workflow_result"] = "Workflow result: Ready for implementation"
@@ -888,9 +905,9 @@ def self_test() -> None:
         finalize(fixture_packet, fixture_closure, fixture_record)
         fixture_rendered = fixture_record.read_text()
         assert "Workflow result: Ready for implementation" in fixture_rendered
-        assert "templates/sentry_issue_run_prompt.md / 0.4.9 / pass" in fixture_rendered
+        assert f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass" in fixture_rendered
         assert f"{'a' * 40} / Clean" in fixture_rendered
-        assert "playbooks/sentry_issue_remediation.md / 0.4.9" in fixture_rendered
+        assert f"playbooks/sentry_issue_remediation.md / {sentry_playbook_version}" in fixture_rendered
         assert "gpt-5.6-luna / medium" in fixture_rendered
         assert "evidence 01a00000" not in fixture_rendered
         assert "runtime closure released" in fixture_rendered

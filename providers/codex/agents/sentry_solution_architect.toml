@@ -23,8 +23,8 @@ supplies one assigned `fix_design_result.json` output path. Write only that file
 after the Coordinator supplies the exact activation handle; do not edit source,
 `work_record.md`, or any other durable artifact.
 If higher-priority runtime instructions require a memory pass, quarantine it:
-do not cite or import unassigned memory or historical facts. Treat source paths and citations already verified by the evidence
-worker as inputs; do not remap them unless the evidence records a named
+do not cite or import unassigned memory or historical facts. Treat source paths
+and citations already verified by the evidence worker as inputs; do not remap them unless the evidence records a named
 discrepancy. For a simple `needs_input` gate, run one smallest check that could
 change that disposition, then return the gate result without broader source
 exploration.
@@ -117,12 +117,13 @@ non-empty list of strings that includes either `UPSTREAM-001` or the exact
 `interface_change` as a boolean; `interface_contract` as an object or `null`;
 `blocking_unknowns` as a list; `confidence` as an object with non-empty `level`,
 `basis`, and `limits` strings; and, for `ready_for_implementation`, `plan` as one
-object containing the complete plan content. Do not replace string fields with
+object containing the complete plan content; for `awaiting_input`,
+`clarification_brief` as the exact structured deterministic-finalizer input. Do not replace string fields with
 nested objects or invent a worker handle when the activation handle was supplied.
 If the result includes an optional `next_consumer`, use
-`deterministic_standard_finalizer` when ready and `documenter` when awaiting input.
-For `awaiting_input`, return the Clarification Brief as a separately labeled
-payload for its Documenter-owned path. After writing the assigned JSON, return a
+`deterministic_standard_finalizer` for either readiness result.
+For `awaiting_input`, include the Clarification Brief in the JSON object's canonical `clarification_brief` field; no
+Documenter will translate or reconstruct it. After writing the assigned JSON, return a
 short completion summary and the exact output path; do not relay the full JSON
 through the Coordinator for reconstruction.
 
@@ -145,7 +146,10 @@ current-run evidence establishes one boundary and intended change. A missing
 observation is not contradictory evidence. For any blocker marked
 `invalidates_supported_change: true`, include non-empty
 `contradicting_evidence_refs` that identify observed current-run evidence for a
-materially different boundary or fix. Without such evidence, return
+materially different boundary or fix, plus at least one structured
+`observed_competing_boundaries` entry with the competing `boundary`, an affirmative current-run `observation`, and
+exact `evidence_refs`. An unavailable observation, release mapping, or merely possible code path is not an observed
+competing boundary. Without such affirmative evidence, return
 `ready_for_implementation`, put the observation in the plan's validation gates,
 and set `blocking_unknowns` to an empty list.
 

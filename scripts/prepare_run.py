@@ -245,7 +245,7 @@ def prepare_run(
                 "normalizer": str(SENTRY_FIX_DESIGN_NORMALIZER),
                 "output": str(artifact_root / "fix_design_result.json"),
             },
-            "standard_ready_finalization": {
+            "standard_planning_finalization": {
                 "finalizer": str(SENTRY_PLANNING_FINALIZER),
                 "owner": "Coordinator",
             },
@@ -293,7 +293,7 @@ def self_test() -> None:
         assert prepared_manifest["worker_contracts"]["fix_design"]["normalizer"] == str(
             SENTRY_FIX_DESIGN_NORMALIZER
         )
-        assert prepared_manifest["worker_contracts"]["standard_ready_finalization"]["finalizer"] == str(
+        assert prepared_manifest["worker_contracts"]["standard_planning_finalization"]["finalizer"] == str(
             SENTRY_PLANNING_FINALIZER
         )
         runtime = execution / "agents"

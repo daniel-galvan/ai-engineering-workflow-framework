@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "artifact": "fix_design_result.json",
   "required_fields": {
     "worker_id": "non-empty string",
@@ -43,6 +43,23 @@
     "monitoring": "list of strings",
     "risks": "list of strings",
     "completion_criteria": "non-empty list of strings"
+  },
+  "blocking_unknown_when_awaiting_input": {
+    "decision_type": "business, scope, ownership, incompatible_alternatives, or indispensable_evidence",
+    "question": "non-empty string",
+    "unavailable_reason": "non-empty string",
+    "fix_implications": "at least two materially different non-empty strings",
+    "evidence_refs": "non-empty list of current-run evidence references",
+    "invalidates_supported_change": "boolean; true only for affirmative observed competing evidence",
+    "contradicting_evidence_refs": "required non-empty list when invalidates_supported_change is true",
+    "observed_competing_boundaries": "required non-empty list when invalidates_supported_change is true; each entry has boundary, affirmative observation, and evidence_refs. Missing observations, unavailable release mapping, and possible code paths do not qualify."
+  },
+  "clarification_brief_when_awaiting_input": {
+    "confirmed_facts": "non-empty list of strings",
+    "strongest_hypothesis": "non-empty string",
+    "feasible_options": "non-empty list of strings",
+    "recommendation": "non-empty string",
+    "plain_language_next_action": "non-empty string"
   },
   "valid_non_interface_example": {
     "worker_id": "fix-design",

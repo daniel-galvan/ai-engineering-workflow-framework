@@ -1,11 +1,11 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.4.6
+version: 0.4.7
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-08-28
+last_updated: 2026-08-31
 ---
 
 # Codex Provider Adapter
@@ -56,12 +56,13 @@ Treat a completed preflight process with exit status 0 as passed even when the a
 successful preflight solely to recover a missing display payload; retry only after timeout, nonzero exit, or an
 objectively malformed result whose status cannot be determined.
 
-For Standard planning with `ready_for_implementation/create`, release every activated analytical worker and run the
-`standard_ready_finalization.finalizer` recorded in `role_bindings.json`, passing each conditional worker handle with
-`--completed-worker`; do not activate a Documenter or use
-pre-release rendering. Keep the final Documenter active while running the packaged finalizer in `--pre-release` mode
-with a pending closure probe only for Documenter-owned paths such as `awaiting_input`, Deep planning, and remediation.
-Release that worker only after the check passes; then record exact provider closure and run the finalizer normally.
+For Standard planning, release every activated analytical worker and run the
+`standard_planning_finalization.finalizer` recorded in `role_bindings.json`, passing each conditional worker handle with
+`--completed-worker`; do not activate a Documenter or use pre-release rendering for either readiness result. The
+finalizer creates `implementation_plan.md` for `ready_for_implementation/create` or `clarification_brief.md` for
+`awaiting_input/omit`. Keep the final Documenter active while running the packaged finalizer in `--pre-release` mode
+with a pending closure probe only for Documenter-owned Deep-planning and remediation paths. Release that worker only
+after the check passes; then record exact provider closure and run the finalizer normally.
 Evidence Topology and Fix Design receive prepared contracts and exact output paths from `role_bindings.json`. Each
 writes only its assigned artifact; the Coordinator validates those files rather than reconstructing their payloads.
 

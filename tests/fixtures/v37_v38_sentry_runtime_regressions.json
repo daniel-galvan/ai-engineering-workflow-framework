@@ -1,0 +1,147 @@
+{
+  "source_tasks": [
+    "01a0595d-4042-7eb3-9502-33012aab1c35",
+    "01a05976-b583-7a61-8f9d-ee7d60a5a750"
+  ],
+  "description": "Minimized regressions for current-task self-detection, absence-only readiness blocking, and deterministic Standard awaiting-input finalization.",
+  "related_run_detection": {
+    "current_turn_started_at": 1788205678,
+    "tasks": [
+      {
+        "id": "01a0595d-4042-7eb3-9502-33012aab1c35",
+        "title": "v37 HLABS-PYTHON3-J3V",
+        "created_at": 1788205678,
+        "status": "active",
+        "expected_classification": "current_invocation"
+      },
+      {
+        "id": "01a058da-42fd-7502-a54b-69f83d40d037",
+        "title": "v36 HLABS-PYTHON3-J3V",
+        "created_at": 1788200000,
+        "status": "idle",
+        "expected_classification": "prior_idle_task"
+      }
+    ],
+    "expected_active_related_runs": []
+  },
+  "normalized_evidence": "# Normalized Evidence\n\n# Contract Delta\n| Boundary | Representation | Field identity / coordinate space | Evidence refs |\n| --- | --- | --- | --- |\n| Baseline | keyed source fields | title and body are distinct | E-001 |\n| Outbound | scalar text | title identity is absent | E-001 |\n| Destination input | unresolved deployed input | exact evaluated field is unavailable | E-002 |\n| Return | empty result | no field identity or extent returned | E-002 |\n| Semantic input equivalence | not_established | indispensable runtime evidence must select the boundary | E-001; E-002 |\n",
+  "valid_awaiting_fix_design_result": {
+    "worker_id": "fix-design",
+    "worker_handle": "01a05982-88fb-78a2-9367-3bf362dfed8a",
+    "outcome": "complete",
+    "plan_readiness": "awaiting_input",
+    "implementation_plan_action": "omit",
+    "inputs_consumed": [
+      "UPSTREAM-001: consumed validated normalized_evidence.md"
+    ],
+    "context_conformance": "pass",
+    "configuration_conformance": "Not exposed; explicit launch binding gpt-5.6-sol / low",
+    "checks_performed": [
+      {
+        "check": "Compared the observed request and return boundaries.",
+        "hypothesis": "The missing result could originate at either boundary.",
+        "result": "Current evidence does not establish either boundary."
+      }
+    ],
+    "checks_remaining": [
+      "Capture the evaluated field identity and the pre-emission result for the same occurrence."
+    ],
+    "supported_remediation_boundary": "",
+    "supported_intended_change": "",
+    "interface_change": false,
+    "interface_contract": null,
+    "blocking_unknowns": [
+      {
+        "decision_type": "indispensable_evidence",
+        "question": "Was the required field absent before evaluation or was a produced result lost before emission?",
+        "unavailable_reason": "The supplied occurrence contains neither the evaluated field identity nor the pre-emission result.",
+        "fix_implications": [
+          "Add the missing field to the input contract if it was absent before evaluation.",
+          "Repair result persistence or emission if the result existed before emission."
+        ],
+        "evidence_refs": [
+          "E-001",
+          "E-002"
+        ],
+        "invalidates_supported_change": false
+      }
+    ],
+    "confidence": {
+      "level": "medium",
+      "basis": "The observed mismatch is established but its first divergence is not.",
+      "limits": "The evaluated input and pre-emission result are unavailable."
+    },
+    "clarification_brief": {
+      "confirmed_facts": [
+        "The source baseline and returned result differ.",
+        "The first divergence is not established."
+      ],
+      "strongest_hypothesis": "The required source field was absent before evaluation.",
+      "feasible_options": [
+        "Add the missing input field if absence is confirmed.",
+        "Repair result persistence or emission if a result was produced."
+      ],
+      "recommendation": "Capture the evaluated field identity and pre-emission result for the same occurrence.",
+      "plain_language_next_action": "Show what field the rules evaluated and what result existed immediately before emission."
+    }
+  },
+  "invalid_absence_only_blocker": {
+    "worker_id": "fix-design",
+    "worker_handle": "01a05982-88fb-78a2-9367-3bf362dfed8a",
+    "outcome": "complete",
+    "plan_readiness": "awaiting_input",
+    "implementation_plan_action": "omit",
+    "inputs_consumed": [
+      "UPSTREAM-001: consumed validated normalized_evidence.md"
+    ],
+    "context_conformance": "pass",
+    "configuration_conformance": "Not exposed; explicit launch binding gpt-5.6-sol / low",
+    "checks_performed": [
+      "Confirmed that the baseline field identity is absent from the inspected transport."
+    ],
+    "checks_remaining": [
+      "Map the deployed release and capture the pre-emission result."
+    ],
+    "supported_remediation_boundary": "Preserve field identity across the request and response contract.",
+    "supported_intended_change": "Add optional field-keyed input and qualified response identity with legacy fallbacks.",
+    "interface_change": true,
+    "interface_contract": null,
+    "blocking_unknowns": [
+      {
+        "decision_type": "indispensable_evidence",
+        "question": "Could the deployed build have behaved differently?",
+        "unavailable_reason": "Release mapping and a pre-emission observation are unavailable.",
+        "fix_implications": [
+          "Implement the supported field-identity contract.",
+          "Choose a different boundary if future evidence establishes one."
+        ],
+        "evidence_refs": [
+          "E-001",
+          "E-002"
+        ],
+        "contradicting_evidence_refs": [
+          "E-002 records an unavailable observation rather than an observed competing boundary."
+        ],
+        "invalidates_supported_change": true
+      }
+    ],
+    "confidence": {
+      "level": "medium",
+      "basis": "The current contract comparison establishes field-identity loss.",
+      "limits": "Deployment attribution remains unresolved."
+    },
+    "clarification_brief": {
+      "confirmed_facts": [
+        "The current contract loses field identity."
+      ],
+      "strongest_hypothesis": "The deployed contract has the same loss.",
+      "feasible_options": [
+        "Implement the supported contract.",
+        "Re-evaluate only if affirmative competing evidence is captured."
+      ],
+      "recommendation": "Treat deployment mapping as a plan gate.",
+      "plain_language_next_action": "Review the supported implementation plan."
+    }
+  },
+  "expected_absence_only_error": "requires at least one observed_competing_boundary"
+}

@@ -94,6 +94,7 @@ PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
 SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
 V36_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
+V37_V38_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v37_v38_sentry_runtime_regressions.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
@@ -480,6 +481,8 @@ def fix_design_result_errors(
     if bool(boundary.strip()) != bool(intended_change.strip()):
         errors.append("supported remediation boundary and intended change must be provided together")
     if readiness == "ready_for_implementation":
+        if "clarification_brief" in data:
+            errors.append("ready fix design must omit clarification_brief")
         if not isinstance(boundary, str) or not boundary.strip():
             errors.append("ready fix design requires a supported remediation boundary")
         if not isinstance(intended_change, str) or not intended_change.strip():
@@ -532,6 +535,8 @@ def fix_design_result_errors(
                 if field in plan and isinstance(plan[field], list) and not plan[field]:
                     errors.append(f"ready fix design plan {field} must not be empty")
     elif readiness == "awaiting_input":
+        if "plan" in data:
+            errors.append("awaiting_input fix design must omit plan")
         if not data["checks_performed"]:
             errors.append("awaiting_input requires at least one performed discriminating check")
         if not blockers:
@@ -544,6 +549,7 @@ def fix_design_result_errors(
             implications = blocker.get("fix_implications")
             evidence_refs = blocker.get("evidence_refs")
             contradicting_refs = blocker.get("contradicting_evidence_refs")
+            observed_competing = blocker.get("observed_competing_boundaries")
             if decision_type not in BLOCKING_DECISION_TYPES:
                 errors.append(f"blocking unknown {index} has invalid decision_type")
             if not isinstance(blocker.get("question"), str) or not blocker["question"].strip():
@@ -571,6 +577,36 @@ def fix_design_result_errors(
                     f"blocking unknown {index} that invalidates a supported change requires "
                     "contradicting_evidence_refs"
                 )
+            if blocker.get("invalidates_supported_change") is True:
+                if not isinstance(observed_competing, list) or not observed_competing:
+                    errors.append(
+                        f"blocking unknown {index} that invalidates a supported change requires at least one "
+                        "observed_competing_boundary"
+                    )
+                else:
+                    for competing_index, competing in enumerate(observed_competing, start=1):
+                        if not isinstance(competing, dict):
+                            errors.append(
+                                f"blocking unknown {index} observed_competing_boundary {competing_index} "
+                                "must be an object"
+                            )
+                            continue
+                        for field in ("boundary", "observation"):
+                            if not isinstance(competing.get(field), str) or not competing[field].strip():
+                                errors.append(
+                                    f"blocking unknown {index} observed_competing_boundary {competing_index} "
+                                    f"requires {field}"
+                                )
+                        competing_refs = competing.get("evidence_refs")
+                        if (
+                            not isinstance(competing_refs, list)
+                            or not competing_refs
+                            or not all(isinstance(value, str) and value.strip() for value in competing_refs)
+                        ):
+                            errors.append(
+                                f"blocking unknown {index} observed_competing_boundary {competing_index} "
+                                "requires evidence_refs"
+                            )
         if boundary and intended_change and not all(
             isinstance(blocker, dict) and blocker.get("invalidates_supported_change") is True
             for blocker in blockers
@@ -579,6 +615,21 @@ def fix_design_result_errors(
                 "awaiting_input cannot defer an established boundary and intended change without evidence that each "
                 "blocker invalidates the supported change"
             )
+        clarification = data.get("clarification_brief")
+        if not isinstance(clarification, dict):
+            errors.append("awaiting_input requires a structured clarification_brief")
+        else:
+            for field in ("confirmed_facts", "feasible_options"):
+                values = clarification.get(field)
+                if (
+                    not isinstance(values, list)
+                    or not values
+                    or not all(isinstance(value, str) and value.strip() for value in values)
+                ):
+                    errors.append(f"clarification_brief {field} must be a non-empty list of strings")
+            for field in ("strongest_hypothesis", "recommendation", "plain_language_next_action"):
+                if not isinstance(clarification.get(field), str) or not clarification[field].strip():
+                    errors.append(f"clarification_brief {field} must be a non-empty string")
     serialized = json.dumps(data, sort_keys=True)
     for marker in PROHIBITED_CONTEXT_MARKERS:
         if marker in serialized:
@@ -625,7 +676,7 @@ def validate_sentry_artifacts(root: Path) -> None:
                     manifest = json.loads(manifest_path.read_text())
                 except (json.JSONDecodeError, OSError):
                     manifest = {}
-                require_plan = "standard_ready_finalization" in manifest.get("worker_contracts", {})
+                require_plan = "standard_planning_finalization" in manifest.get("worker_contracts", {})
             errors.extend(fix_design_result_errors(
                 result,
                 required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS,
@@ -1099,7 +1150,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fix_result = {}
             require_plan = bool(
                 manifest
-                and "standard_ready_finalization" in manifest.get("worker_contracts", {})
+                and "standard_planning_finalization" in manifest.get("worker_contracts", {})
             )
             for error in fix_design_result_errors(
                 fix_result,
@@ -1540,6 +1591,18 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     assert any(
         "contradicting_evidence_refs" in error for error in fix_design_result_errors(invalid_v28)
     )
+    v37_v38 = json.loads(V37_V38_RUNTIME_FIXTURE.read_text())
+    assert fix_design_result_errors(
+        v37_v38["valid_awaiting_fix_design_result"],
+        required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS,
+    ) == []
+    absence_only_errors = fix_design_result_errors(
+        v37_v38["invalid_absence_only_blocker"],
+        required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS,
+    )
+    assert any(
+        v37_v38["expected_absence_only_error"] in error for error in absence_only_errors
+    )
     v29 = json.loads(V29_CONTRACT_FAILURE_FIXTURE.read_text())
     assert sentry_contract_delta_errors(v29["malformed_normalized_evidence"]) == [
         v29["expected_malformed_error"]
@@ -1912,14 +1975,24 @@ for path in TEMPLATES:
     ):
         if phrase not in text:
             fail(f"{path.relative_to(ROOT)} is missing explicit prompt-input admission: {phrase}")
-    for phrase in (
-        "Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md`",
-        "templates and examples are not runtime instructions.",
+    bootstrap_phrases = (
         "Current explicit user decisions and constraints are authoritative",
         "Delivery Activation Barrier",
         "Never claim successful execution when the required graph is incomplete.",
         "Reserve `plan_only`",
-    ):
+    )
+    if path.name == "sentry_issue_run_prompt.md":
+        bootstrap_phrases += (
+            "prepared worker contracts as the compact runtime surface",
+            "do not hydrate the complete playbook",
+            "Deep planning and remediation retain",
+        )
+    else:
+        bootstrap_phrases += (
+            "Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md`",
+            "templates and examples are not runtime instructions.",
+        )
+    for phrase in bootstrap_phrases:
         if phrase not in text:
             fail(f"{path.relative_to(ROOT)} is missing runtime bootstrap rule: {phrase}")
 
@@ -1938,7 +2011,7 @@ for path in (ROOT / "playbooks").glob("*.md"):
     final_documenter = re.search(r"Activate\s+one final Documenter after analytical fan-in", text)
     deterministic_sentry = (
         path.stem == "sentry_issue_remediation"
-        and "do not activate a Documenter for that path" in text
+        and "Do not activate a Documenter for either Standard planning result" in text
         and "deterministic Standard finalizer" in text
     )
     if not final_documenter and not deterministic_sentry:
@@ -2242,6 +2315,8 @@ for phrase in (
     "--pre-release",
     "--analytical-failure-stage",
     "skill or plugin enable/disable directive",
+    "task created at or after the captured current turn start",
+    "standard_planning_finalization.finalizer",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
@@ -2604,8 +2679,8 @@ for phrase in (
     "binds configuration",
     "Do not instruct downstream workers to reread",
     "minimal work-record skeleton",
-    "`standard_ready_finalization.finalizer`",
-    "one final Documenter after analytical fan-in",
+    "`standard_planning_finalization.finalizer`",
+    "do not activate a Documenter for either readiness result",
     "must not write or",
     "token-based Sentry skill",
     "Do not say `Nothing technical.`",
@@ -2650,6 +2725,8 @@ for phrase in (
     "--analytical-failure-stage",
     "canonical `UPSTREAM-001` Input ID",
     "skill or plugin enable/disable directive",
+    "captured current turn start is the current run",
+    "observed_competing_boundaries",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -2673,6 +2750,8 @@ for phrase in (
     "supported_remediation_boundary` and `supported_intended_change` as strings",
     "fix_design_result_contract.json",
     "assigned `fix_design_result.json`",
+    "observed_competing_boundaries",
+    "clarification_brief",
 ):
     if phrase not in sentry_architect:
         fail(f"providers/codex/agents/sentry_solution_architect.toml is missing bounded analysis control: {phrase}")
@@ -2735,6 +2814,8 @@ for phrase in (
     "fix_design_result_contract.json",
     "normalized_evidence_contract.md",
     "--completed-worker",
+    "captured current turn start is the current run",
+    "observed_competing_boundaries",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")

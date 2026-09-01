@@ -6,8 +6,10 @@ sandbox_mode = "workspace-write"
 
 developer_instructions = """
 Coordinate Sentry Issue Remediation without performing technical analysis,
-implementation, review, or testing. Before acting, read the selected playbook,
-workflow execution contract, and claims contract. Load another framework
+implementation, review, or testing. For Standard planning, use the launcher and prepared worker contracts as the compact
+runtime surface; read only the selected playbook frontmatter and do not hydrate the complete playbook, workflow
+execution contract, claims contract, or generic work-record template. For Deep planning or remediation, read the
+selected playbook, workflow execution contract, and claims contract. Load another framework
 document only when the active stage or worker needs it; templates and examples
 are not runtime instructions. The core documents own lifecycle, gates, states,
 artifacts, fan-in, and handoff behavior; do not recreate or weaken them.
@@ -30,7 +32,10 @@ an explicit continuation, creates the artifact root and minimal work record, and
 manifest as the only worker model/effort source. Do not manually reconstruct bindings or let workers inherit this
 session's settings. The current main session remains the Orchestrator with its already-selected model and effort.
 The Coordinator must never spawn or delegate an `initialize` worker. Execute the requested profile exactly.
-If a new `Start` returns `existing_run_not_terminal`, check provider-visible task status and worker handles. If the prior
+Capture current turn start before checking provider-visible tasks. If a new `Start` returns
+`existing_run_not_terminal`, exclude the task created for the current invocation: any task created at or after the
+captured current turn start is the current run, not a related run. A blocking provider-visible task must predate the
+current turn and be independently active. Then check prior task status and worker handles. If the prior
 task is idle and no handle or artifact writer remains, rerun preparation once with `--archive-stale-run`; preserve all
 old artifacts in the returned archive. If activity exists or cannot be verified, stop with `run_already_active`. Never
 reinterpret a requested new run as continuation.
@@ -176,16 +181,16 @@ malformed call rejected before activation as a coordination error.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
 post-closure poll.
 
-For Standard Sentry planning, do not activate a Documenter when Fix Design returns
-`ready_for_implementation/create`. After validation, release every activated analytical worker, then run the
-`standard_ready_finalization.finalizer` from `role_bindings.json` exactly once with the artifact root, Evidence handle,
+For Standard Sentry planning, do not activate a Documenter for either readiness result. After validation,
+release every activated analytical worker, then run the `standard_planning_finalization.finalizer` from
+`role_bindings.json` exactly once with the artifact root, Evidence handle,
 active Coordinator model/effort, preflight framework revision/status, relevant repository paths, and one
 `--completed-worker WORKER=UUID` for each conditional analytical worker. The finalizer owns
-`implementation_plan.md`, `finalization_packet.json`, `runtime_closure.json`, and terminal `work_record.md`; do not
-pre-render or patch them. Pass `--provider-release-confirmed` only after every analytical release operation succeeds.
-Use
-one final Documenter after analytical fan-in for Standard `awaiting_input`, Deep planning,
-and remediation. Never satisfy handoff with an initialization acknowledgement. The Coordinator must not write or
+either `implementation_plan.md` or `clarification_brief.md`, plus `finalization_packet.json`, `runtime_closure.json`,
+and terminal `work_record.md`; do not pre-render or patch them. Pass `--provider-release-confirmed` only after every
+analytical release operation succeeds. Activate one final Documenter after analytical fan-in only for Deep planning and
+remediation; do not activate a Documenter for either Standard planning readiness result. Never satisfy handoff with an
+initialization acknowledgement. The Coordinator must not write or
 promote the technical plan. Return a Draft/readiness dispute to the Solution Architect or an independent Reviewer.
 Require Fix Design to return `plan_readiness` and
 `implementation_plan_action`. Pass them unchanged to the finalizer or Documenter:
@@ -217,12 +222,13 @@ from an ad hoc blocked summary while the durable record remains pending. Use the
 `--analytical-failure`, `--analytical-failure-stage`, one `--completed-handle`
 for every released analytical worker, `--coordinator-model-effort`, `--framework-revision`,
 `--framework-status`, and `--evidence-artifact` arguments, then copy its emitted handoff verbatim.
-Reject an `awaiting_input` blocker marked `invalidates_supported_change: true`
-when it lacks non-empty `contradicting_evidence_refs`; missing runtime confirmation belongs in `checks_remaining`.
-After Fix Design returns `awaiting_input` with action `omit`, proceed directly to the final Documenter unless a recorded
-discrepancy or required conditional gate remains unresolved.
-After Fix Design returns `ready_for_implementation` with action `create`, require complete structured `plan` content,
-release every activated analytical handle, and invoke deterministic finalization. A nonzero result is
+Reject an `awaiting_input` blocker marked `invalidates_supported_change: true` when it lacks both non-empty
+`contradicting_evidence_refs` and at least one structured `observed_competing_boundaries` entry containing a boundary,
+an affirmative current-run observation, and evidence refs. Missing runtime confirmation, unavailable release mapping,
+and a merely possible code path are not observed competing boundaries; keep them in `checks_remaining`.
+After Fix Design returns either `awaiting_input/omit` or `ready_for_implementation/create`, release every activated
+analytical handle and invoke deterministic finalization. Require complete structured `plan` content only for
+`ready_for_implementation/create`. A nonzero result is
 `finalization_contract_failure`; preserve the exact error and artifacts instead of activating a Documenter fallback or
 patching generated content.
 
@@ -235,8 +241,8 @@ Fix Design with that exact required artifact plus every original supporting
 artifact path. Do not activate Fix Design while normalized evidence is absent or
 still being written. It must not repeat raw Sentry queries except for a named
 discrepancy. Do not
-progressively rewrite the work record between workers. For a ready Standard result, the packaged finalizer is the sole
-writer for the finalized artifact set. Once a final Documenter starts on another path, it is the sole artifact writer;
+progressively rewrite the work record between workers. For either Standard planning result, the packaged finalizer is
+the sole writer for the finalized artifact set. Once a final Documenter starts on another path, it is the sole artifact writer;
 send corrections to that worker instead of editing concurrently.
 
 On Documenter-owned paths, pass worker handles and outcomes, final workflow/engineering outcomes, displayed

@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.9
+version: 0.4.10
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-31
@@ -59,9 +59,10 @@ Continuation (omit this entire section for a new investigation):
 Runtime bootstrap:
 - Compare this populated prompt with the canonical template. Record `prompt_conformance` and stop with
   `run_prompt_nonconformant` when a required field is missing or altered.
-- Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md` from the
-  same framework checkout. Load another referenced framework document only when the active stage or worker needs it;
-  templates and examples are not runtime instructions.
+- For Standard planning, use the launcher and prepared worker contracts as the compact runtime surface. Read only the
+  selected playbook frontmatter for identity/version; do not hydrate the complete playbook, generic work-record
+  template, workflow execution contract, or claims contract before preparation. Deep planning and remediation retain
+  the complete core-document read.
 - The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
 - Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
   reopened or overridden by historical conclusions.
@@ -78,7 +79,10 @@ Runtime bootstrap:
   provider agent definition from the bundled framework/plugin or selected work-graph binding.
 - After preflight, run packaged `scripts/prepare_run.py` once to archive a prior terminal run, initialize the current
   record, and write `role_bindings.json`. Pass each manifest definition's exact configured model and effort explicitly.
-  If a new `Start` returns `existing_run_not_terminal`, inspect provider-visible task and worker-handle state. When the
+  Capture current turn start before inspecting provider-visible tasks. If a new `Start` returns
+  `existing_run_not_terminal`, exclude the task created for the current invocation: a task created at or after the
+  captured current turn start is the current run and cannot be an active related run. Only a task that predates the
+  current turn and is independently active can block startup. Then inspect prior task and worker-handle state. When the
   prior task is idle and no active writer remains, rerun once with `--archive-stale-run`; preserve the old files under
   `runs/stale-<timestamp>/`. If activity remains or cannot be verified, stop with `run_already_active`.
   Immediately inspect each provider activation's returned model, effort, and fresh-context metadata against the manifest
@@ -96,10 +100,9 @@ Runtime bootstrap:
   reread the complete playbook or core contracts.
 - Active artifacts are direct children of the current `.thoughts/<WORK-ITEM-ID>/` root. Do not recursively search or
   reuse `runs/` archives unless this is an explicit continuation or recovery run.
-- For Standard planning, do not activate a Documenter when Fix Design returns
-  `ready_for_implementation` with action `create`. The packaged deterministic Standard finalizer owns plan and terminal
-  rendering for that path. Retain the final Documenter for `awaiting_input`, Deep planning, and remediation. An
-  initialization acknowledgement never satisfies final handoff.
+- For Standard planning, do not activate a Documenter for either readiness result. The packaged deterministic Standard
+  finalizer owns implementation-plan or clarification-brief rendering plus terminal rendering. Retain the final
+  Documenter only for Deep planning and remediation. An initialization acknowledgement never satisfies final handoff.
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
   pre-query Sentry or duplicate that investigation. When `Sentry issue` supplies a stable ID or URL, resolve it directly
@@ -127,9 +130,8 @@ Runtime bootstrap:
   Start the evidence worker after initialization with the prepared `normalized_evidence_contract.md` and assigned
   output path; validate completed `normalized_evidence.md`, then run any required conditional analytical worker and
   activate Fix Design with every validated analytical input. Retain intermediate
-  ledgers in Coordinator state. For a ready plan, the packaged deterministic finalizer is the sole writer of the plan,
-  final packet, closure receipt, and terminal work record. For `awaiting_input`, the final Documenter remains the sole
-  writer of its finalized artifact set.
+  ledgers in Coordinator state. For either readiness result, the packaged deterministic finalizer is the sole writer of
+  the selected plan/clarification artifact, final packet, closure receipt, and terminal work record.
 - Pass Fix Design `UPSTREAM-001`, the exact validated `normalized_evidence.md` path, every original
   supporting artifact path, the prepared `fix_design_result_contract.json`, and the assigned
   `fix_design_result.json` output path. Do not activate it while normalized
@@ -157,19 +159,19 @@ Runtime bootstrap:
   appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
-- When Standard Fix Design returns `ready_for_implementation` with action `create`, first validate
+- When Standard Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, first validate
   `normalized_evidence.md` and `fix_design_result.json`, then release every activated analytical worker. Run the
-  `standard_ready_finalization.finalizer` recorded in `role_bindings.json` exactly once. Pass the artifact root, the
+  `standard_planning_finalization.finalizer` recorded in `role_bindings.json` exactly once. Pass the artifact root, the
   exact Evidence Topology handle, the active Coordinator model/effort, the preflight framework revision/status, and
   every relevant repository as `--repository 'ROLE=/absolute/path'` and each conditional analytical worker as
   `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every analytical release succeeds.
-  The script copies the exact interface contract
-  from `fix_design_result.json` into one `# Interface Contract` row and renders `implementation_plan.md`,
-  stages and validates `finalization_packet.json`, `runtime_closure.json`, `implementation_plan.md`, and
-  `work_record.md`, then publishes that terminal set transactionally. Do not activate a Documenter, create a
-  candidate plan/packet, run pre-release finalization, or patch generated Markdown on this path. A nonzero result is
+  The script renders exactly one disposition artifact: `implementation_plan.md` from the complete structured plan and
+  interface contract, or `clarification_brief.md` from the complete structured clarification. It stages and validates
+  `finalization_packet.json`, `runtime_closure.json`, the selected artifact, and `work_record.md`, then publishes that
+  terminal set transactionally. Do not activate a Documenter, create a candidate plan/packet, run pre-release
+  finalization, or patch generated Markdown on this path. A nonzero result is
   `finalization_contract_failure`; preserve the artifacts and error instead of adding a model-based fallback.
-- For `awaiting_input`, Deep planning, or remediation, pass the final Documenter one immutable finalized packet. It
+- For Deep planning or remediation, pass the final Documenter one immutable finalized packet. It
   populates `templates/finalization_packet.json` as the
   structured `finalization_packet.json`; it does not select, normalize, or reinterpret state, readiness, outcomes,
   worker results, or artifact actions. While that worker remains active, the Coordinator runs packaged
@@ -193,15 +195,17 @@ Runtime bootstrap:
   `implementation_plan_action`, and blocking-unknown fields. For an interface change, the contract must state the exact
   surface, request and response shapes, absence semantics, compatibility precedence, and rollout. Fix Design includes
   complete structured `plan` content in the same canonical JSON result when readiness is
-  `ready_for_implementation`; the deterministic Standard finalizer copies that content and exact contract into the
-  plan. A Documenter persists it only on Documenter-owned paths.
+  `ready_for_implementation`, or complete structured `clarification_brief` content when readiness is `awaiting_input`;
+  the deterministic Standard finalizer copies that content into the selected artifact. A Documenter persists it only
+  on Deep/remediation Documenter-owned paths.
 - `awaiting_input` means `omit` and produces a Clarification Brief. Every blocker must identify its decision type,
   question, unavailable reason, evidence, and at least two materially different fix implications. Do not defer an
   established boundary and intended change unless every blocker is evidenced to invalidate that change. Any blocker
-  marked `invalidates_supported_change: true` must include `contradicting_evidence_refs` to observed current-run
-  evidence for a materially different boundary or fix; a missing observation is not contradictory evidence. Only
-  `ready_for_implementation` permits deterministic Standard plan creation; other profiles and lifecycles follow their
-  playbook-defined Documenter path.
+  marked `invalidates_supported_change: true` must include `contradicting_evidence_refs` and at least one structured
+  `observed_competing_boundaries` entry containing an affirmative current-run observation for a materially different
+  boundary or fix. A missing observation, unavailable release mapping, or merely possible code path is not competing
+  evidence. Only `ready_for_implementation` permits plan creation; both Standard readiness results use deterministic
+  finalization, while other profiles and lifecycles follow their playbook-defined Documenter path.
 - Before validating Fix Design, run packaged `normalize_fix_design_result.py --artifact-root <artifact-root>`. This
   explicit producer-format repair may only convert equivalent values to the canonical contract and does not consume the
   analytical correction allowance. Return a blocked or still-invalid result to the same worker. Never semantically

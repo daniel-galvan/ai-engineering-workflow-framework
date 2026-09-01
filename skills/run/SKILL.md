@@ -40,15 +40,22 @@ description: >-
    evaluation that names historical inputs. After preflight, do not read memory or prior-run artifacts for convenience;
    if higher-priority runtime instructions force a memory pass, quarantine it from evidence, decisions, and worker
    input.
-6. Relative to the verified packaged framework root, read the selected playbook, `contracts/workflow_execution.md`,
-   `contracts/claims.md`, and the canonical run template declared by the playbook once. Do not also read a checkout copy
-   or restart a document from line 1 after reading an earlier range. Load the Codex provider adapter and model policy
-   only when provider configuration is needed.
+6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
+   or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
+   launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
+   playbook/profile/lifecycle, relative to the verified packaged framework root, read the selected playbook,
+   `contracts/workflow_execution.md`, `contracts/claims.md`, and its canonical run template once. Do not also read a
+   checkout copy or restart a document from line 1 after reading an earlier range. Load the Codex provider adapter and
+   model policy only when provider configuration is needed.
 7. Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
    runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
    when the user explicitly says continue or resume. This one step
    archives a prior terminal run, creates the artifact root and minimal work record, and writes `role_bindings.json`.
-   If a new `Start` returns `existing_run_not_terminal`, check provider-visible tasks and worker handles. When the prior
+   Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
+   `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
+   current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be
+   classified as a related run. A provider-visible task can block startup only when it predates the current turn and is
+   independently active. When the prior
    task is idle and no active handle or artifact writer remains, rerun once with `--archive-stale-run`; this preserves
    every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run. If activity is present or cannot be
    verified, stop with `run_already_active`. Do not tell the user to request continuation when they requested a new run.
@@ -111,23 +118,22 @@ description: >-
    `--completed-handle <released-handle>` once for every released analytical worker, then
    `--coordinator-model-effort <model/effort>`
    `--framework-revision <preflight-sha> --framework-status <clean|dirty> --evidence-artifact <artifact>`.
-   When Standard Sentry Fix Design returns `ready_for_implementation` with action `create`, do not activate a
-   Documenter. Release every activated analytical handle, then run the manifest's
-   `standard_ready_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact root,
-   Evidence Topology handle, actual
+   When Standard Sentry Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, do not
+   activate a Documenter. Release every activated analytical handle, then run the manifest's
+   `standard_planning_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact
+   root, Evidence Topology handle, actual
    Coordinator model/effort, preflight framework revision/status, every relevant repository as
    `--repository 'ROLE=/absolute/path'`, and each conditional worker as
    `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every activated analytical release
    succeeds.
-   That deterministic finalizer copies the exact Fix Design interface contract,
-   stages and validates `implementation_plan.md`, the runtime-closure receipt, `finalization_packet.json`, and terminal
-   `work_record.md`, then publishes that terminal set transactionally. It is the only Standard ready-plan writer. Do not
-   pre-render the plan or hand-edit
-   its Markdown, construct a candidate packet, run `finalize_work_record.py --pre-release`, or activate a documentation
-   worker for this path.
-   When Fix Design returns `awaiting_input` with action `omit`, use the final Documenter path below to preserve the
-   Clarification Brief behavior. Deep planning and remediation also retain their playbook-defined Documenter stage.
-   Require that final Documenter to populate the prepared
+   That deterministic finalizer copies the exact Fix Design disposition and, according to the validated readiness/action
+   pair, creates either `implementation_plan.md` or `clarification_brief.md`. It stages and validates that artifact, the
+   runtime-closure receipt, `finalization_packet.json`, and terminal `work_record.md`, then publishes the terminal set
+   transactionally. It is the only Standard planning finalization writer. Do not pre-render or hand-edit generated
+   Markdown, construct a candidate packet, run `finalize_work_record.py --pre-release`, or activate a documentation
+   worker for either Standard planning readiness result.
+   Deep planning and remediation retain their playbook-defined Documenter stage. On those paths, require the final
+   Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
    field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
    Documenter remains active, create a pending closure probe using the
@@ -155,7 +161,7 @@ description: >-
    action.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
-   failure. On a deterministic Standard ready-plan failure, stop with `finalization_contract_failure`; do not add a
+   failure. On a deterministic Standard planning failure, stop with `finalization_contract_failure`; do not add a
    Documenter fallback or patch generated artifacts. For Documenter-owned paths, return packet, path, table, rendering,
    or closure errors to the same Documenter. Return errors naming Fix
    Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning

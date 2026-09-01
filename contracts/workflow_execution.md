@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.10
+version: 0.4.11
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -1008,10 +1008,11 @@ Normal runs MUST NOT include `Run metrics` or `Worker timing` in the final answe
 benchmark run may append those blocks from provider-observed data. Never reconstruct missing timing or usage.
 
 The final Documenter normally owns the implementation plan, clarification brief, and structured
-`finalization_packet.json`, populated from `templates/finalization_packet.json`. Standard Sentry planning with
-`ready_for_implementation/create` is the bounded exception: packaged `scripts/finalize_sentry_planning.py` renders the
-validated Fix Design `plan`, copies every interface-contract cell exactly, records every activated analytical worker,
-and stages the plan, packet, closure receipt, and terminal work record without a Documenter activation. It validates the
+`finalization_packet.json`, populated from `templates/finalization_packet.json`. Standard Sentry planning is the bounded
+exception for both `ready_for_implementation/create` and `awaiting_input/omit`: packaged
+`scripts/finalize_sentry_planning.py` renders the validated Fix Design `plan` or `clarification_brief`, records every
+activated analytical worker, and stages the selected artifact, packet, closure receipt, and terminal work record without
+a Documenter activation. For a ready interface change it copies every interface-contract cell exactly. It validates the
 staged set before transactional publication and restores the prior terminal set if canonical validation fails.
 For Sentry planning, the Coordinator MUST run `scripts/validate_library.py --sentry-artifacts <artifact-root>` after
 analytical fan-in and before finalization. Evidence-format errors return to Evidence Topology; Fix Design schema,
@@ -1024,8 +1025,9 @@ The packaged `scripts/finalize_work_record.py` renderer is the only writer of th
 the packet into canonical Markdown, runs the packaged validator, and atomically replaces the record only after
 validation passes. If rendering or validation fails, the Coordinator MUST return the exact error to the same
 Documenter for a corrected packet on a Documenter-owned path; neither agent may patch the terminal Markdown by hand.
-On the deterministic Standard ready path, a nonzero result is `finalization_contract_failure`; do not add a Documenter
-fallback or patch generated artifacts.
+On either deterministic Standard planning path, a nonzero result is
+`finalization_contract_failure`; do not add a Documenter fallback or patch
+generated artifacts.
 
 On Documenter-owned paths, keep the final Documenter handle live until artifact content, plan action, outcomes, and
 required artifact disposition pass the packaged finalizer in `--pre-release` mode. Before release, provide a pending

@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.9
+version: 0.4.10
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -12,7 +12,7 @@ depends_on:
   - ../strategies/collaborative.md
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
-  - ../templates/work_record.md
+  - ../templates/sentry_work_record.md
   - ../templates/implementation_plan.md
   - ../templates/sentry_issue_run_prompt.md
   - ../skills/failure_diagnosis.md
@@ -138,12 +138,9 @@ latency or a worker runtime exceeds the applicable target, record the duration a
 compensate by skipping a required worker or claiming completion early.
 
 For Standard, target evidence-worker activation within 60 seconds of turn start. Validate completed normalized evidence
-before activating Fix Design; Standard does not parallelize those two dependent stages. After Fix Design returns
-`awaiting_input` with `implementation_plan_action: omit`, proceed directly to the final Documenter; do not activate an
-additional technical worker unless a recorded discrepancy or required conditional gate remains unresolved.
-After Fix Design returns `ready_for_implementation` with action `create`, release every activated analytical worker and
-use the
-packaged deterministic Standard finalizer; do not activate a Documenter for that path.
+before activating Fix Design; Standard does not parallelize those two dependent stages. After Fix Design returns either
+`awaiting_input/omit` or `ready_for_implementation/create`, release every activated analytical worker and use the
+packaged deterministic Standard finalizer. Do not activate a Documenter for either Standard planning result.
 
 The `remediation` lifecycle continues through implementation, review, validation, and stabilization after explicit
 approval.
@@ -224,9 +221,9 @@ successful profile execution.
 
 Required worker sets are explicit:
 
-- `standard + planning`: Coordinator initialization, `evidence-topology`, and `fix-design`. A ready result uses
-  deterministic finalization; `awaiting_input` adds one final `handoff`. The `fix-design` worker performs bounded
-  failure analysis before designing the fix.
+- `standard + planning`: Coordinator initialization, `evidence-topology`, and `fix-design`, followed by deterministic
+  finalization for either readiness result. The `fix-design` worker performs bounded failure analysis before designing
+  the fix or returning a structured clarification brief.
 - `deep + planning`: all standard planning workers plus `failure-topology` and mandatory `repository-integration`.
 - `standard + remediation`: reuse completed standard planning artifacts, activate `implement`, `review`, and `validate`
   after approval, then activate final `handoff` after delivery fan-in.
@@ -244,9 +241,9 @@ The shared execution contract defines profile execution, fan-in, and no-downgrad
 
 ## Worker Profiles
 
-The standard planning profile has two active analytical roles. A ready result is rendered by packaged code;
-`awaiting_input` adds final documentation. The Solution Architect performs bounded failure analysis and fix design in
-that profile. Deep adds an independent Failure Topology Analyst and mandatory Repository Integrator. Repository
+The standard planning profile has two active analytical roles. Packaged code renders either the implementation plan or
+clarification brief. The Solution Architect performs bounded failure analysis and fix design in that profile. Deep adds
+an independent Failure Topology Analyst and mandatory Repository Integrator. Repository
 Integrator remains conditional for standard.
 
 | Worker                   | Role                         | Mode          | Default effort | Skills                                                                                                                | Tools                                                                                                         | Activation / depends on                                                    |
@@ -258,7 +255,7 @@ Integrator remains conditional for standard.
 | `implement`              | `implementer`                | delivery      | standard       | `failure_diagnosis`, `build_and_test`                                                                                 | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write`                           | Approval plus `fix-design`                                                 |
 | `review`                 | `reviewer`                   | review        | standard       | `architecture_mapping`, `build_and_test`, `operational_readiness`                                                     | `repository_read`, `diff_review`, `test_run`, `artifact_write`                                                | `implement`                                                                |
 | `validate`               | `tester`                     | review        | standard       | `build_and_test`, `operational_readiness`                                                                             | `build_run`, `test_run`, `runtime_observe`, `artifact_write`                                                  | `review`                                                                   |
-| `handoff`                | `documenter`                 | stabilization | quick          | `work_record_maintenance`                                                                                             | `work_record_read`, `work_record_write`, `artifact_write`                                                     | Standard `awaiting_input`, Deep, and remediation finalization              |
+| `handoff`                | `documenter`                 | stabilization | quick          | `work_record_maintenance`                                                                                             | `work_record_read`, `work_record_write`, `artifact_write`                                                     | Deep and remediation finalization                                           |
 
 The delivery profile is `implement` ↔ `review` → `validate`. No additional discovery workers are started after approval
 unless new evidence contradicts the diagnosis or expands the approved scope.
@@ -268,9 +265,9 @@ The Coordinator performs initialization directly; never activate or delegate an 
 This delivery sequence is valid only inside an explicitly activated `remediation` run. The presence of an existing
 `implementation_plan.md` is not evidence that remediation workers ran in the current run.
 
-For Standard `ready_for_implementation/create`, use deterministic finalization after analytical fan-in. Activate one
-final Documenter for Standard `awaiting_input`, Deep planning, and remediation. An initialization acknowledgement is
-not a final handoff. The Documenter records provider-reported model, effort, usage, and credits when available.
+For either Standard planning readiness result, use deterministic finalization after analytical fan-in. Activate one
+final Documenter only for Deep planning and remediation. An initialization acknowledgement is not a final handoff. The
+Documenter records provider-reported model, effort, usage, and credits when available.
 
 When workers run in parallel, the Orchestrator follows the shared contract's fan-in semantics: it waits for all required
 workers, collects their result envelopes, and summarizes them before the stage or workflow can finish. Active worker
@@ -291,11 +288,11 @@ Workers use the shared result envelope defined in the execution contract. Sentry
 - Downstream workers consume normalized evidence artifacts.
 - Fix Design writes one canonical JSON result to its assigned `fix_design_result.json` path after receiving the exact
   activation handle. The Coordinator validates that file and does not reconstruct it from a worker message.
-- A ready Standard result includes complete structured `plan` content. Packaged code renders it and copies the exact
-  interface-contract fields; no model translates or paraphrases the plan.
+- A ready Standard result includes complete structured `plan` content. An `awaiting_input` result includes a complete
+  structured `clarification_brief`. Packaged code renders the selected artifact; no model translates or paraphrases it.
 - Workers repeat Sentry or repository analysis only when they identify and record a specific discrepancy.
-- The Documenter records every worker result, blocker, synchronization state, model, effort, usage, and credits when
-  available.
+- On Deep and remediation paths, the Documenter records every worker result, blocker, synchronization state, model,
+  effort, usage, and credits when available.
 
 For `deep`, start `failure-topology` and `repository-integration` in parallel after `evidence-topology`. Both consume
 the normalized evidence artifact and repeat raw queries only for a recorded discrepancy.
@@ -337,18 +334,17 @@ inconclusive; no worker may silently replace a failed or unavailable step with a
 
 Fix Design controls plan creation through its result envelope. When
 `plan_readiness: awaiting_input`, it MUST set `implementation_plan_action: omit`;
-the Documenter records a Clarification Brief and MUST NOT create a conditional
-plan. Only `plan_readiness: ready_for_implementation` with action `create`
+Fix Design records a structured Clarification Brief and the packaged finalizer MUST NOT create a conditional plan.
+Only `plan_readiness: ready_for_implementation` with action `create`
 permits the plan artifact.
 
 For Standard planning, evidence owns event details, Fix Design owns hypotheses and the proposed boundary, the work
 record owns decisions and execution state, and the plan owns only the selected change, gates, and validation. Reference
 the owning artifact instead of repeating it. Normal runs have no byte-count field or hard size gate; the validator may
-emit a non-blocking internal warning for an unusually large work record. For Standard ready planning,
+emit a non-blocking internal warning for an unusually large work record. For Standard planning,
 `scripts/finalize_sentry_planning.py` stages and validates the complete terminal artifact set, then publishes it
 transactionally. It uses `scripts/finalize_work_record.py` to render the terminal record in that staged set.
-Documenter-owned paths retain the structured
-packet and pre-release flow.
+Deep and remediation Documenter-owned paths retain the structured packet and pre-release flow.
 
 ## Execution Flow
 
@@ -362,10 +358,12 @@ For Standard Sentry planning, initialization is limited to capturing turn start,
 identity/status, registering authoritative inputs, resolving the durable-artifact root, creating the minimal work-record
 skeleton, resolving the evidence worker configuration, and activating that worker. Candidate-source searches, history
 searches, tests, Sentry queries, and technical diagnosis before activation are control failures.
+The launcher and prepared worker contracts are the compact Standard runtime surface; do not hydrate the complete
+playbook, generic work-record template, workflow execution contract, or claims contract before preparation.
 
 The Orchestrator creates the work record, selects the execution profile and lifecycle, declares worker dependencies,
 and records `profile_status: requested` before spawning the first investigation worker. It activates a final Documenter
-only for Standard `awaiting_input`, Deep planning, or remediation after analytical fan-in.
+only for Deep planning or remediation after analytical fan-in.
 
 Initialize the run identity before the first worker. Populate evaluation identity and detailed continuation, activation,
 and timing ledgers only when the request explicitly declares an evaluation or benchmark run.
@@ -381,8 +379,9 @@ switch, or detach another framework worktree to make a stale prompt match.
 For Standard planning, initialization writes only a minimal work-record skeleton. On a preflight block, populate the
 required reasoning tables once and validate the blocked record once; do not progressively repair the artifact. After a
 successful activation, the Coordinator keeps intermediate worker state in runtime and passes it to the deterministic
-finalizer or final Documenter; it does not progressively rewrite the record between analytical workers. Evaluation
-timing remains limited to an explicitly declared experimental evaluation or benchmark run.
+Standard finalizer or, for Deep/remediation, the final Documenter. It does not progressively rewrite the record between
+analytical workers. Evaluation timing remains limited to an explicitly declared experimental evaluation or benchmark
+run.
 
 After preflight, run packaged `scripts/prepare_run.py` once with the execution repository, work item, playbook name,
 and optional verified runtime-agent directory. Its `role_bindings.json` output is the worker spawn source of truth. A
@@ -553,20 +552,22 @@ The `solution_architect` consumes the evidence artifact and any `repository-inte
 consumes the independent topology result. Produce the complete implementation plan content, including the smallest safe
 correction, regression-test strategy, compatibility impact, rollout, rollback, monitoring plan, execution steps, and
 completion criteria. For Standard ready planning, return that content as the structured `plan` field and let the
-packaged finalizer persist `implementation_plan.md`; Documenter-owned paths retain their handoff behavior. Do not
-implement until the workflow reaches
+packaged finalizer persist `implementation_plan.md`; for Standard `awaiting_input`, return the structured
+`clarification_brief` for the same finalizer. Deep/remediation Documenter-owned paths retain their handoff behavior. Do
+not implement until the workflow reaches
 `ready_for_implementation` and approval is recorded.
 
 Fix Design returns a complete structured result with `worker_id`, `worker_handle`, `outcome`, `plan_readiness`,
 `implementation_plan_action`, `inputs_consumed`, `context_conformance`, `configuration_conformance`,
 `checks_performed`, `checks_remaining`, `supported_remediation_boundary`, `supported_intended_change`,
 `interface_change`, `interface_contract`, `blocking_unknowns`, canonical `confidence` with `level`, `basis`, and
-`limits`, and complete structured `plan` content when ready. For an
+`limits`, complete structured `plan` content when ready, and complete structured `clarification_brief` content when
+awaiting input. For an
 API, event, payload, schema, or other
 interface change, the contract identifies the exact surface, request and response shapes, absence semantics,
 compatibility precedence, and rollout. Fix Design persists that result directly as `fix_design_result.json`.
-Packaged code creates a ready Standard plan; the Documenter creates an `awaiting_input` Clarification Brief. Fix Design
-does not edit source, the work record, or any durable artifact except its assigned Fix Design result.
+Packaged code creates either the ready Standard plan or `awaiting_input` Clarification Brief. Fix Design does not edit
+source, the work record, or any durable artifact except its assigned Fix Design result.
 
 The result uses the exact activation handle and shared terminal outcome
 `complete`. String fields remain strings, list fields remain lists, and
@@ -591,8 +592,9 @@ Every blocking unknown MUST name its decision type, question, unavailable reason
 materially different fix implications. Do not return `awaiting_input` after the evidence establishes a remediation
 boundary and intended change unless every blocker is evidenced to invalidate that change. A blocker marked
 `invalidates_supported_change: true` MUST include `contradicting_evidence_refs` to observed current-run evidence for a
-materially different boundary or fix. Missing runtime confirmation alone is a validation gate, not contradictory
-evidence.
+materially different boundary or fix and at least one structured `observed_competing_boundaries` entry containing the
+competing boundary, an affirmative current-run observation, and its evidence refs. Missing runtime confirmation,
+unavailable release mapping, and a merely possible code path are validation gates, not observed competing evidence.
 
 A clarification result is incomplete if it only requests production data or
 repeats an unresolved question without reporting the consumed evidence,

@@ -24,6 +24,7 @@ VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PLAN_TEMPLATE = ROOT / "templates" / "implementation_plan.md"
 V34_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
 V36_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
+V37_V38_FIXTURE = ROOT / "tests" / "fixtures" / "v37_v38_sentry_runtime_regressions.json"
 WORKER_BINDINGS = {
     "evidence-topology": ("sentry_current_state_investigator", "Evidence topology"),
     "repository-integration": ("sentry_repository_integrator", "Repository integration"),
@@ -327,6 +328,43 @@ Residual uncertainty: {plan.get('residual_uncertainty', 'None recorded.')}
 """
 
 
+def render_clarification_brief(fix: dict[str, object]) -> str:
+    clarification = fix.get("clarification_brief")
+    if not isinstance(clarification, dict):
+        raise ValueError("awaiting_input requires a structured clarification_brief")
+    confirmed = clarification.get("confirmed_facts")
+    options = clarification.get("feasible_options")
+    if not isinstance(confirmed, list) or not confirmed:
+        raise ValueError("clarification_brief confirmed_facts must be a non-empty list")
+    if not isinstance(options, list) or not options:
+        raise ValueError("clarification_brief feasible_options must be a non-empty list")
+    for field in ("strongest_hypothesis", "recommendation", "plain_language_next_action"):
+        if not isinstance(clarification.get(field), str) or not clarification[field].strip():
+            raise ValueError(f"clarification_brief {field} must be a non-empty string")
+    return f"""# Clarification Brief
+
+## Confirmed current-run facts
+
+{_bullets(confirmed)}
+
+## Best current explanation
+
+{clarification['strongest_hypothesis']}
+
+## Feasible options
+
+{_bullets(options)}
+
+## Recommendation
+
+{clarification['recommendation']}
+
+## Smallest next action
+
+{clarification['plain_language_next_action']}
+"""
+
+
 def _binding(manifest: dict[str, object], agent: str) -> tuple[str, str]:
     value = manifest.get("bindings", {}).get(agent)
     if not isinstance(value, dict):
@@ -404,6 +442,7 @@ def _finalize_standard_sentry_in_place(
     manifest_path = artifact_root / "role_bindings.json"
     closure_path = artifact_root / "runtime_closure.json"
     plan_path = artifact_root / "implementation_plan.md"
+    clarification_path = artifact_root / "clarification_brief.md"
     for required in (packet_path, evidence_path, fix_path, manifest_path):
         if not required.is_file():
             raise ValueError(f"required artifact is missing: {required}")
@@ -417,11 +456,17 @@ def _finalize_standard_sentry_in_place(
     packet = json.loads(packet_path.read_text())
     fix = json.loads(fix_path.read_text())
     manifest = json.loads(manifest_path.read_text())
-    if (
-        fix.get("plan_readiness") != "ready_for_implementation"
-        or fix.get("implementation_plan_action") != "create"
-    ):
-        raise ValueError("deterministic Standard finalization currently requires ready_for_implementation/create")
+    readiness = fix.get("plan_readiness")
+    action = fix.get("implementation_plan_action")
+    if (readiness, action) not in {
+        ("ready_for_implementation", "create"),
+        ("awaiting_input", "omit"),
+    }:
+        raise ValueError(
+            "deterministic Standard finalization requires ready_for_implementation/create "
+            "or awaiting_input/omit"
+        )
+    awaiting_input = readiness == "awaiting_input"
     fix_handle = str(fix.get("worker_handle", "")).strip()
     completed_workers = _completed_workers(
         evidence_handle, fix_handle, completed_worker_specs or []
@@ -466,8 +511,11 @@ def _finalize_standard_sentry_in_place(
         "Prompt template / revision / conformance": prompt_identity,
         "Coordinator model/effort": coordinator_model_effort,
         "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
-        "Profile status": "executed", "Lifecycle": "planning", "State": "ready_for_implementation",
-        "Engineering state": "designed", "Workflow outcome": "completed", "Engineering outcome": "plan_only",
+        "Profile status": "executed", "Lifecycle": "planning",
+        "State": "awaiting_input" if awaiting_input else "ready_for_implementation",
+        "Engineering state": "understood_with_blocking_unknowns" if awaiting_input else "designed",
+        "Workflow outcome": "completed",
+        "Engineering outcome": "partially_solved" if awaiting_input else "plan_only",
     })
     packet["finalization"].update({
         "Concurrent-run decision": str(packet["finalization"].get("Concurrent-run decision", "")).strip()
@@ -512,10 +560,28 @@ def _finalize_standard_sentry_in_place(
             assigned = "UPSTREAM-001 and every activated analytical result"
             depends_on = "Validated analytical inputs"
             skills = "Bounded remediation design"
-            confidence = "High for the supported design boundary"
-            contribution = str(fix["supported_intended_change"])
+            fix_confidence = fix.get("confidence", {})
+            confidence_level = (
+                str(fix_confidence.get("level", "")).strip()
+                if isinstance(fix_confidence, dict)
+                else ""
+            )
+            confidence = (
+                f"{confidence_level.title()} for the Fix Design disposition"
+                if confidence_level
+                else "Confidence recorded in fix_design_result.json"
+            )
+            contribution = (
+                str(fix["supported_intended_change"])
+                if str(fix["supported_intended_change"]).strip()
+                else "Established the indispensable evidence needed to select a remediation boundary"
+            )
             refs = "E-002 / C-001; C-002"
-            uncertainty = "No blocking unknowns; remaining checks are plan gates"
+            uncertainty = (
+                "See blocking_unknowns and clarification_brief"
+                if awaiting_input
+                else "No blocking unknowns; remaining checks are plan gates"
+            )
         packet["workers"].append({
             "Worker": worker, "Role": role, "Assigned inputs": assigned,
             "Mode": "investigation", "Depth": "standard", "Skills": skills,
@@ -537,14 +603,41 @@ def _finalize_standard_sentry_in_place(
         "Launch mode / exception": "Dependency-ordered activation", "Worker outcomes": worker_outcomes,
         "Results summarized": "Yes; canonical artifacts consumed", "Barrier status": "Passed; runtime closure released",
     }]
-    if not _material_rows(packet.get("evidence"), "Evidence ID"):
-        packet["evidence"] = [
-            {"Evidence ID": "E-001", "Source": str(evidence_path),
-             "Summary": "Validated current-run normalized evidence establishes the observed topology and uncertainty.",
-             "Confidence": "High", "Uncertainty": "See normalized evidence", "Status": "Verified"},
-            {"Evidence ID": "E-002", "Source": str(fix_path), "Summary": str(fix["supported_remediation_boundary"]),
-             "Confidence": "High", "Uncertainty": "See Fix Design checks remaining", "Status": "Verified"},
+    packet["evidence"] = [
+        {"Evidence ID": "E-001", "Source": str(evidence_path),
+         "Summary": "Validated current-run normalized evidence establishes the observed topology and uncertainty.",
+         "Confidence": "High", "Uncertainty": "See normalized evidence", "Status": "Verified"},
+        {"Evidence ID": "E-002", "Source": str(fix_path),
+         "Summary": (
+             str(fix["supported_remediation_boundary"])
+             if str(fix["supported_remediation_boundary"]).strip()
+             else "Fix Design established that indispensable evidence is required before selecting a boundary."
+         ),
+         "Confidence": "High", "Uncertainty": "See Fix Design checks remaining", "Status": "Verified"},
+    ]
+    if awaiting_input:
+        blockers = fix.get("blocking_unknowns", [])
+        first_blocker = blockers[0] if isinstance(blockers, list) and blockers else {}
+        question = str(first_blocker.get("question", "")).strip() if isinstance(first_blocker, dict) else ""
+        packet["claims"] = [
+            {"Claim ID": "C-001", "Claim": "The current-run evidence does not establish one remediation boundary.",
+             "Evidence refs": "E-001; E-002", "Confidence": "High",
+             "Uncertainty": "The indispensable observation is recorded in Fix Design.", "Status": "Supported"},
+            {"Claim ID": "C-002", "Claim": question or "Indispensable evidence is required before implementation planning.",
+             "Evidence refs": "E-002", "Confidence": "High", "Uncertainty": "Awaiting the named evidence.",
+             "Status": "Supported"},
         ]
+        packet["decisions"] = [{
+            "Decision ID": "D-001",
+            "Decision": "Omit the implementation plan and request only the indispensable evidence.",
+            "Claim refs": "C-001; C-002", "Owner": "Coordinator", "Status": "Applied",
+        }]
+        packet["actions"] = [{
+            "Action ID": "A-001",
+            "Action": question or "Provide the indispensable evidence recorded by Fix Design.",
+            "Decision ref": "D-001", "Owner": "Work-item owner and evidence owners", "Status": "Open",
+        }]
+    else:
         packet["claims"] = [
             {"Claim ID": "C-001", "Claim": str(fix["supported_remediation_boundary"]),
              "Evidence refs": "E-001; E-002", "Confidence": "High", "Uncertainty": "Explicit in source artifacts",
@@ -562,15 +655,13 @@ def _finalize_standard_sentry_in_place(
             "Action ID": "A-001", "Action": "Review and approve the implementation plan before remediation.",
             "Decision ref": "D-001", "Owner": "Work-item owner", "Status": "Proposed",
         }]
-    else:
-        for row in packet.get("actions", []):
-            if isinstance(row, dict) and str(row.get("Action ID", "")).strip().lower() == "action-001":
-                row.update({
-                    "Action": "Render the plan and terminal record from the validated Fix Design result.",
-                    "Owner": "Deterministic Standard finalizer", "Status": "Completed",
-                })
 
-    plan_path.write_text(render_plan(fix, packet, repositories))
+    if awaiting_input:
+        plan_path.unlink(missing_ok=True)
+        clarification_path.write_text(render_clarification_brief(fix))
+    else:
+        clarification_path.unlink(missing_ok=True)
+        plan_path.write_text(render_plan(fix, packet, repositories))
     packet["durable_artifacts"] = [
         {"Artifact": "Role bindings", "Path": str(manifest_path), "Status": "Created",
          "Purpose": "Exact worker bindings"},
@@ -584,9 +675,13 @@ def _finalize_standard_sentry_in_place(
         *([{"Artifact": "Fix design result contract", "Path": str(fix_contract_path),
             "Status": "Prepared and consumed", "Purpose": "Assigned Fix Design output contract"}]
           if fix_contract_path.is_file() else []),
+        *([{"Artifact": "Clarification brief", "Path": str(clarification_path),
+            "Status": "Created", "Purpose": "Smallest indispensable evidence request"}]
+          if awaiting_input else []),
         {"Artifact": "Implementation plan", "Path": str(plan_path),
-         "Status": "Ready for implementation; approval pending",
-         "Purpose": "Approval-gated implementation design"},
+         "Status": "Omitted by awaiting_input/omit" if awaiting_input else "Ready for implementation; approval pending",
+         "Purpose": "Not created until the remediation boundary is established" if awaiting_input
+         else "Approval-gated implementation design"},
         {"Artifact": "Finalization packet", "Path": str(packet_path), "Status": "Created",
          "Purpose": "Structured terminal input"},
         {"Artifact": "Runtime closure", "Path": str(closure_path), "Status": "Released",
@@ -594,28 +689,67 @@ def _finalize_standard_sentry_in_place(
         {"Artifact": "Work record", "Path": str(record_path), "Status": "Created",
          "Purpose": "Authoritative terminal handoff"},
     ]
-    plan = fix["plan"]
     confidence = fix.get("confidence", {})
     confidence_basis = confidence.get("basis", "") if isinstance(confidence, dict) else ""
-    residual = plan.get("residual_uncertainty", "") if isinstance(plan, dict) else ""
-    packet["handoff"] = {
-        "workflow_result": "Ready for implementation",
-        "implementation_plan": f"created at {plan_path}; approval pending; no source or external changes made",
-        "established": [str(fix["supported_remediation_boundary"]), str(fix["supported_intended_change"])],
-        "best_current_explanations": ([{"explanation": str(confidence_basis), "confidence": "high",
-                                        "reason": str(residual)}] if confidence_basis else []),
-        "next_action": {"owner": "Work-item owner", "action": "Review and explicitly approve the implementation plan.",
-                        "complete_when": "Implementation approval is recorded before a remediation run begins."},
-        "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(plan_path)],
-        "execution": (
-            "standard/planning; analytical validation passed; deterministic rendering passed; "
-            "source changes none; runtime released"
-        ),
-        "provenance": (
-            f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
-            f"({framework_status}); playbook {packet['identity']['Playbook / version']}."
-        ),
-    }
+    if awaiting_input:
+        clarification = fix["clarification_brief"]
+        blockers = fix.get("blocking_unknowns", [])
+        first_blocker = blockers[0] if isinstance(blockers, list) and blockers else {}
+        question = str(first_blocker.get("question", "")).strip() if isinstance(first_blocker, dict) else ""
+        alternatives = clarification.get("feasible_options", []) if isinstance(clarification, dict) else []
+        explanations = [{
+            "explanation": str(clarification["strongest_hypothesis"]),
+            "confidence": str(confidence.get("level", "medium")) if isinstance(confidence, dict) else "medium",
+            "reason": str(confidence_basis),
+        }]
+        explanations.extend({
+            "explanation": str(value), "confidence": "conditional", "reason": "Requires the named evidence."
+        } for value in alternatives[:2])
+        packet["handoff"] = {
+            "workflow_result": "Awaiting indispensable evidence",
+            "implementation_plan": "omitted; Fix Design returned awaiting_input/omit",
+            "established": [str(value) for value in clarification["confirmed_facts"]],
+            "best_current_explanations": explanations,
+            "next_action": {
+                "owner": "Work-item owner and named evidence owners",
+                "action": str(clarification["plain_language_next_action"]),
+                "complete_when": (
+                    f"Source-backed evidence answers this question: {question}"
+                    if question
+                    else "Source-backed evidence selects one remediation boundary."
+                ),
+            },
+            "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(clarification_path)],
+            "execution": (
+                "standard/planning; analytical validation passed; deterministic clarification rendering passed; "
+                "source changes none; runtime released"
+            ),
+            "provenance": (
+                f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
+                f"({framework_status}); playbook {packet['identity']['Playbook / version']}."
+            ),
+        }
+    else:
+        plan = fix["plan"]
+        residual = plan.get("residual_uncertainty", "") if isinstance(plan, dict) else ""
+        packet["handoff"] = {
+            "workflow_result": "Ready for implementation",
+            "implementation_plan": f"created at {plan_path}; approval pending; no source or external changes made",
+            "established": [str(fix["supported_remediation_boundary"]), str(fix["supported_intended_change"])],
+            "best_current_explanations": ([{"explanation": str(confidence_basis), "confidence": "high",
+                                            "reason": str(residual)}] if confidence_basis else []),
+            "next_action": {"owner": "Work-item owner", "action": "Review and explicitly approve the implementation plan.",
+                            "complete_when": "Implementation approval is recorded before a remediation run begins."},
+            "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(plan_path)],
+            "execution": (
+                "standard/planning; analytical validation passed; deterministic rendering passed; "
+                "source changes none; runtime released"
+            ),
+            "provenance": (
+                f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
+                f"({framework_status}); playbook {packet['identity']['Playbook / version']}."
+            ),
+        }
 
     handles = list(completed_workers.values())
     closure = _released_closure(closure_path, handles)
@@ -669,6 +803,7 @@ def finalize_standard_sentry(
 
     output_names = (
         "implementation_plan.md",
+        "clarification_brief.md",
         "finalization_packet.json",
         "runtime_closure.json",
         "work_record.md",
@@ -699,7 +834,11 @@ def finalize_standard_sentry(
         stage_prefix = str(stage_root)
         canonical_prefix = str(artifact_root)
         candidates = {
-            name: (stage_root / name).read_text().replace(stage_prefix, canonical_prefix).encode()
+            name: (
+                (stage_root / name).read_text().replace(stage_prefix, canonical_prefix).encode()
+                if (stage_root / name).is_file()
+                else None
+            )
             for name in output_names
         }
         originals = {
@@ -708,7 +847,10 @@ def finalize_standard_sentry(
         }
         try:
             for name, content in candidates.items():
-                _replace_file(artifact_root / name, content)
+                if content is None:
+                    (artifact_root / name).unlink(missing_ok=True)
+                else:
+                    _replace_file(artifact_root / name, content)
             validation = subprocess.run(
                 [
                     sys.executable,
@@ -739,6 +881,7 @@ def finalize_standard_sentry(
 def self_test() -> None:
     fixture = json.loads(V34_FIXTURE.read_text())
     v36_fixture = json.loads(V36_FIXTURE.read_text())
+    v37_v38_fixture = json.loads(V37_V38_FIXTURE.read_text())
     with tempfile.TemporaryDirectory(prefix="workflow-sentry-finalize-") as directory:
         execution_repository = Path(directory) / "repo"
         execution_repository.mkdir()
@@ -838,6 +981,37 @@ def self_test() -> None:
             for name, content in output_before_failure.items()
         )
         (artifact_root / "fix_design_result.json").write_text(valid_fix_text)
+
+        awaiting_prepared = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
+             "--execution-repository", str(execution_repository), "--work-item", "ITEM-V38",
+             "--playbook", "sentry_issue_remediation"],
+            capture_output=True, text=True, check=True,
+        )
+        awaiting_root = Path(json.loads(awaiting_prepared.stdout)["artifact_root"])
+        (awaiting_root / "normalized_evidence.md").write_text(v37_v38_fixture["normalized_evidence"])
+        (awaiting_root / "fix_design_result.json").write_text(
+            json.dumps(v37_v38_fixture["valid_awaiting_fix_design_result"], indent=2) + "\n"
+        )
+        (awaiting_root / "implementation_plan.md").write_text("stale plan must be removed\n")
+        finalize_standard_sentry(
+            awaiting_root,
+            evidence_handle="01a05979-1001-7c41-8ad5-d5dfc636c252",
+            coordinator_model_effort="gpt-5.6-luna / xhigh",
+            framework_revision=framework_revision,
+            framework_status=framework_status,
+            repository_specs=[f"Execution={execution_repository}"],
+        )
+        awaiting_record = (awaiting_root / "work_record.md").read_text()
+        awaiting_brief = (awaiting_root / "clarification_brief.md").read_text()
+        assert not (awaiting_root / "implementation_plan.md").exists()
+        assert "# Clarification Brief" in awaiting_brief
+        assert "## Smallest next action" in awaiting_brief
+        assert "| State | awaiting_input |" in awaiting_record
+        assert "| Workflow outcome | completed |" in awaiting_record
+        assert "| Engineering outcome | partially_solved |" in awaiting_record
+        assert "| documenter |" not in awaiting_record.lower()
+        assert "deterministic clarification rendering passed" in awaiting_record
     print("finalize_sentry_planning self-test: passed")
 
 
