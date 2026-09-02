@@ -433,6 +433,25 @@ def self_test() -> None:
                 "Status": "Registered",
             }],
         }))
+        first_input = execution / "first-input.md"
+        second_input = execution / "second-input.md"
+        first_input.write_text("first\n")
+        second_input.write_text("second\n")
+        composite_source = execution / "composite-inputs.json"
+        composite_source.write_text(json.dumps({
+            "schema_version": 1,
+            "precedence_rule": DEFAULT_PRECEDENCE_RULE,
+            "inputs": [{
+                "Input ID": "USER-002",
+                "Input or artifact": "Two supplied guidance files",
+                "Source or path": f"{first_input}; {second_input}",
+                "Authority": "Authoritative current-run context",
+                "Status": "Registered",
+            }],
+        }))
+        composite = load_manifest(composite_source, explicit=True)["inputs"][0]
+        assert composite["availability"] == "available"
+        assert composite["paths"] == [str(first_input.resolve()), str(second_input.resolve())]
         first = prepare_run(
             execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False,
             input_manifest=input_source,

@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.12
+version: 0.4.13
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-31
+last_updated: 2026-09-01
 ---
 
 # Workflow Execution Contract
@@ -264,8 +264,9 @@ control failure, and stop at an incomplete outcome. Worker self-attestation alon
 The Coordinator MUST audit the provider's tool trace before fan-in when the provider exposes a trace or command ledger.
 Run the packaged worker-runtime validator with `--trace <current-run-trace.json>` and treat any
 `forbidden_context_reference:*` or `context_conformance_failed` result as contaminated evidence. A trace that cannot be
-obtained is unverified; mark the result failed and exclude it rather than claiming `context_conformance: pass` from
-self-attestation alone. The trace audit covers
+obtained is `context-unverified`; do not report the result as independently audited. For the Pilot Standard Sentry
+finalizer, the result may continue on worker self-attestation when every other contract gate passes; trace-unavailable
+evidence is never stronger than self-attestation. The trace audit covers
 unassigned memory paths, rollout summaries, memory citations, and archived `.thoughts/<WORK-ITEM-ID>/runs/` artifacts.
 
 Every activation packet MUST include a compact input manifest for each assigned Input ID: the short value or fact, its
@@ -974,6 +975,10 @@ required worker is still active.
 After activating a technical worker, the Coordinator MUST NOT perform that worker's repository, runtime, issue-system,
 or evidence investigation. It may perform minimal initialization and verify the returned artifact, and may repeat a
 technical check only when a named discrepancy is recorded and returned to the owning worker.
+
+For the Sentry Issue Remediation playbook, the Coordinator MUST NOT load the `sentry` skill or invoke a Sentry MCP/app
+before Evidence Topology activation. Evidence Topology owns raw Sentry access and initial repository topology; supplied
+Sentry context remains an opaque current-run input until that worker consumes it.
 
 The final workflow handoff contains the shared outcome summary below. Detailed worker results remain in the work record;
 do not reproduce the worker ledger in the user-facing answer.

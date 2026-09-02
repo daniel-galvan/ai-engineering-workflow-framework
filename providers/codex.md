@@ -1,11 +1,11 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.4.8
+version: 0.4.9
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-08-31
+last_updated: 2026-09-01
 ---
 
 # Codex Provider Adapter
@@ -72,7 +72,10 @@ objectively malformed result whose status cannot be determined.
 
 For Standard planning, release every activated analytical worker and run the
 `standard_planning_finalization.finalizer` recorded in `role_bindings.json`, passing each conditional worker handle with
-`--completed-worker`; do not activate a Documenter or use pre-release rendering for either readiness result. The
+`--completed-worker` only when that conditional worker activated; omit skipped conditional workers and let the
+finalizer record `not_applicable`. Provider-role aliases for the implicit Evidence/Fix workers are accepted only when
+their handles match those results. Do not activate a Documenter or use pre-release rendering for either readiness
+result. The
 finalizer creates `implementation_plan.md` for `ready_for_implementation/create` or `clarification_brief.md` for
 `awaiting_input/omit`. Keep the final Documenter active while running the packaged finalizer in `--pre-release` mode
 with a pending closure probe only for Documenter-owned Deep-planning and remediation paths. Release that worker only

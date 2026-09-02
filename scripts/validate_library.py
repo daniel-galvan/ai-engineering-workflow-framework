@@ -129,6 +129,10 @@ PROHIBITED_CONTEXT_MARKERS = ("MEMORY.md", "/memories/", "<oai-mem-citation>")
 UNOBSERVED_MODEL_VALUES = {"", "unknown", "none"}
 MODEL_OBSERVATION_UNAVAILABLE_PREFIXES = ("not exposed", "provider telemetry unavailable")
 EMPTY_ARTIFACT_VALUES = {"", "unknown", "none", "not applicable", "n/a"}
+UNRESOLVED_INTERFACE_MARKERS = re.compile(
+    r"\b(?:tbd|todo|unknown|not established|to be confirmed|must be confirmed|pending|proposed)\b",
+    re.IGNORECASE,
+)
 
 ROLE_AGENT_ALIASES = {
     "Orchestrator": ("orchestrator",),
@@ -591,6 +595,11 @@ def fix_design_result_errors(
                     value = interface_contract.get(field)
                     if not isinstance(value, str) or not value.strip():
                         errors.append(f"interface_contract {field} must be a non-empty string")
+                    elif UNRESOLVED_INTERFACE_MARKERS.search(value):
+                        errors.append(
+                            f"ready interface contract {field} contains unresolved semantics; "
+                            "change readiness to awaiting_input until the exact value is established"
+                        )
                 request_shape = str(interface_contract.get("request_shape", "")).lower()
                 response_shape = str(interface_contract.get("response_shape", "")).lower()
                 field_keyed = any(
@@ -1678,6 +1687,16 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     }
     interface_errors = fix_design_result_errors(malformed_interface)
     assert "interface_contract request_shape must be a non-empty string" in interface_errors
+    unresolved_interface = {
+        **ready_fix_with_evidence,
+        "interface_change": True,
+        "interface_contract": {
+            field: ("Proposed contract; to be confirmed before rollout." if field != "surface" else "Event payload")
+            for field in INTERFACE_CONTRACT_FIELDS
+        },
+    }
+    unresolved_errors = fix_design_result_errors(unresolved_interface)
+    assert any("contains unresolved semantics" in error for error in unresolved_errors)
     assert model_observation_unavailable("Not exposed; explicit launch binding was recorded")
     assert not model_observation_unavailable("Unknown")
     overcautious_fix = {
@@ -2318,6 +2337,8 @@ for phrase in (
         fail(f"contracts/claims.md is missing referential-integrity control: {phrase}")
 if "Claims, Evidence, Decisions, and Actions Contract" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the claims contract reference")
+if "Coordinator MUST NOT load the `sentry` skill or invoke a Sentry MCP/app" not in workflow_contract:
+    fail("contracts/workflow_execution.md is missing the Coordinator Sentry-access boundary")
 if "| `confidence`       | Yes" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing required worker confidence")
 if "# Workflow State Machine" not in workflow_contract:
@@ -2860,6 +2881,8 @@ for phrase in (
     "organization slug",
     "validate_worker_runtime.py --trace",
     "field-preservation change",
+    "Pilot Standard finalizer may",
+    "independently audited",
 ):
     if phrase not in sentry_playbook:
         fail(f"playbooks/sentry_issue_remediation.md is missing Standard control: {phrase}")
@@ -2934,6 +2957,7 @@ for phrase in (
     "organization identity was unavailable",
     "validated envelope fallback",
     "Never interrupt a live worker",
+    "Do not load the `sentry` skill or invoke any Sentry MCP/app",
 ):
     if phrase not in sentry_orchestrator:
         fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")
@@ -3027,6 +3051,8 @@ for phrase in (
     "validate_worker_runtime.py --trace",
     "organization slug",
     "field-preservation change",
+    "load the `sentry` skill",
+    "Pilot Standard finalizer may continue",
 ):
     if phrase not in sentry_prompt:
         fail(f"templates/sentry_issue_run_prompt.md is missing Standard control: {phrase}")

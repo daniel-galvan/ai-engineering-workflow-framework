@@ -63,7 +63,9 @@ ID or URL plus organization slug allows direct resolution; supplied occurrence o
 `mixed`. A Sentry-shaped work-item key is not an issue ID unless the prompt labels it as one. Without an explicit
 identity, retain `supplied_occurrence`, do not perform organization/project/issue discovery, and record
 `Sentry issue: not supplied`; organization identity was unavailable for direct lookup. Never send an issue request
-with a missing organization parameter.
+with a missing organization parameter. Do not load the `sentry` skill or invoke any Sentry MCP/app from the
+Coordinator before that worker activation; the capability is worker-owned and supplied Sentry context remains opaque
+until Evidence Topology consumes it.
 Request only the latest issue event first (`limit: 1` when supported). Repeat its work only for
 a named discrepancy that is recorded and returned to that worker.
 
@@ -176,8 +178,10 @@ the gate. When a provider exposes a tool trace, run the packaged
 `validate_worker_runtime.py --trace <current-run-trace.json>` check before fan-in
 and quarantine any `forbidden_context_reference:*` or
 `context_conformance_failed` result. If no trace is exposed, record the worker
-as context-unverified/failed and exclude it rather than claim a passing
-conformance result.
+as `context-unverified` and do not imply an independently audited pass. The
+Pilot Standard finalizer may continue with the worker's self-attested result
+when every other contract gate passes; a trace-unavailable result is never
+stronger than self-attestation.
 When traces are available, pass each validated path to the Standard finalizer as
 `--worker-trace WORKER=/absolute/trace.json`; when none are exposed, the finalizer
 records the audit as unavailable for the Pilot instead of implying independent conformance.
@@ -215,7 +219,9 @@ For Standard Sentry planning, do not activate a Documenter for either readiness 
 release every activated analytical worker, then run the `standard_planning_finalization.finalizer` from
 `role_bindings.json` exactly once with the artifact root, Evidence handle,
 active Coordinator model/effort, preflight framework revision/status, relevant repository paths, and one
-`--completed-worker WORKER=UUID` for each conditional analytical worker. The finalizer owns
+`--completed-worker WORKER=UUID` for each conditional analytical worker that actually activated; omit a skipped
+conditional worker and let the finalizer record its `not_applicable` decision. Provider-role aliases for the implicit
+Evidence/Fix workers are accepted only when their handles match those results. The finalizer owns
 either `implementation_plan.md` or `clarification_brief.md`, plus `finalization_packet.json`, `runtime_closure.json`,
 and terminal `work_record.md`; do not pre-render or patch them. Pass `--provider-release-confirmed` only after every
 analytical release operation succeeds. Activate one final Documenter after analytical fan-in only for Deep planning and

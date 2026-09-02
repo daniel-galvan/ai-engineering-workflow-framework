@@ -1,12 +1,12 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.4.11
+version: 0.4.12
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-31
+last_updated: 2026-09-01
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
@@ -424,7 +424,8 @@ worker activation. Do not allow a live issue lookup to erase those inputs.
 ### Stage 1 — Collect Sentry Evidence
 
 The `evidence-topology` worker exclusively owns raw Sentry queries and initial repository topology for the run. The
-Orchestrator does not pre-query Sentry or duplicate repository exploration. When explicit Sentry identity is available,
+Orchestrator does not load the `sentry` skill, invoke a Sentry MCP/app, pre-query Sentry, or duplicate repository
+exploration before that worker activates. When explicit Sentry identity is available,
 use MCP to inspect the issue and request only the latest event first (`limit: 1` when supported); otherwise use the
 supplied occurrence without Sentry discovery.
 Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
@@ -481,7 +482,9 @@ artifact within its initial activation when validation fails. This producer-side
 Before analytical fan-in, the Coordinator MUST audit each exposed provider tool trace with
 `validate_worker_runtime.py --trace <current-run-trace.json>`. A `forbidden_context_reference:*` or
 `context_conformance_failed` result is contaminated and MUST be excluded from fan-in. If the provider exposes no trace,
-the result is context-unverified, MUST be marked failed, and MUST NOT be reported as a passing self-attestation.
+the result is `context-unverified` and MUST NOT be reported as independently audited. The Pilot Standard finalizer may
+continue with the worker's self-attested result when every other contract gate passes; trace-unavailable evidence is
+never stronger than self-attestation.
 
 The Orchestrator also records and passes through each prompt-supplied artifact and material
 context as consumed, unavailable, conflicting, or out of scope. The original

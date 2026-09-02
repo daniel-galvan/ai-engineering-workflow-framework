@@ -39,6 +39,15 @@ WORKER_BINDINGS = {
     "repository-integration": ("sentry_repository_integrator", "Repository integration"),
     "fix-design": ("sentry_solution_architect", "Fix design"),
 }
+WORKER_SPEC_ALIASES = {
+    "current_state_investigator": "evidence-topology",
+    "sentry_current_state_investigator": "evidence-topology",
+    "repository_integrator": "repository-integration",
+    "sentry_repository_integrator": "repository-integration",
+    "solution_architect": "fix-design",
+    "sentry_solution_architect": "fix-design",
+}
+CONDITIONAL_WORKERS = ("repository-integration",)
 UUID_PATTERN = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
@@ -411,16 +420,22 @@ def _completed_workers(
     workers = {"evidence-topology": evidence_handle}
     for value in worker_specs:
         worker, separator, handle = value.partition("=")
-        worker = worker.strip()
+        worker = worker.strip().lower()
         handle = handle.strip()
-        if not separator or worker not in WORKER_BINDINGS:
+        canonical_worker = WORKER_SPEC_ALIASES.get(worker, worker)
+        if not separator or canonical_worker not in WORKER_BINDINGS:
             raise ValueError(
                 "completed_worker must use a known WORKER=UUID: "
                 + ", ".join(WORKER_BINDINGS)
             )
-        if worker in workers or worker == "fix-design":
-            raise ValueError(f"duplicate completed worker: {worker}")
-        workers[worker] = handle
+        if canonical_worker in {"evidence-topology", "fix-design"}:
+            expected = evidence_handle if canonical_worker == "evidence-topology" else fix_handle
+            if handle != expected:
+                raise ValueError(f"{canonical_worker} alias handle must match its implicit result handle")
+            continue
+        if canonical_worker in workers:
+            raise ValueError(f"duplicate completed worker: {canonical_worker}")
+        workers[canonical_worker] = handle
     workers["fix-design"] = fix_handle
     for worker, handle in workers.items():
         if not UUID_PATTERN.fullmatch(handle):
@@ -710,8 +725,43 @@ def _finalize_standard_sentry_in_place(
             "Uncertainties / blockers": uncertainty, "Actual model/effort": observed,
             "Usage/credits": "Provider telemetry unavailable",
         })
+    for worker in CONDITIONAL_WORKERS:
+        if worker in completed_workers:
+            continue
+        configured, observed = _binding(manifest, WORKER_BINDINGS[worker][0])
+        role = WORKER_BINDINGS[worker][1]
+        packet["workers"].append({
+            "Worker": worker,
+            "Role": role,
+            "Assigned inputs": "Conditional gate inputs",
+            "Mode": "conditional",
+            "Depth": "standard",
+            "Skills": "Bounded cross-repository contract verification",
+            "Tools": "Mapped provider operations",
+            "Capacity": "one in-task worker",
+            "Configured model/effort": configured,
+            "Provider-observed model/effort": observed,
+            "Usage": "Provider telemetry unavailable",
+            "Depends on": "Validated Evidence topology",
+            "Outcome": "not_applicable",
+            "Confidence": "Not assessed",
+        })
+        packet["worker_results"].append({
+            "Worker": worker,
+            "Outcome": "not_applicable",
+            "Confidence": "Not assessed",
+            "Unique contribution": "Not activated; the Standard conditional gate did not require it.",
+            "Evidence / claim refs": "None",
+            "Uncertainties / blockers": "No provider handle exists because the worker was not activated.",
+            "Actual model/effort": observed,
+            "Usage/credits": "Provider telemetry unavailable",
+        })
     worker_names = "; ".join(completed_workers)
     worker_outcomes = "; ".join("complete" for _ in completed_workers)
+    skipped = [worker for worker in CONDITIONAL_WORKERS if worker not in completed_workers]
+    if skipped:
+        worker_names = "; ".join([worker_names, *[f"{worker} (not activated)" for worker in skipped]])
+        worker_outcomes = "; ".join([worker_outcomes, *["not_applicable" for _ in skipped]])
     packet["synchronization"] = [{
         "Stage": "Standard analytical fan-in", "Workers launched": worker_names,
         "Launch mode / exception": "Dependency-ordered activation", "Worker outcomes": worker_outcomes,
@@ -1054,6 +1104,15 @@ def self_test() -> None:
         completed_specs = [
             f"{row['worker']}={row['handle']}" for row in v36_fixture["conditional_workers"]
         ]
+        alias_workers = _completed_workers(
+            "01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
+            fixture_fix["worker_handle"],
+            [
+                "sentry_current_state_investigator=01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
+                f"sentry_solution_architect={fixture_fix['worker_handle']}",
+            ],
+        )
+        assert set(alias_workers) == {"evidence-topology", "fix-design"}
         finalize_standard_sentry(
             artifact_root,
             evidence_handle="01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
@@ -1160,6 +1219,8 @@ def self_test() -> None:
         assert "| Engineering outcome | partially_solved |" in awaiting_record
         assert "| documenter |" not in awaiting_record.lower()
         assert "deterministic clarification rendering passed" in awaiting_record
+        assert "| repository-integration |" in awaiting_record
+        assert "not activated; the standard conditional gate did not require it" in awaiting_record.lower()
     print("finalize_sentry_planning self-test: passed")
 
 

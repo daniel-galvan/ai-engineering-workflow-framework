@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.11
+version: 0.4.12
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-31
+last_updated: 2026-09-01
 depends_on:
   - ../contracts/workflow_execution.md
 ---
@@ -114,7 +114,8 @@ Runtime bootstrap:
   Documenter only for Deep planning and remediation. An initialization acknowledgement never satisfies final handoff.
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
 - The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
-  pre-query Sentry or duplicate that investigation. When `Sentry issue` supplies a stable ID or URL, resolve it directly
+  load the `sentry` skill, invoke a Sentry MCP/app, pre-query Sentry, or duplicate that investigation before Evidence
+  Topology activation. When `Sentry issue` supplies a stable ID or URL, resolve it directly
   before any project or issue search. A direct issue lookup requires a stable issue identifier and organization slug
   (or a URL that carries both); when only a work-item key is present, record `supplied_occurrence` and do not call the
   issue endpoint with a missing organization. If the required identity is available but resolution fails, allow one
@@ -178,7 +179,9 @@ Runtime bootstrap:
   appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
 - Before analytical fan-in, audit each exposed provider tool trace with `validate_worker_runtime.py --trace`. Reject or
   quarantine results containing `forbidden_context_reference:*` or `context_conformance_failed`; an unavailable trace
-  is unverified, must be marked failed, and must not be reported as a passing self-attestation.
+  is `context-unverified` and must not be reported as independently audited. The Pilot Standard finalizer may continue
+  with the worker's self-attested result when every other contract gate passes; trace-unavailable evidence is never
+  stronger than self-attestation.
 - Separate event emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and
   confirmed defect owner. A local checkout mismatch does not exclude a deployed service without release mapping.
 - When Contract Delta shows field-keyed baseline content reduced to scalar or message-only destination input, Fix Design
@@ -189,7 +192,10 @@ Runtime bootstrap:
   `standard_planning_finalization.finalizer` recorded in `role_bindings.json` exactly once. Pass the artifact root, the
   exact Evidence Topology handle, the active Coordinator model/effort, the preflight framework revision/status, and
   every relevant repository as `--repository 'ROLE=/absolute/path'` and each conditional analytical worker as
-  `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every analytical release succeeds.
+  `--completed-worker 'WORKER=UUID'`. Include only conditional workers that actually activated; omit a skipped
+  conditional worker and let the finalizer record its `not_applicable` decision. Provider-role aliases for the implicit
+  Evidence/Fix workers are accepted only when their handles match those results. Pass `--provider-release-confirmed`
+  only after every analytical release succeeds.
   When provider traces are exposed, pass validated traces as `--worker-trace 'WORKER=/absolute/trace.json'`; otherwise
   the finalizer records trace auditing as unavailable and does not imply independent context conformance.
   The script renders exactly one disposition artifact: `implementation_plan.md` from the complete structured plan and

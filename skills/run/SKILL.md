@@ -43,8 +43,9 @@ description: >-
    Before analytical fan-in, audit each provider tool trace when exposed with
    `python3 <framework-root>/scripts/validate_worker_runtime.py --trace <current-run-trace.json>`.
    Treat `forbidden_context_reference:*` or `context_conformance_failed` as contamination and do not fan in that
-   result. If no trace is exposed, mark context conformance unverified/failed and exclude the result rather than
-   passing it from self-attestation.
+   result. If no trace is exposed, record context conformance as `context-unverified` and do not imply an
+   independently audited pass. The Pilot Standard finalizer may continue with the worker's self-attested result when
+   every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
@@ -150,15 +151,18 @@ description: >-
    artifact creation intentionally omits it.
    When provider tool traces are exposed, pass each validated trace as
    `--worker-trace <worker>=<absolute-trace-path>`; if none are exposed, the finalizer records the audit as unavailable
-   instead of implying independent context conformance.
+   instead of implying independent context conformance. Do not load the `sentry` skill or invoke a Sentry MCP/app from
+   the Coordinator before Evidence Topology activation; raw Sentry access is worker-owned.
    When Standard Sentry Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, do not
    activate a Documenter. Release every activated analytical handle, then run the manifest's
    `standard_planning_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact
    root, Evidence Topology handle, actual
    Coordinator model/effort, preflight framework revision/status, every relevant repository as
    `--repository 'ROLE=/absolute/path'`, and each conditional worker as
-   `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every activated analytical release
-   succeeds.
+   `--completed-worker 'WORKER=UUID'`. Include only conditional workers that actually activated; omit a skipped
+   conditional worker and let the finalizer record its `not_applicable` decision. Provider-role aliases for the two
+   implicit workers are accepted only when their handles match the implicit Evidence/Fix results. Pass
+   `--provider-release-confirmed` only after every activated analytical release succeeds.
    Before any `interrupt_agent`, `close_agent`, or replacement, run the manifest's `worker_runtime_guard` with the
    intended `--transition` and latest provider-observed `--provider-status`. A blocked guard result is authoritative:
    leave a `pending_init`, `running`, `in_progress`, or `awaiting_dependency` worker active and wait again or leave the

@@ -24,6 +24,20 @@ def _text(value: object, field: str) -> str:
     return result
 
 
+def _absolute_paths(value: object) -> list[Path]:
+    """Resolve one path or a semicolon-delimited list of absolute paths."""
+    if isinstance(value, list):
+        raw_values = [str(item).strip() for item in value]
+    else:
+        raw = str(value).strip()
+        raw_values = [part.strip() for part in raw.split(";")] if ";" in raw else [raw]
+    if len(raw_values) == 1:
+        return [Path(raw_values[0]).expanduser().resolve()]
+    if not raw_values or any(not item.startswith("/") or item.startswith("//") for item in raw_values):
+        return []
+    return [Path(item).expanduser().resolve() for item in raw_values]
+
+
 def _normalize_input(row: object, index: int) -> dict[str, object]:
     if not isinstance(row, dict):
         raise ValueError(f"run_input_manifest_input_{index}_invalid")
@@ -41,15 +55,34 @@ def _normalize_input(row: object, index: int) -> dict[str, object]:
         if candidate.startswith("/") and not candidate.startswith("//"):
             source_path = candidate
     if source_path:
-        path = Path(str(source_path)).expanduser().resolve()
-        normalized["path"] = str(path)
-        normalized["availability"] = "available" if path.exists() else "unavailable"
-        if path.is_file():
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            supplied_digest = str(normalized.get("sha256", "")).strip()
-            if supplied_digest and supplied_digest != digest:
-                raise ValueError(f"run_input_manifest_hash_mismatch:{input_id}")
-            normalized["sha256"] = digest
+        paths = _absolute_paths(source_path)
+        if len(paths) == 1:
+            path = paths[0]
+            normalized["path"] = str(path)
+            normalized["availability"] = "available" if path.exists() else "unavailable"
+            if path.is_file():
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                supplied_digest = str(normalized.get("sha256", "")).strip()
+                if supplied_digest and supplied_digest != digest:
+                    raise ValueError(f"run_input_manifest_hash_mismatch:{input_id}")
+                normalized["sha256"] = digest
+        elif len(paths) > 1:
+            normalized.pop("path", None)
+            normalized["paths"] = [str(path) for path in paths]
+            normalized["availability"] = (
+                "available" if all(path.exists() for path in paths) else "unavailable"
+            )
+        else:
+            # Preserve the legacy single-value behavior for a non-path source string.
+            path = Path(str(source_path)).expanduser().resolve()
+            normalized["path"] = str(path)
+            normalized["availability"] = "available" if path.exists() else "unavailable"
+            if path.is_file():
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                supplied_digest = str(normalized.get("sha256", "")).strip()
+                if supplied_digest and supplied_digest != digest:
+                    raise ValueError(f"run_input_manifest_hash_mismatch:{input_id}")
+                normalized["sha256"] = digest
     return normalized
 
 
