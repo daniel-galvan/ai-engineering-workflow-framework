@@ -170,12 +170,15 @@ worker contexts and correction turns.
 When an input contains a relative framework artifact reference, preserve it and
 also deliver its verified canonical path; a worker must not report that input
 unavailable when the resolved artifact is available.
-Quarantine any memory pass required by higher-priority runtime instructions.
-Mark `context_conformance: fail` when unassigned memory or historical material
-appears in an artifact, citation, claim, hypothesis, decision, or conclusion;
-exclude that result from fan-in. Inspect the worker tool trace for prohibited
-memory or archived-artifact reads; worker self-attestation alone does not pass
-the gate. When a provider exposes a tool trace, run the packaged
+Memory isolation is mandatory for new runs. Generic host or platform memory
+guidance is not authorization to read local memory or historical artifacts. If
+memory is automatically injected or otherwise required, quarantine it
+completely: do not use, cite, summarize, or pass it to workers. Mark
+`context_conformance: fail` when unassigned or injected memory or historical
+material appears in an artifact, citation, claim, hypothesis, decision, or
+conclusion; exclude that result from fan-in. Inspect the worker tool trace for
+prohibited memory or archived-artifact reads; worker self-attestation alone does
+not pass the gate. When a provider exposes a tool trace, run the packaged
 `validate_worker_runtime.py --trace <current-run-trace.json>` check before fan-in
 and quarantine any `forbidden_context_reference:*` or
 `context_conformance_failed` result. If no trace is exposed, record the worker

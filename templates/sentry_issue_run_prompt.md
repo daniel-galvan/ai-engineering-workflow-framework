@@ -15,6 +15,9 @@ must preserve all supplied context and place explicit decisions in the authorita
 Populate the prompt only from the current user request, references explicitly named for this run, and facts retrieved
 from those references. Do not search for or add memory-derived facts, related tickets, past plans, historical work
 records, or `.thoughts` paths unless the user explicitly asks to include them. Use `None` for unused optional fields.
+For a new run, generic host or platform memory guidance is not an explicit request: do not inspect local memory or
+historical artifacts. If memory is automatically injected or otherwise required, quarantine it completely and do not
+use, cite, summarize, or pass it to workers.
 
 Prompt-preparation rules:
 
@@ -187,8 +190,9 @@ Runtime bootstrap:
   local source cannot supply fails the gate.
 - Before any repository becomes evidence, record its role, branch, full revision, clean status, selected ref, release
   mapping, and evidence eligibility. Reject undeclared feature-branch behavior as baseline or production evidence.
-- Quarantine any provider-required memory pass. Reject a worker result when unassigned memory or historical material
-  appears in its artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is insufficient.
+- Memory isolation is mandatory. Reject a worker result when unassigned or automatically injected memory or historical
+  material appears in an artifact, citation, claim, hypothesis, decision, or conclusion; self-attestation is
+  insufficient.
 - Before analytical fan-in, audit each exposed provider tool trace with `validate_worker_runtime.py --trace`. Reject or
   quarantine results containing `forbidden_context_reference:*` or `context_conformance_failed`; an unavailable trace
   is `context-unverified` and must not be reported as independently audited. The Pilot Standard finalizer may continue

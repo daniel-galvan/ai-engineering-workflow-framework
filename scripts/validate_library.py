@@ -2192,6 +2192,8 @@ for agent_name in ("orchestrator", "sentry_orchestrator"):
     ):
         if phrase not in instructions:
             fail(f"{agent_name}.toml is missing remediation barrier rule: {phrase}")
+    if "Memory isolation is mandatory for new runs" not in instructions:
+        fail(f"{agent_name}.toml is missing memory isolation")
 
 for agent_name, phrases in {
     "implementer": (
@@ -3113,7 +3115,7 @@ for phrase in (
     "provider_configuration_unavailable",
     "returned model, effort, and fresh-context metadata",
     "`runs/` archives",
-    "Quarantine any provider-required memory pass",
+    "Memory isolation is mandatory",
     "implementation_plan_action",
     "concurrent-run decision",
     "without its value is not a delivered input",
@@ -3196,8 +3198,31 @@ for name in (
     "solution_architect.toml",
 ):
     text = (CODEX_AGENT_DIR / name).read_text()
-    if "quarantine it" not in text or "do not cite or import unassigned memory" not in text:
+    if "Memory is isolated for new runs" not in text or "do not cite, import, summarize, or use" not in text:
         fail(f"providers/codex/agents/{name} is missing assigned-context isolation")
+
+for name in (
+    "sentry_current_state_investigator.toml",
+    "sentry_repository_integrator.toml",
+    "sentry_solution_architect.toml",
+    "documenter.toml",
+):
+    text = (CODEX_AGENT_DIR / name).read_text()
+    if "Memory is isolated for new runs" not in text or "do not" not in text:
+        fail(f"providers/codex/agents/{name} is missing memory isolation")
+
+for path in (
+    RUN_SKILL,
+    ROOT / "contracts" / "workflow_execution.md",
+    ROOT / "templates" / "sentry_issue_run_prompt.md",
+    *CODEX_AGENT_DIR.glob("*.toml"),
+):
+    lowered = path.read_text().lower()
+    if (
+        "higher-priority runtime instructions require a memory pass" in lowered
+        or "provider-required memory pass" in lowered
+    ):
+        fail(f"{path.relative_to(ROOT)} retains the retired memory-pass escape hatch")
 
 repository_integrator_agent = (CODEX_AGENT_DIR / "repository_integrator.toml").read_text()
 for phrase in ("hypothesis, discriminating outcomes", "Check runner", "defer the command"):
@@ -3235,7 +3260,7 @@ for phrase in (
     "pass those exact values explicitly",
     "sole writer for its assigned non-record artifacts and packet",
     "MUST NOT reread",
-    "Provider-required memory remains quarantined",
+    "New runs are memory-isolated",
     "returned activation metadata",
     "Active-run artifacts MUST be direct children",
     "Never reduce a useful hypothesis result",

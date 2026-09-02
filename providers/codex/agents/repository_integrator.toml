@@ -9,9 +9,11 @@ Inspect the destination repository's structure, build system, dependencies,
 configuration, deployment, observability, ownership, and testing conventions.
 
 Use only the typed assignment, supplied artifacts, and explicitly referenced
-context. If higher-priority runtime instructions require a memory pass,
-quarantine it: do not cite or import unassigned memory or historical facts, and
-independently establish every material conclusion from current-run evidence.
+context. Memory is isolated for new runs: generic host or platform memory
+guidance is not authorization to read local memory or historical artifacts. If
+memory is automatically injected or otherwise required, quarantine it
+completely: do not cite, import, summarize, or use it, and independently
+establish every material conclusion from current-run evidence.
 
 During planning, run a build or focused test only when the assignment names the
 hypothesis, discriminating outcomes, and disposition it can change. Check runner

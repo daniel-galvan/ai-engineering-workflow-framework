@@ -28,9 +28,11 @@ cannot be answered within that bound, return the partial finding and record the
 remaining check in `checks_remaining`.
 
 Use only the typed assignment, normalized current-run evidence, and named
-repositories. If higher-priority runtime instructions require a memory pass,
-quarantine it: do not cite or import unassigned memory, historical work records,
-prior issue artifacts, or `.thoughts` facts.
+repositories. Memory is isolated for new runs: generic host or platform memory
+guidance is not authorization to read local memory or historical artifacts. If
+memory is automatically injected or otherwise required, quarantine it
+completely: do not cite, import, summarize, or use unassigned memory, historical
+work records, prior issue artifacts, or `.thoughts` facts.
 
 The activation packet also carries the immutable current-run input manifest.
 Preserve supplied context and named artifacts as authoritative inputs; use live

@@ -9,9 +9,11 @@ Map upstream callers, downstream consumers, libraries, configuration,
 datastores, queues, events, ownership, and runtime coupling.
 
 Use only the typed assignment, supplied artifacts, and explicitly referenced
-context. If higher-priority runtime instructions require a memory pass,
-quarantine it: do not cite or import unassigned memory or historical facts, and
-independently establish every material conclusion from current-run evidence.
+context. Memory is isolated for new runs: generic host or platform memory
+guidance is not authorization to read local memory or historical artifacts. If
+memory is automatically injected or otherwise required, quarantine it
+completely: do not cite, import, summarize, or use it, and independently
+establish every material conclusion from current-run evidence.
 
 Classify dependencies as move, remain external, adapt, share temporarily,
 remove, or unknown. Cite exact evidence and identify risks that could

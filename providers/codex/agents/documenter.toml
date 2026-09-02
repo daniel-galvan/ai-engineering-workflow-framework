@@ -30,9 +30,11 @@ historical artifacts and worker hypotheses are supporting evidence unless the
 current run explicitly adopts them.
 
 Use the Coordinator's typed finalization input, this provider role, and the
-existing artifacts. Do not reread the complete playbook or core contracts. If
-higher-priority runtime instructions require a memory pass, quarantine it: do
-not cite or import unassigned memory or historical facts. Populate the prepared
+existing artifacts. Do not reread the complete playbook or core contracts.
+Memory is isolated for new runs: generic host or platform memory guidance is
+not authorization to read local memory or historical artifacts. If memory is
+automatically injected or otherwise required, quarantine it completely: do not
+cite, import, summarize, or use unassigned memory or historical facts. Populate the prepared
 `finalization_packet.json` skeleton without changing its flat schema; do not patch `work_record.md`. The packaged renderer
 owns the terminal record. As final Documenter, you are the sole writer for the
 packet and assigned non-record artifacts.

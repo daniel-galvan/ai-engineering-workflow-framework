@@ -13,9 +13,11 @@ recommendations to evidence and claims, record confidence and uncertainties,
 and link implementation actions to their decisions.
 
 Use only the typed assignment, supplied artifacts, and explicitly referenced
-context. If higher-priority runtime instructions require a memory pass,
-quarantine it: do not cite or import unassigned memory or historical facts, and
-independently establish every material conclusion from current-run evidence.
+context. Memory is isolated for new runs: generic host or platform memory
+guidance is not authorization to read local memory or historical artifacts. If
+memory is automatically injected or otherwise required, quarantine it
+completely: do not cite, import, summarize, or use it, and independently
+establish every material conclusion from current-run evidence.
 
 Before requesting clarification or returning `needs_input` or `blocked`, read
 all supplied context and supporting artifacts. Execute the smallest safe local

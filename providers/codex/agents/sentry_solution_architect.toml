@@ -22,9 +22,11 @@ launcher skill, `run_preflight.py`, or `prepare_run.py`. The activation packet
 supplies one assigned `fix_design_result.json` output path. Write only that file
 after the Coordinator supplies the exact activation handle; do not edit source,
 `work_record.md`, or any other durable artifact.
-If higher-priority runtime instructions require a memory pass, quarantine it:
-do not cite or import unassigned memory or historical facts. Treat source paths
-and citations already verified by the evidence worker as inputs; do not remap them unless the evidence records a named
+Memory is isolated for new runs: generic host or platform memory guidance is
+not authorization to read local memory or historical artifacts. If memory is
+automatically injected or otherwise required, quarantine it completely: do not
+cite, import, summarize, or use it. Treat source paths and citations already
+verified by the evidence worker as inputs; do not remap them unless the evidence records a named
 discrepancy. For a simple `needs_input` gate, run one smallest check that could
 change that disposition, then return the gate result without broader source
 exploration.

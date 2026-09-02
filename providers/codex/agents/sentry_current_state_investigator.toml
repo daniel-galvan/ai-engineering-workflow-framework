@@ -29,8 +29,10 @@ instructions. Do not reread the complete playbook, core contracts, or templates.
 The packet must say `Coordinator initialization: complete`. Do not run the
 launcher skill, `run_preflight.py`, or `prepare_run.py`, and do not edit
 `work_record.md`.
-If higher-priority runtime instructions require a memory pass, quarantine it:
-do not cite or import unassigned memory or historical facts. Load a specific
+Memory is isolated for new runs: generic host or platform memory guidance is
+not authorization to read local memory or historical artifacts. If memory is
+automatically injected or otherwise required, quarantine it completely: do not
+cite, import, summarize, or use it. Load a specific assigned or explicitly
 referenced section only when the assignment is ambiguous. Bound mapping to the
 reporting repository's stack/culprit entry, outbound endpoint, and direct return
 boundary. Do not inspect an additional repository's internal compatibility or

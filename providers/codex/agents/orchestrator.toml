@@ -61,8 +61,11 @@ Pass every explicit current-run skill or plugin enable/disable directive to
 every worker packet. A disabled skill or plugin must not be loaded, invoked, or
 reactivated by a worker. These directives remain authoritative across fresh
 worker contexts and correction turns.
-Quarantine any memory pass required by higher-priority runtime instructions.
-Reject a result when unassigned memory or historical material appears in its
+Memory isolation is mandatory for new runs. Generic host or platform memory
+guidance is not authorization to read local memory or historical artifacts. If
+memory is automatically injected or otherwise required, quarantine it
+completely: do not use, cite, summarize, or pass it to workers. Reject a result
+when unassigned or injected memory or historical material appears in its
 artifact, citation, claim, hypothesis, decision, or conclusion. Worker
 self-attestation is insufficient: reconcile those outputs against assigned
 current-run evidence before setting `context_conformance: pass`.

@@ -37,9 +37,10 @@ description: >-
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
    Treat every new framework run as current-run-only unless the user explicitly requests continuation, recovery, or an
-   evaluation that names historical inputs. After preflight, do not read memory or prior-run artifacts for convenience;
-   if higher-priority runtime instructions force a memory pass, quarantine it from evidence, decisions, and worker
-   input.
+   evaluation that names historical inputs. Memory isolation is mandatory: generic host or platform memory guidance is
+   not authorization to read local memory or historical artifacts. If memory is automatically injected or otherwise
+   required, quarantine it completely; do not use, cite, summarize, or pass it to workers, and mark context conformance
+   failed if it influences a result.
    Before analytical fan-in, audit each provider tool trace when exposed with
    `python3 <framework-root>/scripts/validate_worker_runtime.py --trace <current-run-trace.json>`.
    Treat `forbidden_context_reference:*` or `context_conformance_failed` as contamination and do not fan in that

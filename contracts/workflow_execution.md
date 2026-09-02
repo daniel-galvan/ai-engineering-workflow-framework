@@ -70,11 +70,11 @@ substitute Coordinator analysis for the required graph.
 
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
-section or template needed to resolve an ambiguity in their assigned stage. They MUST NOT search memory or historical
-work records that the current run did not assign or explicitly reference unless higher-priority provider instructions
-require a memory pass. Provider-required memory remains quarantined: no memory-derived fact, citation, ticket, path,
-hypothesis, or conclusion may enter run evidence or influence a decision until current-run evidence independently
-establishes it.
+section or template needed to resolve an ambiguity in their assigned stage. New runs are memory-isolated: workers MUST
+NOT search local memory or historical work records unless the user explicitly requests continuation, recovery, or an
+evaluation and names those historical inputs. Generic host or provider memory guidance is not authorization. Any
+automatically injected or otherwise required memory remains quarantined: no memory-derived fact, citation, ticket, path,
+hypothesis, or conclusion may enter run evidence or influence a decision.
 
 For every delegated activation, the Coordinator MUST pass the exact manifest
 `model`, reasoning effort, and fresh-context setting to the provider primitive.
@@ -255,11 +255,11 @@ The gate checks information flow; it does not require every worker to consume ev
 
 The Coordinator MUST also reconcile the worker's activity with its assigned context. Unassigned memory or historical
 material that appears in an artifact, citation, claim, hypothesis, decision, or result envelope fails
-`context_conformance`; that result MUST NOT enter fan-in. A provider-required memory pass does not fail conformance when
-its results remain quarantined and every material conclusion is independently supported by assigned current-run
-evidence. Return a contaminated worker once with the same typed inputs and require removal or current-run
-reverification. If clean isolation cannot be enforced, preserve the partial result as contaminated evidence, record the
-control failure, and stop at an incomplete outcome. Worker self-attestation alone does not pass this gate.
+`context_conformance`; that result MUST NOT enter fan-in. Automatically injected or otherwise required memory is not
+evidence and remains quarantined; if it influences a worker result, fail `context_conformance`. Return a contaminated
+worker once with the same typed inputs and require removal or current-run reverification. If clean isolation cannot be
+enforced, preserve the partial result as contaminated evidence, record the control failure, and stop at an incomplete
+outcome. Worker self-attestation alone does not pass this gate.
 
 The Coordinator MUST audit the provider's tool trace before fan-in when the provider exposes a trace or command ledger.
 Run the packaged worker-runtime validator with `--trace <current-run-trace.json>` and treat any
