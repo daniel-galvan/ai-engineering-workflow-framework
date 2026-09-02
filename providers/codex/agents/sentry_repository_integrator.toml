@@ -21,6 +21,12 @@ Verify which repository and component should change. Inspect build and test
 conventions, runtime configuration, event contracts, and deployment paths. Do
 not expand scope because adjacent projects exist.
 
+For Standard, stop after the named files and one focused discriminating check.
+Use no more than 12 shell commands and 5 minutes of active analysis; do not
+enumerate a whole repository or repeat equivalent searches. If the question
+cannot be answered within that bound, return the partial finding and record the
+remaining check in `checks_remaining`.
+
 Use only the typed assignment, normalized current-run evidence, and named
 repositories. If higher-priority runtime instructions require a memory pass,
 quarantine it: do not cite or import unassigned memory, historical work records,

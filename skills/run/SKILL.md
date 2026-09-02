@@ -148,6 +148,9 @@ description: >-
    `--framework-revision <preflight-sha> --framework-status <clean|dirty>`. Pass
    `--evidence-artifact <artifact>` when normalized evidence exists; an Evidence Topology runtime failure before
    artifact creation intentionally omits it.
+   When provider tool traces are exposed, pass each validated trace as
+   `--worker-trace <worker>=<absolute-trace-path>`; if none are exposed, the finalizer records the audit as unavailable
+   instead of implying independent context conformance.
    When Standard Sentry Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, do not
    activate a Documenter. Release every activated analytical handle, then run the manifest's
    `standard_planning_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact
@@ -204,7 +207,8 @@ description: >-
    an error lacks an expected value or contradicts the documented packet contract.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
-   verbatim; do not regenerate or replace it with a compact status list. Before sending, verify the exact ordered labels
+   verbatim; it is rendered from the finalized work record. Do not compose a second summary or regenerate or replace it
+   with a compact status list. Before sending, verify the exact ordered labels
    `Workflow result:`,
    the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, then
    `What we established:`, optional

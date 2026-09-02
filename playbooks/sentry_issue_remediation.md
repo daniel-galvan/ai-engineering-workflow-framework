@@ -424,14 +424,16 @@ worker activation. Do not allow a live issue lookup to erase those inputs.
 ### Stage 1 — Collect Sentry Evidence
 
 The `evidence-topology` worker exclusively owns raw Sentry queries and initial repository topology for the run. The
-Orchestrator does not pre-query Sentry or duplicate repository exploration. Use MCP to inspect the issue and request
-only the latest event first (`limit: 1` when supported).
+Orchestrator does not pre-query Sentry or duplicate repository exploration. When explicit Sentry identity is available,
+use MCP to inspect the issue and request only the latest event first (`limit: 1` when supported); otherwise use the
+supplied occurrence without Sentry discovery.
 Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
 uses the current-run artifact without broad Sentry discovery; `mixed` uses both. An explicit Sentry issue URL or a
 separately identified Sentry issue ID selects live lookup. A direct lookup requires a stable organization slug (or a
-URL carrying the organization); when only a work-item key is present, retain `supplied_occurrence` and record that
-lookup was skipped because organization identity is unavailable. Never call the issue endpoint with a missing
-organization parameter. When the required identity is available but resolution fails, attempt direct resolution once
+URL carrying the organization); a Sentry-shaped work-item key is not an issue ID unless the prompt labels it as one.
+When only a work-item key is present, retain `supplied_occurrence`, do not perform organization/project/issue discovery,
+and record `Sentry issue: not supplied`. Never call the issue endpoint with a missing organization parameter. When the
+required identity is available but resolution fails, attempt direct resolution once
 without search, then retain `supplied_occurrence` and the bounded uncertainty. Standard planning permits
 one tool discovery call and at most three Sentry data queries total: direct issue resolution, latest event, and one
 justified discriminating follow-up. Stop each query after 30 seconds and stop Sentry investigation after 90 seconds

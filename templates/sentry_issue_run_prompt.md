@@ -158,10 +158,11 @@ Runtime bootstrap:
   exact value. Validate the assigned file directly; the Coordinator must not reconstruct its JSON from a worker reply.
 - Require normalized evidence to contain the playbook's canonical Contract Delta table with its Markdown separator,
   exact five boundary rows, and evidence references. Accept any Markdown heading level for `Contract Delta`.
-- Select `live_sentry` from an explicit Sentry issue URL or separately identified Sentry issue ID. When this Sentry
-  playbook is selected and the prompt describes the occurrence as a Sentry issue, treat a Sentry-shaped work-item key as
-  a candidate issue ID and attempt direct resolution once without search. On success use `live_sentry` or `mixed`; on
-  failure retain `supplied_occurrence`. Never declare the key non-Sentry before the direct attempt.
+- Select `live_sentry` only from an explicit Sentry issue URL or separately identified Sentry issue ID with an
+  organization slug. `mixed` adds supplied current-run occurrence/artifacts after that direct resolution. A Sentry-shaped
+  work-item key is not an issue ID unless the prompt labels it as one. Without an explicit identity, use
+  `supplied_occurrence`, do not perform organization/project/issue discovery, and record `Sentry issue: not supplied`.
+  Never send an issue request with a missing organization parameter.
 - Require Evidence Topology to run `validate_library.py --normalized-evidence <artifact-path>` before returning. A
   producer-format repair within the initial activation does not consume the analytical correction allowance.
 - During planning, run a unit or integration test only when one existing focused command can change the diagnosis,
@@ -189,6 +190,8 @@ Runtime bootstrap:
   exact Evidence Topology handle, the active Coordinator model/effort, the preflight framework revision/status, and
   every relevant repository as `--repository 'ROLE=/absolute/path'` and each conditional analytical worker as
   `--completed-worker 'WORKER=UUID'`. Pass `--provider-release-confirmed` only after every analytical release succeeds.
+  When provider traces are exposed, pass validated traces as `--worker-trace 'WORKER=/absolute/trace.json'`; otherwise
+  the finalizer records trace auditing as unavailable and does not imply independent context conformance.
   The script renders exactly one disposition artifact: `implementation_plan.md` from the complete structured plan and
   interface contract, or `clarification_brief.md` from the complete structured clarification. It stages and validates
   `finalization_packet.json`, `runtime_closure.json`, the selected artifact, and `work_record.md`, then publishes that
@@ -209,6 +212,7 @@ Runtime bootstrap:
 - Before release, reconcile the final artifact and answer with the durable record. Workflow state, profile status,
   workflow/engineering outcome, plan action, worker outcomes, active handles, artifacts, and runtime closure must agree;
   return stale `pending` or `active` values to the same Documenter for correction.
+- The final handoff is rendered from the finalized `work_record.md`; copy it verbatim and do not write a competing summary.
 - Finalization must retain the contract's required terminal fields and playbook artifact set. Keep `state`,
   `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct and copy their exact values to the final
   answer as `Workflow outcome` and `Engineering outcome`; matching artifact counts alone do not pass.

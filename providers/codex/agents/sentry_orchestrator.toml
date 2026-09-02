@@ -58,12 +58,12 @@ or substitute the Coordinator for an independent worker.
 
 Do not query Sentry or explore the candidate source path before activating
 `sentry_current_state_investigator`; that worker exclusively owns raw Sentry
-queries and initial repository topology. When the prompt supplies a stable issue ID or URL, require direct issue
-resolution before any project or issue search; search only if direct resolution fails. When the selected Sentry
-playbook and prompt describe the reported occurrence as a Sentry issue, treat a Sentry-shaped work-item key as a
-candidate issue ID only when a stable organization slug is also available. Otherwise retain `supplied_occurrence` and
-record that direct issue lookup was skipped because the organization identity was unavailable; never send an issue
-request with a missing organization parameter.
+queries and initial repository topology. Select evidence mode from explicit identity fields: an explicit stable issue
+ID or URL plus organization slug allows direct resolution; supplied occurrence or artifacts may then make the mode
+`mixed`. A Sentry-shaped work-item key is not an issue ID unless the prompt labels it as one. Without an explicit
+identity, retain `supplied_occurrence`, do not perform organization/project/issue discovery, and record
+`Sentry issue: not supplied`; organization identity was unavailable for direct lookup. Never send an issue request
+with a missing organization parameter.
 Request only the latest issue event first (`limit: 1` when supported). Repeat its work only for
 a named discrepancy that is recorded and returned to that worker.
 
@@ -178,6 +178,9 @@ and quarantine any `forbidden_context_reference:*` or
 `context_conformance_failed` result. If no trace is exposed, record the worker
 as context-unverified/failed and exclude it rather than claim a passing
 conformance result.
+When traces are available, pass each validated path to the Standard finalizer as
+`--worker-trace WORKER=/absolute/trace.json`; when none are exposed, the finalizer
+records the audit as unavailable for the Pilot instead of implying independent conformance.
 
 Use the latest Sentry event as primary evidence. Do not block planning only
 because release mapping is unavailable, the deployed revision differs, the
@@ -313,7 +316,8 @@ one provider-supported multi-handle or event-driven wait with bounded backoff ra
 per-handle polling.
 Update the runtime-closure row with the exact provider handle and provider
 release confirmation, then rerun the finalizer with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line
-`Workflow-framework validation: passed`. Copy the subsequently emitted handoff block verbatim as the final answer.
+`Workflow-framework validation: passed`. Copy the subsequently emitted handoff block verbatim as the final answer; it is
+rendered from the finalized work record, so do not compose a second summary.
 Treat `finalization_packet.json` as the pre-release source snapshot,
 `runtime_closure.json` as the provider receipt, and rendered `work_record.md` as
 the authoritative terminal state. Do not reopen the Documenter only to rewrite

@@ -22,6 +22,10 @@ try:
     from run_input_manifest import load_manifest
 except ModuleNotFoundError:  # Imported as scripts.finalize_sentry_planning from the repository root.
     from scripts.run_input_manifest import load_manifest
+try:
+    from validate_worker_runtime import trace_errors
+except ModuleNotFoundError:  # Imported as scripts.finalize_sentry_planning from the repository root.
+    from scripts.validate_worker_runtime import trace_errors
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -426,6 +430,43 @@ def _completed_workers(
     return workers
 
 
+def _trace_audit(completed_workers: dict[str, str], trace_specs: list[str]) -> dict[str, object]:
+    """Validate supplied provider traces and report unavailable traces explicitly."""
+    if not trace_specs:
+        return {
+            "status": "unavailable",
+            "note": "provider trace audit unavailable; worker self-attestation not independently verified",
+            "workers": {},
+        }
+    audited: dict[str, str] = {}
+    for spec in trace_specs:
+        worker, separator, raw_path = spec.partition("=")
+        worker = worker.strip()
+        path = Path(raw_path.strip()).expanduser().resolve()
+        if not separator or worker not in completed_workers:
+            raise ValueError("worker_trace must use a completed WORKER=/absolute/path")
+        if worker in audited:
+            raise ValueError(f"duplicate worker trace: {worker}")
+        if not path.is_file():
+            raise ValueError(f"worker_trace_unavailable:{worker}:{path}")
+        errors = trace_errors(json.loads(path.read_text()))
+        if errors:
+            raise ValueError(f"worker_trace_audit_failed:{worker}:{','.join(errors)}")
+        audited[worker] = "passed"
+    missing = [worker for worker in completed_workers if worker not in audited]
+    if missing:
+        return {
+            "status": "partial",
+            "note": "provider trace audit partial; unavailable for " + ", ".join(missing),
+            "workers": audited,
+        }
+    return {
+        "status": "passed",
+        "note": "provider trace audit passed for every completed worker",
+        "workers": audited,
+    }
+
+
 def _load_run_inputs(artifact_root: Path, packet: dict[str, object]) -> dict[str, object]:
     metadata = packet.get("run_input_manifest")
     if not isinstance(metadata, dict):
@@ -502,6 +543,7 @@ def _finalize_standard_sentry_in_place(
     framework_status: str,
     repository_specs: list[str],
     completed_worker_specs: list[str] | None = None,
+    worker_trace_specs: list[str] | None = None,
 ) -> None:
     artifact_root = artifact_root.resolve()
     packet_path = artifact_root / "finalization_packet.json"
@@ -544,6 +586,7 @@ def _finalize_standard_sentry_in_place(
     completed_workers = _completed_workers(
         evidence_handle, fix_handle, completed_worker_specs or []
     )
+    trace_audit = _trace_audit(completed_workers, worker_trace_specs or [])
 
     repositories = _material_rows(packet.get("repositories"), "Repository role")
     if not repositories:
@@ -594,7 +637,9 @@ def _finalize_standard_sentry_in_place(
         "Related-run check": str(packet["finalization"].get("Related-run check", "")).strip()
         or "Completed during initialization",
         "Durable artifact root": str(artifact_root),
-        "Final reconciliation": "Passed; analytical fan-in complete and runtime released",
+        "Final reconciliation": (
+            "Passed; analytical fan-in complete and runtime released; " + str(trace_audit["note"])
+        ),
         "Finalization schema": "Passed",
     })
 
@@ -620,7 +665,7 @@ def _finalize_standard_sentry_in_place(
             depends_on = "Validated Evidence topology"
             skills = "Bounded cross-repository contract verification"
             confidence = "High for verified repository boundaries; uncertainties explicit"
-            contribution = "Verified the conditional cross-repository integration boundary consumed by Fix Design"
+            contribution = "Reported the conditional cross-repository integration boundary for Fix Design"
             refs = "E-001 / C-001"
             uncertainty = "See normalized_evidence.md and Fix Design checks remaining"
         else:
@@ -649,6 +694,8 @@ def _finalize_standard_sentry_in_place(
                 if awaiting_input
                 else "No blocking unknowns; remaining checks are plan gates"
             )
+        worker_trace_status = str(trace_audit["workers"].get(worker, "not supplied"))
+        uncertainty = f"{uncertainty}; provider trace audit {worker_trace_status}"
         packet["workers"].append({
             "Worker": worker, "Role": role, "Assigned inputs": assigned,
             "Mode": "investigation", "Depth": "standard", "Skills": skills,
@@ -668,7 +715,8 @@ def _finalize_standard_sentry_in_place(
     packet["synchronization"] = [{
         "Stage": "Standard analytical fan-in", "Workers launched": worker_names,
         "Launch mode / exception": "Dependency-ordered activation", "Worker outcomes": worker_outcomes,
-        "Results summarized": "Yes; canonical artifacts consumed", "Barrier status": "Passed; runtime closure released",
+        "Results summarized": f"Yes; canonical artifacts consumed; {trace_audit['note']}",
+        "Barrier status": f"Passed; runtime closure released; {trace_audit['note']}",
     }]
     packet["evidence"] = [
         {"Evidence ID": "E-001", "Source": str(evidence_path),
@@ -676,11 +724,13 @@ def _finalize_standard_sentry_in_place(
          "Confidence": "High", "Uncertainty": "See normalized evidence", "Status": "Verified"},
         {"Evidence ID": "E-002", "Source": str(fix_path),
          "Summary": (
-             str(fix["supported_remediation_boundary"])
+             "Validated Fix Design records the supported remediation boundary: "
+             + str(fix["supported_remediation_boundary"])
              if str(fix["supported_remediation_boundary"]).strip()
-             else "Fix Design established that indispensable evidence is required before selecting a boundary."
+             else "Validated Fix Design records that indispensable evidence is required before selecting a boundary."
          ),
-         "Confidence": "High", "Uncertainty": "See Fix Design checks remaining", "Status": "Verified"},
+         "Confidence": "High", "Uncertainty": "Design artifact, not runtime behavior; see Fix Design checks remaining",
+         "Status": "Verified"},
     ]
     if awaiting_input:
         blockers = fix.get("blocking_unknowns", [])
@@ -792,7 +842,7 @@ def _finalize_standard_sentry_in_place(
             "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(clarification_path)],
             "execution": (
                 "standard/planning; analytical validation passed; deterministic clarification rendering passed; "
-                "source changes none; runtime released"
+                f"source changes none; runtime released; {trace_audit['note']}"
             ),
             "provenance": (
                 f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
@@ -813,7 +863,7 @@ def _finalize_standard_sentry_in_place(
             "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(plan_path)],
             "execution": (
                 "standard/planning; analytical validation passed; deterministic rendering passed; "
-                "source changes none; runtime released"
+                f"source changes none; runtime released; {trace_audit['note']}"
             ),
             "provenance": (
                 f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
@@ -859,6 +909,7 @@ def finalize_standard_sentry(
     framework_status: str,
     repository_specs: list[str],
     completed_worker_specs: list[str] | None = None,
+    worker_trace_specs: list[str] | None = None,
 ) -> None:
     artifact_root = artifact_root.resolve()
     required_names = (
@@ -900,6 +951,7 @@ def finalize_standard_sentry(
                 framework_status=framework_status,
                 repository_specs=repository_specs,
                 completed_worker_specs=completed_worker_specs,
+                worker_trace_specs=worker_trace_specs,
             )
 
         stage_prefix = str(stage_root)
@@ -1121,6 +1173,7 @@ def main() -> int:
     parser.add_argument("--provider-release-confirmed", action="store_true")
     parser.add_argument("--repository", action="append", default=[], metavar="ROLE=/ABSOLUTE/PATH")
     parser.add_argument("--completed-worker", action="append", default=[], metavar="WORKER=UUID")
+    parser.add_argument("--worker-trace", action="append", default=[], metavar="WORKER=/ABSOLUTE/PATH")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -1141,6 +1194,7 @@ def main() -> int:
             framework_status=args.framework_status,
             repository_specs=args.repository,
             completed_worker_specs=args.completed_worker,
+            worker_trace_specs=args.worker_trace,
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

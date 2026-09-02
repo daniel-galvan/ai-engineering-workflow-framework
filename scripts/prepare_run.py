@@ -104,9 +104,18 @@ def _baseline_id() -> str:
 
 def _playbook_name(value: str) -> str:
     name = Path(value).stem
-    if name not in PLAYBOOKS:
-        raise ValueError(f"unknown_playbook:{value}")
-    return name
+    if name in PLAYBOOKS:
+        return name
+    normalized = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    for path in (ROOT / "playbooks").glob("*.md"):
+        title = re.search(r"^title:\s*(.+?)\s*$", path.read_text(), re.MULTILINE)
+        title_name = (
+            re.sub(r"[^a-z0-9]+", "_", title.group(1).lower()).strip("_")
+            if title else ""
+        )
+        if title_name.removesuffix("_playbook") == normalized or title_name == normalized:
+            return path.stem
+    raise ValueError(f"unknown_playbook:{value}")
 
 
 def _document_version(path: Path) -> str:
@@ -474,6 +483,8 @@ def self_test() -> None:
         assert prepared_packet["inputs"][0]["Input ID"] == "USER-001"
         assert prepared_packet["run_input_manifest"]["status"] == "explicit"
         assert prepared_packet["identity"]["Coordinator execution"].startswith("active parent session")
+        assert _playbook_name("Sentry Issue Remediation") == "sentry_issue_remediation"
+        assert _playbook_name("Sentry Issue Remediation Playbook") == "sentry_issue_remediation"
         record = Path(first["work_record"])
         record.write_text(
             record.read_text().replace("| Run ID | |", "| Run ID | run-1 |").replace(
