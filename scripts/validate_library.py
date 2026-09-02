@@ -453,6 +453,10 @@ def _has_explicit_field_identity(response_shape: object) -> bool:
     ))
 
 
+def _mentions_user_source(value: object) -> bool:
+    return bool(re.search(r"(?<![a-z])user(?:\b|[-_])", str(value).lower()))
+
+
 def sentry_upstream_boundary_errors(
     normalized_evidence: str, fix_design: dict[str, object], *, require_plan: bool
 ) -> list[str]:
@@ -1421,10 +1425,10 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             for error in sentry_contract_delta_errors(evidence_text):
                 fail(f"{path}: {error}")
     for row in markdown_table(text, "# Input Register"):
-        if "worker" in row.get("Input or artifact", "").lower() and "user" in row.get("Source or path", "").lower():
+        if "worker" in row.get("Input or artifact", "").lower() and _mentions_user_source(row.get("Source or path", "")):
             fail(f"{path}: worker-produced inputs must cite the provider worker/result handle, not the user")
     for row in markdown_table(text, "# Evidence"):
-        if "preflight" in " ".join(row.values()).lower() and "user" in row.get("Source", "").lower():
+        if "preflight" in " ".join(row.values()).lower() and _mentions_user_source(row.get("Source", "")):
             fail(f"{path}: preflight evidence must cite the Coordinator/provider observation, not the user")
     if evaluation_run:
         evaluation_tables = {
@@ -1545,6 +1549,8 @@ def self_test_reasoning_records() -> None:
     assert table_cells(r"| Field | message \| link_title \| link_summary |") == [
         "Field", "message | link_title | link_summary"
     ]
+    assert _mentions_user_source("current user request")
+    assert not _mentions_user_source("/Users/dgalvan/projects/worker-result.json")
     valid = """# Playbook Selection
 | Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
 | --- | --- | --- | --- | --- |
