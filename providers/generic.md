@@ -1,7 +1,7 @@
 ---
 
 title: Generic Provider Adapter
-version: 0.4.3
+version: 0.4.15
 status: Pilot
 owner: Engineering
 provider: generic

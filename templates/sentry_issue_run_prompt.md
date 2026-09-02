@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.4.12
+version: 0.4.15
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-01

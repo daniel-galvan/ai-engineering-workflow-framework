@@ -1,7 +1,7 @@
 ---
 
 title: Dependency Analyst Role
-version: 0.4.3
+version: 0.4.15
 status: Pilot
 category: Analysis
 produces_decisions: false

@@ -1,7 +1,7 @@
 ---
 
 title: Work-Item Context
-version: 0.4.3
+version: 0.4.15
 status: Pilot
 category: Context
 provider_independent: true
