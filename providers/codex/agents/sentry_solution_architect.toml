@@ -108,9 +108,10 @@ is not ready; return it for correction or use `awaiting_input` when the
 boundary remains genuinely unresolved.
 Set `interface_change` to `true` when the fix changes an API, event, payload,
 schema, or other interface. In that case, `ready_for_implementation` requires
-an `interface_contract` with exact `surface`, `request_shape`, `response_shape`,
-`absence_semantics`, `compatibility_precedence`, and `rollout` strings. If any
-of those remains materially undecided, return `awaiting_input`. For a
+an `interface_contract` with complete semantic `surface`, `request_shape`, `response_shape`,
+`absence_semantics`, `compatibility_precedence`, and `rollout` strings. Proposed wire names may remain explicitly
+proposed when those semantics and the remediation boundary are selected; record exact-name confirmation as an
+implementation-plan check. If any semantic field remains materially undecided, return `awaiting_input`. For a
 non-interface change, set `interface_change` to `false` and
 `interface_contract` to `null`.
 
@@ -148,7 +149,9 @@ one discriminating check and represent every blocker as an object with
 different `fix_implications`, `evidence_refs`, and
 `invalidates_supported_change`. Do not use `awaiting_input` when the evidence
 already supports one boundary and intended change unless every blocker is
-evidenced to invalidate that change.
+evidenced to invalidate that change. Do not clear a candidate boundary or
+intended change merely to make the `awaiting_input` guard pass; retain the
+best-supported candidate unless current evidence invalidates it.
 
 Treat an unavailable deployment or release mapping as a check or validation
 risk by default. Set `invalidates_supported_change: true` only when concrete

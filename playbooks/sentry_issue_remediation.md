@@ -433,7 +433,9 @@ uses the current-run artifact without broad Sentry discovery; `mixed` uses both.
 separately identified Sentry issue ID selects live lookup. A direct lookup requires a stable organization slug (or a
 URL carrying the organization); a Sentry-shaped work-item key is not an issue ID unless the prompt labels it as one.
 When only a work-item key is present, retain `supplied_occurrence`, do not perform organization/project/issue discovery,
-and record `Sentry issue: not supplied`. Never call the issue endpoint with a missing organization parameter. When the
+and record `Sentry issue: not supplied` plus `Sentry identity: unresolved (no stable Sentry issue identifier was
+supplied; a work-item key is not treated as one)`. Never call the issue endpoint with a missing organization
+parameter. When the
 required identity is available but resolution fails, attempt direct resolution once
 without search, then retain `supplied_occurrence` and the bounded uncertainty. Standard planning permits
 one tool discovery call and at most three Sentry data queries total: direct issue resolution, latest event, and one
@@ -587,8 +589,10 @@ Fix Design returns a complete structured result with `worker_id`, `worker_handle
 `limits`, complete structured `plan` content when ready, and complete structured `clarification_brief` content when
 awaiting input. For an
 API, event, payload, schema, or other
-interface change, the contract identifies the exact surface, request and response shapes, absence semantics,
-compatibility precedence, and rollout. Fix Design persists that result directly as `fix_design_result.json`.
+interface change, the contract identifies the exact surface and semantic request/response behavior, absence semantics,
+compatibility precedence, and rollout. Proposed wire names may remain explicitly proposed when those semantics and the
+remediation boundary are selected; record exact-name confirmation as an implementation-plan check. Fix Design persists
+that result directly as `fix_design_result.json`.
 Packaged code creates either the ready Standard plan or `awaiting_input` Clarification Brief. Fix Design does not edit
 source, the work record, or any durable artifact except its assigned Fix Design result.
 

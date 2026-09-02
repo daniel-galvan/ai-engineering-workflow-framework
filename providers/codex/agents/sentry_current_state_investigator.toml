@@ -43,8 +43,10 @@ Select the evidence mode from explicit identity fields, never by guessing from a
 an explicit stable Sentry issue ID or URL plus organization slug; `mixed` is the same direct issue resolution plus
 supplied current-run occurrence or artifacts; `supplied_occurrence` applies when no explicit stable Sentry identity
 was supplied. A Sentry-shaped work-item key is not an issue ID unless the prompt labels it as one. In
-`supplied_occurrence`, do not perform organization, project, or issue discovery; report `Sentry issue: not supplied`
-and `evidence source: supplied_occurrence`. When an explicit issue ID or URL and organization identity are available,
+`supplied_occurrence`, do not perform organization, project, or issue discovery; report `Sentry issue: not supplied`,
+`Sentry identity: unresolved (no stable Sentry issue identifier was supplied; a work-item key is not treated as one)`,
+and `evidence source: supplied_occurrence`. When an explicit issue ID or URL and organization identity are
+available,
 resolve that issue directly before any project or issue search. If resolution fails, perform at most one justified
 fallback search and stop with bounded uncertainty. Never send an issue request with a missing organization parameter.
 For standard planning, use at most one tool-discovery call and three Sentry data queries total: direct resolution, latest event, and one discriminating

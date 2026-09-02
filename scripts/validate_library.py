@@ -130,7 +130,8 @@ UNOBSERVED_MODEL_VALUES = {"", "unknown", "none"}
 MODEL_OBSERVATION_UNAVAILABLE_PREFIXES = ("not exposed", "provider telemetry unavailable")
 EMPTY_ARTIFACT_VALUES = {"", "unknown", "none", "not applicable", "n/a"}
 UNRESOLVED_INTERFACE_MARKERS = re.compile(
-    r"\b(?:tbd|todo|unknown|not established|to be confirmed|must be confirmed|pending|proposed)\b",
+    # Proposal wording is allowed when the semantic contract is concrete; unresolved semantics are not.
+    r"\b(?:tbd|todo|unknown|not established|to be confirmed|must be confirmed|pending)\b",
     re.IGNORECASE,
 )
 
@@ -655,6 +656,8 @@ def fix_design_result_errors(
             observed_competing = blocker.get("observed_competing_boundaries")
             if decision_type not in BLOCKING_DECISION_TYPES:
                 errors.append(f"blocking unknown {index} has invalid decision_type")
+            if not isinstance(blocker.get("invalidates_supported_change"), bool):
+                errors.append(f"blocking unknown {index} invalidates_supported_change must be a boolean")
             if not isinstance(blocker.get("question"), str) or not blocker["question"].strip():
                 errors.append(f"blocking unknown {index} requires a question")
             if not isinstance(blocker.get("unavailable_reason"), str) or not blocker["unavailable_reason"].strip():
@@ -710,6 +713,20 @@ def fix_design_result_errors(
                                 f"blocking unknown {index} observed_competing_boundary {competing_index} "
                                 "requires evidence_refs"
                             )
+        if (
+            not boundary.strip()
+            and not intended_change.strip()
+            and any(
+                isinstance(blocker, dict)
+                and blocker.get("decision_type") == "incompatible_alternatives"
+                and blocker.get("invalidates_supported_change") is False
+                for blocker in blockers
+            )
+        ):
+            errors.append(
+                "awaiting_input incompatible_alternatives blocker cannot clear the candidate boundary and intended "
+                "change; retain the candidate or provide evidence that it is invalidated"
+            )
         if boundary and intended_change and not all(
             isinstance(blocker, dict) and blocker.get("invalidates_supported_change") is True
             for blocker in blockers
@@ -1691,12 +1708,25 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         **ready_fix_with_evidence,
         "interface_change": True,
         "interface_contract": {
-            field: ("Proposed contract; to be confirmed before rollout." if field != "surface" else "Event payload")
+            field: ("TBD; exact contract is required before rollout." if field != "surface" else "Event payload")
             for field in INTERFACE_CONTRACT_FIELDS
         },
     }
     unresolved_errors = fix_design_result_errors(unresolved_interface)
     assert any("contains unresolved semantics" in error for error in unresolved_errors)
+    proposed_interface = {
+        **ready_fix_with_evidence,
+        "interface_change": True,
+        "interface_contract": {
+            "surface": "Proposed additive event payload contract.",
+            "request_shape": "Preserve scalar text and add a proposed top-level text_fields map.",
+            "response_shape": "Return field-local extents with a proposed field property for identity.",
+            "absence_semantics": "Proposed fields are optional; missing values retain legacy fallback.",
+            "compatibility_precedence": "Proposed keyed values win when present; scalar remains compatible.",
+            "rollout": "Confirm proposed wire names during implementation before producer rollout.",
+        },
+    }
+    assert fix_design_result_errors(proposed_interface) == []
     assert model_observation_unavailable("Not exposed; explicit launch binding was recorded")
     assert not model_observation_unavailable("Unknown")
     overcautious_fix = {
@@ -1717,6 +1747,32 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     overcautious_errors = fix_design_result_errors(overcautious_fix)
     assert any("materially different fixes" in error for error in overcautious_errors)
     assert any("cannot defer an established boundary" in error for error in overcautious_errors)
+    cleared_candidate_fix = {
+        **ready_fix,
+        "plan_readiness": "awaiting_input",
+        "implementation_plan_action": "omit",
+        "supported_remediation_boundary": "",
+        "supported_intended_change": "",
+        "blocking_unknowns": [
+            {
+                "decision_type": "incompatible_alternatives",
+                "question": "Which compatible wire representation should be selected?",
+                "unavailable_reason": "Two representations remain under consideration.",
+                "fix_implications": ["Use an additive top-level map.", "Use a nested versioned object."],
+                "evidence_refs": ["evidence-001"],
+                "invalidates_supported_change": False,
+            }
+        ],
+        "clarification_brief": {
+            "confirmed_facts": ["The current contract loses field identity."],
+            "strongest_hypothesis": "An additive keyed representation preserves compatibility.",
+            "feasible_options": ["Use an additive top-level map.", "Use a nested versioned object."],
+            "recommendation": "Use the additive representation unless compatibility evidence rejects it.",
+            "plain_language_next_action": "Choose the wire representation for implementation.",
+        },
+    }
+    cleared_candidate_errors = fix_design_result_errors(cleared_candidate_fix)
+    assert any("cannot clear the candidate boundary" in error for error in cleared_candidate_errors)
     v28 = json.loads(V28_STABILIZATION_FIXTURE.read_text())
     assert fix_design_result_errors(
         v28["fix_design_result"], required_input_markers=SENTRY_EVIDENCE_INPUT_MARKERS

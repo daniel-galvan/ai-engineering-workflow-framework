@@ -92,7 +92,10 @@ def validate_manifest(value: object, *, explicit: bool | None = None) -> dict[st
     schema_version = value.get("schema_version", SCHEMA_VERSION)
     if schema_version != SCHEMA_VERSION:
         raise ValueError(f"run_input_manifest_schema_version:{schema_version}")
-    precedence_rule = _text(value.get("precedence_rule", ""), "precedence_rule")
+    precedence_rule = _text(
+        value["precedence_rule"] if "precedence_rule" in value else DEFAULT_PRECEDENCE_RULE,
+        "precedence_rule",
+    )
     raw_inputs = value.get("inputs")
     if not isinstance(raw_inputs, list) or not raw_inputs:
         raise ValueError("run_input_manifest_inputs_missing")

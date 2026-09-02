@@ -504,8 +504,12 @@ When the normalized Contract Delta establishes that field-keyed baseline content
 destination input, Fix Design MUST select an upstream producer/request boundary and an affirmative field-preservation
 change. A downstream-only plan, or an interface contract that explicitly leaves the scalar request unchanged, is not
 ready and MUST be returned for correction or changed to `awaiting_input`.
-When `interface_change` is true, readiness also requires an exact `interface_contract`; unresolved field names, shapes,
-absence semantics, compatibility precedence, or rollout keep the plan at `awaiting_input`.
+When `interface_change` is true, readiness also requires a complete semantic `interface_contract`. Proposed wire
+property names or equivalent representations may remain explicitly proposed when the request/response behavior,
+absence semantics, compatibility precedence, rollout, and remediation boundary are selected; record their confirmation
+as an implementation-plan check. Unresolved semantic shapes, absence semantics, compatibility precedence, rollout, or
+the selected boundary/change keep the plan at `awaiting_input`. Do not clear a candidate boundary/change merely to
+pass this guard; retain it unless current evidence invalidates it.
 
 Coordinator-observed activation and terminal timestamps are always available and MUST be recorded. When the provider
 does not expose a distinct start time or queue wait, use activation as start and record provider queue wait as

@@ -62,7 +62,8 @@ queries and initial repository topology. Select evidence mode from explicit iden
 ID or URL plus organization slug allows direct resolution; supplied occurrence or artifacts may then make the mode
 `mixed`. A Sentry-shaped work-item key is not an issue ID unless the prompt labels it as one. Without an explicit
 identity, retain `supplied_occurrence`, do not perform organization/project/issue discovery, and record
-`Sentry issue: not supplied`; organization identity was unavailable for direct lookup. Never send an issue request
+`Sentry issue: not supplied` plus `Sentry identity: unresolved (no stable Sentry issue identifier was supplied; a
+work-item key is not treated as one)`; organization identity was unavailable for direct lookup. Never send an issue
 with a missing organization parameter. Do not load the `sentry` skill or invoke any Sentry MCP/app from the
 Coordinator before that worker activation; the capability is worker-owned and supplied Sentry context remains opaque
 until Evidence Topology consumes it.

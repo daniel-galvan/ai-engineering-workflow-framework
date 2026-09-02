@@ -162,7 +162,9 @@ Runtime bootstrap:
 - Select `live_sentry` only from an explicit Sentry issue URL or separately identified Sentry issue ID with an
   organization slug. `mixed` adds supplied current-run occurrence/artifacts after that direct resolution. A Sentry-shaped
   work-item key is not an issue ID unless the prompt labels it as one. Without an explicit identity, use
-  `supplied_occurrence`, do not perform organization/project/issue discovery, and record `Sentry issue: not supplied`.
+  `supplied_occurrence`, do not perform organization/project/issue discovery, and record `Sentry issue: not supplied`
+  plus `Sentry identity: unresolved (no stable Sentry issue identifier was supplied; a work-item key is not treated
+  as one)`.
   Never send an issue request with a missing organization parameter.
 - Require Evidence Topology to run `validate_library.py --normalized-evidence <artifact-path>` before returning. A
   producer-format repair within the initial activation does not consume the analytical correction allowance.
@@ -227,8 +229,10 @@ Runtime bootstrap:
 - The fix-design result must be one structured JSON object containing the shared identity, input, conformance, checks,
   supported boundary/change, `interface_change`, `interface_contract`, `plan_readiness`,
   `implementation_plan_action`, and blocking-unknown fields. For an interface change, the contract must state the exact
-  surface, request and response shapes, absence semantics, compatibility precedence, and rollout. Fix Design includes
-  complete structured `plan` content in the same canonical JSON result when readiness is
+  surface and semantic request/response behavior, absence semantics, compatibility precedence, and rollout. Proposed
+  wire names may remain explicitly proposed when those semantics and the remediation boundary are selected; record
+  exact-name confirmation as a plan check. Fix Design includes complete structured `plan` content in the same canonical
+  JSON result when readiness is
   `ready_for_implementation`, or complete structured `clarification_brief` content when readiness is `awaiting_input`;
   the deterministic Standard finalizer copies that content into the selected artifact. A Documenter persists it only
   on Deep/remediation Documenter-owned paths.

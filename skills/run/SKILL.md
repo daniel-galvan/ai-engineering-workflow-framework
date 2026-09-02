@@ -56,8 +56,12 @@ description: >-
 7. Before preparation, create a run-specific JSON input manifest from every material detail in the current request:
    explicit decisions and constraints, observed reports, hypotheses, repository paths, and named supporting artifacts.
    Use stable Input IDs and include each item's short value, source/path, authority, classification, expected use, and
-   status. Use `apply_patch` to create the temporary JSON file when no manifest file already exists, then pass it to
-   `scripts/prepare_run.py` with `--input-manifest <path>`. The helper copies and hashes it as
+   status. Use `apply_patch` to create the temporary JSON file when no manifest file already exists, preferably outside
+   the execution repository (for example under `/tmp`) so preparation cannot make the source checkout appear dirty.
+   The manifest has top-level `schema_version: 1`, `status: "explicit"`, a non-empty `inputs` list, and the canonical
+   `precedence_rule`; if that key is omitted, preparation applies the canonical default, while an explicit empty value
+   remains invalid. Pass the file to `scripts/prepare_run.py` with
+   `--input-manifest <path>`. The helper copies and hashes it as
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/run_inputs.json`; if the prepared result reports
    `run_input_manifest_status: generated_minimum`, stop with `run_input_manifest_required` before activating a worker.
    Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified

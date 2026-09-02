@@ -452,6 +452,19 @@ def self_test() -> None:
         composite = load_manifest(composite_source, explicit=True)["inputs"][0]
         assert composite["availability"] == "available"
         assert composite["paths"] == [str(first_input.resolve()), str(second_input.resolve())]
+        implicit_source = execution / "implicit-inputs.json"
+        implicit_source.write_text(json.dumps({
+            "schema_version": 1,
+            "inputs": [{
+                "Input ID": "USER-IMPLICIT",
+                "Input or artifact": "Manifest without an explicit precedence rule",
+                "Source or path": "Current user request",
+                "Authority": "Authoritative current-run context",
+                "Status": "Registered",
+            }],
+        }))
+        implicit = load_manifest(implicit_source, explicit=True)
+        assert implicit["precedence_rule"] == DEFAULT_PRECEDENCE_RULE
         first = prepare_run(
             execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False,
             input_manifest=input_source,
