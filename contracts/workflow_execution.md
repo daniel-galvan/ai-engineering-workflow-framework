@@ -501,9 +501,10 @@ unknowns. `awaiting_input` requires at least one discriminating check and a stru
 question, unavailable reason, evidence, and at least two materially different fix implications. It MUST NOT defer an
 already supported boundary and intended change unless the evidence shows that each blocker invalidates that change.
 When the normalized Contract Delta establishes that field-keyed baseline content is reduced to scalar or message-only
-destination input, Fix Design MUST select an upstream producer/request boundary and an affirmative field-preservation
-change. A downstream-only plan, or an interface contract that explicitly leaves the scalar request unchanged, is not
-ready and MUST be returned for correction or changed to `awaiting_input`.
+destination input, Fix Design MUST select an upstream producer/request boundary, an affirmative field-preservation
+change, and explicit response-side field identity (field property, key, identifier, or equivalent qualification). A
+downstream-only plan, explicitly unchanged scalar request, or unqualified response is not ready and MUST be returned
+for correction or changed to `awaiting_input`.
 When `interface_change` is true, readiness also requires a complete semantic `interface_contract`. Proposed wire
 property names or equivalent representations may remain explicitly proposed when the request/response behavior,
 absence semantics, compatibility precedence, rollout, and remediation boundary are selected; record their confirmation

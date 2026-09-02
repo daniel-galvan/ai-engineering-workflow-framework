@@ -437,6 +437,23 @@ def self_test() -> None:
         second_input = execution / "second-input.md"
         first_input.write_text("first\n")
         second_input.write_text("second\n")
+        line_reference_source = execution / "line-reference.md"
+        line_reference_source.write_text("line reference\n")
+        line_reference_manifest = execution / "line-reference-inputs.json"
+        line_reference_manifest.write_text(json.dumps({
+            "schema_version": 1,
+            "precedence_rule": DEFAULT_PRECEDENCE_RULE,
+            "inputs": [{
+                "Input ID": "USER-LINE",
+                "Input or artifact": "A source with a line reference",
+                "Source or path": f"{line_reference_source}:12",
+                "Authority": "Authoritative current-run context",
+                "Status": "Registered",
+            }],
+        }))
+        line_reference = load_manifest(line_reference_manifest, explicit=True)["inputs"][0]
+        assert line_reference["path"] == str(line_reference_source.resolve())
+        assert line_reference["availability"] == "available"
         composite_source = execution / "composite-inputs.json"
         composite_source.write_text(json.dumps({
             "schema_version": 1,

@@ -437,6 +437,22 @@ def _sentry_contract_delta_rows(text: str) -> dict[str, dict[str, str]]:
     return {row["Boundary"]: row for row in rows}
 
 
+def _has_explicit_field_identity(response_shape: object) -> bool:
+    text = str(response_shape).lower()
+    if "field" not in text:
+        return False
+    if any(marker in text for marker in (
+        "no new response property", "unqualified", "no field identity", "identity is absent",
+        "source field is unavailable",
+    )):
+        return False
+    if re.search(r"\b(?:no|without|missing|absent|unavailable)\b.{0,30}\bfield\b", text):
+        return False
+    return any(marker in text for marker in (
+        "property", "key", "identity", "identifier", "qualified", "tag", "coordinate", "origin",
+    ))
+
+
 def sentry_upstream_boundary_errors(
     normalized_evidence: str, fix_design: dict[str, object], *, require_plan: bool
 ) -> list[str]:
@@ -479,6 +495,7 @@ def sentry_upstream_boundary_errors(
                 has_upstream_boundary = True
                 break
     request_shape = str(contract.get("request_shape", "")).lower() if isinstance(contract, dict) else ""
+    response_shape = str(contract.get("response_shape", "")).lower() if isinstance(contract, dict) else ""
     adds_field_keyed_request = any(
         marker in request_shape
         for marker in ("field-keyed", "field keyed", "text_fields", "link_title", "link_summary")
@@ -487,7 +504,12 @@ def sentry_upstream_boundary_errors(
         request_shape,
     )
     if has_upstream_boundary and adds_field_keyed_request:
-        return []
+        if _has_explicit_field_identity(response_shape):
+            return []
+        return [
+            "ready field-keyed interface must preserve field identity in the response contract; "
+            "name a field property, key, identifier, or equivalent qualification"
+        ]
     return [
         "ready fix design must address the observed upstream field-preservation delta: "
         "include the producer boundary and an affirmative field-keyed request change"
@@ -610,12 +632,7 @@ def fix_design_result_errors(
                 local_extents = "extent" in response_shape and any(
                     marker in response_shape for marker in ("field", "local", "source")
                 )
-                explicit_identity = (
-                    "field" in response_shape
-                    and any(marker in response_shape for marker in ("property", "key", "identity", "qualified"))
-                    and "no new response property" not in response_shape
-                    and "unqualified" not in response_shape
-                )
+                explicit_identity = _has_explicit_field_identity(response_shape)
                 if field_keyed and local_extents and not explicit_identity:
                     errors.append(
                         "field-local multi-field extents require explicit response-side field identity"
@@ -1541,12 +1558,12 @@ def self_test_reasoning_records() -> None:
 | --- | --- |
 | Run ID | run-001 |
 | Evaluation run ID | evaluation-001 |
-| Playbook / version | playbooks/feature_delivery.md / 0.4.0 |
+| Playbook / version | playbooks/feature_delivery.md / 0.4.15 |
 | Framework commit / status | 0123456789abcdef0123456789abcdef01234567 / Dirty |
 | Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.3 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.15 / pass |
 | Role-policy baseline ID | codex-role-policy-v20260827032839 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -1637,7 +1654,7 @@ Artifacts:
 
 Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.
 Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
-0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.4.0.
+0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.4.15.
 ```
 """
     assert reasoning_record_errors(valid) == []
@@ -1846,6 +1863,16 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         "ready fix design must address the observed upstream field-preservation delta: "
         "include the producer boundary and an affirmative field-keyed request change"
     ]
+    missing_identity = json.loads(json.dumps(v34["fix_design_result"]))
+    missing_identity["interface_contract"]["response_shape"] = (
+        "Return local extents for each infraction without a field property or qualification."
+    )
+    assert sentry_upstream_boundary_errors(
+        v34["normalized_evidence"], missing_identity, require_plan=True
+    ) == [
+        "ready field-keyed interface must preserve field identity in the response contract; "
+        "name a field property, key, identifier, or equivalent qualification"
+    ]
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "work_record.md"
         (path.parent / "role_bindings.json").write_text(json.dumps({
@@ -1920,10 +1947,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace(
-                "templates/feature_delivery_run_prompt.md / 0.4.3 / pass",
+                "templates/feature_delivery_run_prompt.md / 0.4.15 / pass",
                 "templates/feature_delivery_run_prompt.md / framework revision 0123456789abcdef / pass",
             ),
-            "Prompt template revision must be 0.4.3",
+            "Prompt template revision must be 0.4.15",
         )
         assert_invalid(
             valid.replace(

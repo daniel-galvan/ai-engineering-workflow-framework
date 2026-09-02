@@ -26,6 +26,16 @@ Prompt-preparation rules:
   expected use, and status; do not reduce an asset path to an unverified hint.
 - Explicitly supplied current-run context and artifacts take precedence over historical conclusions. Live Sentry or
   runtime evidence is additive unless the user explicitly selects live-only analysis; it must not replace named assets.
+- Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
+  and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
+  `Expected use`, and `Status`; add one row for every material current-run input.
+  The minimum shape is:
+  ```json
+  {"schema_version":1,"status":"explicit","precedence_rule":"<canonical precedence rule>","inputs":[
+    {"Input ID":"IN-001","Input or artifact":"<short value>","Source or path":"<source or absolute path>",
+     "Authority":"<authority>","Classification":"<classification>","Expected use":"<use>","Status":"Registered"}
+  ]}
+  ```
 - Treat possible causes and suspected fault locations as unverified hints.
 - Map an explicit flow `A emits or sends to B; B returns a response to A` as `event_origin_repository: A` and
   `downstream_or_return_path: B -> A`. Do not infer these roles from a “primary code repository” label.
@@ -220,7 +230,8 @@ Runtime bootstrap:
 - Before release, reconcile the final artifact and answer with the durable record. Workflow state, profile status,
   workflow/engineering outcome, plan action, worker outcomes, active handles, artifacts, and runtime closure must agree;
   return stale `pending` or `active` values to the same Documenter for correction.
-- The final handoff is rendered from the finalized `work_record.md`; copy it verbatim and do not write a competing summary.
+- The final handoff is rendered from the finalized `work_record.md`; copy it verbatim and do not write a competing
+  summary. If it contains `Best current explanations:`, copy that complete section without omission or rewriting.
 - Finalization must retain the contract's required terminal fields and playbook artifact set. Keep `state`,
   `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct and copy their exact values to the final
   answer as `Workflow outcome` and `Engineering outcome`; matching artifact counts alone do not pass.

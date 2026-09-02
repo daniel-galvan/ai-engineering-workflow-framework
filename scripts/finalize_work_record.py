@@ -269,11 +269,35 @@ def _explanation_text(item: object) -> str:
 def _artifact_link(item: object, artifact_root: object) -> str:
     value = str(item).strip()
     if value.startswith("[") and "](" in value and value.endswith(")"):
-        return value
+        label, target = value.split("](", 1)
+        target = target[:-1]
+        if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", target):
+            return value
+        return f"{label}]({_relative_artifact_path(target, artifact_root)})"
     path = Path(value)
     if not path.is_absolute():
         path = Path(str(artifact_root)) / path
-    return f"[{path.name}]({path})"
+    return f"[{path.name}]({_relative_artifact_path(path, artifact_root)})"
+
+
+def _relative_artifact_path(value: object, artifact_root: object) -> str:
+    path = Path(str(value).strip())
+    root = Path(str(artifact_root)).resolve()
+    if not path.is_absolute():
+        path = root / path
+    try:
+        relative = path.resolve().relative_to(root)
+    except ValueError:
+        return str(path)
+    return f"./{relative}"
+
+
+def _artifact_rows_for_record(packet: dict[str, object]) -> list[dict[str, object]]:
+    root = packet["finalization"]["Durable artifact root"]
+    return [
+        {**row, "Path": _relative_artifact_path(row.get("Path", ""), root)}
+        for row in packet["durable_artifacts"]
+    ]
 
 
 def _cell(value: object) -> str:
@@ -426,7 +450,7 @@ Provenance: {handoff['provenance']}
         _section("Run and Evaluation Identity", _mapping_table(packet["identity"])),
         _section("Run Isolation and Finalization", _mapping_table(packet["finalization"])),
         _section("Durable Artifacts", _table(
-            ("Artifact", "Path", "Status", "Purpose"), packet["durable_artifacts"]
+            ("Artifact", "Path", "Status", "Purpose"), _artifact_rows_for_record(packet)
         )),
         _section("Worker Execution Ledger", _table(
             ("Worker", "Role", "Assigned inputs", "Mode", "Depth", "Skills", "Tools", "Capacity",
@@ -835,7 +859,8 @@ def self_test() -> None:
         rendered = record.read_text()
         assert "{'explanation':" not in rendered
         assert "confidence: high" in rendered
-        assert "[work_record.md](/tmp/.thoughts/ITEM-1/work_record.md)" in rendered
+        assert "[work_record.md](./work_record.md)" in rendered
+        assert "| Work record | ./work_record.md |" in rendered
         assert "Final reconciliation | Passed; runtime closure released with no active handles |" in rendered
         assert "Finalization schema | Passed |" in rendered
         assert "Workflow result: Workflow result:" not in rendered

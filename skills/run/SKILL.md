@@ -64,6 +64,15 @@ description: >-
    `--input-manifest <path>`. The helper copies and hashes it as
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/run_inputs.json`; if the prepared result reports
    `run_input_manifest_status: generated_minimum`, stop with `run_input_manifest_required` before activating a worker.
+   Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
+   and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
+   `Expected use`, and `Status`; add one row for every material current-run input.
+   ```json
+   {"schema_version":1,"status":"explicit","precedence_rule":"<canonical precedence rule>","inputs":[
+     {"Input ID":"IN-001","Input or artifact":"<short value>","Source or path":"<source or absolute path>",
+      "Authority":"<authority>","Classification":"<classification>","Expected use":"<use>","Status":"Registered"}
+   ]}
+   ```
    Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
    runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
    when the user explicitly says continue or resume. Validate the explicit manifest and provider bindings before this
@@ -215,8 +224,9 @@ description: >-
    an error lacks an expected value or contradicts the documented packet contract.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
-   verbatim; it is rendered from the finalized work record. Do not compose a second summary or regenerate or replace it
-   with a compact status list. Before sending, verify the exact ordered labels
+   verbatim; it is rendered from the finalized work record. Never compose a second summary or regenerate, shorten, or
+   replace it with a compact status list. If the block contains `Best current explanations:`, copy that complete
+   section; do not omit it. Before sending, verify the exact ordered labels
    `Workflow result:`,
    the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, then
    `What we established:`, optional

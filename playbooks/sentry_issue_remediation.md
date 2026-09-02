@@ -551,8 +551,10 @@ decision. Do not ask for production evidence before running an available local
 replay or source-level check.
 
 When Contract Delta shows field-keyed baseline content reduced to scalar or message-only destination input, the result
-must include the upstream producer/request boundary and an affirmative field-preservation change. A downstream-only
-plan, or an interface contract that leaves the scalar request unchanged, is not ready for implementation.
+must include the upstream producer/request boundary, an affirmative field-preservation change, and explicit
+response-side field identity (field property, key, identifier, or equivalent qualification). A downstream-only plan,
+an interface contract that leaves the scalar request unchanged, or an unqualified response is not ready for
+implementation.
 
 Use engineering state `understood` when the current behavior, first observable divergence, and material uncertainty are
 evidence-backed even though causal ownership remains unknown. Reserve `unknown` for a run that has not established the

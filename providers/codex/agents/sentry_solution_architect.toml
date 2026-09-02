@@ -102,7 +102,9 @@ Before returning `ready_for_implementation`, compare the normalized Contract
 Delta with the proposed interface and exact boundaries. If a field-keyed
 baseline (for example `link_title` or `link_summary`) becomes scalar or
 message-only at the outbound or destination-input boundary, include the
-upstream producer/request boundary and an affirmative field-preservation change.
+upstream producer/request boundary, an affirmative field-preservation change,
+and explicit response-side field identity (a field property, key, identifier,
+or equivalent qualification). An unqualified response is not ready.
 A downstream-only plan or a request shape explicitly marked unchanged
 is not ready; return it for correction or use `awaiting_input` when the
 boundary remains genuinely unresolved.

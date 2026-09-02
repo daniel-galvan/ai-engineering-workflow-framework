@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ DEFAULT_PRECEDENCE_RULE = (
     "override historical conclusions. Live runtime evidence is additive unless the user explicitly selects live-only analysis."
 )
 REQUIRED_INPUT_FIELDS = ("Input ID", "Input or artifact", "Source or path", "Authority", "Status")
+LOCAL_LINE_REFERENCE = re.compile(r"^(?P<path>/.*?)(?::\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)$")
 
 
 def _text(value: object, field: str) -> str:
@@ -24,13 +26,22 @@ def _text(value: object, field: str) -> str:
     return result
 
 
+def _strip_local_line_reference(value: str) -> str:
+    """Use the file portion for availability/hash checks while preserving the source text."""
+    match = LOCAL_LINE_REFERENCE.fullmatch(value.strip())
+    return match.group("path") if match else value.strip()
+
+
 def _absolute_paths(value: object) -> list[Path]:
     """Resolve one path or a semicolon-delimited list of absolute paths."""
     if isinstance(value, list):
-        raw_values = [str(item).strip() for item in value]
+        raw_values = [_strip_local_line_reference(str(item)) for item in value]
     else:
         raw = str(value).strip()
-        raw_values = [part.strip() for part in raw.split(";")] if ";" in raw else [raw]
+        raw_values = (
+            [_strip_local_line_reference(part) for part in raw.split(";")]
+            if ";" in raw else [_strip_local_line_reference(raw)]
+        )
     if len(raw_values) == 1:
         return [Path(raw_values[0]).expanduser().resolve()]
     if not raw_values or any(not item.startswith("/") or item.startswith("//") for item in raw_values):
