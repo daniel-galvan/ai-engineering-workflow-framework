@@ -1,7 +1,7 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.4.15
+version: 0.4.16
 status: Pilot
 provider: codex
 provider_independent_profiles: true

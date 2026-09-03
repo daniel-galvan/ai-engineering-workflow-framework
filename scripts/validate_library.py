@@ -1564,12 +1564,12 @@ def self_test_reasoning_records() -> None:
 | --- | --- |
 | Run ID | run-001 |
 | Evaluation run ID | evaluation-001 |
-| Playbook / version | playbooks/feature_delivery.md / 0.4.15 |
+| Playbook / version | playbooks/feature_delivery.md / 0.4.16 |
 | Framework commit / status | 0123456789abcdef0123456789abcdef01234567 / Dirty |
 | Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.15 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.16 / pass |
 | Role-policy baseline ID | codex-role-policy-v20260827032839 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -1660,7 +1660,7 @@ Artifacts:
 
 Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.
 Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
-0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.4.15.
+0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.4.16.
 ```
 """
     assert reasoning_record_errors(valid) == []
@@ -1953,10 +1953,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace(
-                "templates/feature_delivery_run_prompt.md / 0.4.15 / pass",
+                "templates/feature_delivery_run_prompt.md / 0.4.16 / pass",
                 "templates/feature_delivery_run_prompt.md / framework revision 0123456789abcdef / pass",
             ),
-            "Prompt template revision must be 0.4.15",
+            "Prompt template revision must be 0.4.16",
         )
         assert_invalid(
             valid.replace(

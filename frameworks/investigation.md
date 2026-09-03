@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Framework
-version: 0.4.15
+version: 0.4.16
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-21

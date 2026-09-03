@@ -1,7 +1,7 @@
 ---
 
 title: Current-State Investigator Role
-version: 0.4.15
+version: 0.4.16
 status: Pilot
 category: Investigation
 produces_decisions: false
