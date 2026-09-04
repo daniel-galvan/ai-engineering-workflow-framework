@@ -1,12 +1,12 @@
 ---
 
 title: Work-Item Context
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 category: Context
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-04
+last_updated: 2026-09-04
 ---
 
 # Work-Item Context
@@ -18,7 +18,7 @@ last_updated: 2026-08-04
 * Work-item identifier or supplied request
 * Existing work record, if present
 * Linked tickets, documents, and prior decisions
-* For Jira work: immediate parent, ancestor hierarchy, and selected related siblings
+* Source-specific integration context, when configured
 
 ## Produces
 
@@ -28,21 +28,17 @@ last_updated: 2026-08-04
 * Related work and prior context
 * Context-source map and conflicts
 * Unknowns requiring validation
+* A normalized `work_item_read` request/result pair conforming to the shared
+  [Work-Item Read Contract](../contracts/workflow_execution.md#work-item-read-contract)
 
-## Jira Context Recovery
+## Source-Specific Recovery
 
-When a Jira ticket is thin or incomplete, recover context in this order:
-
-1. the ticket itself for task-specific scope, acceptance criteria, and constraints;
-2. the immediate parent work item for the immediate business outcome;
-3. ancestor Stories, Epics, or Initiatives for broader goals, boundaries, and sequencing;
-4. selected siblings for dependencies, shared interfaces, precedents, or rollout order;
-5. linked tickets, documents, pull requests, and prior decisions; and
-6. current repository evidence for what exists and is feasible today.
-
-Sibling tickets are context, not inherited requirements. Inspect only siblings that are directly linked, describe the
-same repository or component, share a dependency or release, or establish an explicit precedent. Record conflicts and do
-not let a parent or sibling override an explicit ticket requirement.
+Apply the configured integration when source-specific retrieval is needed. For
+Jira-sourced work items, use the [Jira Integration](../integrations/jira.md).
+This skill owns normalized context outputs and context sufficiency; the
+integration owns source-specific retrieval, freshness, evidence states, and
+write rules. Preserve the normalized request/result pair in the context artifact
+before downstream workers consume it.
 
 ## Context Sufficiency
 

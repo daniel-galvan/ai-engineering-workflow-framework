@@ -6,10 +6,11 @@ maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-09-04
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
+  - ../integrations/jira.md
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../skills/work_item_context.md
@@ -46,18 +47,13 @@ implementation.
 Use [`templates/feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md) for every run. The prompt
 supplies scenario inputs; this playbook owns process, worker activation, gates, and handoff behavior.
 
-## Jira Context Recovery
+## Work-Item Context
 
-The `feature-context` worker owns Jira context recovery for the run. It reads:
-
-1. the ticket for task-specific scope and explicit requirements;
-2. the immediate parent work item for the immediate outcome;
-3. ancestor Stories, Epics, or Initiatives for the broader objective and sequencing;
-4. selected siblings only when they share a dependency, component, release, direct link, or explicit precedent; and
-5. linked documents, pull requests, and repository evidence.
-
-Parent and sibling material is evidence, not automatic scope. The ticket's explicit requirements remain authoritative
-for the ticket. Record conflicts, inferences, and unknowns in the work record.
+The `feature-context` worker owns normalized work-item context recovery for the
+run. For Jira work items, it applies the [Jira Integration](../integrations/jira.md)
+and records recovered sources, conflicts, inferences, and unknowns in the work
+record. The integration owns Jira retrieval policy; this playbook owns worker
+order, gates, and feature-specific clarification behavior.
 
 The worker classifies context as `sufficient_for_planning`, `partially_recovered`, or `clarification_required`. A
 clarification-required run may complete discovery and hand off focused questions, but it must not create
@@ -130,8 +126,8 @@ after approval unless new evidence contradicts the approved plan or expands scop
 
 ## Worker Outputs and Non-duplication
 
-- `feature-context` owns raw Jira hierarchy, sibling, linked-work, and initial repository-context recovery. Downstream
-  workers consume its context artifact.
+- `feature-context` owns normalized work-item context and initial repository-context recovery. The configured
+  integration owns source-specific retrieval and evidence semantics. Downstream workers consume its context artifact.
 - `impact-analysis` owns dependency, data-flow, contract, and regression-scope analysis.
 - `repository-integration` owns cross-repository, ownership, deployment, and operational reconciliation when activated.
 - `feature-design` owns the smallest implementation design and acceptance criteria traceability.
@@ -157,9 +153,10 @@ non-goals. Do not create an implementation plan during initialization.
 
 ### Stage 1 — Recover Feature Context
 
-Recover the Jira context ladder and map the smallest relevant current-state surface. Record each source as verified,
-inferred, contradicted, or unknown. Select related siblings narrowly; do not scan an entire initiative without an
-evidence-based reason.
+Apply the configured work-item integration and map the smallest relevant
+current-state surface. For Jira, follow the Jira Integration's bounded
+retrieval and evidence rules. Record each source as verified, inferred,
+contradicted, or unknown.
 
 If context is `clarification_required`, produce a focused clarification packet: what is missing, why it prevents
 implementation readiness, the evidence already recovered, and the smallest question for the owner. Before the packet is
@@ -281,6 +278,7 @@ clarification, approval, environment, or worker gate.
 ## Related Documents
 
 - [`../templates/feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md)
+- [`../integrations/jira.md`](../integrations/jira.md)
 - [`../templates/work_record.md`](../templates/work_record.md)
 - [`../templates/implementation_plan.md`](../templates/implementation_plan.md)
 - [`../examples/feature_delivery.md`](../examples/feature_delivery.md)

@@ -6,10 +6,11 @@ maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-09-04
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
+  - ../integrations/jira.md
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../skills/work_item_context.md
@@ -228,6 +229,7 @@ Use the shared canonical Human-Readable Handoff template. Detailed worker result
 
 ## Related Documents
 
+- [`../integrations/jira.md`](../integrations/jira.md)
 - [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md)
 - [`../templates/work_record.md`](../templates/work_record.md)
 - [`../templates/implementation_plan.md`](../templates/implementation_plan.md)

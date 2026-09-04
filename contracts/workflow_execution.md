@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.16
+version: 0.4.18
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-01
+last_updated: 2026-09-04
 ---
 
 # Workflow Execution Contract
@@ -351,6 +351,67 @@ These provider-neutral tool IDs cover the current pilot workflows. Providers map
 | `runtime_observe`    | Inspect runtime, deployment, logs, metrics, traces, or health signals.  |
 
 The tool list is an allowlist. A worker may not use an unlisted tool merely because the provider exposes it.
+
+---
+
+# Work-Item Read Contract
+
+`work_item_read` is a read-only capability at the provider seam. A provider
+adapter may use a connected work-item tool or supplied artifacts, but workers
+consume the same normalized result.
+
+Each request preserves:
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `identity` | Yes | Exact source identity, or a bounded discovery target when identity is missing. |
+| `scope` | Yes | One or more of `item`, `hierarchy`, `selected_links`, `history`, or `write_metadata`. |
+| `requiredness` | Yes | `required` when the source is indispensable; otherwise `optional`. |
+| `selection_reason` | Conditional | Why hierarchy, links, or history were selected beyond the issue itself. |
+| `freshness` | Conditional | Required freshness boundary when the conclusion depends on current source state. |
+
+Each result preserves:
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `state` | Yes | One of the shared retrieval states below. |
+| `work_item` | Conditional | Normalized work item when the requested source data is available. |
+| `related_context` | Yes | Selected related records with stable identifiers and relationship types. |
+| `evidence` | Yes | Source locations, observed values, authority, status, redaction, and limitations. |
+| `source_updated_at` / `source_version` | Conditional | Source freshness metadata when supplied by the provider. |
+| `retrieved_at` | Yes | Time the adapter obtained the result. |
+| `limitations` | Yes | Missing, restricted, stale, partial, or otherwise constrained data. |
+
+Retrieval states are evidence states, not workflow states:
+
+| State | Meaning | Required handling |
+| --- | --- | --- |
+| `complete` | Requested data was retrieved with the required fields and scope. | It may support claims subject to normal evidence rules. |
+| `empty` | A valid collection query returned no matching records. | Report zero matches; do not call the source unavailable. |
+| `not_found` | A stable source identity was queried and no record exists at that identity. | Preserve the identity; do not substitute a similarly named record. |
+| `unavailable` | The source, connector, or required operation could not be reached. | Record the attempted operation and impact. |
+| `permission_denied` | The source rejected access to the requested scope or operation. | Preserve the denied scope; do not infer its contents. |
+| `partial` | Required fields, links, history, pagination, or related context could not be fully retrieved. | Identify the missing portion; do not claim complete context. |
+| `stale` | The result predates the required freshness boundary or was reused from cache. | Include its timestamp; do not present it as current. |
+| `conflict` | Source observations or source and current evidence disagree materially. | Preserve both observations and reconcile before relying on the claim. |
+
+An adapter must not silently broaden scope, substitute a similar identity, or
+expose a write operation through `work_item_read`. `write_metadata` is a
+read-only preparation scope and is valid only for an explicitly approved
+external action. Source-specific integrations define how their provider maps
+onto this contract; they do not change the shared worker or workflow states.
+
+## Worker Handoff
+
+The work-item context worker MUST preserve one normalized `work_item_read`
+request/result pair in its context artifact. The pair MUST conform to this
+contract before downstream workers are activated. The canonical provider-neutral
+offline shape is [`tests/fixtures/work_item_read_contract.json`](../tests/fixtures/work_item_read_contract.json).
+
+Downstream workers MUST consume that normalized artifact for work-item context.
+They may perform a new read only to resolve a recorded discrepancy, satisfy a
+newly selected scope, or meet an explicit freshness requirement; the new read
+updates the artifact and remains normalized.
 
 ---
 

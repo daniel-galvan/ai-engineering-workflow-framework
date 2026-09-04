@@ -7,4 +7,5 @@ authorization and a recorded approval.
 
 Current integrations:
 
+* [Jira](jira.md)
 * [Sentry](sentry.md)

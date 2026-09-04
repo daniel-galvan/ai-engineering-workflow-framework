@@ -63,6 +63,32 @@ SENTRY_PLAN_FIELDS = (
     "completion_criteria",
 )
 SENTRY_EVIDENCE_INPUT_MARKERS = ("UPSTREAM-001", "normalized_evidence.md")
+JIRA_INTEGRATION = ROOT / "integrations" / "jira.md"
+JIRA_FIXTURE = ROOT / "tests" / "fixtures" / "jira_adapter_contract.json"
+WORK_ITEM_READ_FIXTURE = ROOT / "tests" / "fixtures" / "work_item_read_contract.json"
+JIRA_REQUIRED_HEADINGS = (
+    "## Source boundary",
+    "## Read path",
+    "## Adapter Contract",
+    "## Context recovery order",
+    "## Evidence normalization",
+    "## Retrieval result states",
+    "## Freshness and reconciliation",
+    "## Write boundary",
+)
+WORK_ITEM_READ_SCOPES = {"item", "hierarchy", "selected_links", "history", "write_metadata"}
+WORK_ITEM_READ_REQUIREDNESS = {"required", "optional"}
+WORK_ITEM_READ_RESULT_STATES = {
+    "complete",
+    "empty",
+    "not_found",
+    "unavailable",
+    "permission_denied",
+    "partial",
+    "stale",
+    "conflict",
+}
+WORK_ITEM_READ_EVIDENCE_STATUSES = {"verified", "inferred", "contradicted", "unknown"}
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
 }
@@ -406,6 +432,105 @@ def sentry_contract_delta_errors(text: str) -> list[str]:
     if semantic and semantic not in {"equivalent", "not_equivalent", "not_established"}:
         errors.append("contract delta Semantic input equivalence has an invalid representation")
     return errors
+
+
+def work_item_read_contract_errors(
+    fixture: object,
+    *,
+    label: str = "Work-item read fixture",
+    expected_source_system: str | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(fixture, dict):
+        return [f"{label} shape must contain one object"]
+
+    request = fixture.get("request")
+    result = fixture.get("result")
+    if not isinstance(request, dict):
+        errors.append(f"{label} request must be an object")
+    if not isinstance(result, dict):
+        errors.append(f"{label} result must be an object")
+    if not isinstance(request, dict) or not isinstance(result, dict):
+        return errors
+
+    if request.get("capability") != "work_item_read":
+        errors.append(f"{label} request must use work_item_read")
+    identity = request.get("identity")
+    if not isinstance(identity, dict):
+        errors.append(f"{label} identity must be an object")
+        identity_source = None
+    else:
+        identity_source = identity.get("source_system")
+        if not isinstance(identity_source, str) or not identity_source.strip():
+            errors.append(f"{label} identity must name a source system")
+        elif expected_source_system and identity_source != expected_source_system:
+            errors.append(f"{label} identity must name {expected_source_system}")
+        if not identity.get("key") and not identity.get("url"):
+            errors.append(f"{label} identity needs a key or URL")
+    scopes = request.get("scope")
+    if not isinstance(scopes, list) or not scopes or any(scope not in WORK_ITEM_READ_SCOPES for scope in scopes):
+        errors.append(f"{label} scope must contain valid non-empty scopes")
+    if request.get("requiredness") not in WORK_ITEM_READ_REQUIREDNESS:
+        errors.append(f"{label} requiredness must be required or optional")
+    if isinstance(scopes, list) and any(scope != "item" for scope in scopes):
+        if not isinstance(request.get("selection_reason"), str) or not request["selection_reason"].strip():
+            errors.append(f"{label} requires selection_reason for non-item scope")
+
+    state = result.get("state")
+    if state not in WORK_ITEM_READ_RESULT_STATES:
+        errors.append(f"{label} has an invalid result state")
+    retrieved_at = result.get("retrieved_at")
+    if not isinstance(retrieved_at, str) or not RFC3339_TIMESTAMP.fullmatch(retrieved_at):
+        errors.append(f"{label} retrieved_at must be RFC 3339")
+    for field in ("source_updated_at",):
+        if field in result:
+            value = result[field]
+            if not isinstance(value, str) or not RFC3339_TIMESTAMP.fullmatch(value):
+                errors.append(f"{label} {field} must be RFC 3339")
+    if "source_version" in result and (
+        not isinstance(result["source_version"], str) or not result["source_version"].strip()
+    ):
+        errors.append(f"{label} source_version must be a non-empty string")
+
+    work_item = result.get("work_item")
+    if work_item is None and state == "complete":
+        errors.append(f"{label} complete result requires work_item")
+    elif work_item is not None and not isinstance(work_item, dict):
+        errors.append(f"{label} work_item must be an object when present")
+    elif isinstance(work_item, dict):
+        for field in ("id", "source_system", "type", "title", "description"):
+            if not isinstance(work_item.get(field), str) or not work_item[field].strip():
+                errors.append(f"{label} work_item {field} must be a non-empty string")
+        if identity_source and work_item.get("source_system") != identity_source:
+            errors.append(f"{label} work_item must use the identity source system")
+
+    evidence = result.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        errors.append(f"{label} evidence must be a non-empty list")
+    else:
+        for index, record in enumerate(evidence):
+            if not isinstance(record, dict):
+                errors.append(f"{label} evidence {index} must be an object")
+                continue
+            for field in ("evidence_id", "source_location", "authority", "status"):
+                if not isinstance(record.get(field), str) or not record[field].strip():
+                    errors.append(f"{label} evidence {index} is missing {field}")
+            if record.get("status") not in WORK_ITEM_READ_EVIDENCE_STATUSES:
+                errors.append(f"{label} evidence {index} has an invalid status")
+            if not isinstance(record.get("redacted"), bool):
+                errors.append(f"{label} evidence {index} redacted must be boolean")
+    for field in ("related_context", "limitations"):
+        if not isinstance(result.get(field), list):
+            errors.append(f"{label} {field} must be a list")
+    return errors
+
+
+def jira_adapter_contract_errors(fixture: object) -> list[str]:
+    return work_item_read_contract_errors(
+        fixture,
+        label="Jira integration fixture",
+        expected_source_system="Jira",
+    )
 
 
 def _sentry_contract_delta_rows(text: str) -> dict[str, dict[str, str]]:
@@ -1551,6 +1676,47 @@ def self_test_reasoning_records() -> None:
     ]
     assert _mentions_user_source("current user request")
     assert not _mentions_user_source("/Users/dgalvan/projects/worker-result.json")
+    valid_jira_fixture = {
+        "request": {
+            "capability": "work_item_read",
+            "identity": {"source_system": "Jira", "key": "EXAMPLE-123"},
+            "scope": ["item", "hierarchy"],
+            "requiredness": "required",
+            "selection_reason": "Primary work item",
+        },
+        "result": {
+            "state": "complete",
+            "source_updated_at": "2026-09-04T18:00:00Z",
+            "retrieved_at": "2026-09-04T18:01:00Z",
+            "work_item": {
+                "id": "10001",
+                "source_system": "Jira",
+                "type": "Story",
+                "title": "Example work item",
+                "description": "Synthetic fixture content",
+            },
+            "related_context": [],
+            "evidence": [{
+                "evidence_id": "jira-001",
+                "source_location": "fields.summary",
+                "authority": "direct_requirement",
+                "status": "verified",
+                "redacted": False,
+            }],
+            "limitations": [],
+        },
+    }
+    assert jira_adapter_contract_errors(valid_jira_fixture) == []
+    assert work_item_read_contract_errors(valid_jira_fixture) == []
+    for state in sorted(WORK_ITEM_READ_RESULT_STATES - {"complete"}):
+        state_fixture = json.loads(json.dumps(valid_jira_fixture))
+        state_fixture["result"]["state"] = state
+        state_fixture["result"].pop("work_item")
+        assert work_item_read_contract_errors(state_fixture) == [], state
+    invalid_jira_fixture = json.loads(json.dumps(valid_jira_fixture))
+    invalid_jira_fixture["request"]["scope"] = ["project_scan"]
+    invalid_errors = jira_adapter_contract_errors(invalid_jira_fixture)
+    assert "Jira integration fixture scope must contain valid non-empty scopes" in invalid_errors
     valid = """# Playbook Selection
 | Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
 | --- | --- | --- | --- | --- |
@@ -2296,6 +2462,41 @@ for path in (ROOT / "playbooks").glob("*.md"):
     if re.search(r"(?:continuous|Continuous).*`handoff`", text):
         fail(f"{path.relative_to(ROOT)} declares a continuous handoff worker")
 
+work_item_read_errors = []
+if not WORK_ITEM_READ_FIXTURE.is_file():
+    work_item_read_errors.append("tests/fixtures/work_item_read_contract.json is missing")
+else:
+    try:
+        work_item_read_fixture = json.loads(WORK_ITEM_READ_FIXTURE.read_text())
+    except json.JSONDecodeError as error:
+        work_item_read_errors.append(f"Work-item read fixture is invalid JSON: {error}")
+    else:
+        work_item_read_errors.extend(work_item_read_contract_errors(work_item_read_fixture))
+if work_item_read_errors:
+    fail("Work-item read contract: " + "\nFAIL: ".join(work_item_read_errors))
+
+jira_errors = []
+if not JIRA_INTEGRATION.is_file():
+    jira_errors.append("integrations/jira.md is missing")
+else:
+    jira_text = JIRA_INTEGRATION.read_text()
+    jira_errors.extend(
+        f"Jira integration is missing {heading}"
+        for heading in JIRA_REQUIRED_HEADINGS
+        if heading not in jira_text
+    )
+if not JIRA_FIXTURE.is_file():
+    jira_errors.append("tests/fixtures/jira_adapter_contract.json is missing")
+else:
+    try:
+        jira_fixture = json.loads(JIRA_FIXTURE.read_text())
+    except json.JSONDecodeError as error:
+        jira_errors.append(f"Jira adapter fixture is invalid JSON: {error}")
+    else:
+        jira_errors.extend(jira_adapter_contract_errors(jira_fixture))
+if jira_errors:
+    fail("Jira contract: " + "\nFAIL: ".join(jira_errors))
+
 vulnerability_playbook = (ROOT / "playbooks" / "vulnerability_investigation.md").read_text()
 for phrase in (
     "## Finding Classification and Route",
@@ -2365,6 +2566,7 @@ if "# Pilot Conformance Checklist" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the conformance checklist")
 for heading in (
     "# Human Control Model",
+    "# Work-Item Read Contract",
     "## Authoritative Run Inputs",
     "## Context Preservation and Classification",
     "## Playbook Selection",
@@ -2643,6 +2845,19 @@ for phrase in (
 ):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
+for phrase in (
+    "## Jira Work-Item Read Mapping",
+    "mcp__codex_apps__atlassian_rovo_getjiraissue",
+    "mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql",
+    "mcp__codex_apps__atlassian_rovo_getjiraissueremoteissuelinks",
+    "mcp__codex_apps__atlassian_rovo_getvisiblejiraprojects",
+    "mcp__codex_apps__atlassian_rovo_getjiraprojectissuetypesmetadata",
+    "mcp__codex_apps__atlassian_rovo_getjiraissuetypemetawithfields",
+    "mcp__codex_apps__atlassian_rovo_gettransitionsforjiraissue",
+    "`work_item_read` MUST NOT invoke Jira create, edit, transition, comment, worklog",
+):
+    if phrase not in codex_adapter:
+        fail(f"providers/codex.md is missing Jira provider mapping: {phrase}")
 if '"Receipt owner": "Coordinator"' not in RUNTIME_CLOSURE_TEMPLATE.read_text():
     fail("templates/runtime_closure.json must assign the provider receipt to the Coordinator")
 for phrase in (

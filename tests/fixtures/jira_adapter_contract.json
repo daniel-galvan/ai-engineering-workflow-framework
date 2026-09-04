@@ -1,0 +1,44 @@
+{
+  "request": {
+    "capability": "work_item_read",
+    "identity": {
+      "source_system": "Jira",
+      "key": "EXAMPLE-123",
+      "url": "https://jira.example.invalid/browse/EXAMPLE-123"
+    },
+    "scope": ["item", "hierarchy"],
+    "requiredness": "required",
+    "selection_reason": "Primary work item"
+  },
+  "result": {
+    "state": "complete",
+    "source_updated_at": "2026-09-04T18:00:00Z",
+    "source_version": "42",
+    "retrieved_at": "2026-09-04T18:01:00Z",
+    "work_item": {
+      "id": "10001",
+      "source_system": "Jira",
+      "type": "Story",
+      "title": "Example work item",
+      "description": "Synthetic fixture content",
+      "acceptance_criteria": [],
+      "priority": "High",
+      "status": "Open",
+      "links": [],
+      "repositories": [],
+      "constraints": []
+    },
+    "related_context": [],
+    "evidence": [
+      {
+        "evidence_id": "jira-001",
+        "source_location": "fields.summary",
+        "observed_value": "Example work item",
+        "authority": "direct_requirement",
+        "status": "verified",
+        "redacted": false
+      }
+    ],
+    "limitations": []
+  }
+}

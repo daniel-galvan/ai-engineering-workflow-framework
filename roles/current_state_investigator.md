@@ -6,7 +6,7 @@ status: Pilot
 category: Investigation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-07-24
+last_updated: 2026-09-04
 required_documents:
 
   - ../frameworks/investigation.md
@@ -49,7 +49,7 @@ Build a shared understanding of the current system.
 # Responsibilities
 
 * Recover existing investigation context.
-* Understand the Jira work item.
+* Understand the normalized work item and its source context.
 * Locate the relevant code.
 * Identify system boundaries.
 * Identify major components.
@@ -64,7 +64,7 @@ Build a shared understanding of the current system.
 
 Required
 
-* Normalized work item, often sourced from a Jira Story or Issue
+* Normalized work item
 * Repository or workspace
 
 Optional
@@ -74,7 +74,7 @@ Optional
 * Design documents
 * RFCs
 * Previous pull requests
-* Related Jira tickets
+* Related work items
 * Architecture diagrams
 
 ---
@@ -124,7 +124,7 @@ Optional
 ## Existing Knowledge
 
 * Is there previous investigation work?
-* Are there related Jira tickets?
+* Are there related work items?
 * Are there existing design documents?
 * Have similar problems already been solved?
 
@@ -139,11 +139,12 @@ Review existing investigation artifacts.
 Priority:
 
 1. Existing `work_record.md`
-2. Related Jira tickets
-3. Previous pull requests
-4. ADRs
-5. Documentation
-6. Architecture diagrams
+2. Supplied or normalized work-item context
+3. Configured source-specific integration context
+4. Previous pull requests
+5. ADRs
+6. Documentation
+7. Architecture diagrams
 
 ---
 

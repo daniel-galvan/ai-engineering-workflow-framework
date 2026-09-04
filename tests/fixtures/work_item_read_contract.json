@@ -1,0 +1,43 @@
+{
+  "request": {
+    "capability": "work_item_read",
+    "identity": {
+      "source_system": "ExampleTracker",
+      "key": "EXAMPLE-123",
+      "url": "https://tracker.example.invalid/items/EXAMPLE-123"
+    },
+    "scope": ["item", "hierarchy"],
+    "requiredness": "required",
+    "selection_reason": "Primary work item and immediate outcome"
+  },
+  "result": {
+    "state": "complete",
+    "source_updated_at": "2026-09-04T18:00:00Z",
+    "source_version": "42",
+    "retrieved_at": "2026-09-04T18:01:00Z",
+    "work_item": {
+      "id": "10001",
+      "source_system": "ExampleTracker",
+      "type": "Story",
+      "title": "Example work item",
+      "description": "Synthetic fixture content",
+      "acceptance_criteria": [],
+      "priority": "High",
+      "status": "Open",
+      "links": [],
+      "repositories": [],
+      "constraints": []
+    },
+    "related_context": [],
+    "evidence": [
+      {
+        "evidence_id": "work-item-001",
+        "source_location": "fields.summary",
+        "authority": "direct_requirement",
+        "status": "verified",
+        "redacted": false
+      }
+    ],
+    "limitations": []
+  }
+}
