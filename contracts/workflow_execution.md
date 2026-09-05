@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.18
+version: 0.4.19
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -691,6 +691,13 @@ remediation. If missing evidence could select among materially different causes,
 or fixes, the plan remains `draft` and the workflow returns a Clarification Brief. `ready_for_implementation` requires
 an evidence-supported remediation boundary and intended change; a list of mutually conditional candidate files is not
 a feasible implementation scope.
+
+For a specification or proposal assessment, plan feasibility and specification readiness are separate decisions. The
+ability to order future discovery, approval, security, dependency, or implementation work does not make the reviewed
+specification ready. An unknown that can materially change scope, ownership, architecture, security or privacy controls,
+acceptance criteria, or validation strategy is a blocking unknown. Use `awaiting_input`, omit the implementation plan,
+and produce a Clarification Brief until that uncertainty is resolved. Do not demote it to a plan step merely because an
+owner could answer it later.
 
 The Coordinator may reconcile envelopes and enforce gates, but MUST NOT change a technical worker's diagnosis, proposed
 boundary, or plan-readiness disposition. Return a disputed result to the owning worker or an independent Reviewer.

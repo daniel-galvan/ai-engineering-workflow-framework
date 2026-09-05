@@ -23,6 +23,10 @@ V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contrac
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
 V34_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+FEATURE_ASSESSMENT_DISPOSITIONS = {
+    "awaiting_input": {"Not ready for implementation"},
+    "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
+}
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)\s*$", re.IGNORECASE
 )
@@ -245,6 +249,22 @@ def _validate_handoff(packet: dict[str, object]) -> None:
             raise ValueError("packet.handoff.provenance must contain the framework revision")
         if playbook and Path(playbook).stem.lower() not in provenance:
             raise ValueError("packet.handoff.provenance must contain the playbook name")
+        selection = packet.get("playbook_selection", {})
+        primary_goal = str(selection.get("Primary goal", "")).strip().lower() if isinstance(selection, dict) else ""
+        playbook_name = Path(playbook).stem.lower()
+        if (
+            playbook_name == "feature_delivery"
+            and str(identity.get("Lifecycle", "")).strip().lower() == "planning"
+            and primary_goal == "specification assessment"
+        ):
+            state = str(identity.get("State", "")).strip().lower()
+            allowed = FEATURE_ASSESSMENT_DISPOSITIONS.get(state)
+            result = str(handoff["workflow_result"]).strip()
+            if allowed and result not in allowed:
+                raise ValueError(
+                    f"Feature Delivery specification assessment state {state} requires Workflow result exactly one of: "
+                    + ", ".join(sorted(allowed))
+                )
     next_action = handoff.get("next_action", {})
     if not isinstance(next_action, dict):
         raise ValueError("packet.handoff.next_action must be an object")
@@ -946,6 +966,26 @@ def self_test() -> None:
             assert "packet.handoff.workflow_result must be a non-empty string" in str(error)
         else:
             raise AssertionError("finalization must reject an empty terminal handoff")
+        assessment = json.loads(json.dumps(packet))
+        assessment["playbook_selection"]["Primary goal"] = "Specification assessment"
+        assessment["identity"].update({
+            "Playbook / version": "playbooks/feature_delivery.md / 0.4.17",
+            "Lifecycle": "planning",
+            "State": "awaiting_input",
+        })
+        assessment["handoff"]["provenance"] = (
+            f"plugin Not applicable; framework revision {'a' * 40} (clean); "
+            "playbook feature_delivery 0.4.17."
+        )
+        assessment["handoff"]["workflow_result"] = "Plan created"
+        try:
+            _validate_handoff(assessment)
+        except ValueError as error:
+            assert "requires Workflow result exactly one of" in str(error)
+        else:
+            raise AssertionError("specification assessment must reject a non-disposition workflow result")
+        assessment["handoff"]["workflow_result"] = "Not ready for implementation"
+        _validate_handoff(assessment)
         source.write_text(json.dumps(packet))
         framework_revision = subprocess.run(
             ["git", "-C", str(ROOT), "rev-parse", "HEAD"],

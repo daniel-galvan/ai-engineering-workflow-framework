@@ -1,12 +1,12 @@
 ---
 
 title: Reviewer Role
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 category: Review
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-09-04
 required_documents:
 
   - ../frameworks/investigation.md
@@ -232,6 +232,11 @@ evidence. Keep feasible implementation, dependency, test, environment, and
 operational work in the plan or risk record. Do not promote a worker hypothesis
 into a required approval or reject plan readiness merely because that work
 remains.
+
+For a specification assessment, do not promote `awaiting_input` to ready merely because the missing work can be listed
+in a plan. Require `awaiting_input` when an unresolved fact or decision can materially change scope, ownership,
+architecture, security or privacy controls, acceptance criteria, or validation strategy. A readiness change must cite
+evidence showing that every remaining follow-up is non-critical to those decisions.
 
 ---
 

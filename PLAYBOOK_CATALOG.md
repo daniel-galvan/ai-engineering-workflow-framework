@@ -1,9 +1,9 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-09-04
 ---
 
 # Playbook Architecture Catalog
@@ -38,6 +38,10 @@ one final Documenter runs after analytical fan-in.
 
 **Use for:** planned Jira features and improvements. **State:** Exercising; all profile/lifecycle combinations
 exercised; reliability, control fidelity, and efficiency remain under validation.
+
+Feature Delivery also supports a `specification_assessment` planning objective for judging an existing Spike,
+proposal, or specification. This route reuses the planning graph but separates specification readiness from the ability
+to draft future work.
 
 The distinguishing seam is Jira Context Recovery: the ticket, its immediate parent and ancestor hierarchy, selected
 related siblings, linked decisions, and repository evidence establish scope. Parent and sibling context informs the

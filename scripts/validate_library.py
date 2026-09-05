@@ -144,6 +144,10 @@ READINESS_ACTIONS = {
     "ready_for_implementation": "create",
     "awaiting_input": "omit",
 }
+FEATURE_ASSESSMENT_DISPOSITIONS = {
+    "awaiting_input": {"Not ready for implementation"},
+    "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
+}
 BLOCKING_DECISION_TYPES = {
     "business",
     "scope",
@@ -1072,6 +1076,28 @@ def terminal_semantics_errors(identity: dict[str, str]) -> list[str]:
     return errors
 
 
+def feature_assessment_disposition_error(
+    playbook: str,
+    lifecycle: str,
+    state: str,
+    primary_goal: str,
+    workflow_result: str,
+) -> str | None:
+    if (
+        playbook != "feature_delivery"
+        or lifecycle != "planning"
+        or primary_goal.strip().lower() != "specification assessment"
+    ):
+        return None
+    allowed = FEATURE_ASSESSMENT_DISPOSITIONS.get(state)
+    if allowed and workflow_result.strip() not in allowed:
+        return (
+            f"Feature Delivery specification assessment state {state} requires Workflow result exactly one of: "
+            + ", ".join(sorted(allowed))
+        )
+    return None
+
+
 def _plugin_version_refresh_error() -> str | None:
     completed = subprocess.run(
         ["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=all"],
@@ -1631,6 +1657,18 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         value = re.search(rf"^{re.escape(label)}\s*(.+)$", handoff, re.MULTILINE)
         if not value or value.group(1).strip() != identity[field]:
             fail(f"{path}: Final Handoff {field} must match Run Identity")
+    selection_rows = markdown_table(text, "# Playbook Selection")
+    primary_goal = selection_rows[0].get("Primary goal", "") if selection_rows else ""
+    workflow_result = re.search(r"^Workflow result:\s*(.+)$", handoff, re.MULTILINE)
+    disposition_error = feature_assessment_disposition_error(
+        playbook_name,
+        identity["Lifecycle"],
+        identity["State"],
+        primary_goal,
+        workflow_result.group(1) if workflow_result else "",
+    )
+    if disposition_error:
+        fail(f"{path}: {disposition_error}")
     runtime_value = "released" if all(
         row.get("Runtime status", "").strip().lower() == "released"
         for row in table_rows["# Worker Runtime Closure"]
@@ -1752,6 +1790,27 @@ def self_test_reasoning_records() -> None:
     invalid_jira_fixture["request"]["scope"] = ["project_scan"]
     invalid_errors = jira_adapter_contract_errors(invalid_jira_fixture)
     assert "Jira integration fixture scope must contain valid non-empty scopes" in invalid_errors
+    assert feature_assessment_disposition_error(
+        "feature_delivery",
+        "planning",
+        "awaiting_input",
+        "Specification assessment",
+        "Not ready for implementation",
+    ) is None
+    assert feature_assessment_disposition_error(
+        "feature_delivery",
+        "planning",
+        "ready_for_implementation",
+        "Specification assessment",
+        "Ready with explicit follow-ups",
+    ) is None
+    assert "requires Workflow result exactly one of" in feature_assessment_disposition_error(
+        "feature_delivery",
+        "planning",
+        "ready_for_implementation",
+        "Specification assessment",
+        "Plan created",
+    )
     valid = """# Playbook Selection
 | Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
 | --- | --- | --- | --- | --- |
@@ -1765,12 +1824,12 @@ def self_test_reasoning_records() -> None:
 | --- | --- |
 | Run ID | run-001 |
 | Evaluation run ID | evaluation-001 |
-| Playbook / version | playbooks/feature_delivery.md / 0.4.16 |
+| Playbook / version | playbooks/feature_delivery.md / 0.4.17 |
 | Framework commit / status | 0123456789abcdef0123456789abcdef01234567 / Dirty |
 | Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.16 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.17 / pass |
 | Role-policy baseline ID | codex-role-policy-v20260827032839 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -1797,6 +1856,7 @@ def self_test_reasoning_records() -> None:
 | --- | --- |
 | Concurrent-run decision | Isolated run |
 | Related-run check | No related run reused |
+| Durable artifact root | __ARTIFACT_ROOT__ |
 | Final reconciliation | Passed; runtime closure released with no active handles |
 | Finalization schema | Passed |
 # Durable Artifacts
@@ -1861,7 +1921,7 @@ Artifacts:
 
 Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.
 Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
-0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.4.16.
+0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.4.17.
 ```
 """
     assert reasoning_record_errors(valid) == []
@@ -2082,6 +2142,8 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     ]
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "work_record.md"
+        valid = valid.replace("__ARTIFACT_ROOT__", str(path.parent))
+        (path.parent / "runtime_closure.json").write_text("{}\n")
         (path.parent / "role_bindings.json").write_text(json.dumps({
             "baseline_id": MODEL_BASELINE_ID,
             "playbook": "feature_delivery",
@@ -2154,10 +2216,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace(
-                "templates/feature_delivery_run_prompt.md / 0.4.16 / pass",
+                "templates/feature_delivery_run_prompt.md / 0.4.17 / pass",
                 "templates/feature_delivery_run_prompt.md / framework revision 0123456789abcdef / pass",
             ),
-            "Prompt template revision must be 0.4.16",
+            "Prompt template revision must be 0.4.17",
         )
         assert_invalid(
             valid.replace(
@@ -2576,6 +2638,24 @@ for filename in (
 ):
     if planning_readiness_reference not in (ROOT / "playbooks" / filename).read_text():
         fail(f"playbooks/{filename} is missing the shared planning-readiness reference")
+
+feature_playbook = (ROOT / "playbooks" / "feature_delivery.md").read_text()
+feature_prompt = (ROOT / "templates" / "feature_delivery_run_prompt.md").read_text()
+for text, label in (
+    (feature_playbook, "playbooks/feature_delivery.md"),
+    (feature_prompt, "templates/feature_delivery_run_prompt.md"),
+):
+    for phrase in (
+        "Planning objective:",
+        "specification_assessment",
+        "Specification assessment",
+        "Ready with explicit follow-ups",
+        "Not ready for implementation",
+    ):
+        if phrase not in text:
+            fail(f"{label} is missing specification-assessment control: {phrase}")
+if "Planning objective: implementation_planning" not in feature_prompt:
+    fail("templates/feature_delivery_run_prompt.md is missing the default planning objective")
 
 sentry_repository_integrator = agent_configs["sentry_repository_integrator"].get(
     "developer_instructions", ""
@@ -3153,6 +3233,7 @@ for phrase in (
     "Never patch its artifacts directly",
     "provider_configuration_unavailable",
     "implementation_plan_action",
+    "Specification assessment",
 ):
     if phrase not in orchestrator_agent:
         fail(f"providers/codex/agents/orchestrator.toml is missing conformance gate: {phrase}")
@@ -3497,9 +3578,26 @@ for phrase in (
         fail(f"providers/codex/agents/sentry_repository_integrator.toml is missing Standard activation/test control: {phrase}")
 
 solution_architect_agent = (CODEX_AGENT_DIR / "solution_architect.toml").read_text()
-for phrase in ("run a unit or integration test only", "discriminating outcomes", "runner availability"):
+for phrase in (
+    "run a unit or integration test only",
+    "discriminating outcomes",
+    "runner availability",
+    "For a specification assessment",
+    "plan_readiness: awaiting_input",
+):
     if phrase not in solution_architect_agent:
         fail(f"providers/codex/agents/solution_architect.toml is missing planning-test gating: {phrase}")
+
+reviewer_agent = (CODEX_AGENT_DIR / "reviewer.toml").read_text()
+reviewer_role = (ROOT / "roles" / "reviewer.md").read_text()
+solution_architect_role = (ROOT / "roles" / "solution_architect.md").read_text()
+for text, label in (
+    (reviewer_agent, "providers/codex/agents/reviewer.toml"),
+    (reviewer_role, "roles/reviewer.md"),
+    (solution_architect_role, "roles/solution_architect.md"),
+):
+    if "For a specification assessment" not in text or "security or privacy controls" not in text:
+        fail(f"{label} is missing specification-readiness control")
 
 for phrase in (
     "MUST NOT change a technical worker's diagnosis",
@@ -3530,6 +3628,7 @@ for phrase in (
     "fork_context: false",
     "Coordinator initialization: complete",
     "blocking_unknowns",
+    "plan feasibility and specification readiness are separate decisions",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing plan-readiness control: {phrase}")

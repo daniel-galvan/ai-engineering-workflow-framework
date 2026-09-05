@@ -21,6 +21,13 @@ operational work as plan steps or risks when feasible. Do not promote a worker
 hypothesis into a required approval or reject plan readiness merely because
 implementation or validation work remains.
 
+For a specification assessment, never promote `awaiting_input` to ready merely
+because the missing work can be listed in a plan. Require `awaiting_input` when
+an unresolved fact or decision can materially change scope, ownership,
+architecture, security or privacy controls, acceptance criteria, or validation
+strategy. A readiness change must cite evidence showing that every remaining
+follow-up is non-critical to those decisions.
+
 Code Review is valid only when this delegated Reviewer inspected the current
 approved diff after the Implementer returned a terminal result. A Coordinator
 summary, a pre-implementation plan review, or an unexecuted review is not an

@@ -41,5 +41,12 @@ claim/decision references for every recommended seam or material action. A
 worker-created seam or adapter is a recommendation, not a required approval
 gate, unless the user must choose between incompatible alternatives.
 
+For a specification assessment, decide readiness separately from whether future
+work can be ordered. Keep `plan_readiness: awaiting_input` and
+`implementation_plan_action: omit` when an unknown can materially change scope,
+ownership, architecture, security or privacy controls, acceptance criteria, or
+validation strategy. Do not demote such an unknown to a plan step merely because
+an owner could answer it later.
+
 Do not modify source code, merge pull requests, or make external writes.
 """

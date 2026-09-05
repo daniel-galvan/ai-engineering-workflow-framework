@@ -1,6 +1,6 @@
 ---
 title: Feature Delivery Playbook
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -40,9 +40,14 @@ playbook instead.
 - Execution profile: `standard`
 - Lifecycle: `planning`
 - Mode: `investigation`
+- Planning objective: `implementation_planning`
 
 Planning is read-only. It produces an implementation plan only when planning fan-in passes and the feature is ready for
 implementation.
+
+Use `specification_assessment` when the primary goal is to judge an existing Spike, proposal, or specification. Record
+the Playbook Selection `Primary goal` exactly as `Specification assessment`. This route reuses the planning graph; it
+does not presume that an implementation plan should be created.
 
 Use [`templates/feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md) for every run. The prompt
 supplies scenario inputs; this playbook owns process, worker activation, gates, and handoff behavior.
@@ -212,6 +217,12 @@ Apply the shared [planning-readiness rule][planning-readiness]. Remaining code, 
 environment, operational, rollout, or validation work belongs in the plan when a feasible sequence exists; it is not a
 planning blocker by itself.
 
+For `specification_assessment`, do not equate a feasible plan with a ready specification. An unknown that can change
+scope, ownership, architecture, security or privacy controls, acceptance criteria, or validation strategy requires
+`awaiting_input`, `implementation_plan_action: omit`, and a Clarification Brief. The final `Workflow result` must be
+exactly one of `Ready for implementation`, `Ready with explicit follow-ups`, or `Not ready for implementation`.
+`Ready with explicit follow-ups` is valid only when every follow-up is non-critical and cannot change those decisions.
+
 If `planning-review` exhausts its one recovery attempt, stop with `profile_status: blocked` and reason
 `planning_review_runtime_unavailable`. Do not create an implementation plan or offer a Coordinator-only plan as a
 deep-profile alternative.
@@ -252,6 +263,7 @@ When created, the plan must include:
 | Context recovered | Jira sources, conflicts, assumptions, and unknowns are recorded. |
 | Clarification framed | When needed, bounded discovery, feasible options, recommendation, and the smallest decision request are recorded. |
 | Planning context sufficient | Outcome, affected surface, and observable acceptance conditions are supported. |
+| Specification assessed | The exact readiness disposition is stated; material scope, architecture, security, acceptance, and validation unknowns prevent a ready disposition. |
 | Impact understood | Relevant code, dependencies, contracts, tests, and operational implications are known or explicitly blocked. |
 | Design ready | Smallest feature slice and acceptance traceability are documented. |
 | Implementation ready | Shared semantic readiness threshold and planning fan-in passed; `implementation_plan.md` exists. |

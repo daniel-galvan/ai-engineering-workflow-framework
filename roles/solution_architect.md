@@ -1,12 +1,12 @@
 ---
 
 title: Solution Architect Role
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 category: Design
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-09-04
 required_documents:
 
   - ../frameworks/investigation.md
@@ -261,6 +261,11 @@ and validation work into ordered plan steps when a feasible sequence exists.
 Do not treat a worker-created seam or adapter as a user requirement or approval
 gate. Preserve each material recommendation's authority and claim/decision
 references in the plan.
+
+For a specification assessment, judge readiness separately from whether future work can be ordered. Keep the result at
+`awaiting_input` when an unknown can change scope, ownership, architecture, security or privacy controls, acceptance
+criteria, or validation strategy. Do not turn that unknown into a non-blocking plan step merely because an owner can
+resolve it later.
 
 ---
 

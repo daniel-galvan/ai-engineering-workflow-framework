@@ -1,9 +1,9 @@
 ---
 title: Feature Delivery Run Prompt
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-09-04
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/feature_delivery.md
@@ -26,6 +26,11 @@ Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
 Execution profile: standard
 Lifecycle: planning
+Planning objective: implementation_planning
+
+Use `implementation_planning` to design a feature. Use `specification_assessment` to judge an existing Spike,
+proposal, or specification. For `specification_assessment`, record Playbook Selection `Primary goal` exactly as
+`Specification assessment`; do not infer readiness from the ability to list future work.
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
@@ -89,4 +94,13 @@ At handoff, use the contract's canonical human-readable template. Do not include
 this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable
 implementation plan; otherwise use `partially_solved` for useful incomplete planning. Preserve distinct
 `Workflow outcome` and `Engineering outcome` fields.
+
+For `specification_assessment`, choose exactly one `Workflow result`:
+- `Ready for implementation`
+- `Ready with explicit follow-ups`
+- `Not ready for implementation`
+
+Map the first two to `ready_for_implementation`; map the last to `awaiting_input` with
+`implementation_plan_action: omit` and a Clarification Brief. A follow-up is non-blocking only when it cannot materially
+change scope, ownership, architecture, security or privacy controls, acceptance criteria, or validation strategy.
 ```

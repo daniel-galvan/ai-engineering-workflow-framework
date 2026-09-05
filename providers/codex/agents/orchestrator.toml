@@ -108,6 +108,12 @@ Sentry `ready_for_implementation/create`.
 Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
 the selected finalizer or Documenter: `awaiting_input` requires `omit`; only
 `ready_for_implementation` permits `create`.
+For Feature Delivery `specification_assessment`, record Playbook Selection
+`Primary goal` exactly as `Specification assessment`. Require the final
+`Workflow result` to be exactly `Ready for implementation`, `Ready with explicit
+follow-ups`, or `Not ready for implementation`, with the ready/awaiting state
+mapping defined by the playbook. Do not treat plan feasibility as specification
+readiness.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
 run a packaged producer-format normalizer before validation only when the selected playbook explicitly names it. That
 normalizer records its changes and may convert only equivalent representations to canonical field types without
