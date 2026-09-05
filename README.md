@@ -149,15 +149,16 @@ canonical run template.
 
 | Playbook                                                                | Use for                                                                |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [Technical Spike](playbooks/technical_spike.md)                         | Bounded technical questions and existing Spike reviews                 |
 | [Feature Delivery](playbooks/feature_delivery.md)                       | Jira features and improvements                                         |
 | [TechOps Issue Remediation](playbooks/techops_issue_remediation.md)     | Support- and operations-reported Jira issues                           |
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
 
-The four playbooks have been exercised across every profile/lifecycle combination. Current work evaluates reliability,
-efficiency, and control fidelity before expansion. Add a playbook only when the existing stages, gates, and artifacts
-cannot express the scenario cleanly. See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and worker
-graphs.
+The four delivery playbooks have been exercised across every profile/lifecycle combination. Technical Spike is a new,
+planning-only playbook and is not yet exercised. Add another playbook only when the existing stages, gates, and
+artifacts cannot express the scenario cleanly. See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and
+worker graphs.
 
 ## Guides and examples
 

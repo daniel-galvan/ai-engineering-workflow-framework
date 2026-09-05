@@ -1,7 +1,7 @@
 ---
 
 title: Reviewer Role
-version: 0.4.17
+version: 0.4.18
 status: Pilot
 category: Review
 produces_decisions: true
@@ -57,6 +57,8 @@ additional iteration.
 * Identify regressions and edge cases.
 * Evaluate operational readiness.
 * Recommend approval or additional work.
+* For Technical Spike review, assess the supplied question, method, evidence, conclusions, limitations, and
+  recommendation without replacing the Spike with a new investigation.
 
 ---
 
@@ -87,6 +89,7 @@ Optional
 * Recommendations
 * Approval Decision
 * Follow-up Items
+* Technical Spike assessment when assigned
 
 ---
 

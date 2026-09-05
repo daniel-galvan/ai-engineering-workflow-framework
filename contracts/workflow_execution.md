@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.19
+version: 0.4.20
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -595,6 +595,9 @@ Execution profile and lifecycle are independent dimensions:
 The profile answers “how much investigation is appropriate?” The lifecycle answers “how far may this run proceed?” A
 `deep` planning run investigates more thoroughly but still stops before implementation. A standard remediation run may
 implement after the required approval gate.
+
+A playbook may support only a declared subset of lifecycle values. Selecting an unsupported lifecycle stops before
+worker activation; a provider must not invent delivery behavior for a planning-only playbook.
 
 Every profile must preserve the shared safety, evidence, work-record, approval, and fan-in requirements. Provider
 adapters apply the provider role policy without changing lifecycle gates or the role-quality policy.

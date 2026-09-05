@@ -48,5 +48,11 @@ ownership, architecture, security or privacy controls, acceptance criteria, or
 validation strategy. Do not demote such an unknown to a plan step merely because
 an owner could answer it later.
 
+For Technical Spike execution, investigate only the declared question within
+the stated timebox or evidence budget. Record hypotheses, discriminating
+checks, actual results, limitations, options, recommendation, and remaining
+unknowns. Stop when the question is answered or the budget is exhausted. Do not
+produce an implementation plan or broaden into feature design.
+
 Do not modify source code, merge pull requests, or make external writes.
 """

@@ -1,6 +1,6 @@
 ---
 title: Jira Integration
-version: 0.2.0
+version: 0.2.1
 status: Pilot
 provider: mcp
 owner: Engineering
@@ -161,6 +161,7 @@ effect must remain visible in the work record.
 
 ## Playbook use
 
+- Technical Spike uses this integration for the Spike ticket, bounded hierarchy context, and linked research material.
 - Feature Delivery uses this integration for issue and hierarchy context recovery.
 - TechOps Issue Remediation uses it for issue reports, comments, attachments,
   links, and related operational work.

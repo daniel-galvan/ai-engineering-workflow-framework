@@ -1,26 +1,26 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 provider: codex
 provider_independent_profiles: true
 baseline_id: codex-role-policy-v20260827032839
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-09-04
 ---
 
 # Codex Model and Effort Policy
 
-This policy maps reusable framework roles to Codex custom agents for Feature Delivery, TechOps Issue Remediation,
-Vulnerability Investigation, and Sentry Issue Remediation. It is advanced provider configuration, not a normal run
-input. The role policy below is an initial hypothesis: an experimental baseline to validate against real runs, not a
-claim of optimal model selection.
+This policy maps reusable framework roles to Codex custom agents for Technical Spike, Feature Delivery, TechOps Issue
+Remediation, Vulnerability Investigation, and Sentry Issue Remediation. It is advanced provider configuration, not a
+normal run input. The role policy below is an initial hypothesis: an experimental baseline to validate against real
+runs, not a claim of optimal model selection.
 
-The experimental baseline is `codex-role-policy-v20260827032839` and is shared across Feature Delivery, Sentry, TechOps
-Issue Remediation, and Vulnerability Investigation. Profiles select which roles run; they do not change a role's model
-or reasoning effort. Record the baseline ID plus requested and resolved values in the work record, and revise it only
-from comparable evaluation evidence.
+The experimental baseline is `codex-role-policy-v20260827032839` and is shared across Technical Spike, Feature Delivery,
+Sentry, TechOps Issue Remediation, and Vulnerability Investigation. Profiles select which roles run; they do not change
+a role's model or reasoning effort. Record the baseline ID plus requested and resolved values in the work record, and
+revise it only from comparable evaluation evidence.
 
 Codex policy labels map to configuration values as follows:
 

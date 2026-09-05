@@ -114,6 +114,11 @@ For Feature Delivery `specification_assessment`, record Playbook Selection
 follow-ups`, or `Not ready for implementation`, with the ready/awaiting state
 mapping defined by the playbook. Do not treat plan feasibility as specification
 readiness.
+For Technical Spike, enforce the declared question and timebox or evidence
+budget before activation. Record `Primary goal` exactly as `Execute technical
+spike` or `Review technical spike`, use only the playbook's corresponding exact
+dispositions, require `spike_report.md` for a completed run, and prohibit
+`implementation_plan.md` and remediation activation.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
 run a packaged producer-format normalizer before validation only when the selected playbook explicitly names it. That
 normalizer records its changes and may convert only equivalent representations to canonical field types without

@@ -1,9 +1,9 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-09-04
 ---
 
 # Contributing
@@ -38,7 +38,7 @@ Reuse the shared contract and declare:
 - inputs and evidence sources;
 - stages, worker dependencies, and fan-in;
 - roles, skills, tools, and provider mappings;
-- planning and remediation behavior;
+- supported lifecycles and their behavior;
 - approval gates and failure behavior;
 - artifacts, validation, and terminal outcomes; and
 - a canonical run template and safe example.

@@ -27,6 +27,18 @@ FEATURE_ASSESSMENT_DISPOSITIONS = {
     "awaiting_input": {"Not ready for implementation"},
     "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
 }
+TECHNICAL_SPIKE_DISPOSITIONS = {
+    "execute technical spike": {
+        "Question answered": "solved",
+        "Partially answered": "partially_solved",
+        "Inconclusive": "partially_solved",
+    },
+    "review technical spike": {
+        "Accepted": "solved",
+        "Changes required": "partially_solved",
+        "Inconclusive": "partially_solved",
+    },
+}
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)\s*$", re.IGNORECASE
 )
@@ -265,6 +277,39 @@ def _validate_handoff(packet: dict[str, object]) -> None:
                     f"Feature Delivery specification assessment state {state} requires Workflow result exactly one of: "
                     + ", ".join(sorted(allowed))
                 )
+        if playbook_name == "technical_spike":
+            lifecycle = str(identity.get("Lifecycle", "")).strip().lower()
+            state = str(identity.get("State", "")).strip().lower()
+            if lifecycle != "planning":
+                raise ValueError("Technical Spike supports planning lifecycle only")
+            if str(handoff["implementation_plan"]).strip() != (
+                "Not created; Technical Spike produces spike_report.md"
+            ):
+                raise ValueError(
+                    "Technical Spike implementation plan must be exactly "
+                    "Not created; Technical Spike produces spike_report.md"
+                )
+            if state not in {"blocked", "awaiting_input", "completed"}:
+                raise ValueError("Technical Spike terminal state must be blocked, awaiting_input, or completed")
+            if state == "completed":
+                dispositions = TECHNICAL_SPIKE_DISPOSITIONS.get(primary_goal)
+                if dispositions is None:
+                    raise ValueError(
+                        "Technical Spike Primary goal must be Execute technical spike or Review technical spike"
+                    )
+                result = str(handoff["workflow_result"]).strip()
+                expected_engineering = dispositions.get(result)
+                if expected_engineering is None:
+                    raise ValueError(
+                        "Technical Spike completed run requires Workflow result exactly one of: "
+                        + ", ".join(dispositions)
+                    )
+                if str(identity.get("Workflow outcome", "")).strip() != "completed":
+                    raise ValueError("Technical Spike completed run requires Workflow outcome completed")
+                if str(identity.get("Engineering outcome", "")).strip() != expected_engineering:
+                    raise ValueError(
+                        f"Technical Spike disposition {result} requires Engineering outcome {expected_engineering}"
+                    )
     next_action = handoff.get("next_action", {})
     if not isinstance(next_action, dict):
         raise ValueError("packet.handoff.next_action must be an object")
@@ -986,6 +1031,31 @@ def self_test() -> None:
             raise AssertionError("specification assessment must reject a non-disposition workflow result")
         assessment["handoff"]["workflow_result"] = "Not ready for implementation"
         _validate_handoff(assessment)
+        spike = json.loads(json.dumps(packet))
+        spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
+        spike["identity"].update({
+            "Playbook / version": "playbooks/technical_spike.md / 0.1.0",
+            "Lifecycle": "planning",
+            "State": "completed",
+            "Workflow outcome": "completed",
+            "Engineering outcome": "solved",
+        })
+        spike["handoff"].update({
+            "workflow_result": "Question answered",
+            "implementation_plan": "Not created; Technical Spike produces spike_report.md",
+            "provenance": (
+                f"plugin Not applicable; framework revision {'a' * 40} (clean); "
+                "playbook technical_spike 0.1.0."
+            ),
+        })
+        _validate_handoff(spike)
+        spike["handoff"]["workflow_result"] = "Accepted"
+        try:
+            _validate_handoff(spike)
+        except ValueError as error:
+            assert "requires Workflow result exactly one of" in str(error)
+        else:
+            raise AssertionError("execute_spike must reject review_spike dispositions")
         source.write_text(json.dumps(packet))
         framework_revision = subprocess.run(
             ["git", "-C", str(ROOT), "rev-parse", "HEAD"],

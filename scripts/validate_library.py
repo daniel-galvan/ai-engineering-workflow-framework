@@ -95,12 +95,6 @@ SKILLS = {
 TEMPLATES = list((ROOT / "templates").glob("*_run_prompt.md"))
 INVARIANT = "The shared contract and selected playbook own lifecycle, worker activation,"
 MATURITY = {"not_exercised", "exercising"}
-EXERCISE_COMBINATIONS = (
-    "standard + planning",
-    "deep + planning",
-    "standard + remediation",
-    "deep + remediation",
-)
 WORKFLOW_CONTRACT = ROOT / "contracts" / "workflow_execution.md"
 WORKFLOW_GUIDANCE = ROOT / "contracts" / "workflow_execution_guidance.md"
 WORKFLOW_VOCABULARY = ROOT / "contracts" / "workflow_vocabulary.md"
@@ -147,6 +141,18 @@ READINESS_ACTIONS = {
 FEATURE_ASSESSMENT_DISPOSITIONS = {
     "awaiting_input": {"Not ready for implementation"},
     "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
+}
+TECHNICAL_SPIKE_DISPOSITIONS = {
+    "execute technical spike": {
+        "Question answered": "solved",
+        "Partially answered": "partially_solved",
+        "Inconclusive": "partially_solved",
+    },
+    "review technical spike": {
+        "Accepted": "solved",
+        "Changes required": "partially_solved",
+        "Inconclusive": "partially_solved",
+    },
 }
 BLOCKING_DECISION_TYPES = {
     "business",
@@ -316,6 +322,62 @@ def current_artifact_errors(
             target.name == "work_record.md" and target.parent == record_path.parent
         ):
             errors.append(f"{record_path}: durable artifact {artifact} does not exist: {target}")
+    return errors
+
+
+def technical_spike_report_errors(
+    text: str, primary_goal: str, profile: str, workflow_result: str
+) -> list[str]:
+    errors = []
+    required_headings = (
+        "## Metadata",
+        "## Scope and Non-goals",
+        "## Method and Evidence",
+        "## Experiments and Checks",
+        "## Findings",
+        "## Options and Tradeoffs",
+        "## Recommendation",
+        "## Remaining Unknowns and Follow-up",
+        "## Disposition",
+    )
+    for heading in required_headings:
+        if heading not in text:
+            errors.append(f"spike_report.md is missing {heading}")
+    metadata = {row.get("Field", ""): row.get("Value", "") for row in markdown_table(text, "## Metadata")}
+    expected_objective = {
+        "execute technical spike": "execute_spike",
+        "review technical spike": "review_spike",
+    }.get(primary_goal.strip().lower())
+    for field in ("Work item", "Primary question", "Timebox or evidence budget", "Success criterion"):
+        if not metadata.get(field, "").strip():
+            errors.append(f"spike_report.md Metadata requires {field}")
+    if expected_objective and metadata.get("Objective", "").strip() != expected_objective:
+        errors.append(f"spike_report.md Objective must be {expected_objective}")
+    if metadata.get("Execution profile", "").strip() != profile:
+        errors.append(f"spike_report.md Execution profile must be {profile}")
+    if expected_objective == "review_spike" and metadata.get("Review target", "").strip().lower() in {
+        "", "none", "not applicable",
+    }:
+        errors.append("spike_report.md review_spike requires Review target")
+    evidence = markdown_table(text, "## Method and Evidence")
+    if not evidence or any(not row.get(field, "").strip() for row in evidence for field in (
+        "Evidence ID", "Method or source", "Observation", "Status", "Limitation",
+    )):
+        errors.append("spike_report.md requires one complete evidence row")
+    checks = markdown_table(text, "## Experiments and Checks")
+    if not checks or any(not row.get(field, "").strip() for row in checks for field in (
+        "Hypothesis or review criterion", "Command or method", "Expected discriminating outcomes", "Actual result",
+        "Disposition impact",
+    )):
+        errors.append("spike_report.md requires one complete experiment or Not run row")
+    disposition = {
+        row.get("Field", ""): row.get("Value", "") for row in markdown_table(text, "## Disposition")
+    }
+    if disposition.get("Workflow result", "").strip() != workflow_result.strip():
+        errors.append("spike_report.md Workflow result must match Final Handoff")
+    for field in ("Question or review conclusion", "Budget status", "Feature Delivery handoff"):
+        if not disposition.get(field, "").strip():
+            errors.append(f"spike_report.md Disposition requires {field}")
     return errors
 
 
@@ -1098,6 +1160,39 @@ def feature_assessment_disposition_error(
     return None
 
 
+def technical_spike_disposition_error(
+    playbook: str,
+    lifecycle: str,
+    state: str,
+    primary_goal: str,
+    workflow_result: str,
+    workflow_outcome: str,
+    engineering_outcome: str,
+) -> str | None:
+    if playbook != "technical_spike":
+        return None
+    if lifecycle != "planning":
+        return "Technical Spike supports planning lifecycle only"
+    if state in {"blocked", "awaiting_input"}:
+        return None
+    if state != "completed":
+        return "Technical Spike completed runs require state completed"
+    dispositions = TECHNICAL_SPIKE_DISPOSITIONS.get(primary_goal.strip().lower())
+    if dispositions is None:
+        return "Technical Spike Primary goal must be Execute technical spike or Review technical spike"
+    expected_engineering_outcome = dispositions.get(workflow_result.strip())
+    if expected_engineering_outcome is None:
+        return "Technical Spike completed run requires Workflow result exactly one of: " + ", ".join(dispositions)
+    if workflow_outcome != "completed":
+        return "Technical Spike completed run requires Workflow outcome completed"
+    if engineering_outcome != expected_engineering_outcome:
+        return (
+            f"Technical Spike disposition {workflow_result.strip()} requires Engineering outcome "
+            f"{expected_engineering_outcome}"
+        )
+    return None
+
+
 def _plugin_version_refresh_error() -> str | None:
     completed = subprocess.run(
         ["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=all"],
@@ -1235,6 +1330,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         "feature_delivery": "templates/feature_delivery_run_prompt.md",
         "techops_issue_remediation": "templates/techops_issue_run_prompt.md",
         "sentry_issue_remediation": "templates/sentry_issue_run_prompt.md",
+        "technical_spike": "templates/technical_spike_run_prompt.md",
         "vulnerability_investigation": "templates/vulnerability_issue_run_prompt.md",
     }
     playbook_name = Path(identity["Playbook / version"].split(" / ", 1)[0]).stem
@@ -1669,6 +1765,17 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     )
     if disposition_error:
         fail(f"{path}: {disposition_error}")
+    spike_disposition_error = technical_spike_disposition_error(
+        playbook_name,
+        identity["Lifecycle"],
+        identity["State"],
+        primary_goal,
+        workflow_result.group(1) if workflow_result else "",
+        identity["Workflow outcome"],
+        identity["Engineering outcome"],
+    )
+    if spike_disposition_error:
+        fail(f"{path}: {spike_disposition_error}")
     runtime_value = "released" if all(
         row.get("Runtime status", "").strip().lower() == "released"
         for row in table_rows["# Worker Runtime Closure"]
@@ -1721,6 +1828,31 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fail(f"{path}: Feature Delivery {identity['State']} must register {required_artifact}")
             if target not in handoff_artifacts:
                 fail(f"{path}: Feature Delivery {identity['State']} must link {required_artifact} in Final Handoff")
+    if playbook_name == "technical_spike":
+        implementation_plan = re.search(r"^- Implementation plan:\s*(.+)$", handoff, re.MULTILINE)
+        expected = "Not created; Technical Spike produces spike_report.md"
+        if not implementation_plan or implementation_plan.group(1).strip() != expected:
+            fail(f"{path}: Technical Spike Implementation plan must be exactly {expected}")
+        plan = (path.parent / "implementation_plan.md").resolve()
+        if plan.is_file():
+            fail(f"{path}: Technical Spike must not create implementation_plan.md")
+        if identity["State"] == "completed":
+            target = (path.parent / "spike_report.md").resolve()
+            durable_targets = {
+                artifact
+                for row in markdown_table(text, "# Durable Artifacts")
+                if (artifact := _artifact_path(row.get("Path", ""), path)) is not None
+            }
+            if target not in durable_targets:
+                fail(f"{path}: Technical Spike completed must register spike_report.md")
+            if target not in handoff_artifacts:
+                fail(f"{path}: Technical Spike completed must link spike_report.md in Final Handoff")
+            if target.is_file():
+                for error in technical_spike_report_errors(
+                    target.read_text(), primary_goal, identity["Executed profile"],
+                    workflow_result.group(1) if workflow_result else "",
+                ):
+                    fail(f"{path}: {error}")
     if playbook_name == "sentry_issue_remediation" and codex_run:
         if not _ALLOW_UNRELEASED and runtime_value == "released" and execution:
             if "validation passed" not in " ".join(execution.group(1).lower().split()):
@@ -1810,6 +1942,64 @@ def self_test_reasoning_records() -> None:
         "ready_for_implementation",
         "Specification assessment",
         "Plan created",
+    )
+    assert technical_spike_disposition_error(
+        "technical_spike", "planning", "completed", "Execute technical spike",
+        "Question answered", "completed", "solved",
+    ) is None
+    assert technical_spike_disposition_error(
+        "technical_spike", "planning", "completed", "Review technical spike",
+        "Changes required", "completed", "partially_solved",
+    ) is None
+    assert "requires Engineering outcome solved" in technical_spike_disposition_error(
+        "technical_spike", "planning", "completed", "Review technical spike",
+        "Accepted", "completed", "partially_solved",
+    )
+    valid_spike_report = """## Metadata
+| Field | Value |
+| --- | --- |
+| Work item | SPIKE-1 |
+| Objective | execute_spike |
+| Primary question | Can the current boundary preserve the required data? |
+| Timebox or evidence budget | One repository trace and one focused test |
+| Success criterion | Request and response behavior are established |
+| Execution profile | standard |
+| Review target | Not applicable |
+## Scope and Non-goals
+Bounded path only.
+## Method and Evidence
+| Evidence ID | Method or source | Observation | Status | Limitation |
+| --- | --- | --- | --- | --- |
+| E-001 | Repository trace | Boundary preserves the data | Verified | Runtime not observed |
+## Experiments and Checks
+| Hypothesis or review criterion | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+| --- | --- | --- | --- | --- |
+| Boundary preserves data | Focused test | Data retained or lost | Retained | Supports answer |
+## Findings
+The current boundary preserves the required data.
+## Options and Tradeoffs
+| Option | Evidence | Benefits | Costs or risks | When to choose |
+| --- | --- | --- | --- | --- |
+| Keep boundary | E-001 | No change | Runtime unverified | Current scope |
+## Recommendation
+Keep the current boundary pending runtime confirmation.
+## Remaining Unknowns and Follow-up
+| Unknown or follow-up | Why it matters | Owner | Next evidence or decision |
+| --- | --- | --- | --- |
+| Runtime parity | Confirms deployment | Service owner | Observe deployment |
+## Disposition
+| Field | Value |
+| --- | --- |
+| Workflow result | Question answered |
+| Question or review conclusion | Current boundary is sufficient |
+| Budget status | Completed |
+| Feature Delivery handoff | Ready to consume |
+"""
+    assert technical_spike_report_errors(
+        valid_spike_report, "Execute technical spike", "standard", "Question answered"
+    ) == []
+    assert "spike_report.md Workflow result must match Final Handoff" in technical_spike_report_errors(
+        valid_spike_report, "Execute technical spike", "standard", "Inconclusive"
     )
     valid = """# Playbook Selection
 | Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
@@ -2490,9 +2680,28 @@ for path in (ROOT / "playbooks").glob("*.md"):
     maturity = re.search(r"^maturity: (.+)$", text, re.M)
     if not maturity or maturity.group(1) not in MATURITY:
         fail(f"{path.relative_to(ROOT)} has no valid maturity")
+    supported_lifecycles = {
+        value.strip()
+        for value in (frontmatter_value(path, "supported_lifecycles") or "planning, remediation").split(",")
+    }
+    if not supported_lifecycles or not supported_lifecycles <= LIFECYCLES:
+        fail(f"{path.relative_to(ROOT)} has invalid supported lifecycles")
+    expected_combinations = tuple(
+        f"{profile} + {lifecycle}"
+        for profile in ("standard", "deep")
+        for lifecycle in ("planning", "remediation")
+        if lifecycle in supported_lifecycles
+    )
     exercise_scope = re.search(r"^exercise_scope: (.+)$", text, re.M)
-    if not exercise_scope or any(value not in exercise_scope.group(1) for value in EXERCISE_COMBINATIONS):
+    if not exercise_scope or any(value not in exercise_scope.group(1) for value in expected_combinations):
         fail(f"{path.relative_to(ROOT)} has incomplete exercise scope")
+    unsupported_combinations = (
+        f"{profile} + {lifecycle}"
+        for profile in ("standard", "deep")
+        for lifecycle in LIFECYCLES - supported_lifecycles
+    )
+    if exercise_scope and any(value in exercise_scope.group(1) for value in unsupported_combinations):
+        fail(f"{path.relative_to(ROOT)} declares an unsupported lifecycle in exercise scope")
     if not re.search(r"^validation_summary: .+$", text, re.M):
         fail(f"{path.relative_to(ROOT)} has no validation summary")
 
@@ -2536,7 +2745,11 @@ for path in (ROOT / "playbooks").glob("*.md"):
     text = path.read_text()
     if "standard planning workers, then `implement`" in text:
         fail(f"{path.relative_to(ROOT)} reruns planning workers during remediation")
-    if not re.search(r"In-scope review\s+findings return", text):
+    supports_remediation = "remediation" in {
+        value.strip()
+        for value in (frontmatter_value(path, "supported_lifecycles") or "planning, remediation").split(",")
+    }
+    if supports_remediation and not re.search(r"In-scope review\s+findings return", text):
         fail(f"{path.relative_to(ROOT)} is missing the delivery review loop")
     if "canonical Human-Readable Handoff" not in text and "shared human-readable template" not in text:
         fail(f"{path.relative_to(ROOT)} is missing the canonical human-readable handoff")
@@ -2552,7 +2765,7 @@ for path in (ROOT / "playbooks").glob("*.md"):
     )
     if not final_documenter and not deterministic_sentry:
         fail(f"{path.relative_to(ROOT)} is missing final-Documenter ownership")
-    if not re.search(r"final\s+`handoff`\s+after delivery fan-in", text):
+    if supports_remediation and not re.search(r"final\s+`handoff`\s+after delivery fan-in", text):
         fail(f"{path.relative_to(ROOT)} is missing final remediation handoff ownership")
     if "| `initialize` |" in text:
         fail(f"{path.relative_to(ROOT)} declares an initialize worker")
@@ -2656,6 +2869,29 @@ for text, label in (
             fail(f"{label} is missing specification-assessment control: {phrase}")
 if "Planning objective: implementation_planning" not in feature_prompt:
     fail("templates/feature_delivery_run_prompt.md is missing the default planning objective")
+
+technical_spike_playbook = (ROOT / "playbooks" / "technical_spike.md").read_text()
+technical_spike_prompt = (ROOT / "templates" / "technical_spike_run_prompt.md").read_text()
+technical_spike_report = (ROOT / "templates" / "spike_report.md").read_text()
+for text, label in (
+    (technical_spike_playbook, "playbooks/technical_spike.md"),
+    (technical_spike_prompt, "templates/technical_spike_run_prompt.md"),
+):
+    for phrase in (
+        "execute_spike",
+        "review_spike",
+        "Execute technical spike",
+        "Review technical spike",
+        "spike_report.md",
+        "Question answered",
+        "Changes required",
+        "Inconclusive",
+    ):
+        if phrase not in text:
+            fail(f"{label} is missing Technical Spike control: {phrase}")
+for phrase in ("Timebox or evidence budget", "Experiments and Checks", "Feature Delivery handoff"):
+    if phrase not in technical_spike_report:
+        fail(f"templates/spike_report.md is missing Technical Spike report field: {phrase}")
 
 sentry_repository_integrator = agent_configs["sentry_repository_integrator"].get(
     "developer_instructions", ""

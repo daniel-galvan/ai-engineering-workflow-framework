@@ -1,18 +1,19 @@
 ---
 
 title: Documenter Role
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-08-26
+last_updated: 2026-09-04
 required_documents:
 
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../templates/work_record.md
   - ../templates/implementation_plan.md
+  - ../templates/spike_report.md
 skills:
 
   - work_record_maintenance
@@ -76,6 +77,7 @@ maintenance.
   release blocker.
 * Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook
   reaches its planning-completion gate.
+* For Technical Spike, create `spike_report.md` after analytical fan-in and do not create `implementation_plan.md`.
 * Record findings from every role.
 * Record evidence and references.
 * Preserve evidence, claim, decision, and action IDs across artifacts.
@@ -112,6 +114,7 @@ Optional
 
 * Updated `work_record.md`
 * `implementation_plan.md` when created by the playbook's planning-completion gate
+* `spike_report.md` when required by Technical Spike
 * Decision Log
 * Work Timeline
 * Open Questions

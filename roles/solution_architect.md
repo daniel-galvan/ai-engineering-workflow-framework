@@ -1,7 +1,7 @@
 ---
 
 title: Solution Architect Role
-version: 0.4.17
+version: 0.4.18
 status: Pilot
 category: Design
 produces_decisions: true
@@ -65,6 +65,8 @@ smallest reasonable change.
   unavailable checks.
 * Record the strongest supported hypothesis and a plain-language next action when implementation readiness is not
   reached.
+* For Technical Spike execution, answer one bounded question through evidence, discriminating checks, options,
+  tradeoffs, a recommendation, and explicit remaining uncertainty; do not produce an implementation plan.
 
 ---
 
@@ -96,6 +98,7 @@ Optional
 * Risks
 * Open Questions
 * Recommended Implementation Strategy
+* Technical Spike findings and recommendation when assigned
 
 ---
 

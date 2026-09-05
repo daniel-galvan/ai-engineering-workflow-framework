@@ -69,6 +69,7 @@ PLAYBOOKS = {path.stem for path in (ROOT / "playbooks").glob("*.md")}
 PROMPT_TEMPLATES = {
     "feature_delivery": "feature_delivery_run_prompt.md",
     "sentry_issue_remediation": "sentry_issue_run_prompt.md",
+    "technical_spike": "technical_spike_run_prompt.md",
     "techops_issue_remediation": "techops_issue_run_prompt.md",
     "vulnerability_investigation": "vulnerability_issue_run_prompt.md",
 }
@@ -534,6 +535,7 @@ def self_test() -> None:
         assert prepared_packet["identity"]["Coordinator execution"].startswith("active parent session")
         assert _playbook_name("Sentry Issue Remediation") == "sentry_issue_remediation"
         assert _playbook_name("Sentry Issue Remediation Playbook") == "sentry_issue_remediation"
+        assert _playbook_name("Technical Spike") == "technical_spike"
         record = Path(first["work_record"])
         record.write_text(
             record.read_text().replace("| Run ID | |", "| Run ID | run-1 |").replace(

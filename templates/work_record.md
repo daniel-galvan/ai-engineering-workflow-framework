@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-27
@@ -159,6 +159,10 @@ Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engi
 When the selected playbook requires an implementation plan, planning runs that reach `ready_for_implementation` must
 produce and link it. The plan is the execution source for a later session; this work record remains the context,
 evidence, decision, and worker ledger.
+
+When the selected playbook requires a different terminal artifact, add that artifact as a current-run root file and
+follow the playbook's plan-creation rule. Technical Spike requires `spike_report.md` and prohibits
+`implementation_plan.md`.
 
 | Artifact | Path | Status | Purpose |
 | --- | --- | --- | --- |

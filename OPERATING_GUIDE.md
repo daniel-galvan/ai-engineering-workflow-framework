@@ -1,10 +1,10 @@
 ---
 
 title: AI-assisted Software Engineering Workflow Framework Operating Guide
-version: 0.4.16
+version: 0.4.17
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-09-04
 ---
 
 # AI-assisted Software Engineering Workflow Framework Operating Guide
@@ -42,6 +42,8 @@ For a normal run, choose only:
 | --- | --- | --- |
 | Lifecycle | `planning`, `remediation` | How far may this run proceed? |
 | Profile | `standard`, `deep` | Which worker graph and independent coverage must run? |
+
+The selected playbook may support only a subset of lifecycle values. Technical Spike, for example, is planning-only.
 
 The provider role policy selects the model and reasoning effort for each role. It is advanced configuration, not a
 third normal run choice. For the current Codex pilot, profiles choose which roles run; they do not change a role's

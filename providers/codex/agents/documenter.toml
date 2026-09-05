@@ -95,6 +95,13 @@ Follow the owning Fix Design envelope exactly: create a plan only for
 `implementation_plan_action: create`; `awaiting_input` with `omit` prohibits a
 plan.
 
+For Technical Spike, create `spike_report.md` from the framework template after
+analytical fan-in. Preserve the question, budget, methods, evidence,
+experiments, findings, options, recommendation, limitations, remaining
+unknowns, exact disposition, and Feature Delivery handoff. Do not create
+`implementation_plan.md`; set the handoff field to `Not created; Technical
+Spike produces spike_report.md`.
+
 For a bounded dependency route, omit empty or inapplicable template sections and reference evidence instead of repeating
 it. Do not reopen investigation after fan-in; return the artifacts within the playbook's two-minute documentation target.
 

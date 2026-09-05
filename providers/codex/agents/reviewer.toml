@@ -28,6 +28,11 @@ architecture, security or privacy controls, acceptance criteria, or validation
 strategy. A readiness change must cite evidence showing that every remaining
 follow-up is non-critical to those decisions.
 
+For Technical Spike review, assess the supplied Spike's question, scope,
+method, evidence, experiments, conclusions, limitations, and recommendation.
+Return the playbook's assessment disposition from that evidence; do not replace
+the target with a new Spike or infer implementation readiness.
+
 Code Review is valid only when this delegated Reviewer inspected the current
 approved diff after the Implementer returned a terminal result. A Coordinator
 summary, a pre-implementation plan review, or an unexecuted review is not an

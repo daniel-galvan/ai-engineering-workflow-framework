@@ -1,6 +1,6 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.4.17
+version: 0.4.18
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-04
@@ -24,15 +24,42 @@ flowchart TB
     G --> H["Provider adapter and model policy"]
     F --> I["Evidence and result envelopes"]
     I --> J[".thoughts/WORK-ITEM-ID/work_record.md"]
-    J --> K["Implementation plan after planning fan-in"]
-    K --> L["Approval and remediation"]
-    L --> M["Code Review, validation, stabilization, handoff"]
+    J --> K{"Playbook terminal artifact"}
+    K --> L["Spike report and completed learning"]
+    K --> M["Implementation plan when ready"]
+    M --> N["Approval and remediation"]
+    N --> O["Code Review, validation, stabilization, handoff"]
 ```
 
-Every playbook has `standard` and `deep` execution profiles plus `planning` and `remediation` lifecycles. Profiles add
-independent workers and review; they do not reduce role quality. Planning is read-only, creates an implementation plan
-only after fan-in, and requires explicit approval before remediation. The Coordinator performs initialization directly;
-one final Documenter runs after analytical fan-in.
+Every playbook has `standard` and `deep` execution profiles. Delivery playbooks support `planning` and `remediation`;
+Technical Spike is planning-only. Profiles add independent workers and review; they do not reduce role quality. The
+Coordinator performs initialization directly; one final Documenter runs after analytical fan-in.
+
+## Technical Spike
+
+**Use for:** answering one bounded technical question or assessing an existing Spike report. **State:** Not exercised;
+contract and static validation only.
+
+The distinguishing seam is the learning artifact. A Technical Spike has a question, timebox or evidence budget,
+discriminating checks, explicit uncertainty, and one disposition. It produces `spike_report.md`, not an implementation
+plan, and never implies Feature Delivery readiness.
+
+```mermaid
+flowchart TB
+    A["Coordinator initialization"] --> B["Spike context and question"]
+    B --> C["Investigation or assessment"]
+    B --> D["Repository integration: deep only"]
+    C --> E["Review or discrepancy reconciliation: when required"]
+    D --> E
+    C --> F["Final Documenter and Spike report"]
+    D --> F
+    E --> F
+    F --> G["Optional later Feature Delivery run"]
+```
+
+`standard` uses context plus one objective-specific analytical worker. `deep` adds repository integration in parallel;
+executing a Spike also adds independent review. The run stops when the question is answered, the review disposition is
+stable, the budget is exhausted, or indispensable evidence is unavailable.
 
 ## Feature Delivery
 
@@ -144,6 +171,7 @@ the engineer's judgment.
 
 | Primary evidence and goal | Playbook |
 | --- | --- |
+| Bounded technical question, experiment, feasibility decision, or existing Spike report | Technical Spike |
 | Jira initiative, planned capability, or improvement | Feature Delivery |
 | Support- or operations-reported Jira issue, attachments, logs, or unclear ownership | TechOps Issue Remediation |
 | Sentry issue, event evidence, and production failure | Sentry Issue Remediation |
