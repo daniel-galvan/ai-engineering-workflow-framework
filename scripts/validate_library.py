@@ -1611,6 +1611,18 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         fail(f"{path}: Final Handoff must contain the canonical ordered labels")
     if re.search(r"^Workflow result:\s*Workflow result:", handoff, re.MULTILINE | re.IGNORECASE):
         fail(f"{path}: Final Handoff must contain exactly one Workflow result prefix")
+    for label in (
+        "Workflow result:",
+        "- Implementation plan:",
+        "- Owner:",
+        "- Action:",
+        "- Complete when:",
+        "Execution:",
+        "Provenance:",
+    ):
+        value = re.search(rf"^{re.escape(label)}[ \t]*(.+)$", handoff, re.MULTILINE)
+        if not value or not value.group(1).strip():
+            fail(f"{path}: Final Handoff {label.rstrip(':')} must be populated")
     for label, field in (
         ("- State:", "State"),
         ("- Workflow outcome:", "Workflow outcome"),
@@ -1626,29 +1638,52 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     execution = re.search(r"^Execution:\s*(.*?)\nProvenance:", handoff, re.MULTILINE | re.DOTALL)
     if not execution or f"runtime {runtime_value}" not in " ".join(execution.group(1).lower().split()):
         fail(f"{path}: Final Handoff runtime must match Worker Runtime Closure")
+    for error in current_artifact_errors(
+        markdown_table(text, "# Durable Artifacts"),
+        path,
+        finalization.get("Durable artifact root", ""),
+    ):
+        fail(error)
+    handoff_artifacts: set[Path] = set()
+    if handoff:
+        in_artifacts = False
+        artifact_count = 0
+        for line in handoff.splitlines():
+            if line == "Artifacts:":
+                in_artifacts = True
+                continue
+            if in_artifacts and line.startswith("Execution:"):
+                break
+            if in_artifacts and line.startswith("- "):
+                artifact_count += 1
+                target = _artifact_path(line[2:], path)
+                if target is None:
+                    fail(f"{path}: Final Handoff contains an empty artifact path")
+                elif not target.is_file() and not (
+                    target.name == "work_record.md" and target.parent == path.parent
+                ):
+                    fail(f"{path}: Final Handoff artifact does not exist: {target}")
+                else:
+                    handoff_artifacts.add(target)
+        if not artifact_count:
+            fail(f"{path}: Final Handoff must link at least one artifact")
+    if playbook_name == "feature_delivery":
+        required_artifact = {
+            "awaiting_input": "clarification_brief.md",
+            "ready_for_implementation": "implementation_plan.md",
+        }.get(identity["State"])
+        if required_artifact:
+            target = (path.parent / required_artifact).resolve()
+            durable_targets = {
+                artifact
+                for row in markdown_table(text, "# Durable Artifacts")
+                if (artifact := _artifact_path(row.get("Path", ""), path)) is not None
+            }
+            if target not in durable_targets:
+                fail(f"{path}: Feature Delivery {identity['State']} must register {required_artifact}")
+            if target not in handoff_artifacts:
+                fail(f"{path}: Feature Delivery {identity['State']} must link {required_artifact} in Final Handoff")
     if playbook_name == "sentry_issue_remediation" and codex_run:
-        for error in current_artifact_errors(
-            markdown_table(text, "# Durable Artifacts"),
-            path,
-            finalization.get("Durable artifact root", ""),
-        ):
-            fail(error)
-        if handoff:
-            in_artifacts = False
-            for line in handoff.splitlines():
-                if line == "Artifacts:":
-                    in_artifacts = True
-                    continue
-                if in_artifacts and line.startswith("Execution:"):
-                    break
-                if in_artifacts and line.startswith("- "):
-                    target = _artifact_path(line[2:], path)
-                    if target is None:
-                        fail(f"{path}: Final Handoff contains an empty artifact path")
-                    elif not target.is_file() and not (
-                        target.name == "work_record.md" and target.parent == path.parent
-                    ):
-                        fail(f"{path}: Final Handoff artifact does not exist: {target}")
         if not _ALLOW_UNRELEASED and runtime_value == "released" and execution:
             if "validation passed" not in " ".join(execution.group(1).lower().split()):
                 fail(f"{path}: released Sentry handoff must report validation passed")

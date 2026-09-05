@@ -218,15 +218,39 @@ def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> 
         handoff["workflow_result"] = re.sub(
             r"^\s*Workflow result:\s*", "", str(handoff.get("workflow_result", "")), flags=re.IGNORECASE
         )
-        execution = str(handoff.get("execution", "")).strip()
-        if "validation passed" not in execution.lower():
-            handoff["execution"] = f"validation passed; {execution}"
+        if isinstance(identity, dict):
+            plugin = str(identity.get("Plugin package / version", "")).replace(" / ", " ")
+            framework = str(identity.get("Framework commit / status", "")).split(" / ", 1)
+            playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)
+            if len(framework) == 2 and len(playbook) == 2:
+                handoff["provenance"] = (
+                    f"plugin {plugin}; framework revision {framework[0]} ({framework[1].lower()}); "
+                    f"playbook {Path(playbook[0]).stem} {playbook[1]}."
+                )
 
 
 def _validate_handoff(packet: dict[str, object]) -> None:
     handoff = packet.get("handoff", {})
     if not isinstance(handoff, dict):
         raise ValueError("packet.handoff must be an object")
+    for field in ("workflow_result", "implementation_plan", "execution", "provenance"):
+        if not str(handoff.get(field, "")).strip():
+            raise ValueError(f"packet.handoff.{field} must be a non-empty string")
+    identity = packet.get("identity", {})
+    if isinstance(identity, dict):
+        provenance = str(handoff["provenance"]).lower()
+        framework_revision = str(identity.get("Framework commit / status", "")).split(" / ", 1)[0].lower()
+        playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)[0]
+        if framework_revision and framework_revision not in provenance:
+            raise ValueError("packet.handoff.provenance must contain the framework revision")
+        if playbook and Path(playbook).stem.lower() not in provenance:
+            raise ValueError("packet.handoff.provenance must contain the playbook name")
+    next_action = handoff.get("next_action", {})
+    if not isinstance(next_action, dict):
+        raise ValueError("packet.handoff.next_action must be an object")
+    for field in ("owner", "action", "complete_when"):
+        if not str(next_action.get(field, "")).strip():
+            raise ValueError(f"packet.handoff.next_action.{field} must be a non-empty string")
     established = handoff.get("established", [])
     if not established:
         raise ValueError("packet.handoff.established must contain at least one human-readable finding")
@@ -247,7 +271,10 @@ def _validate_handoff(packet: dict[str, object]) -> None:
             raise ValueError(
                 f"packet.handoff.best_current_explanations[{index}] must be text or a structured explanation"
             )
-    for index, item in enumerate(handoff.get("artifacts", [])):
+    artifacts = handoff.get("artifacts", [])
+    if not artifacts:
+        raise ValueError("packet.handoff.artifacts must contain at least one artifact")
+    for index, item in enumerate(artifacts):
         if not isinstance(item, str) or not item.strip():
             raise ValueError(f"packet.handoff.artifacts[{index}] must be a non-empty path or Markdown link")
 
@@ -486,9 +513,28 @@ Provenance: {handoff['provenance']}
     return "\n".join(sections)
 
 
-def finalize(packet_path: Path, closure_path: Path, record_path: Path, *, pre_release: bool = False) -> None:
+def finalize(
+    packet_path: Path,
+    closure_path: Path,
+    record_path: Path,
+    *,
+    pre_release: bool = False,
+    coordinator_model_effort: str | None = None,
+    framework_revision: str | None = None,
+    framework_status: str | None = None,
+) -> None:
     packet = json.loads(packet_path.read_text())
     closure = json.loads(closure_path.read_text())
+    supplied_identity = (coordinator_model_effort, framework_revision, framework_status)
+    if any(supplied_identity) and not all(supplied_identity):
+        raise ValueError(
+            "coordinator_model_effort, framework_revision, and framework_status must be supplied together"
+        )
+    if all(supplied_identity):
+        packet["identity"]["Coordinator model/effort"] = coordinator_model_effort
+        packet["identity"]["Framework commit / status"] = (
+            f"{framework_revision} / {framework_status.title()}"
+        )
     _validate_shapes(packet, closure)
     _normalize_packet(packet, closure)
     _validate_handoff(packet)
@@ -849,6 +895,7 @@ def self_test() -> None:
 
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)
+        packet["finalization"]["Durable artifact root"] = str(root)
         source = root / "packet.json"
         closure = root / "runtime_closure.json"
         record = root / "work_record.md"
@@ -870,6 +917,48 @@ def self_test() -> None:
         assert "runtime closure pending" not in rendered.lower()
         assert "| runtime_closure.json |" in rendered
         assert "| Released | Provider receipt |" in rendered
+        broken_record = root / "broken-work-record.md"
+        broken_record.write_text(
+            rendered
+            .replace("Workflow result: Worker runtime unavailable", "Workflow result:")
+            .replace("- [work_record.md](./work_record.md)\n\nExecution:", "Execution:")
+        )
+        rejected = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(broken_record)],
+            capture_output=True, text=True, check=False,
+        )
+        assert rejected.returncode != 0
+        assert "Final Handoff Workflow result must be populated" in rejected.stdout
+        assert "Final Handoff must link at least one artifact" in rejected.stdout
+        empty_handoff = json.loads(source.read_text())
+        empty_handoff["handoff"].update({
+            "workflow_result": "",
+            "implementation_plan": "",
+            "next_action": {"owner": "", "action": "", "complete_when": ""},
+            "artifacts": [],
+            "execution": "",
+            "provenance": "",
+        })
+        source.write_text(json.dumps(empty_handoff))
+        try:
+            finalize(source, closure, record)
+        except ValueError as error:
+            assert "packet.handoff.workflow_result must be a non-empty string" in str(error)
+        else:
+            raise AssertionError("finalization must reject an empty terminal handoff")
+        source.write_text(json.dumps(packet))
+        framework_revision = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        finalize(
+            source, closure, record,
+            coordinator_model_effort="Not applicable",
+            framework_revision=framework_revision,
+            framework_status="dirty",
+        )
+        assert f"{framework_revision} / Dirty" in record.read_text()
+        source.write_text(json.dumps(packet))
         pending = {"runtime_closure": [dict(packet["runtime_closure"][0], **{
             "Runtime status": "Pending",
             "Closure evidence or blocker": "provider release pending",
@@ -1157,7 +1246,13 @@ def main() -> int:
                 evidence_artifact=args.evidence_artifact.resolve() if args.evidence_artifact else None,
             )
         else:
-            finalize(args.packet.resolve(), args.closure.resolve(), args.record.resolve(), pre_release=args.pre_release)
+            finalize(
+                args.packet.resolve(), args.closure.resolve(), args.record.resolve(),
+                pre_release=args.pre_release,
+                coordinator_model_effort=args.coordinator_model_effort,
+                framework_revision=args.framework_revision,
+                framework_status=args.framework_status,
+            )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
         return 2
