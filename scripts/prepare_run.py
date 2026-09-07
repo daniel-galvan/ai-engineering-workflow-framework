@@ -9,7 +9,7 @@ import json
 import re
 import shutil
 import tomllib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 try:
@@ -42,6 +42,7 @@ SENTRY_FIX_DESIGN_NORMALIZER = ROOT / "scripts" / "normalize_fix_design_result.p
 SENTRY_PLANNING_FINALIZER = ROOT / "scripts" / "finalize_sentry_planning.py"
 WORKER_RUNTIME_GUARD = ROOT / "scripts" / "validate_worker_runtime.py"
 RUN_INPUTS_FILENAME = "run_inputs.json"
+RUN_BUDGET_FILENAME = "run_budget.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 SENTRY_AGENTS = (
     "sentry_orchestrator",
@@ -72,6 +73,16 @@ PROMPT_TEMPLATES = {
     "technical_spike": "technical_spike_run_prompt.md",
     "techops_issue_remediation": "techops_issue_run_prompt.md",
     "vulnerability_investigation": "vulnerability_issue_run_prompt.md",
+}
+WORKFLOW_OUTCOMES = {
+    "technical_spike": {
+        "execute_spike": "technical_answer",
+        "review_spike": "spike_assessment",
+    },
+    "feature_delivery": {
+        "implementation_planning": "implementation_plan",
+        "specification_assessment": "specification_assessment",
+    },
 }
 CODEX_TOOL_MAPPING = {
     "work_item_read": "supplied context, connected work-item tool, or exec_command",
@@ -117,6 +128,78 @@ def _playbook_name(value: str) -> str:
         if title_name.removesuffix("_playbook") == normalized or title_name == normalized:
             return path.stem
     raise ValueError(f"unknown_playbook:{value}")
+
+
+def _validate_run_goal(playbook: str, workflow_objective: str | None, requested_outcome: str | None) -> None:
+    if workflow_objective is None and requested_outcome is None:
+        return
+    if not workflow_objective or not requested_outcome:
+        raise ValueError("run_goal_declaration_incomplete")
+    outcomes = WORKFLOW_OUTCOMES.get(playbook)
+    if not outcomes:
+        return
+    selected_outcome = outcomes.get(workflow_objective)
+    if selected_outcome is None:
+        raise ValueError(f"workflow_objective_unsupported:{playbook}:{workflow_objective}")
+    if requested_outcome != selected_outcome:
+        raise ValueError(
+            f"run_goal_conflict:requested_outcome={requested_outcome};"
+            f"selected_outcome={selected_outcome};workflow_objective={workflow_objective}"
+        )
+
+
+def _with_run_goal(
+    manifest: dict[str, object], workflow_objective: str | None, requested_outcome: str | None,
+) -> dict[str, object]:
+    if not workflow_objective:
+        return manifest
+    rows = list(manifest["inputs"])
+    additions = (
+        {
+            "Input ID": "RUN-GOAL-001", "Input or artifact": f"Requested outcome: {requested_outcome}",
+            "Source or path": "Current user request", "Authority": "Explicit user outcome",
+            "Classification": "requested outcome", "Expected use": "Validate playbook and objective selection",
+            "Status": "Registered",
+        },
+        {
+            "Input ID": "RUN-GOAL-002", "Input or artifact": f"Workflow objective: {workflow_objective}",
+            "Source or path": "Current run prompt", "Authority": "Explicit workflow selection",
+            "Classification": "workflow configuration", "Expected use": "Select worker graph and output contract",
+            "Status": "Registered",
+        },
+    )
+    by_id = {str(row["Input ID"]): row for row in rows}
+    for row in additions:
+        if row["Input ID"] in by_id and by_id[row["Input ID"]] != row:
+            raise ValueError(f"run_input_manifest_conflicting_input_id:{row['Input ID']}")
+        if row["Input ID"] not in by_id:
+            rows.append(row)
+    return {**manifest, "inputs": rows}
+
+
+def _run_budget(started_at: str | None, timebox_minutes: int | None) -> dict[str, object] | None:
+    if started_at is None and timebox_minutes is None:
+        return None
+    if not started_at or timebox_minutes is None:
+        raise ValueError("run_budget_declaration_incomplete")
+    if timebox_minutes <= 0:
+        raise ValueError("run_budget_minutes_invalid")
+    try:
+        started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("run_budget_started_at_invalid") from error
+    if started.tzinfo is None:
+        raise ValueError("run_budget_started_at_invalid")
+    deadline = started.astimezone(UTC) + timedelta(minutes=timebox_minutes)
+    if deadline <= datetime.now(UTC):
+        raise ValueError("run_budget_exhausted_before_activation")
+    return {
+        "schema_version": 1,
+        "started_at": started.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+        "deadline_at": deadline.isoformat().replace("+00:00", "Z"),
+        "timebox_minutes": timebox_minutes,
+        "status": "within_budget",
+    }
 
 
 def _document_version(path: Path) -> str:
@@ -181,6 +264,11 @@ def _initial_packet(
             "Purpose": "Immutable current-run context, decisions, and supporting artifacts",
         },
     ]
+    if manifest.get("run_budget"):
+        packet["durable_artifacts"].append({
+            "Artifact": "Run budget", "Path": manifest["run_budget"]["path"], "Status": "Active",
+            "Purpose": "End-to-end deadline and terminal budget status",
+        })
     return packet
 
 
@@ -278,6 +366,7 @@ def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, ob
     return {
         "baseline_id": _baseline_id(),
         "playbook": playbook,
+        "provider_runtime_configuration": str(runtime_agents) if runtime_agents else "Not provided",
         "provider_configuration_source_status": provider_status,
         "provider_tool_mapping": CODEX_TOOL_MAPPING,
         "coordinator_execution": {
@@ -323,6 +412,10 @@ def prepare_run(
     continuation: bool,
     archive_stale_run: bool = False,
     input_manifest: Path | None = None,
+    workflow_objective: str | None = None,
+    requested_outcome: str | None = None,
+    started_at: str | None = None,
+    timebox_minutes: int | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
@@ -331,6 +424,8 @@ def prepare_run(
         raise ValueError("execution_repository_unavailable")
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
+    _validate_run_goal(playbook, workflow_objective, requested_outcome)
+    budget = _run_budget(started_at, timebox_minutes)
     resolved_execution_repository = execution_repository.resolve()
     artifact_root = resolved_execution_repository / ".thoughts" / work_item
     # Validate supplied input and provider bindings before creating, archiving, or
@@ -351,9 +446,17 @@ def prepare_run(
         artifact_root, work_item, playbook, resolved_execution_repository, input_manifest, continuation,
         validated_supplied,
     )
+    if workflow_objective:
+        run_inputs = write_manifest(
+            run_inputs_path, _with_run_goal(run_inputs, workflow_objective, requested_outcome)
+        )
     manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
     manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
     manifest["run_input_manifest"]["precedence_rule"] = run_inputs["precedence_rule"]
+    if budget:
+        budget_path = artifact_root / RUN_BUDGET_FILENAME
+        budget_path.write_text(json.dumps(budget, indent=2, sort_keys=True) + "\n")
+        manifest["run_budget"] = {**budget, "path": str(budget_path)}
     fix_design_contract = None
     normalized_evidence_contract = None
     if playbook == "sentry_issue_remediation":
@@ -405,6 +508,9 @@ def prepare_run(
         "finalization_packet": str(packet_path),
         "run_input_manifest": str(run_inputs_path),
         "run_input_manifest_status": run_inputs["status"],
+        "requested_outcome": requested_outcome,
+        "workflow_objective": workflow_objective,
+        "run_budget": manifest.get("run_budget"),
         "role_binding_manifest": str(manifest_path),
         "fix_design_result_contract": str(fix_design_contract) if fix_design_contract else None,
         "normalized_evidence_contract": (
@@ -599,6 +705,45 @@ def self_test() -> None:
         else:
             raise AssertionError("invalid input manifest must be rejected before artifact creation")
         assert not (execution / ".thoughts" / "ITEM-INVALID").exists()
+        try:
+            prepare_run(
+                execution, "ITEM-GOAL-CONFLICT", "technical_spike", None, False,
+                input_manifest=input_source, workflow_objective="review_spike",
+                requested_outcome="implementation_plan",
+            )
+        except ValueError as error:
+            assert str(error).startswith("run_goal_conflict:")
+        else:
+            raise AssertionError("contradictory requested outcome and objective must block")
+        assert not (execution / ".thoughts" / "ITEM-GOAL-CONFLICT").exists()
+        aligned = prepare_run(
+            execution, "ITEM-GOAL-ALIGNED", "technical_spike", None, False,
+            input_manifest=input_source, workflow_objective="review_spike",
+            requested_outcome="spike_assessment",
+        )
+        aligned_inputs = json.loads((Path(aligned["artifact_root"]) / RUN_INPUTS_FILENAME).read_text())["inputs"]
+        assert {row["Input ID"] for row in aligned_inputs} >= {"RUN-GOAL-001", "RUN-GOAL-002"}
+        budgeted = prepare_run(
+            execution, "ITEM-BUDGET", "technical_spike", None, False,
+            input_manifest=input_source, workflow_objective="review_spike",
+            requested_outcome="spike_assessment", started_at="2099-09-07T12:00:00Z",
+            timebox_minutes=25,
+        )
+        budget_value = json.loads((Path(budgeted["artifact_root"]) / RUN_BUDGET_FILENAME).read_text())
+        assert budget_value["deadline_at"] == "2099-09-07T12:25:00Z"
+        assert budgeted["run_budget"]["status"] == "within_budget"
+        try:
+            prepare_run(
+                execution, "ITEM-BUDGET-EXPIRED", "technical_spike", None, False,
+                input_manifest=input_source, workflow_objective="review_spike",
+                requested_outcome="spike_assessment", started_at="2000-01-01T00:00:00Z",
+                timebox_minutes=1,
+            )
+        except ValueError as error:
+            assert str(error) == "run_budget_exhausted_before_activation"
+        else:
+            raise AssertionError("an exhausted budget must block before artifact creation")
+        assert not (execution / ".thoughts" / "ITEM-BUDGET-EXPIRED").exists()
     print("prepare_run self-test: passed")
 
 
@@ -610,6 +755,10 @@ def main() -> int:
     parser.add_argument("--runtime-agents", type=Path)
     parser.add_argument("--continuation", action="store_true")
     parser.add_argument("--archive-stale-run", action="store_true")
+    parser.add_argument("--workflow-objective")
+    parser.add_argument("--requested-outcome")
+    parser.add_argument("--started-at", help="RFC 3339 end-to-end task start")
+    parser.add_argument("--timebox-minutes", type=int)
     parser.add_argument(
         "--input-manifest",
         type=Path,
@@ -631,6 +780,10 @@ def main() -> int:
             args.continuation,
             args.archive_stale_run,
             args.input_manifest,
+            args.workflow_objective,
+            args.requested_outcome,
+            args.started_at,
+            args.timebox_minutes,
         )
     except ValueError as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

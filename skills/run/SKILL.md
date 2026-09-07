@@ -33,6 +33,10 @@ description: >-
    Read the catalog only when no playbook was supplied or the supplied path is unavailable or materially contradicted by
    the evidence. Make the requested profile and lifecycle explicit; when omitted, record the playbook defaults
    (`standard` + `planning`) before worker activation.
+   Extract one requested outcome before preparation. Use `technical_answer` for bounded investigation,
+   `spike_assessment` for review of an existing Spike, `implementation_plan` for implementation planning, and
+   `specification_assessment` for readiness assessment. Compare it with the supplied playbook objective. If they differ,
+   preserve both as authoritative inputs and stop with `run_goal_conflict`; do not silently prefer the later field.
    Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
@@ -74,8 +78,13 @@ description: >-
       "Authority":"<authority>","Classification":"<classification>","Expected use":"<use>","Status":"Registered"}
    ]}
    ```
-   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and optional verified
-   runtime-agent directory (`--runtime-agents <path>`). Use `--continuation` only
+   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name,
+   `--requested-outcome <outcome>`, `--workflow-objective <objective>`, and optional verified runtime-agent directory
+   (`--runtime-agents <path>`). Technical Spike permits `technical_answer + execute_spike` or
+   `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
+   `specification_assessment + specification_assessment`. When the prompt declares an end-to-end duration, also pass the
+   captured current-turn RFC 3339 start as `--started-at` and integer minutes as `--timebox-minutes`; use the resulting
+   `run_budget.json` as the terminal budget source of truth. Use `--continuation` only
    when the user explicitly says continue or resume. Validate the explicit manifest and provider bindings before this
    step mutates the artifact root. This one step then archives a prior terminal run, creates the artifact root and
    minimal work record, and writes `role_bindings.json`.
@@ -198,7 +207,8 @@ description: >-
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
    to validate the complete packet shape and candidate record without replacing `work_record.md`. Return the aggregated
    error to the owning worker once. If the corrected packet still fails, stop within two minutes with
-   `finalization_contract_failure`, preserve the aggregated error and artifacts, and release all worker handles.
+   `finalization_contract_failure`, preserve generated `finalization_failure.json` plus artifacts, and release all
+   worker handles. Never invoke pre-release a third time; the finalizer enforces this correction limit.
    Build the Documenter packet from immutable run facts before activation, including real provider handles and all
    required repository, worker, synchronization, and artifact rows. Persist the first terminal Fix Design envelope
    immediately; do not reactivate a completed worker solely to copy its returned JSON. When multiple workers are active,
@@ -223,6 +233,9 @@ description: >-
    Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.
    Treat finalizer errors as self-contained received/expected corrections. Do not read or search validator source unless
    an error lacks an expected value or contradicts the documented packet contract.
+   For Technical Spike, final response names disposition, strongest direct evidence, unresolved decisions, measured
+   budget status, and exact next workflow. Link `spike_report.md` and terminal `work_record.md`. If finalization fails,
+   link `finalization_failure.json`; do not claim terminal validation passed.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; it is rendered from the finalized work record. Never compose a second summary or regenerate, shorten, or

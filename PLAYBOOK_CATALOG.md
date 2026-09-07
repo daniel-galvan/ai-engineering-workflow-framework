@@ -1,9 +1,9 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.4.18
+version: 0.4.19
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 ---
 
 # Playbook Architecture Catalog
@@ -37,12 +37,14 @@ Coordinator performs initialization directly; one final Documenter runs after an
 
 ## Technical Spike
 
-**Use for:** answering one bounded technical question or assessing an existing Spike report. **State:** Not exercised;
-contract and static validation only.
+**Use for:** answering one bounded technical question or assessing an existing Spike report. **State:** Exercising; one
+deep review exposed routing, budget, finalization, and handoff failures. Corrective controls are regression-covered; a
+live rerun remains pending.
 
 The distinguishing seam is the learning artifact. A Technical Spike has a question, timebox or evidence budget,
 discriminating checks, explicit uncertainty, and one disposition. It produces `spike_report.md`, not an implementation
-plan, and never implies Feature Delivery readiness.
+plan, and never implies Feature Delivery readiness. Preparation mechanically rejects a requested implementation plan
+instead of silently converting the run into a Spike assessment.
 
 ```mermaid
 flowchart TB

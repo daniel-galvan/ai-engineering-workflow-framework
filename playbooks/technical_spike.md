@@ -1,13 +1,13 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.0
+version: 0.1.2
 status: Pilot
-maturity: not_exercised
+maturity: exercising
 supported_lifecycles: planning
 exercise_scope: standard + planning; deep + planning
-validation_summary: contract and static validation only; no real run exercised
+validation_summary: deep review failed; corrective controls regression-covered; live rerun pending
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -30,14 +30,16 @@ depends_on:
 Use this playbook when the primary goal is learning needed for a later decision: feasibility, current behavior, an
 integration boundary, a technology choice, an operational unknown, or review of an existing Spike report.
 
-Do not use it to design and deliver an already-defined feature, remediate a production failure, or investigate a known
-security finding. A Spike may inform Feature Delivery later, but it does not imply implementation readiness.
+Do not use it to create an implementation plan, design and deliver an already-defined feature, remediate a production
+failure, or investigate a known security finding. A request for an implementation plan belongs to Feature Delivery;
+an existing Spike remains supporting evidence and does not become the source of truth or imply implementation readiness.
 
 ## Defaults and Objectives
 
 - Execution profile: `standard`
 - Lifecycle: `planning`
 - Mode: `investigation`
+- Requested outcome: `technical_answer`
 - Objective: `execute_spike`
 
 Supported objectives:
@@ -116,6 +118,11 @@ Stop when the question is answered, the review disposition is stable, the declar
 indispensable evidence is unavailable. Do not expand into adjacent services or repositories merely because they may be
 related; record them as follow-up unless they can change the primary conclusion.
 
+For a duration budget, use prepared `run_budget.json`. Report exactly `within_budget`,
+`exhausted_with_useful_result`, `exceeded_during_finalization`, or `stopped_by_indispensable_evidence`; do not use
+`Completed` as a substitute for measured deadline status. An already exhausted duration blocks before worker
+activation.
+
 ### Stage 3 — Reconcile and Review
 
 Deep execution adds repository integration and independent review. Reconcile only material disagreement. A blocked or
@@ -133,9 +140,9 @@ After required analytical workers return terminal envelopes and fan-in passes, t
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.md
 ```
 
-The report must preserve the question, budget, method, evidence, experiments, findings, options, recommendation,
-limitations, remaining unknowns, exact disposition, and any Feature Delivery handoff. It must not turn follow-up work
-into an implementation plan.
+The report must preserve the question, budget, method, direct source evidence, experiments, findings, options,
+recommendation, limitations, remaining unknowns, exact disposition, and any Feature Delivery handoff. It must be usable
+without opening every intermediate worker artifact and must not turn follow-up work into an implementation plan.
 
 Use these exact completed-run dispositions:
 

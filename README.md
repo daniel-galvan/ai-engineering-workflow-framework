@@ -155,8 +155,9 @@ canonical run template.
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
 
-The four delivery playbooks have been exercised across every profile/lifecycle combination. Technical Spike is a new,
-planning-only playbook and is not yet exercised. Add another playbook only when the existing stages, gates, and
+The four delivery playbooks have been exercised across every profile/lifecycle combination. Technical Spike is a
+planning-only playbook now under exercise: one deep review exposed failures, corrective controls are
+regression-covered, and a live rerun remains pending. Add another playbook only when the existing stages, gates, and
 artifacts cannot express the scenario cleanly. See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and
 worker graphs.
 

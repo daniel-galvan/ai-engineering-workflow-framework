@@ -173,6 +173,7 @@ UNRESOLVED_INTERFACE_MARKERS = re.compile(
 
 ROLE_AGENT_ALIASES = {
     "Orchestrator": ("orchestrator",),
+    "Current-State Investigator": ("current_state_investigator",),
     "Current-State Investigator / Sentry Evidence": ("current_state_investigator",),
     "Dependency Analyst": ("dependency_analyst",),
     "Repository Integrator": ("repository_integrator",),
@@ -184,6 +185,7 @@ ROLE_AGENT_ALIASES = {
 }
 
 SENTRY_ROLE_AGENTS = {
+    "Current-State Investigator": "sentry_current_state_investigator",
     "Current-State Investigator / Sentry Evidence": "sentry_current_state_investigator",
     "Evidence topology": "sentry_current_state_investigator",
     "Dependency Analyst": "sentry_dependency_analyst",
@@ -326,13 +328,15 @@ def current_artifact_errors(
 
 
 def technical_spike_report_errors(
-    text: str, primary_goal: str, profile: str, workflow_result: str
+    text: str, primary_goal: str, profile: str, workflow_result: str,
+    expected_budget_status: str | None = None,
 ) -> list[str]:
     errors = []
     required_headings = (
         "## Metadata",
         "## Scope and Non-goals",
         "## Method and Evidence",
+        "## Direct Evidence",
         "## Experiments and Checks",
         "## Findings",
         "## Options and Tradeoffs",
@@ -364,6 +368,12 @@ def technical_spike_report_errors(
         "Evidence ID", "Method or source", "Observation", "Status", "Limitation",
     )):
         errors.append("spike_report.md requires one complete evidence row")
+    direct_evidence = markdown_table(text, "## Direct Evidence")
+    if not direct_evidence or any(not row.get(field, "").strip() for row in direct_evidence for field in (
+        "Evidence ID", "Repository or source", "Revision or version", "File or artifact location", "Observation",
+        "Status",
+    )):
+        errors.append("spike_report.md requires one complete direct-evidence row")
     checks = markdown_table(text, "## Experiments and Checks")
     if not checks or any(not row.get(field, "").strip() for row in checks for field in (
         "Hypothesis or review criterion", "Command or method", "Expected discriminating outcomes", "Actual result",
@@ -378,6 +388,15 @@ def technical_spike_report_errors(
     for field in ("Question or review conclusion", "Budget status", "Feature Delivery handoff"):
         if not disposition.get(field, "").strip():
             errors.append(f"spike_report.md Disposition requires {field}")
+    budget_status = disposition.get("Budget status", "").strip()
+    allowed_budget_statuses = {
+        "within_budget", "exhausted_with_useful_result", "exceeded_during_finalization",
+        "stopped_by_indispensable_evidence",
+    }
+    if budget_status and budget_status not in allowed_budget_statuses:
+        errors.append("spike_report.md Budget status must use canonical measured status")
+    if expected_budget_status and budget_status != expected_budget_status:
+        errors.append(f"spike_report.md Budget status must be {expected_budget_status}")
     return errors
 
 
@@ -1351,7 +1370,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             "'<active model> / <active effort>'"
         )
     framework_identity = identity["Framework commit / status"]
-    if not re.fullmatch(r"[0-9a-fA-F]{40} / (?:Clean|Dirty)", framework_identity):
+    valid_framework_identity = re.fullmatch(r"[0-9a-fA-F]{40} / (?:Clean|Dirty)", framework_identity)
+    if not valid_framework_identity:
         fail(
             f"{path}: Framework commit / status received {framework_identity!r}; "
             "expected '<40-character Git SHA> / <Clean|Dirty>'"
@@ -1396,7 +1416,9 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     expected_prompt = prompt_by_playbook.get(playbook_name)
     if expected_prompt:
         prompt_identity = identity["Prompt template / revision / conformance"].split(" / ", 2)
-        framework_revision, framework_status = framework_identity.split(" / ", 1)
+        framework_revision, framework_status = (
+            framework_identity.split(" / ", 1) if valid_framework_identity else ("", "Dirty")
+        )
         expected_version = (
             frontmatter_value_at_revision(framework_revision, ROOT / expected_prompt, "version")
             if framework_status == "Clean"
@@ -1538,10 +1560,13 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         if codex_run and row.get("Worker", "").strip().lower() not in {"coordinator", "orchestrator"}:
             role = row.get("Role", "").strip()
             agent = SENTRY_ROLE_AGENTS.get(role) if playbook_name == "sentry_issue_remediation" else None
+            bindings = manifest.get("bindings", {}) if manifest else {}
+            if not agent and role in bindings:
+                agent = role
             if not agent:
                 aliases = ROLE_AGENT_ALIASES.get(role, ())
                 agent = aliases[0] if aliases else None
-            binding = manifest.get("bindings", {}).get(agent) if manifest and agent else None
+            binding = bindings.get(agent) if agent else None
             if not binding:
                 fail(f"{path}: activated worker role has no resolved binding: {role or row.get('Worker', '')}")
                 continue
@@ -1848,9 +1873,16 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             if target not in handoff_artifacts:
                 fail(f"{path}: Technical Spike completed must link spike_report.md in Final Handoff")
             if target.is_file():
+                budget_status = None
+                budget_path = target.parent / "run_budget.json"
+                if budget_path.is_file():
+                    try:
+                        budget_status = json.loads(budget_path.read_text()).get("status")
+                    except (json.JSONDecodeError, OSError) as error:
+                        fail(f"{path}: invalid run_budget.json: {error}")
                 for error in technical_spike_report_errors(
                     target.read_text(), primary_goal, identity["Executed profile"],
-                    workflow_result.group(1) if workflow_result else "",
+                    workflow_result.group(1) if workflow_result else "", budget_status,
                 ):
                     fail(f"{path}: {error}")
     if playbook_name == "sentry_issue_remediation" and codex_run:
@@ -1971,6 +2003,10 @@ Bounded path only.
 | Evidence ID | Method or source | Observation | Status | Limitation |
 | --- | --- | --- | --- | --- |
 | E-001 | Repository trace | Boundary preserves the data | Verified | Runtime not observed |
+## Direct Evidence
+| Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
+| --- | --- | --- | --- | --- | --- |
+| E-001 | Execution repository | abcdef1 | src/boundary.py:10 | Boundary preserves the data | Verified |
 ## Experiments and Checks
 | Hypothesis or review criterion | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
 | --- | --- | --- | --- | --- |
@@ -1992,7 +2028,7 @@ Keep the current boundary pending runtime confirmation.
 | --- | --- |
 | Workflow result | Question answered |
 | Question or review conclusion | Current boundary is sufficient |
-| Budget status | Completed |
+| Budget status | within_budget |
 | Feature Delivery handoff | Ready to consume |
 """
     assert technical_spike_report_errors(
@@ -2886,10 +2922,16 @@ for text, label in (
         "Question answered",
         "Changes required",
         "Inconclusive",
+        "Requested outcome:",
     ):
         if phrase not in text:
             fail(f"{label} is missing Technical Spike control: {phrase}")
-for phrase in ("Timebox or evidence budget", "Experiments and Checks", "Feature Delivery handoff"):
+for phrase in (
+    "Timebox or evidence budget",
+    "Direct Evidence",
+    "Experiments and Checks",
+    "Feature Delivery handoff",
+):
     if phrase not in technical_spike_report:
         fail(f"templates/spike_report.md is missing Technical Spike report field: {phrase}")
 

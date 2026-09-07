@@ -1,9 +1,9 @@
 ---
 title: Feature Delivery Run Prompt
-version: 0.4.17
+version: 0.4.18
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/feature_delivery.md
@@ -26,11 +26,13 @@ Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
 Execution profile: standard
 Lifecycle: planning
+Requested outcome: implementation_plan
 Planning objective: implementation_planning
 
-Use `implementation_planning` to design a feature. Use `specification_assessment` to judge an existing Spike,
-proposal, or specification. For `specification_assessment`, record Playbook Selection `Primary goal` exactly as
-`Specification assessment`; do not infer readiness from the ability to list future work.
+Use `implementation_plan + implementation_planning` to design a feature. Use
+`specification_assessment + specification_assessment` to judge an existing Spike, proposal, or specification. For
+`specification_assessment`, record Playbook Selection `Primary goal` exactly as `Specification assessment`; do not
+infer readiness from the ability to list future work.
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
@@ -53,6 +55,8 @@ Runtime bootstrap:
 - The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
 - Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
   reopened or overridden by historical conclusions.
+- Compare the requested outcome with the selected objective before preparation. Stop with `run_goal_conflict` when
+  they disagree; do not drop either instruction or silently prefer the later field.
 - The requested profile and lifecycle are mandatory. Planning is read-only; remediation requires explicit approval and
   a passed Delivery Activation Barrier before edits.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,

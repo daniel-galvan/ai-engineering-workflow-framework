@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.1.0
+version: 0.1.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/technical_spike.md
@@ -26,10 +26,13 @@ Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
 Execution profile: standard
 Lifecycle: planning
+Requested outcome: technical_answer
 Spike objective: execute_spike
 
-Use `execute_spike` to investigate a bounded technical question. Use `review_spike` to assess an existing Spike report
-or document. Record Playbook Selection `Primary goal` exactly as `Execute technical spike` or `Review technical spike`.
+Use `technical_answer + execute_spike` to investigate a bounded technical question. Use
+`spike_assessment + review_spike` to assess an existing Spike report or document. A request for
+`implementation_plan` belongs to Feature Delivery and conflicts with this playbook. Record Playbook Selection
+`Primary goal` exactly as `Execute technical spike` or `Review technical spike`.
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
@@ -51,6 +54,8 @@ Runtime bootstrap:
 - The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
 - Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
   reopened or overridden by historical conclusions.
+- Compare the requested outcome with the selected objective before preparation. Stop with `run_goal_conflict` when
+  they disagree; do not drop either instruction or silently prefer the later field.
 - The requested profile and planning lifecycle are mandatory. The Delivery Activation Barrier is not applicable:
   Technical Spike never enters remediation or changes production source or external systems.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
@@ -100,6 +105,11 @@ this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_on
 implementation plan; Technical Spike never does. Preserve distinct `Workflow outcome` and `Engineering outcome`
 fields. Set `Implementation plan` to `Not created; Technical Spike produces spike_report.md` and link the completed
 `spike_report.md`.
+
+Make `spike_report.md` self-contained with compact direct repository/document evidence. Final response must name the
+disposition, strongest evidence, unresolved decisions, exact next workflow, measured budget status, and link
+`spike_report.md` plus terminal `work_record.md`. On finalization failure, link `finalization_failure.json` instead of
+claiming terminal validation passed.
 
 For `execute_spike`, choose exactly one `Workflow result`: `Question answered`, `Partially answered`, or `Inconclusive`.
 For `review_spike`, choose exactly one: `Accepted`, `Changes required`, or `Inconclusive`.

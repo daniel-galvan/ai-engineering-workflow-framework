@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -17,6 +17,14 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
 CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
+PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
+PROMPT_TEMPLATES = {
+    "feature_delivery": "feature_delivery_run_prompt.md",
+    "sentry_issue_remediation": "sentry_issue_run_prompt.md",
+    "technical_spike": "technical_spike_run_prompt.md",
+    "techops_issue_remediation": "techops_issue_run_prompt.md",
+    "vulnerability_investigation": "vulnerability_issue_run_prompt.md",
+}
 V22_FIXTURE = ROOT / "tests" / "fixtures" / "v22_sentry_planning.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
@@ -40,19 +48,39 @@ TECHNICAL_SPIKE_DISPOSITIONS = {
     },
 }
 MODEL_EFFORT_PATTERN = re.compile(
-    r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)\s*$", re.IGNORECASE
+    r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)(?:\s*;.*)?$", re.IGNORECASE
 )
+AGENT_ROLE_LABELS = {
+    "orchestrator": "Orchestrator",
+    "current_state_investigator": "Current-State Investigator",
+    "dependency_analyst": "Dependency Analyst",
+    "repository_integrator": "Repository Integrator",
+    "solution_architect": "Solution Architect",
+    "reviewer": "Reviewer",
+    "implementer": "Implementer",
+    "tester": "Tester",
+    "documenter": "Documenter",
+}
 ROLE_LABELS = {
+    **AGENT_ROLE_LABELS,
     "evidence-topology": "Evidence topology",
     "fix-design": "Fix design",
     "failure-topology": "Failure topology",
     "repository-integration": "Repository integration",
     "handoff": "Documenter",
-    "documenter": "Documenter",
     "sentry_current_state_investigator": "Evidence topology",
     "sentry_solution_architect": "Fix design",
     "sentry_repository_integrator": "Repository integration",
 }
+ROLE_AGENTS = {
+    **{label: agent for agent, label in AGENT_ROLE_LABELS.items()},
+    "Current-State Investigator / Sentry Evidence": "current_state_investigator",
+    "Evidence topology": "sentry_current_state_investigator",
+    "Failure topology": "sentry_dependency_analyst",
+    "Repository integration": "sentry_repository_integrator",
+    "Fix design": "sentry_solution_architect",
+}
+FINALIZATION_STATUS_FILENAME = "finalization_failure.json"
 ANALYTICAL_FAILURE_STAGES = {
     "evidence_topology": {
         "binding": "sentry_current_state_investigator",
@@ -171,9 +199,54 @@ def _normalize_prompt_identity(value: object) -> object:
     return " / ".join(parts)
 
 
-def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> None:
+def _frontmatter_version(path: Path) -> str:
+    match = re.search(r"^version:\s*(\S+)\s*$", path.read_text(), re.MULTILINE)
+    if not match:
+        raise ValueError(f"document_version_unavailable:{path.relative_to(ROOT)}")
+    return match.group(1)
+
+
+def _prepared_manifest(packet_path: Path | None) -> tuple[dict[str, object], Path | None]:
+    if packet_path is None:
+        return {}, None
+    path = packet_path.parent / "role_bindings.json"
+    if not path.is_file():
+        return {}, None
+    try:
+        return json.loads(path.read_text()), path
+    except json.JSONDecodeError as error:
+        raise ValueError(f"invalid_role_binding_manifest:{path}:{error}") from error
+
+
+def _normalize_packet(
+    packet: dict[str, object], closure: dict[str, object], packet_path: Path | None = None,
+) -> None:
+    manifest, manifest_path = _prepared_manifest(packet_path)
     identity = packet.get("identity", {})
     if isinstance(identity, dict):
+        playbook = str(manifest.get("playbook", ""))
+        if playbook:
+            playbook_path = ROOT / "playbooks" / f"{playbook}.md"
+            prompt_path = ROOT / "templates" / PROMPT_TEMPLATES[playbook]
+            plugin = json.loads(PLUGIN_MANIFEST.read_text())
+            conformance = str(identity.get("Prompt template / revision / conformance", "")).split(" / ")[-1]
+            identity.update({
+                "Playbook / version": f"playbooks/{playbook}.md / {_frontmatter_version(playbook_path)}",
+                "Plugin package / version": f"{plugin['name']} / {plugin['version']}",
+                "Prompt template / revision / conformance": (
+                    f"templates/{prompt_path.name} / {_frontmatter_version(prompt_path)} / {conformance}"
+                ),
+                "Role binding manifest": str(manifest_path),
+                "Coordinator execution": "active parent session; no dedicated Coordinator worker spawned",
+            })
+            for field, value in (
+                ("Provider/runtime configuration", manifest.get("provider_runtime_configuration")),
+                ("Provider configuration source/status", manifest.get("provider_configuration_source_status")),
+                ("Role-policy baseline ID", manifest.get("baseline_id")),
+                ("Run input manifest", manifest.get("run_input_manifest", {}).get("path")),
+            ):
+                if value:
+                    identity[field] = value
         framework = str(identity.get("Framework commit / status", ""))
         revision = re.search(r"[0-9a-fA-F]{40}", framework)
         status = re.search(r"\b(Clean|Dirty)\b", framework, re.IGNORECASE)
@@ -197,13 +270,20 @@ def _normalize_packet(packet: dict[str, object], closure: dict[str, object]) -> 
         ):
             identity["Profile status"] = "executed"
     ledger_by_worker: dict[str, dict[str, object]] = {}
+    bindings = manifest.get("bindings", {})
     for row in packet.get("workers", []):
         if not isinstance(row, dict):
             continue
-        role = str(row.get("Role", "")).strip().lower()
+        raw_role = str(row.get("Role", "")).strip()
+        agent = raw_role if raw_role in bindings else ROLE_AGENTS.get(raw_role)
+        role = raw_role.lower()
         if role in ROLE_LABELS:
             row["Role"] = ROLE_LABELS[role]
-        row["Configured model/effort"] = _normalize_model_effort(row.get("Configured model/effort", ""))
+        binding = bindings.get(agent, {}) if agent else {}
+        row["Configured model/effort"] = (
+            f"{binding['model']} / {binding['effort']}" if binding
+            else _normalize_model_effort(row.get("Configured model/effort", ""))
+        )
         ledger_by_worker[str(row.get("Worker", "")).strip().lower()] = row
     for row in packet.get("worker_results", []):
         if not isinstance(row, dict):
@@ -578,6 +658,78 @@ Provenance: {handoff['provenance']}
     return "\n".join(sections)
 
 
+def _finalization_status(packet_path: Path) -> tuple[Path, dict[str, object]]:
+    path = packet_path.parent / FINALIZATION_STATUS_FILENAME
+    if not path.is_file():
+        return path, {}
+    try:
+        return path, json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return path, {}
+
+
+def _record_pre_release(
+    packet_path: Path, status: str, errors: list[str], previous: dict[str, object],
+) -> dict[str, object]:
+    path = packet_path.parent / FINALIZATION_STATUS_FILENAME
+    now = datetime.now(timezone.utc)
+    attempts = int(previous.get("attempt_count", 0)) + (status == "failed")
+    first = previous.get("first_attempt_at") or now.isoformat().replace("+00:00", "Z")
+    value = {
+        "schema_version": 1,
+        "status": status,
+        "attempt_count": attempts,
+        "correction_allowed": status == "failed" and attempts == 1,
+        "first_attempt_at": first,
+        "last_attempt_at": now.isoformat().replace("+00:00", "Z"),
+        "shutdown_deadline": (
+            (now + timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
+            if status == "failed" and attempts >= 2 else None
+        ),
+        "errors": errors,
+    }
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    return value
+
+
+def _update_run_budget(packet_path: Path) -> str | None:
+    path = packet_path.parent / "run_budget.json"
+    if not path.is_file():
+        return None
+    value = json.loads(path.read_text())
+    deadline = datetime.fromisoformat(str(value["deadline_at"]).replace("Z", "+00:00"))
+    now = datetime.now(timezone.utc)
+    if value.get("status") not in {
+        "exhausted_with_useful_result",
+        "stopped_by_indispensable_evidence",
+        "exceeded_during_finalization",
+    }:
+        value["status"] = "within_budget" if now <= deadline else "exceeded_during_finalization"
+    value["last_checked_at"] = now.isoformat().replace("+00:00", "Z")
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    return str(value["status"])
+
+
+def _sync_spike_report_budget(packet_path: Path, packet: dict[str, object], status: str | None) -> None:
+    if not status:
+        return
+    identity = packet.get("identity", {})
+    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+    if playbook != "technical_spike":
+        return
+    report = packet_path.parent / "spike_report.md"
+    if not report.is_file():
+        return
+    updated, count = re.subn(
+        r"^\| Budget status \|[^|]*\|$",
+        f"| Budget status | {status} |",
+        report.read_text(),
+        flags=re.MULTILINE,
+    )
+    if count == 1:
+        report.write_text(updated)
+
+
 def finalize(
     packet_path: Path,
     closure_path: Path,
@@ -588,46 +740,88 @@ def finalize(
     framework_revision: str | None = None,
     framework_status: str | None = None,
 ) -> None:
+    status_path, previous_status = _finalization_status(packet_path)
+    if pre_release and previous_status.get("status") == "failed" and int(
+        previous_status.get("attempt_count", 0)
+    ) >= 2:
+        raise ValueError(
+            f"finalization_contract_failure:correction_limit_reached;receipt={status_path}"
+        )
     packet = json.loads(packet_path.read_text())
     closure = json.loads(closure_path.read_text())
+    budget_status = _update_run_budget(packet_path)
+    errors: list[str] = []
+    packet_ready = False
     supplied_identity = (coordinator_model_effort, framework_revision, framework_status)
     if any(supplied_identity) and not all(supplied_identity):
-        raise ValueError(
+        errors.append(
             "coordinator_model_effort, framework_revision, and framework_status must be supplied together"
         )
-    if all(supplied_identity):
+    elif all(supplied_identity):
         packet["identity"]["Coordinator model/effort"] = coordinator_model_effort
         packet["identity"]["Framework commit / status"] = (
             f"{framework_revision} / {framework_status.title()}"
         )
-    _validate_shapes(packet, closure)
-    _normalize_packet(packet, closure)
-    _validate_handoff(packet)
-    _reconcile_runtime_state(packet, closure["runtime_closure"])
-    rendered = render(packet)
+    if not errors:
+        try:
+            _validate_shapes(packet, closure)
+            _normalize_packet(packet, closure, packet_path)
+            _sync_spike_report_budget(packet_path, packet, budget_status)
+            packet_ready = True
+        except (KeyError, TypeError, ValueError) as error:
+            errors.append(str(error))
+    if packet_ready:
+        try:
+            _validate_handoff(packet)
+        except ValueError as error:
+            errors.append(str(error))
+        try:
+            _reconcile_runtime_state(packet, closure["runtime_closure"])
+        except (KeyError, TypeError, ValueError) as error:
+            errors.append(str(error))
+    if packet_ready:
+        try:
+            rendered = render(packet)
+        except (KeyError, TypeError, ValueError) as error:
+            errors.append(str(error))
+            rendered = ""
+    else:
+        rendered = ""
     record_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=record_path.parent, suffix=".md", delete=False) as handle:
         temporary = Path(handle.name)
         handle.write(rendered)
     try:
-        validator_args = [sys.executable, str(VALIDATOR)]
-        if not pre_release:
-            validator_args.append("--emit-handoff")
+        result = None
+        if rendered:
+            validator_args = [sys.executable, str(VALIDATOR)]
+            if not pre_release:
+                validator_args.append("--emit-handoff")
+            if pre_release:
+                validator_args.append("--allow-unreleased")
+            validator_args.append(str(temporary))
+            result = subprocess.run(
+                validator_args,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode:
+                errors.append(result.stdout.strip() or result.stderr.strip() or "work_record_validation_failed")
+        errors = list(dict.fromkeys(errors))
+        if errors:
+            if pre_release:
+                status = _record_pre_release(packet_path, "failed", errors, previous_status)
+                prefix = "finalization_contract_failure:" if status["attempt_count"] >= 2 else ""
+                raise ValueError(prefix + "\n".join(errors) + f"\nreceipt={status_path}")
+            raise ValueError("\n".join(errors))
         if pre_release:
-            validator_args.append("--allow-unreleased")
-        validator_args.append(str(temporary))
-        result = subprocess.run(
-            validator_args,
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode:
-            raise ValueError(result.stdout.strip() or result.stderr.strip() or "work_record_validation_failed")
+            status_path.unlink(missing_ok=True)
         if not pre_release:
             temporary.replace(record_path)
-        print(result.stdout, end="")
+        if result:
+            print(result.stdout, end="")
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -861,6 +1055,12 @@ def self_test() -> None:
         (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text(),
         re.MULTILINE,
     ).group(1)
+    technical_spike_version = re.search(
+        r"^version: (\S+)$", (ROOT / "playbooks" / "technical_spike.md").read_text(), re.MULTILINE,
+    ).group(1)
+    technical_spike_prompt_version = re.search(
+        r"^version: (\S+)$", (ROOT / "templates" / "technical_spike_run_prompt.md").read_text(), re.MULTILINE,
+    ).group(1)
     packet = {
         "work_item": {"ID": "ITEM-1", "Title": "Test", "Last Updated": "2026-08-27T00:00:00Z"},
         "playbook_selection": {
@@ -1034,7 +1234,7 @@ def self_test() -> None:
         spike = json.loads(json.dumps(packet))
         spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
         spike["identity"].update({
-            "Playbook / version": "playbooks/technical_spike.md / 0.1.0",
+            "Playbook / version": f"playbooks/technical_spike.md / {technical_spike_version}",
             "Lifecycle": "planning",
             "State": "completed",
             "Workflow outcome": "completed",
@@ -1045,7 +1245,7 @@ def self_test() -> None:
             "implementation_plan": "Not created; Technical Spike produces spike_report.md",
             "provenance": (
                 f"plugin Not applicable; framework revision {'a' * 40} (clean); "
-                "playbook technical_spike 0.1.0."
+                f"playbook technical_spike {technical_spike_version}."
             ),
         })
         _validate_handoff(spike)
@@ -1056,6 +1256,268 @@ def self_test() -> None:
             assert "requires Workflow result exactly one of" in str(error)
         else:
             raise AssertionError("execute_spike must reject review_spike dispositions")
+        spike_execution = root / "spike-execution"
+        spike_execution.mkdir()
+        spike_inputs = root / "spike-inputs.json"
+        spike_inputs.write_text(json.dumps({
+            "schema_version": 1,
+            "status": "explicit",
+            "precedence_rule": "Current user decisions govern current-run evidence and scope.",
+            "inputs": [{
+                "Input ID": "IN-001", "Input or artifact": "Existing Spike",
+                "Source or path": "Current user request", "Authority": "Review target",
+                "Classification": "Reference document", "Expected use": "Assess evidence",
+                "Status": "Registered",
+            }],
+        }))
+        prepared_spike = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
+             "--execution-repository", str(spike_execution), "--work-item", "SPIKE-1",
+             "--playbook", "technical_spike", "--input-manifest", str(spike_inputs)],
+            capture_output=True, text=True, check=True,
+        )
+        prepared_spike_data = json.loads(prepared_spike.stdout)
+        spike_root = Path(prepared_spike_data["artifact_root"])
+        spike_report = spike_root / "spike_report.md"
+        spike_report.write_text("""# Technical Spike Report
+
+## Metadata
+| Field | Value |
+| --- | --- |
+| Work item | SPIKE-1 |
+| Objective | review_spike |
+| Primary question | Does existing evidence support implementation planning? |
+| Timebox or evidence budget | One bounded review |
+| Success criterion | Separate supported claims from unknowns |
+| Execution profile | deep |
+| Review target | Existing Spike |
+
+## Scope and Non-goals
+Review only; no implementation plan.
+
+## Method and Evidence
+| Evidence ID | Method or source | Observation | Status | Limitation |
+| --- | --- | --- | --- | --- |
+| E-001 | Repository trace | One material gap remains | Verified | Runtime not observed |
+
+## Direct Evidence
+| Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
+| --- | --- | --- | --- | --- | --- |
+| E-001 | Execution repository | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | src/boundary.py:10 | One material gap remains | Verified |
+
+## Experiments and Checks
+| Hypothesis or review criterion | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+| --- | --- | --- | --- | --- |
+| Existing evidence is complete | Not run | Complete or incomplete | Not run; source review was sufficient | Changes required |
+
+## Findings
+One material evidence gap remains.
+
+## Options and Tradeoffs
+| Option | Evidence | Benefits | Costs or risks | When to choose |
+| --- | --- | --- | --- | --- |
+| Revise Spike | E-001 | Closes evidence gap | Additional review | Before Feature Delivery |
+
+## Recommendation
+Revise the existing Spike.
+
+## Remaining Unknowns and Follow-up
+Runtime behavior remains unverified.
+
+## Disposition
+| Field | Value |
+| --- | --- |
+| Workflow result | Changes required |
+| Question or review conclusion | Existing evidence is incomplete |
+| Budget status | within_budget |
+| Feature Delivery handoff | Needs follow-up |
+""")
+        (spike_root / "run_budget.json").write_text(json.dumps({
+            "schema_version": 1,
+            "started_at": "2000-01-01T00:00:00Z",
+            "deadline_at": "2000-01-01T00:01:00Z",
+            "timebox_minutes": 1,
+            "status": "within_budget",
+        }, indent=2) + "\n")
+        preserved_budget_root = root / "preserved-budget"
+        preserved_budget_root.mkdir()
+        (preserved_budget_root / "run_budget.json").write_text(json.dumps({
+            "schema_version": 1,
+            "started_at": "2000-01-01T00:00:00Z",
+            "deadline_at": "2000-01-01T00:01:00Z",
+            "timebox_minutes": 1,
+            "status": "exhausted_with_useful_result",
+        }, indent=2) + "\n")
+        assert _update_run_budget(
+            preserved_budget_root / "finalization_packet.json"
+        ) == "exhausted_with_useful_result"
+        spike_packet_path = Path(prepared_spike_data["finalization_packet"])
+        spike_packet = json.loads(spike_packet_path.read_text())
+        spike_manifest = json.loads(Path(prepared_spike_data["role_binding_manifest"]).read_text())
+        spike_packet["work_item"].update({
+            "Title": "Review existing Spike", "Last Updated": "2026-09-07T00:00:00Z",
+        })
+        spike_packet["playbook_selection"].update({
+            "Primary evidence": "Existing Spike and repository evidence",
+            "Primary goal": "Review technical spike", "Selected playbook": "Technical Spike",
+            "Closest alternative": "Feature Delivery implementation planning",
+            "Why this playbook": "Primary goal is evidence review, not implementation planning",
+        })
+        spike_packet["repositories"] = [{
+            "Repository role": "Execution", "Declared path": str(spike_execution),
+            "Resolved path": str(spike_execution), "Branch / detached": "main",
+            "Full revision": "a" * 40, "Clean status": "Clean", "User-selected ref": "Yes",
+            "Release mapping": "Unknown", "Evidence eligibility": "Accepted",
+        }]
+        spike_packet["identity"].update({
+            "Run ID": "spike-review-001", "Framework commit / status": f"{'a' * 40} / Dirty",
+            "Plugin package / version": "corrupted / value",
+            "Provider configuration source/status": "corrupted",
+            "Prompt template / revision / conformance": (
+                f"templates/technical_spike_run_prompt.md / {technical_spike_prompt_version} / pass"
+            ),
+            "Coordinator model/effort": "gpt-5.6-luna / xhigh", "Requested profile": "deep",
+            "Activated profile": "deep", "Executed profile": "deep", "Profile status": "executed",
+            "Role-policy baseline ID": "corrupted", "Lifecycle": "planning", "State": "completed",
+            "Engineering state": "understood",
+            "Workflow outcome": "completed", "Engineering outcome": "partially_solved",
+        })
+        spike_packet["finalization"].update({
+            "Concurrent-run decision": "new run", "Active related run or work item": "None",
+            "Related-run check": "Passed", "Final reconciliation": "Pending runtime release",
+            "Finalization schema": "Pending",
+        })
+        worker_specs = (
+            ("spike-context", "current_state_investigator"),
+            ("spike-assessment", "reviewer"),
+            ("repository-integration", "repository_integrator"),
+            ("handoff", "documenter"),
+        )
+        spike_packet["workers"] = []
+        spike_packet["worker_results"] = []
+        for worker, role in worker_specs:
+            binding = spike_manifest["bindings"][role]
+            configured = (
+                f"incorrect/none; expected {binding['model']}/{binding['effort']}; definition {binding['definition']}; "
+                f"sha {binding['definition_sha256']}"
+            )
+            spike_packet["workers"].append({
+                "Worker": worker, "Role": role, "Assigned inputs": "IN-001", "Mode": "delegated",
+                "Depth": "deep", "Skills": "technical spike review", "Tools": "mapped operations",
+                "Capacity": "Not exposed", "Configured model/effort": configured,
+                "Provider-observed model/effort": (
+                    f"Not exposed; configured binding {binding['model']}/{binding['effort']}"
+                ),
+                "Usage": "Not exposed", "Depends on": "prior stage", "Outcome": "complete",
+                "Confidence": "High",
+            })
+            spike_packet["worker_results"].append({
+                "Worker": worker, "Outcome": "complete", "Confidence": "High",
+                "Unique contribution": f"Completed {worker}", "Evidence / claim refs": "E-001 / C-001",
+                "Uncertainties / blockers": "None", "Actual model/effort": "Not exposed",
+                "Usage/credits": "Not exposed",
+            })
+        spike_packet["synchronization"] = [{
+            "Stage": "Analytical fan-in", "Workers launched": "spike assessment and repository integration",
+            "Launch mode / exception": "Parallel after context", "Worker outcomes": "complete",
+            "Results summarized": "Yes", "Barrier status": "Pending runtime release",
+        }]
+        spike_packet["evidence"] = [{
+            "Evidence ID": "E-001", "Source": str(spike_report), "Summary": "Evidence gap found",
+            "Confidence": "High", "Uncertainty": "Runtime not observed", "Status": "Verified",
+        }]
+        spike_packet["claims"] = [{
+            "Claim ID": "C-001", "Claim": "Existing Spike needs revision", "Evidence refs": "E-001",
+            "Confidence": "High", "Uncertainty": "Runtime not observed", "Status": "Supported",
+        }]
+        spike_packet["decisions"] = [{
+            "Decision ID": "D-001", "Decision": "Require Spike revision", "Claim refs": "C-001",
+            "Owner": "Reviewer", "Status": "Applied",
+        }]
+        spike_packet["actions"] = [{
+            "Action ID": "A-001", "Action": "Revise existing Spike", "Decision ref": "D-001",
+            "Owner": "Work-item owner", "Status": "Proposed",
+        }]
+        spike_packet["durable_artifacts"].extend([
+            {"Artifact": "Spike report", "Path": str(spike_report), "Status": "Created",
+             "Purpose": "Technical Spike disposition and direct evidence"},
+            {"Artifact": "Runtime closure", "Path": str(spike_root / "runtime_closure.json"),
+             "Status": "Pending", "Purpose": "Provider receipt"},
+            {"Artifact": "Work record", "Path": str(spike_root / "work_record.md"),
+             "Status": "Pending", "Purpose": "Canonical terminal record"},
+        ])
+        spike_packet["handoff"] = {
+            "workflow_result": "Changes required",
+            "implementation_plan": "Not created; Technical Spike produces spike_report.md",
+            "established": ["Existing Spike needs revision before Feature Delivery."],
+            "best_current_explanations": [],
+            "next_action": {"owner": "Work-item owner", "action": "Revise existing Spike.",
+                            "complete_when": "Material evidence gap is closed."},
+            "artifacts": [str(spike_report), str(spike_root / "work_record.md")],
+            "execution": "deep/planning; validation passed; workers complete; runtime released",
+            "provenance": (
+                f"plugin {spike_packet['identity']['Plugin package / version']}; framework revision "
+                f"{'a' * 40} (dirty); playbook technical_spike {technical_spike_version}."
+            ),
+        }
+        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
+        spike_closure = spike_root / "runtime_closure.json"
+        spike_handles = [f"01a00000-0000-7000-8000-{index:012d}" for index in range(1, 5)]
+        spike_closure.write_text(json.dumps({"runtime_closure": [{
+            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
+            "Completed worker handles": ", ".join(spike_handles), "Runtime status": "Released",
+            "Remaining active handles": "None",
+            "Closure evidence or blocker": f"Provider release confirmed. Completed handles: {', '.join(spike_handles)}.",
+        }]}, indent=2) + "\n")
+        spike_record = spike_root / "work_record.md"
+        finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
+        assert "| Budget status | exceeded_during_finalization |" in spike_report.read_text()
+        finalize(spike_packet_path, spike_closure, spike_record)
+        spike_rendered = spike_record.read_text()
+        assert "Workflow result: Changes required" in spike_rendered
+        assert "| spike-context | Current-State Investigator |" in spike_rendered
+        assert "gpt-5.6-luna / high" in spike_rendered
+        assert "| Role-policy baseline ID | corrupted |" not in spike_rendered
+        assert "[spike_report.md](./spike_report.md)" in spike_rendered
+        malformed_spike = json.loads(spike_packet_path.read_text())
+        malformed_spike["workers"] = {}
+        spike_packet_path.write_text(json.dumps(malformed_spike, indent=2) + "\n")
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+        except ValueError as error:
+            assert "packet_schema_invalid" in str(error)
+        else:
+            raise AssertionError("malformed packet shape must fail pre-release")
+        shape_failure = json.loads((spike_root / FINALIZATION_STATUS_FILENAME).read_text())
+        assert shape_failure["attempt_count"] == 1
+        assert shape_failure["correction_allowed"] is True
+        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
+        finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
+        broken_spike = json.loads(spike_packet_path.read_text())
+        broken_spike["playbook_selection"]["Primary goal"] = "Create implementation plan"
+        broken_spike["identity"]["Framework commit / status"] = "malformed"
+        spike_packet_path.write_text(json.dumps(broken_spike, indent=2) + "\n")
+        for attempt in (1, 2):
+            try:
+                finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+            except ValueError as error:
+                assert "Technical Spike Primary goal must be" in str(error)
+                assert "Framework commit / status received" in str(error)
+                assert ("finalization_contract_failure:" in str(error)) == (attempt == 2)
+            else:
+                raise AssertionError("invalid corrected packet must fail pre-release")
+        failure_receipt = json.loads((spike_root / FINALIZATION_STATUS_FILENAME).read_text())
+        assert failure_receipt["attempt_count"] == 2
+        assert failure_receipt["correction_allowed"] is False
+        assert failure_receipt["shutdown_deadline"]
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+        except ValueError as error:
+            assert "correction_limit_reached" in str(error)
+        else:
+            raise AssertionError("third pre-release attempt must stop before validation")
         source.write_text(json.dumps(packet))
         framework_revision = subprocess.run(
             ["git", "-C", str(ROOT), "rev-parse", "HEAD"],

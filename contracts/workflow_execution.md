@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.20
+version: 0.4.21
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 ---
 
 # Workflow Execution Contract
@@ -610,6 +610,20 @@ revision, execution repository, resolved provider configuration, profile, lifecy
 stops the run with `run_prompt_nonconformant`; an absent execution-repository `.codex/agents/` runtime view alone does
 not. Claiming the expected revision does not make a structurally incomplete prompt conformant.
 
+Before preparation, the Orchestrator MUST compare the current user's requested outcome with the selected playbook
+objective. It MUST pass both to `prepare_run.py` as `--requested-outcome` and `--workflow-objective`. Preparation stops
+before artifact creation with `run_goal_conflict` when they disagree. Both declarations remain authoritative input rows;
+the Orchestrator MUST NOT discard an earlier natural-language outcome, silently prefer a later workflow field, or ask a
+worker to resolve the contradiction. `implementation_plan` requires Feature Delivery `implementation_planning`;
+Technical Spike accepts only `technical_answer + execute_spike` or `spike_assessment + review_spike`.
+
+When the request declares an end-to-end duration, preparation MUST receive the captured task start and duration and
+create `run_budget.json` with `started_at`, `deadline_at`, and terminal status. `within_budget`,
+`exhausted_with_useful_result`, `exceeded_during_finalization`, and `stopped_by_indispensable_evidence` are distinct;
+`Completed` is not a valid budget status. An already exhausted duration stops before activation with
+`run_budget_exhausted_before_activation`. Finalization updates the receipt and Technical Spike report against the
+actual deadline.
+
 The requested profile is an execution requirement, not descriptive metadata. At initialization, the Orchestrator records
 the requested profile and its required workers. Before completing the run, it records the executed profile and profile
 status.
@@ -1194,7 +1208,10 @@ prepared packet skeleton is the Documenter's pre-release source snapshot; `runti
 receipt. A prepared Standard Sentry work-record skeleton is not progressively populated during analysis. The rendered
 and released `work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance
 failure.
-Return the packet and exact error to the same Documenter and repeat the pre-release check. Pin the
+The first failure writes `finalization_failure.json`, permits one correction, and returns the aggregated errors to the
+same Documenter. If the corrected packet fails, the second receipt sets `correction_allowed` to false, records a
+shutdown deadline, and returns `finalization_contract_failure`. Never invoke a third pre-release attempt; the finalizer
+rejects it before validation. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
 `plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and
 recording provider closure in `runtime_closure.json`, finalization passes only when the finalizer exits zero and its

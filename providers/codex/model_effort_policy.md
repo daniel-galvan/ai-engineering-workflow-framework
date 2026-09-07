@@ -1,13 +1,13 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.4.17
+version: 0.4.18
 status: Pilot
 provider: codex
 provider_independent_profiles: true
 baseline_id: codex-role-policy-v20260827032839
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 ---
 
 # Codex Model and Effort Policy
@@ -44,7 +44,7 @@ guidance](https://developers.openai.com/api/docs/guides/latest-model).
 | Role | Codex model | Policy effort | TOML value |
 | --- | --- | --- | --- |
 | Orchestrator | `gpt-5.6-luna` | Extra High | `xhigh` |
-| Current-State Investigator / Sentry Evidence | `gpt-5.6-luna` | High | `high` |
+| Current-State Investigator | `gpt-5.6-luna` | High | `high` |
 | Dependency Analyst | `gpt-5.6-luna` | High | `high` |
 | Repository Integrator | `gpt-5.6-luna` | High | `high` |
 | Solution Architect | `gpt-5.6-sol` | Light | `low` |
@@ -81,7 +81,7 @@ override a pinned agent model or effort.
 | Worker responsibility | Codex agent | Reuses role policy |
 | --- | --- | --- |
 | Orchestration | `sentry_orchestrator` | Orchestrator |
-| Sentry evidence and initial topology | `sentry_current_state_investigator` | Current-State Investigator / Sentry Evidence |
+| Sentry evidence and initial topology | `sentry_current_state_investigator` | Current-State Investigator |
 | Failure topology and root-cause analysis | `sentry_dependency_analyst` | Dependency Analyst |
 | Fix design | `sentry_solution_architect` | Solution Architect |
 | Repository integration | `sentry_repository_integrator` | Repository Integrator |

@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.1.0
+version: 0.1.2
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -37,6 +37,15 @@ State what was investigated or reviewed and what was intentionally excluded.
 | Evidence ID | Method or source | Observation | Status | Limitation |
 | --- | --- | --- | --- | --- |
 | | | | Verified / Inferred / Contradicted / Unknown | |
+
+## Direct Evidence
+
+Keep final report independently usable. Cite direct repository, work-item, document, experiment, or runtime evidence;
+do not make every row point only to an intermediate worker artifact.
+
+| Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | Verified / Supplied / Inferred / Unknown |
 
 ## Experiments and Checks
 
@@ -75,7 +84,7 @@ Use the exact disposition allowed by the Technical Spike playbook for the select
 | --- | --- |
 | Workflow result | |
 | Question or review conclusion | |
-| Budget status | Completed / Exhausted / Stopped by indispensable evidence |
+| Budget status | within_budget / exhausted_with_useful_result / exceeded_during_finalization / stopped_by_indispensable_evidence |
 | Feature Delivery handoff | Ready to consume / Needs follow-up / Not applicable |
 
 Do not claim Feature Delivery readiness here. When implementation planning is the next action, identify the evidence a

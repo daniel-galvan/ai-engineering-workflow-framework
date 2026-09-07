@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Example
-version: 0.1.0
+version: 0.1.1
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-07
 depends_on:
   - ../playbooks/technical_spike.md
   - ../templates/technical_spike_run_prompt.md
@@ -29,6 +29,7 @@ Playbook: playbooks/technical_spike.md
 Canonical run template: templates/technical_spike_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
+Requested outcome: technical_answer
 Spike objective: execute_spike
 Primary question: <ONE-DECISION-RELEVANT-QUESTION>
 Timebox or evidence budget: <BOUNDED-LIMIT>
@@ -47,8 +48,9 @@ The work record and report are created at:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.md
 ```
 
-The report records the question, budget, evidence, experiments, options, recommendation, limitations, remaining
-unknowns, and exact disposition. It does not create `implementation_plan.md`.
+The report records the question, measured budget status, direct evidence with repository revision and file or artifact
+location, experiments, options, recommendation, limitations, remaining unknowns, and exact disposition. It does not
+create `implementation_plan.md`.
 
 If implementation planning is next, start a separate Feature Delivery planning run and supply the accepted Spike report
 as current-run supporting evidence.
