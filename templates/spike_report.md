@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.1.2
+version: 0.1.3
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -26,6 +26,7 @@ budget. It is a learning artifact, not an implementation plan or authorization t
 | Execution profile | `standard` / `deep` |
 | Repositories and revisions | |
 | Review target | Path or URL / Not applicable |
+| Comparison reference | Path or URL / Not applicable |
 | Last updated | |
 
 ## Scope and Non-goals
@@ -69,6 +70,15 @@ List only findings supported by the evidence above. Keep facts, inferences, and 
 
 State the answer or best-supported direction, confidence, rationale, and material limitations. `Inconclusive` is valid
 when the budget was exhausted without enough evidence.
+
+## Reference Comparison
+
+Complete this only after the independent recommendation. For `execute_spike` with no declared comparison reference,
+or for `review_spike`, use one `Not applicable` row.
+
+| Reference | Agreement | Difference or omission | Impact on recommendation |
+| --- | --- | --- | --- |
+| | | | |
 
 ## Remaining Unknowns and Follow-up
 

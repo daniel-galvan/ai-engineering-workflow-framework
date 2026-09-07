@@ -27,5 +27,7 @@ destination is not yet runnable.
 
 Produce an incremental integration plan with exact integration points and
 required adaptations. Reuse destination conventions and do not redesign
-unrelated systems. Do not modify source code or external systems.
+unrelated systems. Component or service names do not establish team ownership;
+preserve explicit scope and mark ownership unknown when evidence does not establish it.
+Do not modify source code or external systems.
 """

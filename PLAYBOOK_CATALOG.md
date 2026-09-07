@@ -1,6 +1,6 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.4.19
+version: 0.4.20
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07
@@ -45,6 +45,9 @@ The distinguishing seam is the learning artifact. A Technical Spike has a questi
 discriminating checks, explicit uncertainty, and one disposition. It produces `spike_report.md`, not an implementation
 plan, and never implies Feature Delivery readiness. Preparation mechanically rejects a requested implementation plan
 instead of silently converting the run into a Spike assessment.
+For `execute_spike`, an existing Spike is an optional comparison reference: the run establishes its answer
+independently, then records agreements, contradictions, and omissions. It becomes the review target only when the
+explicit objective is `review_spike`.
 
 ```mermaid
 flowchart TB

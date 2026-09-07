@@ -149,6 +149,8 @@ provider status before starting a replacement. Record coordinator-observed activ
 time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
 continuation, add only new inputs; never retroactively assign them to earlier workers. On Documenter-owned paths, use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
+Join the stored handle to each ordinary worker result during fan-in; do not ask a worker to invent or repeat a handle it
+was not given. Follow a playbook-specific handle-delivery protocol only when its durable artifact contract requires it.
 Count every successful provider activation, including that Documenter. A
 malformed call rejected before activation is a coordination error.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a

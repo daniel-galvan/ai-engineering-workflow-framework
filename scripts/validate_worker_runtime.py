@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -56,6 +57,19 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         errors.append("provider_instructions_unavailable")
     if not packet.get("model") or not packet.get("effort"):
         errors.append("provider_binding_incomplete")
+    budget_path = path.parent / "run_budget.json"
+    if budget_path.is_file():
+        try:
+            budget = json.loads(budget_path.read_text())
+            activation_deadline = datetime.fromisoformat(
+                str(budget["activation_deadline_at"]).replace("Z", "+00:00")
+            )
+            if activation_deadline.tzinfo is None:
+                raise ValueError
+            if datetime.now(UTC) >= activation_deadline.astimezone(UTC):
+                errors.append("run_budget_finalization_reserve")
+        except (KeyError, ValueError, json.JSONDecodeError, OSError):
+            errors.append("run_budget_invalid")
     input_manifest = packet.get("run_input_manifest")
     if not isinstance(input_manifest, dict):
         errors.append("run_input_manifest_not_delivered")
@@ -168,6 +182,13 @@ def self_test() -> None:
         }}}) + "\n")
         packet_sha256 = hashlib.sha256(packet.read_bytes()).hexdigest()
         assert activation_packet_errors(packet, "test_worker", packet_sha256) == []
+        (root / "run_budget.json").write_text(json.dumps({
+            "activation_deadline_at": "2000-01-01T00:00:00Z",
+        }))
+        assert activation_packet_errors(packet, "test_worker", packet_sha256) == [
+            "run_budget_finalization_reserve"
+        ]
+        (root / "run_budget.json").unlink()
         generated_packet = json.loads(packet.read_text())
         generated_packet["packets"]["test_worker"]["run_input_manifest"]["status"] = "generated_minimum"
         packet.write_text(json.dumps(generated_packet) + "\n")

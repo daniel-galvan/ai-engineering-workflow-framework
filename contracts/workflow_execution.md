@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.21
+version: 0.4.22
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -520,7 +520,7 @@ by the Orchestrator at fan-in.
 | Field              | Required    | Description                                                     |
 | ------------------ | ----------- | --------------------------------------------------------------- |
 | `worker_id`        | Yes         | Worker that produced the result.                                |
-| `worker_handle`    | Yes         | Exact provider-returned handle for this activation.             |
+| `worker_handle`    | Coordinator | Exact provider-returned handle joined to the result after activation. |
 | `outcome`          | Yes         | One of the shared worker outcomes.                              |
 | `summary`          | Yes         | The worker's unique contribution in a few sentences.            |
 | `inputs_consumed`  | Yes         | Assigned Input IDs and artifacts used, with disposition for assigned inputs not used. |
@@ -538,6 +538,11 @@ by the Orchestrator at fan-in.
 | `plan_readiness`   | Conditional | Fix-design disposition: `ready_for_implementation` or `awaiting_input`. |
 | `implementation_plan_action` | Conditional | Fix-design instruction to `create` or `omit` the implementation plan. |
 | `supported_remediation_boundary` | Conditional | Fix-design boundary supported by current-run evidence. |
+
+The worker does not know its provider handle unless the Coordinator explicitly supplies it. For ordinary worker
+results, the Coordinator joins the stored spawn handle during fan-in; absence from the worker-authored envelope is not
+a correction or retry condition. A playbook-specific durable artifact may require the field only when its protocol
+explicitly sends the exact handle to that worker before the artifact is written.
 | `supported_intended_change` | Conditional | Fix-design change supported by current-run evidence. |
 | `interface_change` | Conditional | Boolean stating whether the fix changes an API, event, payload, schema, or other interface. |
 | `interface_contract` | Conditional | Exact surface, request/response shapes, absence semantics, compatibility precedence, and rollout; `null` when no interface changes. |
@@ -616,9 +621,15 @@ before artifact creation with `run_goal_conflict` when they disagree. Both decla
 the Orchestrator MUST NOT discard an earlier natural-language outcome, silently prefer a later workflow field, or ask a
 worker to resolve the contradiction. `implementation_plan` requires Feature Delivery `implementation_planning`;
 Technical Spike accepts only `technical_answer + execute_spike` or `spike_assessment + review_spike`.
+The explicit populated `Requested outcome:` field MUST be copied verbatim into the supplied input manifest as
+`RUN-GOAL-001`; preparation rejects a missing or altered row with `run_goal_provenance_missing` or
+`run_goal_provenance_conflict`. The Orchestrator MUST NOT derive that row from the selected playbook or objective.
 
-When the request declares an end-to-end duration, preparation MUST receive the captured task start and duration and
-create `run_budget.json` with `started_at`, `deadline_at`, and terminal status. `within_budget`,
+When the request declares an end-to-end duration, the Orchestrator MUST capture the current-turn start before any
+provider inspection or evidence retrieval. Preparation receives that start and duration and creates `run_budget.json`
+with `started_at`, `deadline_at`, `activation_deadline_at`, a bounded finalization reserve, and terminal status. Every
+worker activation guard rejects a new spawn at or after `activation_deadline_at` with
+`run_budget_finalization_reserve`; the run proceeds directly to bounded terminal reporting. `within_budget`,
 `exhausted_with_useful_result`, `exceeded_during_finalization`, and `stopped_by_indispensable_evidence` are distinct;
 `Completed` is not a valid budget status. An already exhausted duration stops before activation with
 `run_budget_exhausted_before_activation`. Finalization updates the receipt and Technical Spike report against the
@@ -1182,7 +1193,10 @@ a validation error returned to the Documenter, not authority to decide a differe
 
 The renderer may canonicalize mechanically equivalent representations such as spacing around model/effort separators,
 known playbook title-to-path identity, framework commit/status separators, escaped Markdown table pipes, canonical role
-labels, labeled provider UUID lists, one `Workflow result:` prefix, and released terminal bookkeeping. Released terminal
+labels, labeled provider UUID lists, one `Workflow result:` prefix, and released terminal bookkeeping. For Technical
+Spike only, a candidate packet may retain workflow `State: handoff`; when all recorded worker results are complete and
+the selected objective's workflow result is valid, the renderer deterministically maps that transient state to
+`completed` plus the playbook-defined workflow and engineering outcomes. Released terminal
 bookkeeping includes final reconciliation, finalization-schema status, runtime-closure artifact status, and removal of
 obsolete finalization steps from an otherwise valid next action. It MUST NOT infer engineering facts, worker completion,
 provider release, or a different workflow outcome.

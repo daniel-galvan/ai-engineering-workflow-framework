@@ -130,7 +130,21 @@ def _playbook_name(value: str) -> str:
     raise ValueError(f"unknown_playbook:{value}")
 
 
-def _validate_run_goal(playbook: str, workflow_objective: str | None, requested_outcome: str | None) -> None:
+def _run_goal_row(requested_outcome: str | None) -> dict[str, str]:
+    return {
+        "Input ID": "RUN-GOAL-001", "Input or artifact": f"Requested outcome: {requested_outcome}",
+        "Source or path": "Current user request", "Authority": "Explicit user outcome",
+        "Classification": "requested outcome", "Expected use": "Validate playbook and objective selection",
+        "Status": "Registered",
+    }
+
+
+def _validate_run_goal(
+    playbook: str,
+    workflow_objective: str | None,
+    requested_outcome: str | None,
+    supplied_manifest: dict[str, object] | None,
+) -> None:
     if workflow_objective is None and requested_outcome is None:
         return
     if not workflow_objective or not requested_outcome:
@@ -146,6 +160,13 @@ def _validate_run_goal(playbook: str, workflow_objective: str | None, requested_
             f"run_goal_conflict:requested_outcome={requested_outcome};"
             f"selected_outcome={selected_outcome};workflow_objective={workflow_objective}"
         )
+    rows = supplied_manifest.get("inputs", []) if supplied_manifest else []
+    declarations = [row for row in rows if row.get("Input ID") == "RUN-GOAL-001"]
+    if len(declarations) != 1:
+        raise ValueError("run_goal_provenance_missing:RUN-GOAL-001")
+    expected = _run_goal_row(requested_outcome)
+    if any(declarations[0].get(field) != value for field, value in expected.items()):
+        raise ValueError("run_goal_provenance_conflict:RUN-GOAL-001")
 
 
 def _with_run_goal(
@@ -155,12 +176,7 @@ def _with_run_goal(
         return manifest
     rows = list(manifest["inputs"])
     additions = (
-        {
-            "Input ID": "RUN-GOAL-001", "Input or artifact": f"Requested outcome: {requested_outcome}",
-            "Source or path": "Current user request", "Authority": "Explicit user outcome",
-            "Classification": "requested outcome", "Expected use": "Validate playbook and objective selection",
-            "Status": "Registered",
-        },
+        _run_goal_row(requested_outcome),
         {
             "Input ID": "RUN-GOAL-002", "Input or artifact": f"Workflow objective: {workflow_objective}",
             "Source or path": "Current run prompt", "Authority": "Explicit workflow selection",
@@ -193,10 +209,15 @@ def _run_budget(started_at: str | None, timebox_minutes: int | None) -> dict[str
     deadline = started.astimezone(UTC) + timedelta(minutes=timebox_minutes)
     if deadline <= datetime.now(UTC):
         raise ValueError("run_budget_exhausted_before_activation")
+    reserve_seconds = min(120, max(1, timebox_minutes * 6))
     return {
         "schema_version": 1,
         "started_at": started.astimezone(UTC).isoformat().replace("+00:00", "Z"),
         "deadline_at": deadline.isoformat().replace("+00:00", "Z"),
+        "activation_deadline_at": (
+            deadline - timedelta(seconds=reserve_seconds)
+        ).isoformat().replace("+00:00", "Z"),
+        "finalization_reserve_seconds": reserve_seconds,
         "timebox_minutes": timebox_minutes,
         "status": "within_budget",
     }
@@ -424,13 +445,13 @@ def prepare_run(
         raise ValueError("execution_repository_unavailable")
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
-    _validate_run_goal(playbook, workflow_objective, requested_outcome)
     budget = _run_budget(started_at, timebox_minutes)
     resolved_execution_repository = execution_repository.resolve()
     artifact_root = resolved_execution_repository / ".thoughts" / work_item
     # Validate supplied input and provider bindings before creating, archiving, or
     # overwriting any run artifact. This makes invalid retries transactional.
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
+    _validate_run_goal(playbook, workflow_objective, requested_outcome, validated_supplied)
     resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
     manifest = resolve_bindings(playbook, resolved_runtime_agents)
     artifact_root.mkdir(parents=True, exist_ok=True)
@@ -705,6 +726,10 @@ def self_test() -> None:
         else:
             raise AssertionError("invalid input manifest must be rejected before artifact creation")
         assert not (execution / ".thoughts" / "ITEM-INVALID").exists()
+        goal_source = execution / "goal-inputs.json"
+        goal_manifest = json.loads(input_source.read_text())
+        goal_manifest["inputs"].append(_run_goal_row("spike_assessment"))
+        goal_source.write_text(json.dumps(goal_manifest))
         try:
             prepare_run(
                 execution, "ITEM-GOAL-CONFLICT", "technical_spike", None, False,
@@ -716,26 +741,39 @@ def self_test() -> None:
         else:
             raise AssertionError("contradictory requested outcome and objective must block")
         assert not (execution / ".thoughts" / "ITEM-GOAL-CONFLICT").exists()
+        try:
+            prepare_run(
+                execution, "ITEM-GOAL-INFERRED", "technical_spike", None, False,
+                input_manifest=input_source, workflow_objective="review_spike",
+                requested_outcome="spike_assessment",
+            )
+        except ValueError as error:
+            assert str(error) == "run_goal_provenance_missing:RUN-GOAL-001"
+        else:
+            raise AssertionError("a compatible but unproven inferred outcome must block")
+        assert not (execution / ".thoughts" / "ITEM-GOAL-INFERRED").exists()
         aligned = prepare_run(
             execution, "ITEM-GOAL-ALIGNED", "technical_spike", None, False,
-            input_manifest=input_source, workflow_objective="review_spike",
+            input_manifest=goal_source, workflow_objective="review_spike",
             requested_outcome="spike_assessment",
         )
         aligned_inputs = json.loads((Path(aligned["artifact_root"]) / RUN_INPUTS_FILENAME).read_text())["inputs"]
         assert {row["Input ID"] for row in aligned_inputs} >= {"RUN-GOAL-001", "RUN-GOAL-002"}
         budgeted = prepare_run(
             execution, "ITEM-BUDGET", "technical_spike", None, False,
-            input_manifest=input_source, workflow_objective="review_spike",
+            input_manifest=goal_source, workflow_objective="review_spike",
             requested_outcome="spike_assessment", started_at="2099-09-07T12:00:00Z",
             timebox_minutes=25,
         )
         budget_value = json.loads((Path(budgeted["artifact_root"]) / RUN_BUDGET_FILENAME).read_text())
         assert budget_value["deadline_at"] == "2099-09-07T12:25:00Z"
+        assert budget_value["activation_deadline_at"] == "2099-09-07T12:23:00Z"
+        assert budget_value["finalization_reserve_seconds"] == 120
         assert budgeted["run_budget"]["status"] == "within_budget"
         try:
             prepare_run(
                 execution, "ITEM-BUDGET-EXPIRED", "technical_spike", None, False,
-                input_manifest=input_source, workflow_objective="review_spike",
+                input_manifest=goal_source, workflow_objective="review_spike",
                 requested_outcome="spike_assessment", started_at="2000-01-01T00:00:00Z",
                 timebox_minutes=1,
             )

@@ -37,6 +37,8 @@ description: >-
    `spike_assessment` for review of an existing Spike, `implementation_plan` for implementation planning, and
    `specification_assessment` for readiness assessment. Compare it with the supplied playbook objective. If they differ,
    preserve both as authoritative inputs and stop with `run_goal_conflict`; do not silently prefer the later field.
+   Copy only an explicit populated `Requested outcome:` field. If it is absent, or free-form user intent contradicts it,
+   stop with `run_goal_declaration_incomplete` or `run_goal_conflict`; never infer the outcome from the objective.
    Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
@@ -72,6 +74,8 @@ description: >-
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
+   Include `RUN-GOAL-001` using the exact populated requested outcome and canonical provenance fields emitted by the
+   prompt. Preparation rejects compatible CLI values when that explicit row is missing or altered.
    ```json
    {"schema_version":1,"status":"explicit","precedence_rule":"<canonical precedence rule>","inputs":[
      {"Input ID":"IN-001","Input or artifact":"<short value>","Source or path":"<source or absolute path>",
@@ -106,6 +110,9 @@ description: >-
    assignment and current-run input manifest. When spawn metadata does not expose `agent_role` or `agent_path`, this
    exact envelope is the binding-delivery mechanism; missing metadata alone is not a reason to discard the worker.
    Conflicting observed metadata remains `provider_configuration_unavailable`.
+   The same guard enforces the duration budget's finalization reserve. On `run_budget_finalization_reserve`, do not
+   activate another worker; preserve the useful result already established and proceed directly to bounded terminal
+   reporting with the measured budget status.
    Treat that manifest as the spawn source of truth: pass each activated worker's exact model and effort, record its
    baseline ID and `provider_tool_mapping`, and stop if a required binding is absent. Framework tool IDs are abstract
    capability classes, not literal Codex tool names. Tell each worker to use the manifest's concrete mapping and never
@@ -124,6 +131,9 @@ description: >-
    `prepare_run.py`. Workers must use the current task's in-task `spawn_agent`/collaboration runtime. Never use
    `create_thread`, `fork_thread`, or `send_message_to_thread` for workers. Verify the in-task runtime before
    `prepare_run.py`; when unavailable, stop with `worker_runtime_unavailable` without creating user-owned tasks.
+   Join each provider-returned handle to its ordinary result envelope during fan-in. Do not return a worker result for
+   correction merely because the worker could not self-report a handle it was never given. Keep the explicit Fix Design
+   handle-delivery protocol because that durable Sentry artifact validates the supplied handle.
 8. Keep the prepared Standard Sentry `work_record.md` skeleton unchanged until deterministic finalization. On other
    paths, populate the canonical template from supplied and discoverable context. When the prompt requires
    current-run-only

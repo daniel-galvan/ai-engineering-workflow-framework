@@ -315,6 +315,25 @@ def _normalize_packet(
             r"^\s*Workflow result:\s*", "", str(handoff.get("workflow_result", "")), flags=re.IGNORECASE
         )
         if isinstance(identity, dict):
+            playbook_name = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+            selection = packet.get("playbook_selection", {})
+            primary_goal = str(selection.get("Primary goal", "")).strip().lower() if isinstance(selection, dict) else ""
+            dispositions = TECHNICAL_SPIKE_DISPOSITIONS.get(primary_goal) if playbook_name == "technical_spike" else None
+            result = str(handoff.get("workflow_result", "")).strip()
+            worker_results = packet.get("worker_results", [])
+            if (
+                str(identity.get("State", "")).strip().lower() == "handoff"
+                and dispositions
+                and result in dispositions
+                and isinstance(worker_results, list)
+                and worker_results
+                and all(str(row.get("Outcome", "")).strip().lower() == "complete" for row in worker_results)
+            ):
+                identity.update({
+                    "State": "completed",
+                    "Workflow outcome": "completed",
+                    "Engineering outcome": dispositions[result],
+                })
             plugin = str(identity.get("Plugin package / version", "")).replace(" / ", " ")
             framework = str(identity.get("Framework commit / status", "")).split(" / ", 1)
             playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)
@@ -1291,6 +1310,7 @@ def self_test() -> None:
 | Success criterion | Separate supported claims from unknowns |
 | Execution profile | deep |
 | Review target | Existing Spike |
+| Comparison reference | Not applicable |
 
 ## Scope and Non-goals
 Review only; no implementation plan.
@@ -1320,6 +1340,11 @@ One material evidence gap remains.
 
 ## Recommendation
 Revise the existing Spike.
+
+## Reference Comparison
+| Reference | Agreement | Difference or omission | Impact on recommendation |
+| --- | --- | --- | --- |
+| Not applicable | Not applicable | Not applicable | Not applicable |
 
 ## Remaining Unknowns and Follow-up
 Runtime behavior remains unverified.
@@ -1378,9 +1403,9 @@ Runtime behavior remains unverified.
             ),
             "Coordinator model/effort": "gpt-5.6-luna / xhigh", "Requested profile": "deep",
             "Activated profile": "deep", "Executed profile": "deep", "Profile status": "executed",
-            "Role-policy baseline ID": "corrupted", "Lifecycle": "planning", "State": "completed",
+            "Role-policy baseline ID": "corrupted", "Lifecycle": "planning", "State": "handoff",
             "Engineering state": "understood",
-            "Workflow outcome": "completed", "Engineering outcome": "partially_solved",
+            "Workflow outcome": "in_progress", "Engineering outcome": "unknown",
         })
         spike_packet["finalization"].update({
             "Concurrent-run decision": "new run", "Active related run or work item": "None",
@@ -1470,12 +1495,24 @@ Runtime behavior remains unverified.
             "Closure evidence or blocker": f"Provider release confirmed. Completed handles: {', '.join(spike_handles)}.",
         }]}, indent=2) + "\n")
         spike_record = spike_root / "work_record.md"
+        valid_spike_report = spike_report.read_text()
+        spike_report.write_text(valid_spike_report.replace("## Direct Evidence", "## Missing Direct Evidence"))
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+        except ValueError as error:
+            assert "spike_report.md is missing ## Direct Evidence" in str(error)
+        else:
+            raise AssertionError("the first correction must expose report errors after terminal normalization")
+        spike_report.write_text(valid_spike_report)
         finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
         assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
         assert "| Budget status | exceeded_during_finalization |" in spike_report.read_text()
         finalize(spike_packet_path, spike_closure, spike_record)
         spike_rendered = spike_record.read_text()
         assert "Workflow result: Changes required" in spike_rendered
+        assert "| State | completed |" in spike_rendered
+        assert "| Workflow outcome | completed |" in spike_rendered
+        assert "| Engineering outcome | partially_solved |" in spike_rendered
         assert "| spike-context | Current-State Investigator |" in spike_rendered
         assert "gpt-5.6-luna / high" in spike_rendered
         assert "| Role-policy baseline ID | corrupted |" not in spike_rendered
@@ -1496,6 +1533,10 @@ Runtime behavior remains unverified.
         finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
         assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
         broken_spike = json.loads(spike_packet_path.read_text())
+        broken_spike["identity"].update({
+            "State": "completed", "Workflow outcome": "completed",
+            "Engineering outcome": "partially_solved",
+        })
         broken_spike["playbook_selection"]["Primary goal"] = "Create implementation plan"
         broken_spike["identity"]["Framework commit / status"] = "malformed"
         spike_packet_path.write_text(json.dumps(broken_spike, indent=2) + "\n")

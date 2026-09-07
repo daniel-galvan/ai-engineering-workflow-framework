@@ -1,6 +1,6 @@
 ---
 title: Feature Delivery Run Prompt
-version: 0.4.18
+version: 0.4.19
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07
@@ -57,6 +57,8 @@ Runtime bootstrap:
   reopened or overridden by historical conclusions.
 - Compare the requested outcome with the selected objective before preparation. Stop with `run_goal_conflict` when
   they disagree; do not drop either instruction or silently prefer the later field.
+- Copy the explicit `Requested outcome:` line into input-manifest row `RUN-GOAL-001` with source `Current user request`,
+  authority `Explicit user outcome`, and classification `requested outcome`. Never infer it from `Planning objective`.
 - The requested profile and lifecycle are mandatory. Planning is read-only; remediation requires explicit approval and
   a passed Delivery Activation Barrier before edits.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,

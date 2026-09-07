@@ -53,6 +53,8 @@ the stated timebox or evidence budget. Record hypotheses, discriminating
 checks, actual results, limitations, options, recommendation, and remaining
 unknowns. Stop when the question is answered or the budget is exhausted. Do not
 produce an implementation plan or broaden into feature design.
+When an existing Spike or design is supplied as a comparison reference, establish
+the current-run findings and recommendation independently before reading it.
 
 Do not modify source code, merge pull requests, or make external writes.
 """

@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.2
+version: 0.1.3
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -103,6 +103,10 @@ conflicts, and unknowns. An Epic or related feature provides context, not automa
 For `review_spike`, identify the exact report or document under review and its claimed conclusion. Missing review
 material is indispensable-evidence failure, not authority to recreate the Spike from unrelated context.
 
+For `execute_spike`, keep any existing Spike or design document as an optional comparison reference, not a review
+target. Establish the current-run findings and recommendation from independent evidence before reading or comparing
+the reference. A reference may reveal agreement, contradiction, or omission; it does not define the answer.
+
 ### Stage 2 — Investigate or Assess
 
 For `execute_spike`, run the smallest checks or disposable experiments that can distinguish the credible answers.
@@ -117,11 +121,14 @@ findings. Run a focused check only when it can change the assessment.
 Stop when the question is answered, the review disposition is stable, the declared budget is exhausted, or
 indispensable evidence is unavailable. Do not expand into adjacent services or repositories merely because they may be
 related; record them as follow-up unless they can change the primary conclusion.
+Component or service names do not establish team ownership. Preserve explicit user-owned scope, and mark ownership as
+unknown when current evidence does not establish it.
 
 For a duration budget, use prepared `run_budget.json`. Report exactly `within_budget`,
 `exhausted_with_useful_result`, `exceeded_during_finalization`, or `stopped_by_indispensable_evidence`; do not use
 `Completed` as a substitute for measured deadline status. An already exhausted duration blocks before worker
-activation.
+activation. The worker runtime guard reserves the last ten percent, capped at two minutes, for reporting and
+finalization; once that reserve begins, do not activate another analytical or Documenter worker.
 
 ### Stage 3 — Reconcile and Review
 
@@ -141,8 +148,9 @@ After required analytical workers return terminal envelopes and fan-in passes, t
 ```
 
 The report must preserve the question, budget, method, direct source evidence, experiments, findings, options,
-recommendation, limitations, remaining unknowns, exact disposition, and any Feature Delivery handoff. It must be usable
-without opening every intermediate worker artifact and must not turn follow-up work into an implementation plan.
+recommendation, limitations, remaining unknowns, exact disposition, any Feature Delivery handoff, and the independent
+comparison when `execute_spike` declares a reference. It must be usable without opening every intermediate worker
+artifact and must not turn follow-up work into an implementation plan.
 
 Use these exact completed-run dispositions:
 
@@ -159,6 +167,10 @@ Use `blocked` only when runtime, permission, environment, or indispensable-evide
 from completing. Exhausting the declared budget with useful evidence is `Inconclusive` or `Partially answered`, not a
 workflow blocker.
 
+The final Documenter may serialize transient workflow `State: handoff`. When every recorded worker result is complete
+and the workflow result is valid for the selected objective, the packaged finalizer applies the table above and emits
+the terminal state and outcomes. This is deterministic lifecycle bookkeeping, not a new technical conclusion.
+
 At handoff, use the contract's shared human-readable template. Set `Implementation plan` to `Not created; Technical
 Spike produces spike_report.md`, link `spike_report.md`, name the evidence-backed conclusion and limitations, and give
 one concrete next action. Since this playbook has no delivery lifecycle, it never activates `implement`, `review`,
@@ -171,6 +183,7 @@ one concrete next action. Since this playbook has no delivery lifecycle, it neve
 - **Evidence Gate:** conclusions cite current-run evidence; unsupported certainty is prohibited.
 - **Experiment Gate:** each experiment records method, expected outcomes, result, and limitation.
 - **Review Gate:** `review_spike` assesses the supplied Spike rather than silently replacing it.
+- **Reference Independence Gate:** `execute_spike` establishes its answer before comparing an optional reference.
 - **Report Gate:** completed runs create and link `spike_report.md`; `implementation_plan.md` is absent.
 
 ## Outputs

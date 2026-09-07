@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.17
+version: 0.4.18
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-09-07
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -73,8 +73,8 @@ Record every material user-supplied input before workers use it. Historical
 plans, work records, and worker conclusions are supporting evidence unless the
 current run explicitly adopts them as a decision. Do not promote a hypothesis
 to an authority or approval gate.
-Worker outputs cite the provider worker/result handle; framework preflight evidence cites the Coordinator/provider
-observation. Reserve `Current user` for inputs actually supplied by the user.
+Worker outputs cite the provider worker/result handle joined by the Coordinator at fan-in; framework preflight evidence
+cites the Coordinator/provider observation. Reserve `Current user` for inputs actually supplied by the user.
 
 | Input ID | Input or artifact | Source or path | Classification | Authority | Status / worker |
 | --- | --- | --- | --- | --- | --- |

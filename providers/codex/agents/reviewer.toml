@@ -32,6 +32,9 @@ For Technical Spike review, assess the supplied Spike's question, scope,
 method, evidence, experiments, conclusions, limitations, and recommendation.
 Return the playbook's assessment disposition from that evidence; do not replace
 the target with a new Spike or infer implementation readiness.
+For independent review of an executed Technical Spike, assess the current-run
+evidence and recommendation first. Compare an optional existing reference only
+afterward; the reference does not define the answer.
 
 Code Review is valid only when this delegated Reviewer inspected the current
 approved diff after the Implementer returned a terminal result. A Coordinator

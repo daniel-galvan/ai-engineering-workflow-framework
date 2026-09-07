@@ -341,6 +341,7 @@ def technical_spike_report_errors(
         "## Findings",
         "## Options and Tradeoffs",
         "## Recommendation",
+        "## Reference Comparison",
         "## Remaining Unknowns and Follow-up",
         "## Disposition",
     )
@@ -359,10 +360,20 @@ def technical_spike_report_errors(
         errors.append(f"spike_report.md Objective must be {expected_objective}")
     if metadata.get("Execution profile", "").strip() != profile:
         errors.append(f"spike_report.md Execution profile must be {profile}")
+    review_target = metadata.get("Review target", "").strip()
+    comparison_reference = metadata.get("Comparison reference", "").strip()
+    if not comparison_reference:
+        errors.append("spike_report.md Metadata requires Comparison reference")
     if expected_objective == "review_spike" and metadata.get("Review target", "").strip().lower() in {
         "", "none", "not applicable",
     }:
         errors.append("spike_report.md review_spike requires Review target")
+    if expected_objective == "execute_spike" and review_target.lower() not in {"none", "not applicable", "n/a"}:
+        errors.append("spike_report.md execute_spike requires Review target to be Not applicable")
+    if expected_objective == "review_spike" and comparison_reference.lower() not in {
+        "none", "not applicable", "n/a",
+    }:
+        errors.append("spike_report.md review_spike requires Comparison reference to be Not applicable")
     evidence = markdown_table(text, "## Method and Evidence")
     if not evidence or any(not row.get(field, "").strip() for row in evidence for field in (
         "Evidence ID", "Method or source", "Observation", "Status", "Limitation",
@@ -380,6 +391,17 @@ def technical_spike_report_errors(
         "Disposition impact",
     )):
         errors.append("spike_report.md requires one complete experiment or Not run row")
+    comparison = markdown_table(text, "## Reference Comparison")
+    if not comparison or any(not row.get(field, "").strip() for row in comparison for field in (
+        "Reference", "Agreement", "Difference or omission", "Impact on recommendation",
+    )):
+        errors.append("spike_report.md requires one complete reference-comparison or Not applicable row")
+    elif (
+        expected_objective == "execute_spike"
+        and comparison_reference.lower() not in {"none", "not applicable", "n/a"}
+        and all(row.get("Reference", "").strip().lower() in {"none", "not applicable", "n/a"} for row in comparison)
+    ):
+        errors.append("spike_report.md must compare the declared Comparison reference")
     disposition = {
         row.get("Field", ""): row.get("Value", "") for row in markdown_table(text, "## Disposition")
     }
@@ -1997,6 +2019,7 @@ def self_test_reasoning_records() -> None:
 | Success criterion | Request and response behavior are established |
 | Execution profile | standard |
 | Review target | Not applicable |
+| Comparison reference | Not applicable |
 ## Scope and Non-goals
 Bounded path only.
 ## Method and Evidence
@@ -2019,6 +2042,10 @@ The current boundary preserves the required data.
 | Keep boundary | E-001 | No change | Runtime unverified | Current scope |
 ## Recommendation
 Keep the current boundary pending runtime confirmation.
+## Reference Comparison
+| Reference | Agreement | Difference or omission | Impact on recommendation |
+| --- | --- | --- | --- |
+| Not applicable | Not applicable | Not applicable | Not applicable |
 ## Remaining Unknowns and Follow-up
 | Unknown or follow-up | Why it matters | Owner | Next evidence or decision |
 | --- | --- | --- | --- |
@@ -2036,6 +2063,12 @@ Keep the current boundary pending runtime confirmation.
     ) == []
     assert "spike_report.md Workflow result must match Final Handoff" in technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Inconclusive"
+    )
+    declared_without_comparison = valid_spike_report.replace(
+        "| Comparison reference | Not applicable |", "| Comparison reference | existing-spike.md |"
+    )
+    assert "spike_report.md must compare the declared Comparison reference" in technical_spike_report_errors(
+        declared_without_comparison, "Execute technical spike", "standard", "Question answered"
     )
     valid = """# Playbook Selection
 | Primary evidence | Primary goal | Selected playbook | Closest alternative | Why this playbook |
@@ -2923,6 +2956,8 @@ for text, label in (
         "Changes required",
         "Inconclusive",
         "Requested outcome:",
+        "comparison reference",
+        "source of truth",
     ):
         if phrase not in text:
             fail(f"{label} is missing Technical Spike control: {phrase}")
@@ -2930,6 +2965,8 @@ for phrase in (
     "Timebox or evidence budget",
     "Direct Evidence",
     "Experiments and Checks",
+    "Comparison reference",
+    "Reference Comparison",
     "Feature Delivery handoff",
 ):
     if phrase not in technical_spike_report:

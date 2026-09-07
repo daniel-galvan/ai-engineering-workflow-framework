@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.1.2
+version: 0.1.3
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07
@@ -56,10 +56,14 @@ Runtime bootstrap:
   reopened or overridden by historical conclusions.
 - Compare the requested outcome with the selected objective before preparation. Stop with `run_goal_conflict` when
   they disagree; do not drop either instruction or silently prefer the later field.
+- Copy the explicit `Requested outcome:` line into input-manifest row `RUN-GOAL-001` with source `Current user request`,
+  authority `Explicit user outcome`, and classification `requested outcome`. Never infer it from `Spike objective`.
 - The requested profile and planning lifecycle are mandatory. The Delivery Activation Barrier is not applicable:
   Technical Spike never enters remediation or changes production source or external systems.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
   fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
+- Workers receive prepared role envelopes and typed stage assignments. Do not make them reread the complete framework
+  contract, run skill, prompt template, or examples.
 
 Spike question and bounds:
 - Primary question: <ONE-DECISION-RELEVANT-TECHNICAL-QUESTION>
@@ -70,6 +74,11 @@ Spike question and bounds:
 Review target (required for `review_spike`; otherwise `None`):
 - Existing Spike report or document: <URL-OR-ABSOLUTE-PATH-OR-NONE>
 - Claimed conclusion or recommendation: <DESCRIPTION-OR-UNKNOWN>
+
+Comparison reference (optional for `execute_spike`; otherwise `None`):
+- Existing Spike report or document: <URL-OR-ABSOLUTE-PATH-OR-NONE>
+- Comparison rule: Establish findings and a recommendation independently, then record agreements, contradictions,
+  or omissions. Never use the reference as the answer or as the investigation's source of truth.
 
 Additional repositories and working directories (optional; the execution repository is already declared):
 - Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
@@ -110,6 +119,10 @@ Make `spike_report.md` self-contained with compact direct repository/document ev
 disposition, strongest evidence, unresolved decisions, exact next workflow, measured budget status, and link
 `spike_report.md` plus terminal `work_record.md`. On finalization failure, link `finalization_failure.json` instead of
 claiming terminal validation passed.
+
+For `execute_spike`, keep `Review target` as `None`. An existing Spike is a comparison reference only and may be read
+after independent findings and a recommendation are established. For `review_spike`, the existing Spike is the review
+target and `Comparison reference` is `None`.
 
 For `execute_spike`, choose exactly one `Workflow result`: `Question answered`, `Partially answered`, or `Inconclusive`.
 For `review_spike`, choose exactly one: `Accepted`, `Changes required`, or `Inconclusive`.

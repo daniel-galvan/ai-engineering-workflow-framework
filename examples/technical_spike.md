@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Example
-version: 0.1.1
+version: 0.1.2
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07
@@ -34,10 +34,13 @@ Spike objective: execute_spike
 Primary question: <ONE-DECISION-RELEVANT-QUESTION>
 Timebox or evidence budget: <BOUNDED-LIMIT>
 Success criterion: <OBSERVABLE-ANSWER-CONDITION>
+Review target: None
+Comparison reference: <EXISTING-SPIKE-OR-NONE>
 ```
 
 Use `review_spike` when an existing report or document is the object being assessed. Use `deep` only when the question
 crosses repositories, ownership, persistence, security, privacy, or a public contract and needs independent evidence.
+For `execute_spike`, establish the answer independently and compare an existing Spike only afterward.
 
 ## Expected Outcome
 
@@ -49,8 +52,8 @@ The work record and report are created at:
 ```
 
 The report records the question, measured budget status, direct evidence with repository revision and file or artifact
-location, experiments, options, recommendation, limitations, remaining unknowns, and exact disposition. It does not
-create `implementation_plan.md`.
+location, experiments, options, recommendation, post-recommendation reference comparison, limitations, remaining
+unknowns, and exact disposition. It does not create `implementation_plan.md`.
 
 If implementation planning is next, start a separate Feature Delivery planning run and supply the accepted Spike report
 as current-run supporting evidence.
