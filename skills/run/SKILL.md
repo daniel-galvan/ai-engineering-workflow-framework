@@ -23,10 +23,12 @@ description: >-
    report the preflight reason and `preflight_elapsed_ms`. Treat a completed process with exit status 0 as a passed
    preflight even when the app hides stdout; do not rerun it solely because the JSON payload is not visible. Retry only
    after a timeout, nonzero exit, or an objectively malformed result whose status cannot be determined.
-3. On a preflight block, create one minimal canonical blocked work record, populate its required Evidence, Claims,
-   Decision Log, and Action Log chain in one pass, and run the validator once. Do not progressively rewrite the record,
-   load the full playbook, query external systems, or activate workers. Record `worker_activation_attempts: 0` and the
-   preflight reason in the handoff.
+3. On a preflight block, stop this invocation immediately after capturing and reporting the exact preflight JSON. Do
+   not create an artifact root or work record, load any playbook, template, validator, or cache file, run another
+   framework command, query external systems, or activate workers. This preflight did not initialize a run, so
+   no terminal work record is required. Report the reason, `preflight_elapsed_ms`, active package root, and
+   `worker_activation_attempts: 0`, then give one remediation and stop. This receipt is terminal: do not retry, repair,
+   or continue in the same invocation.
 4. Treat the current working directory as the execution repository unless the user explicitly names another repository.
 5. When the prompt supplies an existing playbook, use it directly and do not read `PLAYBOOK_CATALOG.md`; record the
    primary evidence, primary goal, closest alternative, and selection rationale from the supplied playbook and request.
