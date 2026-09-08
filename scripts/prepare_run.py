@@ -130,10 +130,27 @@ def _playbook_name(value: str) -> str:
     raise ValueError(f"unknown_playbook:{value}")
 
 
-def _run_goal_row(requested_outcome: str | None) -> dict[str, str]:
+def _playbook_defaults(playbook: str) -> dict[str, object]:
+    path = ROOT / "playbooks" / f"{playbook}.md"
+    text = path.read_text()
+    minutes_match = re.search(r"^default_timebox_minutes:\s*(\d+)\s*$", text, re.MULTILINE)
+    success_match = re.search(r"^default_success_criterion:\s*(.+?)\s*$", text, re.MULTILINE)
+    if not minutes_match or not success_match:
+        raise ValueError(f"playbook_defaults_unavailable:{playbook}")
+    success = success_match.group(1).strip()
+    if len(success) >= 2 and success[0] == success[-1] == '"':
+        success = json.loads(success)
+    return {"timebox_minutes": int(minutes_match.group(1)), "success_criterion": success}
+
+
+def _run_goal_row(
+    requested_outcome: str | None,
+    source: str = "Current user request",
+    authority: str = "Explicit user outcome",
+) -> dict[str, str]:
     return {
         "Input ID": "RUN-GOAL-001", "Input or artifact": f"Requested outcome: {requested_outcome}",
-        "Source or path": "Current user request", "Authority": "Explicit user outcome",
+        "Source or path": source, "Authority": authority,
         "Classification": "requested outcome", "Expected use": "Validate playbook and objective selection",
         "Status": "Registered",
     }
@@ -161,7 +178,9 @@ def _merge_input_rows(
     return {**manifest, "inputs": rows}
 
 
-def _spike_bound_rows(primary_question: str, success_criterion: str) -> tuple[dict[str, str], ...]:
+def _spike_bound_rows(
+    primary_question: str, success_criterion: str, success_source: str, success_authority: str,
+) -> tuple[dict[str, str], ...]:
     return (
         {
             "Input ID": "SPIKE-QUESTION-001", "Input or artifact": f"Primary question: {primary_question}",
@@ -171,7 +190,7 @@ def _spike_bound_rows(primary_question: str, success_criterion: str) -> tuple[di
         },
         {
             "Input ID": "SPIKE-SUCCESS-001", "Input or artifact": f"Success criterion: {success_criterion}",
-            "Source or path": "Current user request", "Authority": "Explicit current-run success criterion",
+            "Source or path": success_source, "Authority": success_authority,
             "Classification": "success criterion", "Expected use": "Determine whether the question is answered",
             "Status": "Registered",
         },
@@ -183,6 +202,7 @@ def _validate_run_goal(
     workflow_objective: str | None,
     requested_outcome: str | None,
     supplied_manifest: dict[str, object] | None,
+    allow_default_provenance: bool = False,
 ) -> None:
     if workflow_objective is None and requested_outcome is None:
         return
@@ -202,6 +222,8 @@ def _validate_run_goal(
     rows = supplied_manifest.get("inputs", []) if supplied_manifest else []
     declarations = [row for row in rows if row.get("Input ID") == "RUN-GOAL-001"]
     if len(declarations) != 1:
+        if allow_default_provenance and not declarations:
+            return
         raise ValueError("run_goal_provenance_missing:RUN-GOAL-001")
     expected = _run_goal_row(requested_outcome)
     if any(declarations[0].get(field) != value for field, value in expected.items()):
@@ -210,14 +232,15 @@ def _validate_run_goal(
 
 def _with_run_goal(
     manifest: dict[str, object], workflow_objective: str | None, requested_outcome: str | None,
+    source: str = "Current user request", authority: str = "Explicit user outcome",
 ) -> dict[str, object]:
     if not workflow_objective:
         return manifest
     additions = (
-        _run_goal_row(requested_outcome),
+        _run_goal_row(requested_outcome, source, authority),
         {
             "Input ID": "RUN-GOAL-002", "Input or artifact": f"Workflow objective: {workflow_objective}",
-            "Source or path": "Current run prompt", "Authority": "Explicit workflow selection",
+            "Source or path": source, "Authority": authority,
             "Classification": "workflow configuration", "Expected use": "Select worker graph and output contract",
             "Status": "Registered",
         },
@@ -227,8 +250,11 @@ def _with_run_goal(
 
 def _with_spike_bounds(
     manifest: dict[str, object], primary_question: str, success_criterion: str,
+    success_source: str, success_authority: str,
 ) -> dict[str, object]:
-    return _merge_input_rows(manifest, _spike_bound_rows(primary_question, success_criterion))
+    return _merge_input_rows(
+        manifest, _spike_bound_rows(primary_question, success_criterion, success_source, success_authority)
+    )
 
 
 def _run_budget(started_at: str | None, timebox_minutes: int | None) -> dict[str, object] | None:
@@ -485,10 +511,29 @@ def prepare_run(
         raise ValueError("execution_repository_unavailable")
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
-    budget = _run_budget(started_at, timebox_minutes)
+    goal_defaults_used = playbook == "technical_spike" and (
+        workflow_objective is None and requested_outcome is None
+    )
     if playbook == "technical_spike":
-        if budget is None:
-            raise ValueError("run_budget_required")
+        defaults = _playbook_defaults(playbook)
+        if goal_defaults_used:
+            workflow_objective = "execute_spike"
+            requested_outcome = "technical_answer"
+        resolved_timebox_minutes = (
+            timebox_minutes if timebox_minutes is not None else defaults["timebox_minutes"]
+        )
+        success_source = "Current user request" if success_criterion is not None else "Selected playbook defaults"
+        success_authority = (
+            "Explicit current-run success criterion"
+            if success_criterion is not None else "Technical Spike playbook configuration"
+        )
+        success_criterion = success_criterion or str(defaults["success_criterion"])
+    else:
+        resolved_timebox_minutes = timebox_minutes
+        success_source = "Current user request"
+        success_authority = "Explicit current-run success criterion"
+    budget = _run_budget(started_at, resolved_timebox_minutes)
+    if playbook == "technical_spike":
         primary_question = _required_spike_bound(primary_question, "primary_question")
         success_criterion = _required_spike_bound(success_criterion, "success_criterion")
     resolved_execution_repository = execution_repository.resolve()
@@ -496,7 +541,10 @@ def prepare_run(
     # Validate supplied input and provider bindings before creating, archiving, or
     # overwriting any run artifact. This makes invalid retries transactional.
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
-    _validate_run_goal(playbook, workflow_objective, requested_outcome, validated_supplied)
+    _validate_run_goal(
+        playbook, workflow_objective, requested_outcome, validated_supplied,
+        allow_default_provenance=goal_defaults_used,
+    )
     resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
     manifest = resolve_bindings(playbook, resolved_runtime_agents)
     artifact_root.mkdir(parents=True, exist_ok=True)
@@ -513,9 +561,15 @@ def prepare_run(
         validated_supplied,
     )
     if workflow_objective:
-        run_inputs = _with_run_goal(run_inputs, workflow_objective, requested_outcome)
+        goal_source = "Selected playbook defaults" if goal_defaults_used else "Current user request"
+        goal_authority = "Technical Spike playbook configuration" if goal_defaults_used else "Explicit user outcome"
+        run_inputs = _with_run_goal(
+            run_inputs, workflow_objective, requested_outcome, goal_source, goal_authority,
+        )
     if playbook == "technical_spike":
-        run_inputs = _with_spike_bounds(run_inputs, primary_question, success_criterion)
+        run_inputs = _with_spike_bounds(
+            run_inputs, primary_question, success_criterion, success_source, success_authority,
+        )
     if workflow_objective or playbook == "technical_spike":
         run_inputs = write_manifest(run_inputs_path, run_inputs)
     manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
@@ -813,6 +867,18 @@ def self_test() -> None:
         assert {row["Input ID"] for row in aligned_inputs} >= {
             "RUN-GOAL-001", "RUN-GOAL-002", "SPIKE-QUESTION-001", "SPIKE-SUCCESS-001",
         }
+        defaults = prepare_run(
+            execution, "ITEM-DEFAULTS", "technical_spike", None, False,
+            input_manifest=input_source, started_at="2099-09-07T12:00:00Z",
+            primary_question=spike_question,
+        )
+        default_inputs = json.loads(
+            (Path(defaults["artifact_root"]) / RUN_INPUTS_FILENAME).read_text()
+        )["inputs"]
+        default_by_id = {row["Input ID"]: row for row in default_inputs}
+        assert defaults["run_budget"]["timebox_minutes"] == 35
+        assert default_by_id["RUN-GOAL-001"]["Source or path"] == "Selected playbook defaults"
+        assert default_by_id["SPIKE-SUCCESS-001"]["Source or path"] == "Selected playbook defaults"
         try:
             prepare_run(
                 execution, "ITEM-NO-QUESTION", "technical_spike", None, False,
@@ -825,30 +891,30 @@ def self_test() -> None:
         else:
             raise AssertionError("Technical Spike must require a primary question")
         assert not (execution / ".thoughts" / "ITEM-NO-QUESTION").exists()
+        default_success = prepare_run(
+            execution, "ITEM-DEFAULT-SUCCESS", "technical_spike", None, False,
+            input_manifest=goal_source, workflow_objective="review_spike",
+            requested_outcome="spike_assessment", started_at="2099-09-07T12:00:00Z",
+            timebox_minutes=25, primary_question=spike_question,
+        )
+        assert Path(default_success["artifact_root"]).is_dir()
+        default_budget = prepare_run(
+            execution, "ITEM-DEFAULT-BUDGET", "technical_spike", None, False,
+            input_manifest=goal_source, workflow_objective="review_spike",
+            requested_outcome="spike_assessment", started_at="2099-09-07T12:00:00Z",
+            primary_question=spike_question, success_criterion=spike_success,
+        )
+        assert default_budget["run_budget"]["timebox_minutes"] == 35
         try:
             prepare_run(
-                execution, "ITEM-NO-SUCCESS", "technical_spike", None, False,
-                input_manifest=goal_source, workflow_objective="review_spike",
-                requested_outcome="spike_assessment", started_at="2099-09-07T12:00:00Z",
-                timebox_minutes=25, primary_question=spike_question,
+                execution, "ITEM-NO-START", "technical_spike", None, False,
+                input_manifest=goal_source, primary_question=spike_question,
             )
         except ValueError as error:
-            assert str(error) == "run_prompt_incomplete:success_criterion"
+            assert str(error) == "run_budget_declaration_incomplete"
         else:
-            raise AssertionError("Technical Spike must require a success criterion")
-        assert not (execution / ".thoughts" / "ITEM-NO-SUCCESS").exists()
-        try:
-            prepare_run(
-                execution, "ITEM-NO-BUDGET", "technical_spike", None, False,
-                input_manifest=goal_source, workflow_objective="review_spike",
-                requested_outcome="spike_assessment", primary_question=spike_question,
-                success_criterion=spike_success,
-            )
-        except ValueError as error:
-            assert str(error) == "run_budget_required"
-        else:
-            raise AssertionError("Technical Spike must require a measurable run budget")
-        assert not (execution / ".thoughts" / "ITEM-NO-BUDGET").exists()
+            raise AssertionError("Technical Spike must receive the captured start timestamp")
+        assert not (execution / ".thoughts" / "ITEM-NO-START").exists()
         budgeted = prepare_run(
             execution, "ITEM-BUDGET", "technical_spike", None, False,
             input_manifest=goal_source, workflow_objective="review_spike",

@@ -47,6 +47,16 @@ TECHNICAL_SPIKE_DISPOSITIONS = {
         "Inconclusive": "partially_solved",
     },
 }
+TECHNICAL_SPIKE_REQUIRED_WORKERS = {
+    ("standard", "execute technical spike"): {"spike-context", "spike-investigation", "handoff"},
+    ("deep", "execute technical spike"): {
+        "spike-context", "spike-investigation", "repository-integration", "spike-review", "handoff",
+    },
+    ("standard", "review technical spike"): {"spike-context", "spike-assessment", "handoff"},
+    ("deep", "review technical spike"): {
+        "spike-context", "spike-assessment", "repository-integration", "handoff",
+    },
+}
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)(?:\s*;.*)?$", re.IGNORECASE
 )
@@ -172,6 +182,25 @@ def _normalize_coordinator_model_effort(value: object) -> object:
     if "not exposed" in text or "packet-input error" in text:
         return UNAVAILABLE_COORDINATOR_MODEL_EFFORT
     return _normalize_model_effort(value)
+
+
+def _technical_spike_missing_workers(packet: dict[str, object]) -> set[str]:
+    identity = packet.get("identity", {})
+    selection = packet.get("playbook_selection", {})
+    if not isinstance(identity, dict) or not isinstance(selection, dict):
+        return set()
+    required = TECHNICAL_SPIKE_REQUIRED_WORKERS.get((
+        str(identity.get("Executed profile", "")).strip().lower(),
+        str(selection.get("Primary goal", "")).strip().lower(),
+    ))
+    if not required:
+        return set()
+    complete = {
+        str(row.get("Worker", "")).strip().lower()
+        for row in packet.get("worker_results", [])
+        if isinstance(row, dict) and str(row.get("Outcome", "")).strip().lower() == "complete"
+    }
+    return required - complete
 
 
 def _is_run_context_evidence(row: object) -> bool:
@@ -352,7 +381,7 @@ def _normalize_packet(
                 and result in dispositions
                 and isinstance(worker_results, list)
                 and worker_results
-                and all(str(row.get("Outcome", "")).strip().lower() == "complete" for row in worker_results)
+                and not _technical_spike_missing_workers(packet)
             ):
                 identity.update({
                     "State": "completed",
@@ -415,7 +444,25 @@ def _validate_handoff(packet: dict[str, object]) -> None:
                 )
             if state not in {"blocked", "awaiting_input", "handoff", "completed"}:
                 raise ValueError("Technical Spike state must be blocked, awaiting_input, handoff, or completed")
+            if state != "completed" and str(identity.get("Workflow outcome", "")).strip().lower() == "completed":
+                raise ValueError("Technical Spike non-completed state cannot have Workflow outcome completed")
             if state in {"handoff", "completed"}:
+                if (
+                    str(identity.get("Profile status", "")).strip().lower() != "executed"
+                    or len({
+                        str(identity.get(field, "")).strip().lower()
+                        for field in ("Requested profile", "Activated profile", "Executed profile")
+                    }) != 1
+                ):
+                    raise ValueError(
+                        "Technical Spike handoff requires Profile status executed and matching profiles"
+                    )
+                missing_workers = _technical_spike_missing_workers(packet)
+                if missing_workers:
+                    raise ValueError(
+                        "Technical Spike handoff requires terminal results for: "
+                        + ", ".join(sorted(missing_workers))
+                    )
                 dispositions = TECHNICAL_SPIKE_DISPOSITIONS.get(primary_goal)
                 if dispositions is None:
                     raise ValueError(
@@ -1301,9 +1348,15 @@ def self_test() -> None:
             "Playbook / version": f"playbooks/technical_spike.md / {technical_spike_version}",
             "Lifecycle": "planning",
             "State": "completed",
+            "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
+            "Profile status": "executed",
             "Workflow outcome": "completed",
             "Engineering outcome": "solved",
         })
+        spike["worker_results"].extend([
+            {"Worker": worker, "Outcome": "complete"}
+            for worker in ("spike-context", "spike-investigation", "handoff")
+        ])
         spike["handoff"].update({
             "workflow_result": "Question answered",
             "implementation_plan": "Not created; Technical Spike produces spike_report.md",
@@ -1587,6 +1640,34 @@ Runtime behavior remains unverified.
         assert "gpt-5.6-luna / high" in spike_rendered
         assert "| Role-policy baseline ID | corrupted |" not in spike_rendered
         assert "[spike_report.md](./spike_report.md)" in spike_rendered
+        incomplete_terminal = json.loads(spike_packet_path.read_text())
+        incomplete_terminal["identity"].update({
+            "State": "completed", "Workflow outcome": "completed", "Engineering outcome": "partially_solved",
+        })
+        incomplete_terminal["worker_results"] = [
+            row for row in incomplete_terminal["worker_results"]
+            if row.get("Worker") != "handoff"
+        ]
+        spike_packet_path.write_text(json.dumps(incomplete_terminal, indent=2) + "\n")
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record)
+        except ValueError as error:
+            assert "requires terminal results for: handoff" in str(error)
+        else:
+            raise AssertionError("a Technical Spike cannot complete without the handoff worker")
+        blocked_profile = json.loads(json.dumps(spike_packet))
+        blocked_profile["identity"].update({
+            "State": "completed", "Workflow outcome": "completed", "Engineering outcome": "partially_solved",
+            "Profile status": "blocked", "Executed profile": "None",
+        })
+        spike_packet_path.write_text(json.dumps(blocked_profile, indent=2) + "\n")
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record)
+        except ValueError as error:
+            assert "Profile status executed and matching profiles" in str(error)
+        else:
+            raise AssertionError("a blocked profile cannot produce a completed Technical Spike")
+        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
         malformed_spike = json.loads(spike_packet_path.read_text())
         malformed_spike["workers"] = {}
         spike_packet_path.write_text(json.dumps(malformed_spike, indent=2) + "\n")

@@ -30,22 +30,24 @@ description: >-
    `worker_activation_attempts: 0`, then give one remediation and stop. This receipt is terminal: do not retry, repair,
    or continue in the same invocation.
 3a. After a passing preflight and before reading any repository, Jira, playbook, contract, provider, or historical
-   artifact, apply the prompt-completeness gate. For Technical Spike require populated `Primary question`, `Timebox or
-   evidence budget`, and `Success criterion`, plus `Requested outcome` and `Spike objective`. Reject placeholders such
-   as `<...>`, `None`, or `Not provided` with `run_prompt_incomplete:<field>`. Do not create a temporary input
-   manifest, invoke `prepare_run.py`, or perform context discovery before this gate passes.
+   artifact, apply the prompt-completeness gate. For Technical Spike require a populated `Primary question`; resolve
+   the timebox, success criterion, requested outcome, and spike objective from the selected playbook unless the prompt
+   supplies a complete compatible override pair. Reject explicit placeholders such as `<...>`, `None`, or
+   `Not provided` with `run_prompt_incomplete:<field>`. Do not create a temporary input manifest, invoke
+   `prepare_run.py`, or perform context discovery before this gate passes.
 4. Treat the current working directory as the execution repository unless the user explicitly names another repository.
 5. When the prompt supplies an existing playbook, use it directly and do not read `PLAYBOOK_CATALOG.md`; record the
    primary evidence, primary goal, closest alternative, and selection rationale from the supplied playbook and request.
    Read the catalog only when no playbook was supplied or the supplied path is unavailable or materially contradicted by
    the evidence. Make the requested profile and lifecycle explicit; when omitted, record the playbook defaults
    (`standard` + `planning`) before worker activation.
-   Extract one requested outcome before preparation. Use `technical_answer` for bounded investigation,
+   Extract one requested outcome before preparation. When omitted, use the selected playbook's configured default. Use
+   `technical_answer` for bounded investigation,
    `spike_assessment` for review of an existing Spike, `implementation_plan` for implementation planning, and
    `specification_assessment` for readiness assessment. Compare it with the supplied playbook objective. If they differ,
    preserve both as authoritative inputs and stop with `run_goal_conflict`; do not silently prefer the later field.
-   Copy only an explicit populated `Requested outcome:` field. If it is absent, or free-form user intent contradicts it,
-   stop with `run_goal_declaration_incomplete` or `run_goal_conflict`; never infer the outcome from the objective.
+   Copy an explicit populated `Requested outcome:` field when supplied. If it is absent, record the playbook default; an
+   explicit override that contradicts the objective stops with `run_goal_conflict`.
    Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
@@ -81,23 +83,26 @@ description: >-
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
-   Include `RUN-GOAL-001` using the exact populated requested outcome and canonical provenance fields emitted by the
-   prompt. Preparation rejects compatible CLI values when that explicit row is missing or altered.
+   When the prompt explicitly supplies a requested outcome, include `RUN-GOAL-001` using its exact value and canonical
+   provenance. When the prompt omits it, omit that row; Technical Spike preparation records the selected playbook
+   default and provenance. Preparation rejects an altered explicit row.
    ```json
    {"schema_version":1,"status":"explicit","precedence_rule":"<canonical precedence rule>","inputs":[
      {"Input ID":"IN-001","Input or artifact":"<short value>","Source or path":"<source or absolute path>",
       "Authority":"<authority>","Classification":"<classification>","Expected use":"<use>","Status":"Registered"}
    ]}
    ```
-   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name,
-   `--requested-outcome <outcome>`, `--workflow-objective <objective>`, and optional verified runtime-agent directory
-   (`--runtime-agents <path>`). For Technical Spike also pass the validated `--primary-question <question>` and
-   `--success-criterion <criterion>`. Technical Spike permits `technical_answer + execute_spike` or
+   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and any explicit
+   `--requested-outcome <outcome>` or `--workflow-objective <objective>` values, plus an optional verified runtime-agent
+   directory
+   (`--runtime-agents <path>`). For Technical Spike pass the validated `--primary-question <question>`; pass
+   `--success-criterion <criterion>` and `--timebox-minutes <minutes>` only for run-specific overrides. Technical Spike
+   permits `technical_answer + execute_spike` or
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
    `specification_assessment + specification_assessment`. Technical Spike is budget-gated: always pass the captured
-   current-turn RFC 3339 start as `--started-at` and integer minutes as `--timebox-minutes`; a missing declaration stops
-   with `run_budget_required` before artifact creation or worker activation. Use the resulting `run_budget.json` as the
-   terminal budget source of truth. Use `--continuation` only
+   current-turn RFC 3339 start as `--started-at` and the resolved playbook/default or override as `--timebox-minutes`; a
+   missing captured start stops before artifact creation or worker activation. Use `run_budget.json` as the terminal
+   budget source of truth. Use `--continuation` only
    when the user explicitly says continue or resume. Validate the explicit manifest and provider bindings before this
    step mutates the artifact root. This one step then archives a prior terminal run, creates the artifact root and
    minimal work record, and writes `role_bindings.json`.

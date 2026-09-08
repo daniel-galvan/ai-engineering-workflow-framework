@@ -3029,12 +3029,20 @@ for text, label in (
         if phrase not in text:
             fail(f"{label} is missing Technical Spike control: {phrase}")
 for phrase in (
+    "default_timebox_minutes: 35",
+    "default_success_criterion:",
+    "Baseline success criterion",
+):
+    if phrase not in technical_spike_playbook:
+        fail(f"playbooks/technical_spike.md is missing Technical Spike default: {phrase}")
+for phrase in (
     "Primary question:",
-    "Timebox or evidence budget:",
-    "Success criterion:",
+    "Timebox or evidence budget override (optional):",
+    "Success criterion override (optional):",
     "Prompt-completeness gate",
     "--primary-question",
     "--success-criterion",
+    "playbook supplies the",
 ):
     if phrase not in technical_spike_prompt:
         fail(f"templates/technical_spike_run_prompt.md is missing prompt-completeness control: {phrase}")
@@ -3337,9 +3345,12 @@ for phrase in (
     "active parent session; no dedicated Coordinator worker spawned",
     "prompt-completeness gate",
     "run_prompt_incomplete:<field>",
+    "the timebox, success criterion",
+    "selected playbook's configured default",
     "Do not create a temporary input",
     "--primary-question <question>",
     "--success-criterion <criterion>",
+    "only for run-specific overrides",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")

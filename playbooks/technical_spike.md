@@ -1,13 +1,15 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.7
+version: 0.1.9
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
 exercise_scope: standard + planning; deep + planning
+default_timebox_minutes: 35
+default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
 validation_summary: deep review failed; corrective controls regression-covered; live rerun pending
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-08
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -41,6 +43,10 @@ an existing Spike remains supporting evidence and does not become the source of 
 - Mode: `investigation`
 - Requested outcome: `technical_answer`
 - Objective: `execute_spike`
+- Default timebox: `35` minutes end-to-end. The runner records the actual start timestamp and uses this value when no
+  run-specific override is supplied.
+- Baseline success criterion: Report verified evidence, unknowns, options, and a recommendation or unresolved decision.
+  A run-specific criterion may override this when the question needs one.
 
 Supported objectives:
 
@@ -91,13 +97,13 @@ Create or recover:
 ```
 
 Prompt-completeness gate: before any manifest, repository, or Jira work, validate that the prompt contains a populated
-primary question, measurable timebox, success criterion, requested outcome, and spike objective. Missing or placeholder
-values stop the run with a focused request; do not create temporary inputs or begin discovery. Record the objective, one
-primary question, optional assessment criteria or control domains, and a measurable timebox.
-The current runner represents the bounded evidence budget through `--started-at` plus `--timebox-minutes`; a missing
-declaration is a preparation failure, not permission to investigate indefinitely. Record evidence sources, execution
-repository, constraints, non-goals, and success criteria. If the question or budget is absent, stop before worker
-activation with a focused request; do not invent an open-ended investigation.
+primary question. Use this playbook's default timebox and baseline success criterion unless the prompt supplies an
+override. Missing or placeholder run-specific values stop the run with a focused request; do not create temporary
+inputs or begin discovery. Record the objective, one primary question, the resolved timebox, and the resolved success
+criterion.
+The runner represents the bounded evidence budget through the captured `--started-at` plus the playbook default or
+run-specific `--timebox-minutes`; it must never invent an open-ended investigation. Record evidence sources, execution
+repository, constraints, non-goals, and the resolved success criterion.
 
 Before worker activation, classify the decision context as confirmed facts, assumptions or hypotheses, open decisions,
 and recommended defaults. Discoverable facts belong to the workers; ask the user only for a material business, scope,
@@ -195,8 +201,9 @@ incomplete. A generated `spike_report.md` does not authorize `Question answered`
 
 ## Gates
 
-- **Question Gate:** one decision-relevant question and success criterion are explicit.
-- **Budget Gate:** the timebox or evidence limit is explicit before investigation.
+- **Question Gate:** one decision-relevant question is explicit; the playbook baseline or a run-specific success
+  criterion is resolved before investigation.
+- **Budget Gate:** the playbook default or a run-specific timebox/evidence limit is resolved before investigation.
 - **Evidence Gate:** conclusions cite current-run evidence; unsupported certainty is prohibited.
 - **Experiment Gate:** each experiment records method, expected outcomes, result, and limitation.
 - **Review Gate:** `review_spike` assesses the supplied Spike rather than silently replacing it.

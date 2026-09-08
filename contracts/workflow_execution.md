@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.4.22
+version: 0.4.23
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-08
 ---
 
 # Workflow Execution Contract
@@ -615,18 +615,21 @@ revision, execution repository, resolved provider configuration, profile, lifecy
 stops the run with `run_prompt_nonconformant`; an absent execution-repository `.codex/agents/` runtime view alone does
 not. Claiming the expected revision does not make a structurally incomplete prompt conformant.
 
-Before preparation, the Orchestrator MUST compare the current user's requested outcome with the selected playbook
-objective. It MUST pass both to `prepare_run.py` as `--requested-outcome` and `--workflow-objective`. Preparation stops
-before artifact creation with `run_goal_conflict` when they disagree. Both declarations remain authoritative input rows;
-the Orchestrator MUST NOT discard an earlier natural-language outcome, silently prefer a later workflow field, or ask a
+Before preparation, the Orchestrator MUST resolve the requested outcome and objective from the selected playbook or
+an explicit compatible pair, then pass both resolved values to `prepare_run.py` as `--requested-outcome` and
+`--workflow-objective`. A partial explicit pair is incomplete; an explicit pair that disagrees stops before artifact
+creation with `run_goal_conflict`.
+The Orchestrator MUST NOT discard an explicit user outcome, silently prefer a conflicting workflow field, or ask a
 worker to resolve the contradiction. `implementation_plan` requires Feature Delivery `implementation_planning`;
 Technical Spike accepts only `technical_answer + execute_spike` or `spike_assessment + review_spike`.
-The explicit populated `Requested outcome:` field MUST be copied verbatim into the supplied input manifest as
-`RUN-GOAL-001`; preparation rejects a missing or altered row with `run_goal_provenance_missing` or
-`run_goal_provenance_conflict`. The Orchestrator MUST NOT derive that row from the selected playbook or objective.
+When supplied, the explicit populated `Requested outcome:` field MUST be copied verbatim into the input manifest as
+`RUN-GOAL-001`. When omitted, preparation records the selected playbook default with playbook provenance. An altered
+explicit row remains a `run_goal_provenance_conflict`; a missing row is invalid only when the prompt supplied the
+corresponding explicit outcome.
 
-When the request declares an end-to-end duration, the Orchestrator MUST capture the current-turn start before any
-provider inspection or evidence retrieval. Preparation receives that start and duration and creates `run_budget.json`
+When the selected playbook declares a default or the request declares an end-to-end duration, the Orchestrator MUST
+capture the current-turn start before any provider inspection or evidence retrieval. Preparation receives that start
+and the resolved duration and creates `run_budget.json`
 with `started_at`, `deadline_at`, `activation_deadline_at`, a bounded finalization reserve, and terminal status. Every
 worker activation guard rejects a new spawn at or after `activation_deadline_at` with
 `run_budget_finalization_reserve`; the run proceeds directly to bounded terminal reporting. `within_budget`,

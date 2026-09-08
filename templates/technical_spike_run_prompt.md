@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.1.6
+version: 0.1.7
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-08
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/technical_spike.md
@@ -54,11 +54,11 @@ Runtime bootstrap:
 - The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
 - Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
   reopened or overridden by historical conclusions.
-- Compare the requested outcome with the selected objective before preparation. Stop with `run_goal_conflict` when
-  they disagree; do not drop either instruction or silently prefer the later field.
-- Copy the explicit `Requested outcome:` line into input-manifest row `RUN-GOAL-001` with source `Current user request`,
-  authority `Explicit user outcome`, and classification `requested outcome`. Never infer it from `Spike objective`.
-- The requested profile and planning lifecycle are mandatory. The Delivery Activation Barrier is not applicable:
+- Compare an explicit requested outcome with the selected objective before preparation. Stop with `run_goal_conflict`
+  when they disagree; use the playbook default when the outcome or objective is omitted.
+- Copy an explicit `Requested outcome:` line into input-manifest row `RUN-GOAL-001`; when omitted, record the selected
+  playbook default with playbook provenance.
+- The requested profile and planning lifecycle default to the playbook values. The Delivery Activation Barrier is not applicable:
   Technical Spike never enters remediation or changes production source or external systems.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
   fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
@@ -68,14 +68,14 @@ Runtime bootstrap:
 Spike question and bounds:
 - Primary question: <ONE-DECISION-RELEVANT-TECHNICAL-QUESTION>
 - Assessment criteria or control domains: <NONE-OR-LIST-OF-CRITERIA>
-- Timebox or evidence budget: <REQUIRED-END-TO-END-DURATION; PREPARE WITH --STARTED-AT AND --TIMEBOX-MINUTES>
-- Success criterion: <WHAT-EVIDENCE-WOULD-ANSWER-OR-MATERIALLY-NARROW-THE-QUESTION>
+- Timebox or evidence budget override (optional): <OMIT TO USE THE PLAYBOOK DEFAULT>
+- Success criterion override (optional): <OMIT TO USE THE PLAYBOOK DEFAULT>
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
 
-Prompt-completeness gate: Primary question, timebox or evidence budget, success criterion, Requested outcome, and Spike
-objective are mandatory populated values. Pass the question and criterion to preparation as `--primary-question` and
-`--success-criterion`. Do not invoke the launcher, create a temporary manifest, query Jira, or read repositories until
-all five values are present and non-placeholder.
+Prompt-completeness gate: only Primary question is mandatory for a new execute_spike run. The playbook supplies the
+timebox, baseline success criterion, requested outcome, and objective. Pass `--primary-question` to preparation and
+pass `--success-criterion` or `--timebox-minutes` only for explicit run-specific overrides. Do not invoke the launcher,
+create a temporary manifest, query Jira, or read repositories until the question is present and non-placeholder.
 
 Review target (required for `review_spike`; otherwise `None`):
 - Existing Spike report or document: <URL-OR-ABSOLUTE-PATH-OR-NONE>

@@ -92,10 +92,11 @@ running the launcher skill, `run_preflight.py`, or `prepare_run.py`; those are
 Coordinator-only initialization actions.
 
 Before preparation, apply the prompt-completeness gate. For Technical Spike,
-require a populated primary question, success criterion, timebox, requested
-outcome, and spike objective before reading repositories or creating a temporary
-manifest. On a missing or placeholder value, stop with
-`run_prompt_incomplete:<field>` and do not query Jira or activate workers.
+require a populated primary question before reading repositories or creating a
+temporary manifest. Resolve the success criterion, timebox, requested outcome,
+and spike objective from the selected playbook unless the prompt supplies a
+complete compatible override pair. On a missing or placeholder question or invalid override,
+stop with `run_prompt_incomplete:<field>` and do not query Jira or activate workers.
 Then create a complete current-run input manifest from every material request
 detail and pass it with `--input-manifest <path>`. Preparation copies and hashes
 `run_inputs.json`; a generated minimum is not sufficient for worker activation.
@@ -118,10 +119,10 @@ For Feature Delivery `specification_assessment`, record Playbook Selection
 follow-ups`, or `Not ready for implementation`, with the ready/awaiting state
 mapping defined by the playbook. Do not treat plan feasibility as specification
 readiness.
-For Technical Spike, enforce the declared question and measurable timebox before
-activation; `prepare_run.py` must reject the run with `run_budget_required` when
-the timebox is missing and require `--primary-question` plus
-`--success-criterion`. Record `Primary goal` exactly as `Execute technical
+For Technical Spike, enforce the question and resolved playbook timebox before
+activation; `prepare_run.py` must require `--primary-question`, apply the
+playbook timebox and success-criterion defaults, and accept explicit overrides.
+Record `Primary goal` exactly as `Execute technical
 spike` or `Review technical spike`, use only the playbook's corresponding exact
 dispositions, require `spike_report.md` for a completed run, and prohibit
 `implementation_plan.md` and remediation activation.
