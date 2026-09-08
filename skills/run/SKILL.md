@@ -88,9 +88,10 @@ description: >-
    `--requested-outcome <outcome>`, `--workflow-objective <objective>`, and optional verified runtime-agent directory
    (`--runtime-agents <path>`). Technical Spike permits `technical_answer + execute_spike` or
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
-   `specification_assessment + specification_assessment`. When the prompt declares an end-to-end duration, also pass the
-   captured current-turn RFC 3339 start as `--started-at` and integer minutes as `--timebox-minutes`; use the resulting
-   `run_budget.json` as the terminal budget source of truth. Use `--continuation` only
+   `specification_assessment + specification_assessment`. Technical Spike is budget-gated: always pass the captured
+   current-turn RFC 3339 start as `--started-at` and integer minutes as `--timebox-minutes`; a missing declaration stops
+   with `run_budget_required` before artifact creation or worker activation. Use the resulting `run_budget.json` as the
+   terminal budget source of truth. Use `--continuation` only
    when the user explicitly says continue or resume. Validate the explicit manifest and provider bindings before this
    step mutates the artifact root. This one step then archives a prior terminal run, creates the artifact root and
    minimal work record, and writes `role_bindings.json`.
@@ -123,7 +124,8 @@ description: >-
    session remains the Orchestrator with its
    already-selected model and effort; do not claim that the Orchestrator agent TOML changed the parent session.
    Record that active parent-session model and effort exactly as `Coordinator model/effort` so repeated-run comparisons
-   expose Coordinator configuration differences.
+   expose Coordinator configuration differences. If the execution surface does not expose that telemetry, record
+   `Not exposed / Not exposed`; never copy an error message into this field.
    The `orchestrator`/`sentry_orchestrator` binding is policy metadata unless the provider explicitly creates a
    coordinator child; the default Codex path uses the active parent session and must record
    `Coordinator execution: active parent session; no dedicated Coordinator worker spawned`.
@@ -231,7 +233,9 @@ description: >-
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md`.
-   The persisted packet is the Documenter's pre-release source snapshot. `runtime_closure.json` is the provider receipt,
+   Keep a Technical Spike packet in `State: handoff` with non-terminal workflow metadata until the packaged finalizer
+   succeeds; only the finalizer may emit `State: completed` and `Workflow outcome: completed`. The persisted packet is
+   the Documenter's pre-release source snapshot. `runtime_closure.json` is the provider receipt,
    and the rendered `work_record.md` is the authoritative terminal state; do not require the source packet to be
    rewritten after provider release. The finalizer mechanically owns released runtime status, final reconciliation,
    finalization-schema status, runtime-closure artifact status, and removal of obsolete finalization steps from the next

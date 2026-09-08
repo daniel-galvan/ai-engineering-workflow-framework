@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.1.4
+version: 0.1.5
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07
@@ -68,7 +68,7 @@ Runtime bootstrap:
 Spike question and bounds:
 - Primary question: <ONE-DECISION-RELEVANT-TECHNICAL-QUESTION>
 - Assessment criteria or control domains: <NONE-OR-LIST-OF-CRITERIA>
-- Timebox or evidence budget: <DURATION-OR-BOUNDED-EVIDENCE-LIMIT>
+- Timebox or evidence budget: <REQUIRED-END-TO-END-DURATION; PREPARE WITH --STARTED-AT AND --TIMEBOX-MINUTES>
 - Success criterion: <WHAT-EVIDENCE-WOULD-ANSWER-OR-MATERIALLY-NARROW-THE-QUESTION>
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
 

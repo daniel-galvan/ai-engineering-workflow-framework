@@ -50,6 +50,7 @@ TECHNICAL_SPIKE_DISPOSITIONS = {
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)(?:\s*;.*)?$", re.IGNORECASE
 )
+UNAVAILABLE_COORDINATOR_MODEL_EFFORT = "Not exposed / Not exposed"
 AGENT_ROLE_LABELS = {
     "orchestrator": "Orchestrator",
     "current_state_investigator": "Current-State Investigator",
@@ -166,6 +167,23 @@ def _normalize_model_effort(value: object) -> object:
     return f"{match.group(1)} / {match.group(2).lower()}" if match else value
 
 
+def _normalize_coordinator_model_effort(value: object) -> object:
+    text = str(value).strip().lower()
+    if "not exposed" in text or "packet-input error" in text:
+        return UNAVAILABLE_COORDINATOR_MODEL_EFFORT
+    return _normalize_model_effort(value)
+
+
+def _is_run_context_evidence(row: object) -> bool:
+    if not isinstance(row, dict):
+        return False
+    source = str(row.get("Source", "")).strip().lower()
+    return any(
+        marker in source
+        for marker in ("current user", "user request", "run constraint", "clean-run constraint")
+    )
+
+
 def _normalize_playbook_identity(value: object) -> object:
     parts = str(value).split(" / ", 1)
     if len(parts) != 2 or parts[0].endswith(".md"):
@@ -259,7 +277,9 @@ def _normalize_packet(
         identity["Prompt template / revision / conformance"] = _normalize_prompt_identity(
             identity.get("Prompt template / revision / conformance", "")
         )
-        identity["Coordinator model/effort"] = _normalize_model_effort(identity.get("Coordinator model/effort", ""))
+        identity["Coordinator model/effort"] = _normalize_coordinator_model_effort(
+            identity.get("Coordinator model/effort", "")
+        )
         profiles = [str(identity.get(field, "")).strip().lower() for field in (
             "Requested profile", "Activated profile", "Executed profile"
         )]
@@ -300,6 +320,9 @@ def _normalize_packet(
                 ("omitted", "not created", "prohibited")
             )
         ]
+    evidence = packet.get("evidence")
+    if isinstance(evidence, list):
+        packet["evidence"] = [row for row in evidence if not _is_run_context_evidence(row)]
     for row in closure.get("runtime_closure", []):
         if not isinstance(row, dict):
             continue
@@ -390,14 +413,15 @@ def _validate_handoff(packet: dict[str, object]) -> None:
                     "Technical Spike implementation plan must be exactly "
                     "Not created; Technical Spike produces spike_report.md"
                 )
-            if state not in {"blocked", "awaiting_input", "completed"}:
-                raise ValueError("Technical Spike terminal state must be blocked, awaiting_input, or completed")
-            if state == "completed":
+            if state not in {"blocked", "awaiting_input", "handoff", "completed"}:
+                raise ValueError("Technical Spike state must be blocked, awaiting_input, handoff, or completed")
+            if state in {"handoff", "completed"}:
                 dispositions = TECHNICAL_SPIKE_DISPOSITIONS.get(primary_goal)
                 if dispositions is None:
                     raise ValueError(
                         "Technical Spike Primary goal must be Execute technical spike or Review technical spike"
                     )
+            if state == "completed":
                 result = str(handoff["workflow_result"]).strip()
                 expected_engineering = dispositions.get(result)
                 if expected_engineering is None:
@@ -443,6 +467,16 @@ def _validate_handoff(packet: dict[str, object]) -> None:
     for index, item in enumerate(artifacts):
         if not isinstance(item, str) or not item.strip():
             raise ValueError(f"packet.handoff.artifacts[{index}] must be a non-empty path or Markdown link")
+
+
+def _validate_pre_release_state(packet: dict[str, object]) -> None:
+    identity = packet.get("identity", {})
+    if not isinstance(identity, dict):
+        return
+    playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)[0].lower()
+    playbook = playbook.replace(" ", "_")
+    if "technical_spike" in playbook and str(identity.get("State", "")).strip().lower() == "completed":
+        raise ValueError("Technical Spike pre-release packet must keep State handoff until finalizer succeeds")
 
 
 def _explanation_text(item: object) -> str:
@@ -786,6 +820,8 @@ def finalize(
     if not errors:
         try:
             _validate_shapes(packet, closure)
+            if pre_release:
+                _validate_pre_release_state(packet)
             _normalize_packet(packet, closure, packet_path)
             _sync_spike_report_budget(packet_path, packet, budget_status)
             packet_ready = True
@@ -1178,6 +1214,13 @@ def self_test() -> None:
         == normalization["prompt_after"]
     )
     assert [row["Role"] for row in normalization_packet["workers"]] == list(normalization["roles"].values())
+    context_packet = {
+        "identity": {"Coordinator model/effort": "Packet-input error: active parent model/effort not exposed"},
+        "evidence": [{"Evidence ID": "E-001", "Source": "current user clean-run constraint"}],
+    }
+    _normalize_packet(context_packet, {"runtime_closure": []})
+    assert context_packet["identity"]["Coordinator model/effort"] == UNAVAILABLE_COORDINATOR_MODEL_EFFORT
+    assert context_packet["evidence"] == []
 
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)
@@ -1294,7 +1337,8 @@ def self_test() -> None:
         prepared_spike = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
              "--execution-repository", str(spike_execution), "--work-item", "SPIKE-1",
-             "--playbook", "technical_spike", "--input-manifest", str(spike_inputs)],
+             "--playbook", "technical_spike", "--input-manifest", str(spike_inputs),
+             "--started-at", "2099-09-07T12:00:00Z", "--timebox-minutes", "25"],
             capture_output=True, text=True, check=True,
         )
         prepared_spike_data = json.loads(prepared_spike.stdout)
@@ -1518,6 +1562,18 @@ Runtime behavior remains unverified.
         spike_report.write_text(valid_spike_report)
         finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
         assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
+        premature_spike = json.loads(spike_packet_path.read_text())
+        premature_spike["identity"]["State"] = "completed"
+        spike_packet_path.write_text(json.dumps(premature_spike, indent=2) + "\n")
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+        except ValueError as error:
+            assert "must keep State handoff" in str(error)
+        else:
+            raise AssertionError("pre-release finalization must own the terminal state transition")
+        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
+        finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
+        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
         assert "| Budget status | exceeded_during_finalization |" in spike_report.read_text()
         finalize(spike_packet_path, spike_closure, spike_record)
         spike_rendered = spike_record.read_text()
@@ -1546,18 +1602,20 @@ Runtime behavior remains unverified.
         assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
         broken_spike = json.loads(spike_packet_path.read_text())
         broken_spike["identity"].update({
-            "State": "completed", "Workflow outcome": "completed",
+            "State": "handoff", "Workflow outcome": "in_progress",
             "Engineering outcome": "partially_solved",
         })
         broken_spike["playbook_selection"]["Primary goal"] = "Create implementation plan"
         broken_spike["identity"]["Framework commit / status"] = "malformed"
+        broken_spike["handoff"]["provenance"] = broken_spike["handoff"]["provenance"].replace(
+            "a" * 40, "malformed"
+        )
         spike_packet_path.write_text(json.dumps(broken_spike, indent=2) + "\n")
         for attempt in (1, 2):
             try:
                 finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
             except ValueError as error:
                 assert "Technical Spike Primary goal must be" in str(error)
-                assert "Framework commit / status received" in str(error)
                 assert ("finalization_contract_failure:" in str(error)) == (attempt == 2)
             else:
                 raise AssertionError("invalid corrected packet must fail pre-release")

@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.5
+version: 0.1.6
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -90,9 +90,11 @@ Create or recover:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Record the objective, one primary question, optional assessment criteria or control domains, timebox or evidence budget,
-evidence sources, execution repository, constraints, non-goals, and success criteria. If the question or budget is
-absent, stop before worker activation with a focused request; do not invent an open-ended investigation.
+Record the objective, one primary question, optional assessment criteria or control domains, and a measurable timebox.
+The current runner represents the bounded evidence budget through `--started-at` plus `--timebox-minutes`; a missing
+declaration is a preparation failure, not permission to investigate indefinitely. Record evidence sources, execution
+repository, constraints, non-goals, and success criteria. If the question or budget is absent, stop before worker
+activation with a focused request; do not invent an open-ended investigation.
 
 Before worker activation, classify the decision context as confirmed facts, assumptions or hypotheses, open decisions,
 and recommended defaults. Discoverable facts belong to the workers; ask the user only for a material business, scope,

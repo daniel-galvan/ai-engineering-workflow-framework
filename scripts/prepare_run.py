@@ -452,6 +452,8 @@ def prepare_run(
     # overwriting any run artifact. This makes invalid retries transactional.
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
     _validate_run_goal(playbook, workflow_objective, requested_outcome, validated_supplied)
+    if playbook == "technical_spike" and budget is None:
+        raise ValueError("run_budget_required")
     resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
     manifest = resolve_bindings(playbook, resolved_runtime_agents)
     artifact_root.mkdir(parents=True, exist_ok=True)
@@ -755,10 +757,22 @@ def self_test() -> None:
         aligned = prepare_run(
             execution, "ITEM-GOAL-ALIGNED", "technical_spike", None, False,
             input_manifest=goal_source, workflow_objective="review_spike",
-            requested_outcome="spike_assessment",
+            requested_outcome="spike_assessment", started_at="2099-09-07T12:00:00Z",
+            timebox_minutes=25,
         )
         aligned_inputs = json.loads((Path(aligned["artifact_root"]) / RUN_INPUTS_FILENAME).read_text())["inputs"]
         assert {row["Input ID"] for row in aligned_inputs} >= {"RUN-GOAL-001", "RUN-GOAL-002"}
+        try:
+            prepare_run(
+                execution, "ITEM-NO-BUDGET", "technical_spike", None, False,
+                input_manifest=goal_source, workflow_objective="review_spike",
+                requested_outcome="spike_assessment",
+            )
+        except ValueError as error:
+            assert str(error) == "run_budget_required"
+        else:
+            raise AssertionError("Technical Spike must require a measurable run budget")
+        assert not (execution / ".thoughts" / "ITEM-NO-BUDGET").exists()
         budgeted = prepare_run(
             execution, "ITEM-BUDGET", "technical_spike", None, False,
             input_manifest=goal_source, workflow_objective="review_spike",

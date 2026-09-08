@@ -113,6 +113,11 @@ gap or limitation, and required next evidence or decision. Use one `Not
 applicable` row when no decision or criteria were declared. Do not create
 `implementation_plan.md`; set the handoff field to `Not created; Technical
 Spike produces spike_report.md`.
+Keep the packet in `State: handoff` with non-terminal workflow metadata until the Coordinator's packaged finalizer
+succeeds; never predeclare `completed`. Evidence rows must describe observed repository, document, runtime, or provider
+facts. Keep current-user constraints in the Input Register or Decision Context; do not emit them as standalone Evidence
+IDs. Copy the template's table header and separator widths exactly, especially `## Direct Evidence`; do not hand-write a
+shortened separator row.
 
 For a bounded dependency route, omit empty or inapplicable template sections and reference evidence instead of repeating
 it. Do not reopen investigation after fan-in; return the artifacts within the playbook's two-minute documentation target.

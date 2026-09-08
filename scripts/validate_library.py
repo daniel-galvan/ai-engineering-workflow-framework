@@ -1414,7 +1414,11 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     if " / " not in provider_model:
         fail(f"{path}: Provider / model configuration must identify the provider and its ledger")
     coordinator_model = identity["Coordinator model/effort"].strip()
-    if codex_run and not re.fullmatch(
+    coordinator_unavailable = (
+        coordinator_model.lower() == "not exposed / not exposed"
+        and "active parent session" in identity.get("Coordinator execution", "").lower()
+    )
+    if codex_run and not coordinator_unavailable and not re.fullmatch(
         r"\S+ / (?:none|minimal|low|medium|high|xhigh|max|ultra)", coordinator_model, re.IGNORECASE
     ):
         fail(
@@ -3036,6 +3040,8 @@ for phrase in (
 ):
     if phrase not in technical_spike_report:
         fail(f"templates/spike_report.md is missing Technical Spike report field: {phrase}")
+if not markdown_table(technical_spike_report, "## Direct Evidence"):
+    fail("templates/spike_report.md has an invalid Direct Evidence table")
 
 sentry_repository_integrator = agent_configs["sentry_repository_integrator"].get(
     "developer_instructions", ""

@@ -120,7 +120,7 @@ production, or current-main behavior.
 | Role-policy baseline ID | Provider baseline ID or `Not applicable` |
 | Role binding manifest | `.thoughts/<WORK-ITEM-ID>/role_bindings.json` or `Not applicable` for a non-Codex provider |
 | Provider / model configuration | Provider name / Worker Execution Ledger |
-| Coordinator model/effort | Active parent-session model / effort; do not infer from Orchestrator agent configuration |
+| Coordinator model/effort | Active parent-session model / effort, or `Not exposed / Not exposed` when telemetry is unavailable; do not infer from Orchestrator agent configuration |
 | Requested profile | `standard` / `deep` |
 | Activated profile | `standard` / `deep` / `None` |
 | Executed profile | `standard` / `deep` / `None` |
