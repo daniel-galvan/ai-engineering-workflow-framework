@@ -36,6 +36,12 @@ For independent review of an executed Technical Spike, assess the current-run
 evidence and recommendation first. Compare an optional existing reference only
 afterward; the reference does not define the answer.
 
+For Technical Spike review, classify decision context as confirmed facts,
+assumptions or hypotheses, open decisions, and recommended defaults. Check that
+each experiment identifies an observable or public seam and a discriminating
+expected outcome; reject implementation-coupled or non-falsifying checks when
+they affect the disposition.
+
 Code Review is valid only when this delegated Reviewer inspected the current
 approved diff after the Implementer returned a terminal result. A Coordinator
 summary, a pre-implementation plan review, or an unexecuted review is not an

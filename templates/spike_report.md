@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.1.3
+version: 0.1.5
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -21,6 +21,7 @@ budget. It is a learning artifact, not an implementation plan or authorization t
 | Work item | |
 | Objective | `execute_spike` / `review_spike` |
 | Primary question | |
+| Assessment criteria or control domains | None declared / list the criteria used to judge the answer |
 | Timebox or evidence budget | |
 | Success criterion | |
 | Execution profile | `standard` / `deep` |
@@ -48,11 +49,29 @@ do not make every row point only to an intermediate worker artifact.
 | --- | --- | --- | --- | --- | --- |
 | | | | | | Verified / Supplied / Inferred / Unknown |
 
-## Experiments and Checks
+## Decision Context
 
-| Hypothesis or review criterion | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+Separate confirmed facts, assumptions, open decisions, and recommended defaults. Record one `Not applicable` row when
+no additional decision remains for this Spike.
+
+| Category | Statement or branch | Evidence refs | Owner or decision needed | Status |
 | --- | --- | --- | --- | --- |
 | | | | | |
+
+## Assessment Criteria
+
+When the run declares evaluation criteria, assess each one against the evidence. Do not convert an unknown into a gap
+or a satisfied control. Use one `Not applicable` row when no external criteria or control baseline was declared.
+
+| Criterion or domain | Evidence refs | Assessment | Gap or limitation | Required next evidence or decision |
+| --- | --- | --- | --- | --- |
+| | | | | |
+
+## Experiments and Checks
+
+| Hypothesis or review criterion | Observable seam | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
 
 Use `Not run` when no experiment was necessary and explain why the existing evidence answered the question.
 

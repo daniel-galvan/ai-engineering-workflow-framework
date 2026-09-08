@@ -283,6 +283,13 @@ def markdown_table(text: str, heading: str) -> list[dict[str, str]]:
     return rows
 
 
+def normalized_metadata_value(value: object) -> str:
+    normalized = str(value).strip()
+    if len(normalized) >= 2 and normalized.startswith("`") and normalized.endswith("`"):
+        return normalized[1:-1].strip()
+    return normalized
+
+
 def fenced_section(text: str, heading: str) -> str:
     match = re.search(rf"^{re.escape(heading)}\s*\n+```text\s*\n(.*?)\n```", text, re.MULTILINE | re.DOTALL)
     return match.group(1) if match else ""
@@ -337,6 +344,8 @@ def technical_spike_report_errors(
         "## Scope and Non-goals",
         "## Method and Evidence",
         "## Direct Evidence",
+        "## Decision Context",
+        "## Assessment Criteria",
         "## Experiments and Checks",
         "## Findings",
         "## Options and Tradeoffs",
@@ -356,15 +365,17 @@ def technical_spike_report_errors(
     for field in ("Work item", "Primary question", "Timebox or evidence budget", "Success criterion"):
         if not metadata.get(field, "").strip():
             errors.append(f"spike_report.md Metadata requires {field}")
-    if expected_objective and metadata.get("Objective", "").strip() != expected_objective:
+    objective = normalized_metadata_value(metadata.get("Objective", ""))
+    profile_value = normalized_metadata_value(metadata.get("Execution profile", ""))
+    if expected_objective and objective != expected_objective:
         errors.append(f"spike_report.md Objective must be {expected_objective}")
-    if metadata.get("Execution profile", "").strip() != profile:
+    if profile_value != profile:
         errors.append(f"spike_report.md Execution profile must be {profile}")
-    review_target = metadata.get("Review target", "").strip()
-    comparison_reference = metadata.get("Comparison reference", "").strip()
+    review_target = normalized_metadata_value(metadata.get("Review target", ""))
+    comparison_reference = normalized_metadata_value(metadata.get("Comparison reference", ""))
     if not comparison_reference:
         errors.append("spike_report.md Metadata requires Comparison reference")
-    if expected_objective == "review_spike" and metadata.get("Review target", "").strip().lower() in {
+    if expected_objective == "review_spike" and review_target.lower() in {
         "", "none", "not applicable",
     }:
         errors.append("spike_report.md review_spike requires Review target")
@@ -385,9 +396,28 @@ def technical_spike_report_errors(
         "Status",
     )):
         errors.append("spike_report.md requires one complete direct-evidence row")
+    decision_context = markdown_table(text, "## Decision Context")
+    if not decision_context or any(not row.get(field, "").strip() for row in decision_context for field in (
+        "Category", "Statement or branch", "Evidence refs", "Owner or decision needed", "Status",
+    )):
+        errors.append("spike_report.md requires one complete decision-context row")
+    allowed_decision_categories = {
+        "confirmed fact", "assumption or hypothesis", "open decision", "recommended default", "not applicable",
+    }
+    if any(row.get("Category", "").strip().lower() not in allowed_decision_categories for row in decision_context):
+        errors.append(
+            "spike_report.md Decision Context Category must be Confirmed fact, Assumption or hypothesis, "
+            "Open decision, Recommended default, or Not applicable"
+        )
+    criteria = markdown_table(text, "## Assessment Criteria")
+    if not criteria or any(not row.get(field, "").strip() for row in criteria for field in (
+        "Criterion or domain", "Evidence refs", "Assessment", "Gap or limitation", "Required next evidence or decision",
+    )):
+        errors.append("spike_report.md requires one complete assessment-criteria or Not applicable row")
     checks = markdown_table(text, "## Experiments and Checks")
     if not checks or any(not row.get(field, "").strip() for row in checks for field in (
-        "Hypothesis or review criterion", "Command or method", "Expected discriminating outcomes", "Actual result",
+        "Hypothesis or review criterion", "Observable seam", "Command or method",
+        "Expected discriminating outcomes", "Actual result",
         "Disposition impact",
     )):
         errors.append("spike_report.md requires one complete experiment or Not run row")
@@ -2030,10 +2060,18 @@ Bounded path only.
 | Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
 | --- | --- | --- | --- | --- | --- |
 | E-001 | Execution repository | abcdef1 | src/boundary.py:10 | Boundary preserves the data | Verified |
-## Experiments and Checks
-| Hypothesis or review criterion | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+## Decision Context
+| Category | Statement or branch | Evidence refs | Owner or decision needed | Status |
 | --- | --- | --- | --- | --- |
-| Boundary preserves data | Focused test | Data retained or lost | Retained | Supports answer |
+| Not applicable | No unresolved decision remains | None | None | Recorded |
+## Assessment Criteria
+| Criterion or domain | Evidence refs | Assessment | Gap or limitation | Required next evidence or decision |
+| --- | --- | --- | --- | --- |
+| Not applicable | Not applicable | No external assessment baseline declared | None | None |
+## Experiments and Checks
+| Hypothesis or review criterion | Observable seam | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+| --- | --- | --- | --- | --- | --- |
+| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained | Supports answer |
 ## Findings
 The current boundary preserves the required data.
 ## Options and Tradeoffs
@@ -2061,6 +2099,30 @@ Keep the current boundary pending runtime confirmation.
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    markdown_formatted_metadata = valid_spike_report.replace(
+        "| Objective | execute_spike |", "| Objective | `execute_spike` |"
+    ).replace("| Execution profile | standard |", "| Execution profile | `standard` |")
+    assert technical_spike_report_errors(
+        markdown_formatted_metadata, "Execute technical spike", "standard", "Question answered"
+    ) == []
+    invalid_decision_category = valid_spike_report.replace(
+        "| Not applicable | No unresolved decision remains | None | None | Recorded |",
+        "| Unknown | No unresolved decision remains | None | None | Recorded |",
+    )
+    assert "spike_report.md Decision Context Category" in "\n".join(
+        technical_spike_report_errors(
+            invalid_decision_category, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    missing_observable_seam = valid_spike_report.replace(
+        "| Boundary preserves data | Public request/response boundary | Focused test |",
+        "| Boundary preserves data | | Focused test |",
+    )
+    assert "spike_report.md requires one complete experiment" in "\n".join(
+        technical_spike_report_errors(
+            missing_observable_seam, "Execute technical spike", "standard", "Question answered"
+        )
+    )
     assert "spike_report.md Workflow result must match Final Handoff" in technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Inconclusive"
     )
@@ -2083,12 +2145,12 @@ Keep the current boundary pending runtime confirmation.
 | --- | --- |
 | Run ID | run-001 |
 | Evaluation run ID | evaluation-001 |
-| Playbook / version | playbooks/feature_delivery.md / 0.4.17 |
+| Playbook / version | playbooks/feature_delivery.md / 0.4.19 |
 | Framework commit / status | 0123456789abcdef0123456789abcdef01234567 / Dirty |
 | Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.17 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.4.19 / pass |
 | Role-policy baseline ID | codex-role-policy-v20260827032839 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -2475,10 +2537,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace(
-                "templates/feature_delivery_run_prompt.md / 0.4.17 / pass",
+                "templates/feature_delivery_run_prompt.md / 0.4.19 / pass",
                 "templates/feature_delivery_run_prompt.md / framework revision 0123456789abcdef / pass",
             ),
-            "Prompt template revision must be 0.4.17",
+            "Prompt template revision must be 0.4.19",
         )
         assert_invalid(
             valid.replace(
@@ -2964,7 +3026,10 @@ for text, label in (
 for phrase in (
     "Timebox or evidence budget",
     "Direct Evidence",
+    "Decision Context",
+    "Assessment Criteria",
     "Experiments and Checks",
+    "Observable seam",
     "Comparison reference",
     "Reference Comparison",
     "Feature Delivery handoff",
@@ -3288,6 +3353,16 @@ for phrase in (
 ):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing Jira provider mapping: {phrase}")
+current_state_agent = (CODEX_AGENT_DIR / "current_state_investigator.toml").read_text()
+for phrase in (
+    "Atlassian Rovo operation from the provider mapping",
+    "not open Jira in a browser",
+    "normalized `unavailable` state",
+    "Jira requirements, comments, links, and repository/runtime",
+    "observations distinguishable",
+):
+    if phrase not in current_state_agent:
+        fail(f"providers/codex/agents/current_state_investigator.toml is missing Jira read control: {phrase}")
 if '"Receipt owner": "Coordinator"' not in RUNTIME_CLOSURE_TEMPLATE.read_text():
     fail("templates/runtime_closure.json must assign the provider receipt to the Coordinator")
 for phrase in (

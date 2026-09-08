@@ -160,6 +160,7 @@ On Documenter-owned paths, keep the final Documenter live through consistency va
 preflight-pinned packaged finalizer with `--pre-release` against a pending
 closure probe before releasing it. Send corrections to that same handle, collect
 its revised terminal result, and repeat until the pre-release check passes. Use a received/expected correction directly;
+the Coordinator is the only role allowed to invoke the finalizer; the Documenter only returns or corrects its packet.
 do not inspect validator source unless the error lacks an expected value or contradicts the documented packet contract. If
 that packaged root disappears or changes, stop with `plugin_revision_mismatch`;
 do not discover another installed package. Close the handle only after validation

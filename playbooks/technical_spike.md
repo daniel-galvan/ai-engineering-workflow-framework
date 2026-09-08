@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.3
+version: 0.1.5
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -90,9 +90,14 @@ Create or recover:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Record the objective, one primary question, timebox or evidence budget, evidence sources, execution repository,
-constraints, non-goals, and success criteria. If the question or budget is absent, stop before worker activation with a
-focused request; do not invent an open-ended investigation.
+Record the objective, one primary question, optional assessment criteria or control domains, timebox or evidence budget,
+evidence sources, execution repository, constraints, non-goals, and success criteria. If the question or budget is
+absent, stop before worker activation with a focused request; do not invent an open-ended investigation.
+
+Before worker activation, classify the decision context as confirmed facts, assumptions or hypotheses, open decisions,
+and recommended defaults. Discoverable facts belong to the workers; ask the user only for a material business, scope,
+ownership, or incompatible-alternatives decision that bounded discovery cannot resolve. If no decision remains, record
+`Not applicable` in the report.
 
 ### Stage 1 — Frame the Spike
 
@@ -110,9 +115,10 @@ the reference. A reference may reveal agreement, contradiction, or omission; it 
 ### Stage 2 — Investigate or Assess
 
 For `execute_spike`, run the smallest checks or disposable experiments that can distinguish the credible answers.
-Record the hypothesis, command or method, expected discriminating outcomes, actual result, limitations, and evidence
-reference. Tests and benchmarks are allowed when they do not require production-source changes. Keep any generated
-Spike artifacts inside the current `.thoughts/<WORK-ITEM-ID>/` root.
+Choose the highest observable or public seam that can falsify the hypothesis. Record the seam, hypothesis, command or
+method, expected discriminating outcomes, actual result, limitations, and evidence reference. Prefer behavior-level
+checks over implementation-coupled checks; tests and benchmarks are allowed when they do not require production-source
+changes. Keep any generated Spike artifacts inside the current `.thoughts/<WORK-ITEM-ID>/` root.
 
 For `review_spike`, test whether the question is precise, the scope and method fit the question, evidence supports the
 claims, material alternatives were considered, limitations are visible, and the recommendation follows from the
@@ -147,10 +153,13 @@ After required analytical workers return terminal envelopes and fan-in passes, t
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.md
 ```
 
-The report must preserve the question, budget, method, direct source evidence, experiments, findings, options,
-recommendation, limitations, remaining unknowns, exact disposition, any Feature Delivery handoff, and the independent
-comparison when `execute_spike` declares a reference. It must be usable without opening every intermediate worker
-artifact and must not turn follow-up work into an implementation plan.
+The report must preserve the question, declared assessment criteria or control domains, decision context, and budget,
+method, direct source evidence, experiments, findings, options, recommendation, limitations, remaining unknowns, and
+exact disposition. It must also preserve any Feature Delivery handoff and, for `execute_spike`, the independent
+comparison.
+For every declared criterion, record evidence, assessment, gap or limitation, and the next evidence or decision. Use
+`Not applicable` when no criteria were declared. It must be usable without opening every intermediate worker artifact
+and must not turn follow-up work into an implementation plan.
 
 Use these exact completed-run dispositions:
 
@@ -175,6 +184,9 @@ At handoff, use the contract's shared human-readable template. Set `Implementati
 Spike produces spike_report.md`, link `spike_report.md`, name the evidence-backed conclusion and limitations, and give
 one concrete next action. Since this playbook has no delivery lifecycle, it never activates `implement`, `review`,
 `validate`, or final `handoff` after delivery fan-in; Feature Delivery owns any later approved delivery.
+
+If pre-release or terminal finalization fails, preserve the exact failure receipt and report the run as blocked or
+incomplete. A generated `spike_report.md` does not authorize `Question answered` or a completed terminal handoff.
 
 ## Gates
 

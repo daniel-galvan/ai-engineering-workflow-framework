@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Example
-version: 0.1.2
+version: 0.1.4
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07
@@ -32,6 +32,8 @@ Lifecycle: planning
 Requested outcome: technical_answer
 Spike objective: execute_spike
 Primary question: <ONE-DECISION-RELEVANT-QUESTION>
+Decision context: <FACTS-ASSUMPTIONS-OPEN-DECISIONS-RECOMMENDED-DEFAULTS>
+Assessment criteria or control domains: <NONE-OR-LIST-OF-CRITERIA>
 Timebox or evidence budget: <BOUNDED-LIMIT>
 Success criterion: <OBSERVABLE-ANSWER-CONDITION>
 Review target: None
@@ -51,9 +53,10 @@ The work record and report are created at:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.md
 ```
 
-The report records the question, measured budget status, direct evidence with repository revision and file or artifact
-location, experiments, options, recommendation, post-recommendation reference comparison, limitations, remaining
-unknowns, and exact disposition. It does not create `implementation_plan.md`.
+The report records the question, decision context, any declared assessment criteria, measured budget status, direct
+evidence with repository revision and file or artifact location, observable experiment seams, options, recommendation,
+post-recommendation reference comparison, limitations, remaining unknowns, and exact disposition. It does not create
+`implementation_plan.md`.
 
 If implementation planning is next, start a separate Feature Delivery planning run and supply the accepted Spike report
 as current-run supporting evidence.

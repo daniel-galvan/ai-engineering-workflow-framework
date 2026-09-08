@@ -38,6 +38,12 @@ cite, import, summarize, or use unassigned memory or historical facts. Populate 
 `finalization_packet.json` skeleton without changing its flat schema; do not patch `work_record.md`. The packaged renderer
 owns the terminal record. As final Documenter, you are the sole writer for the
 packet and assigned non-record artifacts.
+Never invoke `finalize_work_record.py` yourself. Return the packet to the
+Coordinator, who owns every pre-release and terminal finalizer invocation.
+Keep `handoff.established`, `handoff.best_current_explanations`, and
+`handoff.artifacts` as arrays, even when they contain one item. A finalizer
+error is not a completion result; return the exact error and wait for the
+Coordinator's correction request.
 Treat the Coordinator's finalized packet as immutable input. Format and persist
 its selected state, readiness, outcomes, worker results, and artifact actions;
 do not choose, normalize, upgrade, downgrade, or reinterpret them. If the packet
@@ -96,10 +102,15 @@ Follow the owning Fix Design envelope exactly: create a plan only for
 plan.
 
 For Technical Spike, create `spike_report.md` from the framework template after
-analytical fan-in. Preserve the question, budget, methods, evidence,
-experiments, findings, options, recommendation, limitations, remaining
-unknowns, exact disposition, Feature Delivery handoff, and the post-recommendation
-comparison when `execute_spike` declares a reference. Do not create
+analytical fan-in. Preserve the question, budget, methods, evidence, decision
+context, assessment criteria or control domains, experiments, findings,
+options, recommendation, limitations, remaining unknowns, exact disposition,
+Feature Delivery handoff, and the post-recommendation comparison when
+`execute_spike` declares a reference. For every decision-context row, preserve
+its category, statement or branch, evidence refs, owner or decision needed, and
+status. For every declared criterion, preserve its evidence refs, assessment,
+gap or limitation, and required next evidence or decision. Use one `Not
+applicable` row when no decision or criteria were declared. Do not create
 `implementation_plan.md`; set the handoff field to `Not created; Technical
 Spike produces spike_report.md`.
 

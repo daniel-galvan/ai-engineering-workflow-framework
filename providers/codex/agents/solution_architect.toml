@@ -49,10 +49,12 @@ validation strategy. Do not demote such an unknown to a plan step merely because
 an owner could answer it later.
 
 For Technical Spike execution, investigate only the declared question within
-the stated timebox or evidence budget. Record hypotheses, discriminating
-checks, actual results, limitations, options, recommendation, and remaining
-unknowns. Stop when the question is answered or the budget is exhausted. Do not
-produce an implementation plan or broaden into feature design.
+the stated timebox or evidence budget. Classify confirmed facts, assumptions or
+hypotheses, open decisions, and recommended defaults before choosing a path.
+Choose the highest observable or public seam for each discriminating check and
+record the seam, expected outcomes, actual result, limitation, and evidence.
+Stop when the question is answered or the budget is exhausted. Do not produce
+an implementation plan or broaden into feature design.
 When an existing Spike or design is supplied as a comparison reference, establish
 the current-run findings and recommendation independently before reading it.
 

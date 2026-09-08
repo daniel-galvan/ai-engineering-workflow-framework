@@ -232,6 +232,15 @@ def main() -> int:
     if args.self_test:
         self_test()
         return 0
+    selected_modes = sum(
+        bool(value) for value in (
+            args.trace,
+            args.activation_packet_bundle or args.expected_agent or args.expected_bundle_sha256,
+            args.transition or args.provider_status,
+        )
+    )
+    if selected_modes > 1:
+        parser.error("activation, transition, and trace validation modes are mutually exclusive")
     if args.trace:
         errors = trace_errors(json.loads(args.trace.read_text()))
     elif args.activation_packet_bundle or args.expected_agent or args.expected_bundle_sha256:

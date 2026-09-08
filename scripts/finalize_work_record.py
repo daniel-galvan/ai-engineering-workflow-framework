@@ -296,7 +296,9 @@ def _normalize_packet(
         packet["durable_artifacts"] = [
             row for row in durable_artifacts
             if not isinstance(row, dict)
-            or not str(row.get("Status", "")).strip().lower().startswith(("omitted", "not created"))
+            or not str(row.get("Status", "")).strip().lower().startswith(
+                ("omitted", "not created", "prohibited")
+            )
         ]
     for row in closure.get("runtime_closure", []):
         if not isinstance(row, dict):
@@ -1325,10 +1327,20 @@ Review only; no implementation plan.
 | --- | --- | --- | --- | --- | --- |
 | E-001 | Execution repository | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | src/boundary.py:10 | One material gap remains | Verified |
 
-## Experiments and Checks
-| Hypothesis or review criterion | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+## Decision Context
+| Category | Statement or branch | Evidence refs | Owner or decision needed | Status |
 | --- | --- | --- | --- | --- |
-| Existing evidence is complete | Not run | Complete or incomplete | Not run; source review was sufficient | Changes required |
+| Not applicable | No unresolved decision remains | None | None | Recorded |
+
+## Assessment Criteria
+| Criterion or domain | Evidence refs | Assessment | Gap or limitation | Required next evidence or decision |
+| --- | --- | --- | --- | --- |
+| Not applicable | Not applicable | No external assessment baseline declared | None | None |
+
+## Experiments and Checks
+| Hypothesis or review criterion | Observable seam | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
+| --- | --- | --- | --- | --- | --- |
+| Existing evidence is complete | Supplied Spike report boundary | Not run | Complete or incomplete | Not run; source review was sufficient | Changes required |
 
 ## Findings
 One material evidence gap remains.
