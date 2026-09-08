@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.1.5
+version: 0.1.6
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07
@@ -71,6 +71,11 @@ Spike question and bounds:
 - Timebox or evidence budget: <REQUIRED-END-TO-END-DURATION; PREPARE WITH --STARTED-AT AND --TIMEBOX-MINUTES>
 - Success criterion: <WHAT-EVIDENCE-WOULD-ANSWER-OR-MATERIALLY-NARROW-THE-QUESTION>
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
+
+Prompt-completeness gate: Primary question, timebox or evidence budget, success criterion, Requested outcome, and Spike
+objective are mandatory populated values. Pass the question and criterion to preparation as `--primary-question` and
+`--success-criterion`. Do not invoke the launcher, create a temporary manifest, query Jira, or read repositories until
+all five values are present and non-placeholder.
 
 Review target (required for `review_spike`; otherwise `None`):
 - Existing Spike report or document: <URL-OR-ABSOLUTE-PATH-OR-NONE>

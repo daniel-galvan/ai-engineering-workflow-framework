@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.6
+version: 0.1.7
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -90,7 +90,10 @@ Create or recover:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Record the objective, one primary question, optional assessment criteria or control domains, and a measurable timebox.
+Prompt-completeness gate: before any manifest, repository, or Jira work, validate that the prompt contains a populated
+primary question, measurable timebox, success criterion, requested outcome, and spike objective. Missing or placeholder
+values stop the run with a focused request; do not create temporary inputs or begin discovery. Record the objective, one
+primary question, optional assessment criteria or control domains, and a measurable timebox.
 The current runner represents the bounded evidence budget through `--started-at` plus `--timebox-minutes`; a missing
 declaration is a preparation failure, not permission to investigate indefinitely. Record evidence sources, execution
 repository, constraints, non-goals, and success criteria. If the question or budget is absent, stop before worker

@@ -3022,11 +3022,22 @@ for text, label in (
         "Changes required",
         "Inconclusive",
         "Requested outcome:",
+        "Prompt-completeness gate",
         "comparison reference",
         "source of truth",
     ):
         if phrase not in text:
             fail(f"{label} is missing Technical Spike control: {phrase}")
+for phrase in (
+    "Primary question:",
+    "Timebox or evidence budget:",
+    "Success criterion:",
+    "Prompt-completeness gate",
+    "--primary-question",
+    "--success-criterion",
+):
+    if phrase not in technical_spike_prompt:
+        fail(f"templates/technical_spike_run_prompt.md is missing prompt-completeness control: {phrase}")
 for phrase in (
     "Timebox or evidence budget",
     "Direct Evidence",
@@ -3324,6 +3335,11 @@ for phrase in (
     "run_input_manifest_required",
     "current-run input manifest",
     "active parent session; no dedicated Coordinator worker spawned",
+    "prompt-completeness gate",
+    "run_prompt_incomplete:<field>",
+    "Do not create a temporary input",
+    "--primary-question <question>",
+    "--success-criterion <criterion>",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")

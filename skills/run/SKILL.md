@@ -29,6 +29,11 @@ description: >-
    no terminal work record is required. Report the reason, `preflight_elapsed_ms`, active package root, and
    `worker_activation_attempts: 0`, then give one remediation and stop. This receipt is terminal: do not retry, repair,
    or continue in the same invocation.
+3a. After a passing preflight and before reading any repository, Jira, playbook, contract, provider, or historical
+   artifact, apply the prompt-completeness gate. For Technical Spike require populated `Primary question`, `Timebox or
+   evidence budget`, and `Success criterion`, plus `Requested outcome` and `Spike objective`. Reject placeholders such
+   as `<...>`, `None`, or `Not provided` with `run_prompt_incomplete:<field>`. Do not create a temporary input
+   manifest, invoke `prepare_run.py`, or perform context discovery before this gate passes.
 4. Treat the current working directory as the execution repository unless the user explicitly names another repository.
 5. When the prompt supplies an existing playbook, use it directly and do not read `PLAYBOOK_CATALOG.md`; record the
    primary evidence, primary goal, closest alternative, and selection rationale from the supplied playbook and request.
@@ -86,7 +91,8 @@ description: >-
    ```
    Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name,
    `--requested-outcome <outcome>`, `--workflow-objective <objective>`, and optional verified runtime-agent directory
-   (`--runtime-agents <path>`). Technical Spike permits `technical_answer + execute_spike` or
+   (`--runtime-agents <path>`). For Technical Spike also pass the validated `--primary-question <question>` and
+   `--success-criterion <criterion>`. Technical Spike permits `technical_answer + execute_spike` or
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
    `specification_assessment + specification_assessment`. Technical Spike is budget-gated: always pass the captured
    current-turn RFC 3339 start as `--started-at` and integer minutes as `--timebox-minutes`; a missing declaration stops

@@ -91,10 +91,14 @@ provider-equivalent fresh-context option. Start every activation packet with
 running the launcher skill, `run_preflight.py`, or `prepare_run.py`; those are
 Coordinator-only initialization actions.
 
-Before preparation, create a complete current-run input manifest from every
-material request detail and pass it with `--input-manifest <path>`. Preparation
-copies and hashes `run_inputs.json`; a generated minimum is not sufficient for
-worker activation.
+Before preparation, apply the prompt-completeness gate. For Technical Spike,
+require a populated primary question, success criterion, timebox, requested
+outcome, and spike objective before reading repositories or creating a temporary
+manifest. On a missing or placeholder value, stop with
+`run_prompt_incomplete:<field>` and do not query Jira or activate workers.
+Then create a complete current-run input manifest from every material request
+detail and pass it with `--input-manifest <path>`. Preparation copies and hashes
+`run_inputs.json`; a generated minimum is not sufficient for worker activation.
 
 Use only the current task's in-task `spawn_agent`/collaboration runtime. Never use `create_thread`,
 `fork_thread`, or `send_message_to_thread` for worker activation or communication.
@@ -116,7 +120,8 @@ mapping defined by the playbook. Do not treat plan feasibility as specification
 readiness.
 For Technical Spike, enforce the declared question and measurable timebox before
 activation; `prepare_run.py` must reject the run with `run_budget_required` when
-the timebox is missing. Record `Primary goal` exactly as `Execute technical
+the timebox is missing and require `--primary-question` plus
+`--success-criterion`. Record `Primary goal` exactly as `Execute technical
 spike` or `Review technical spike`, use only the playbook's corresponding exact
 dispositions, require `spike_report.md` for a completed run, and prohibit
 `implementation_plan.md` and remediation activation.
