@@ -817,7 +817,7 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             flags=re.IGNORECASE,
         )
         execution = re.sub(
-            r"runtime\s+(?:pending/unknown|pending|unknown|active|in progress|not released)",
+            r"runtime\s+(?:closure\s+is\s+)?(?:pending/unknown|pending|unknown|active|in progress|not released)(?:\s+Coordinator)?",
             "runtime released",
             execution,
             flags=re.IGNORECASE,
@@ -1494,6 +1494,12 @@ def self_test() -> None:
     _normalize_packet(context_packet, {"runtime_closure": []})
     assert context_packet["identity"]["Coordinator model/effort"] == UNAVAILABLE_COORDINATOR_MODEL_EFFORT
     assert context_packet["evidence"] == []
+
+    execution_packet = json.loads(json.dumps(packet))
+    execution_packet["handoff"]["execution"] = "Planning is read-only; Runtime closure is pending Coordinator."
+    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
+    assert "runtime closure is pending" not in execution_packet["handoff"]["execution"].lower()
+    assert "runtime released" in execution_packet["handoff"]["execution"].lower()
 
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)

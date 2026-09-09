@@ -162,6 +162,12 @@ final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
 pending` values after the packet says the barrier passed. The final record,
 artifact list, plan action, and workflow/engineering outcome must agree with the final packet.
 Copy every artifact path exactly from the final packet.
+Treat the current-run `finalization_packet.json`, `run_inputs.json`, and
+`role_bindings.json` as the sole sources for immutable identity. Never copy a
+Run ID, timestamp, framework revision, plugin version, playbook version, or
+input value from conversation history, memory, an archive, or another packet.
+Before returning, compare those identity fields with the current-run files; if
+they disagree, return a packet-input error instead of preserving stale values.
 Before returning terminal, verify every path listed in Durable Artifacts and
 `handoff.artifacts` exists as a direct child of the active artifact root. If a
 worker artifact is missing, return a packet-input error; do not silently keep
