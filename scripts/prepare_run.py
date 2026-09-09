@@ -85,6 +85,10 @@ WORKFLOW_OUTCOMES = {
         "specification_assessment": "specification_assessment",
     },
 }
+TECHNICAL_SPIKE_PRIMARY_GOALS = {
+    "execute_spike": "Execute technical spike",
+    "review_spike": "Review technical spike",
+}
 CODEX_TOOL_MAPPING = {
     "work_item_read": "supplied context, connected work-item tool, or exec_command",
     "work_record_read": "exec_command",
@@ -328,6 +332,7 @@ def _initial_packet(
     artifact_root: Path,
     work_item: str,
     playbook: str,
+    workflow_objective: str | None,
     repository_row: dict[str, str],
     runtime_agents: Path | None,
     manifest: dict[str, object],
@@ -348,6 +353,8 @@ def _initial_packet(
     packet["run_input_manifest"] = input_manifest
     packet["repositories"] = [repository_row]
     packet["playbook_selection"]["Selected playbook"] = playbook
+    if playbook == "technical_spike" and workflow_objective in TECHNICAL_SPIKE_PRIMARY_GOALS:
+        packet["playbook_selection"]["Primary goal"] = TECHNICAL_SPIKE_PRIMARY_GOALS[workflow_objective]
     packet["identity"].update({
         "Run ID": f"{work_item}-{run_stamp}",
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
@@ -647,7 +654,7 @@ def prepare_run(
     packet_path = artifact_root / "finalization_packet.json"
     if not continuation and not packet_path.exists():
         packet = _initial_packet(
-            artifact_root, work_item, playbook, repository_row,
+            artifact_root, work_item, playbook, workflow_objective, repository_row,
             resolved_runtime_agents, manifest, manifest_path,
         )
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
@@ -922,6 +929,8 @@ def self_test() -> None:
             timebox_minutes=25, primary_question=spike_question, success_criterion=spike_success,
         )
         aligned_inputs = json.loads((Path(aligned["artifact_root"]) / RUN_INPUTS_FILENAME).read_text())["inputs"]
+        aligned_packet = json.loads(Path(aligned["finalization_packet"]).read_text())
+        assert aligned_packet["playbook_selection"]["Primary goal"] == "Review technical spike"
         assert {row["Input ID"] for row in aligned_inputs} >= {
             "RUN-GOAL-001", "RUN-GOAL-002", "SPIKE-QUESTION-001", "SPIKE-SUCCESS-001",
         }
@@ -930,6 +939,8 @@ def self_test() -> None:
             input_manifest=input_source, started_at="2099-09-07T12:00:00Z",
             primary_question=spike_question,
         )
+        defaults_packet = json.loads(Path(defaults["finalization_packet"]).read_text())
+        assert defaults_packet["playbook_selection"]["Primary goal"] == "Execute technical spike"
         default_inputs = json.loads(
             (Path(defaults["artifact_root"]) / RUN_INPUTS_FILENAME).read_text()
         )["inputs"]

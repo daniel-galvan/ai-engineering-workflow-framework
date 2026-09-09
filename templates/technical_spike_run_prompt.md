@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.1.7
+version: 0.1.8
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-08
@@ -32,7 +32,9 @@ Spike objective: execute_spike
 Use `technical_answer + execute_spike` to investigate a bounded technical question. Use
 `spike_assessment + review_spike` to assess an existing Spike report or document. A request for
 `implementation_plan` belongs to Feature Delivery and conflicts with this playbook. Record Playbook Selection
-`Primary goal` exactly as `Execute technical spike` or `Review technical spike`.
+`Primary goal` exactly as `Execute technical spike` or `Review technical spike`. The machine-facing
+`Requested outcome` (`technical_answer` or `spike_assessment`) and `Spike objective` (`execute_spike` or
+`review_spike`) select the route; neither value may be copied into `Primary goal`.
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
@@ -120,6 +122,12 @@ this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_on
 implementation plan; Technical Spike never does. Preserve distinct `Workflow outcome` and `Engineering outcome`
 fields. Set `Implementation plan` to `Not created; Technical Spike produces spike_report.md` and link the completed
 `spike_report.md`.
+
+Keep `Execution profile` exactly `standard` or `deep`; record `Lifecycle` separately as `planning`. Keep prompt
+conformance as `pass` or `fail:<missing fields>`. Keep `State`, `Workflow outcome`, and `Engineering outcome` as
+separate fields. A pre-release `State: handoff` packet must not claim `Workflow outcome: completed`; the packaged
+finalizer performs that terminal transition. The handoff `Workflow result` must be exactly one allowed disposition,
+not a combined status sentence.
 
 Make `spike_report.md` self-contained with compact direct repository/document evidence. Final response must name the
 disposition, strongest evidence, unresolved decisions, exact next workflow, measured budget status, and link

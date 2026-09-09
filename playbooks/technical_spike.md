@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.10
+version: 0.1.11
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -197,6 +197,12 @@ workflow blocker.
 The final Documenter may serialize transient workflow `State: handoff`. When every recorded worker result is complete
 and the workflow result is valid for the selected objective, the packaged finalizer applies the table above and emits
 the terminal state and outcomes. This is deterministic lifecycle bookkeeping, not a new technical conclusion.
+
+The packet fields are independent: `Primary goal` uses the canonical human-readable objective, while the machine
+`Requested outcome` and `Spike objective` remain run-input selectors. `Execution profile` is exactly `standard` or
+`deep`; `Lifecycle` is separately `planning`; `State: handoff` is pre-terminal and cannot carry
+`Workflow outcome: completed`. The handoff `Workflow result` is one exact disposition, not a combined state or outcome
+sentence. Prompt conformance is exactly `pass` or `fail:<missing fields>`.
 
 At handoff, use the contract's shared human-readable template. Set `Implementation plan` to `Not created; Technical
 Spike produces spike_report.md`, link `spike_report.md`, name the evidence-backed conclusion and limitations, and give

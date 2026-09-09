@@ -126,6 +126,10 @@ Record `Primary goal` exactly as `Execute technical
 spike` or `Review technical spike`, use only the playbook's corresponding exact
 dispositions, require `spike_report.md` for a completed run, and prohibit
 `implementation_plan.md` and remediation activation.
+Keep the machine `Requested outcome` and `Spike objective` separate from that
+human-readable `Primary goal`. Keep `Execution profile` exactly `standard` or
+`deep`, with `Lifecycle: planning` recorded separately. Keep prompt conformance
+exactly `pass` or `fail:<missing fields>`.
 Use the canonical logical worker IDs from the playbook: `spike-context`, the
 objective worker (`spike-investigation` or `spike-assessment`), any declared
 Deep workers, and final `handoff`. The final provider role is `documenter`, but

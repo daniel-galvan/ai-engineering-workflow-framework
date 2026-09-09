@@ -47,6 +47,11 @@ TECHNICAL_SPIKE_DISPOSITIONS = {
         "Inconclusive": "partially_solved",
     },
 }
+TECHNICAL_SPIKE_PRIMARY_GOALS = {
+    "execute technical spike",
+    "review technical spike",
+}
+TECHNICAL_SPIKE_PROFILES = {"standard", "deep"}
 TECHNICAL_SPIKE_REQUIRED_WORKERS = {
     ("standard", "execute technical spike"): {"spike-context", "spike-investigation", "handoff"},
     ("deep", "execute technical spike"): {
@@ -301,6 +306,61 @@ def _normalize_prompt_identity(value: object) -> object:
     if conformance in {"conformant", "passed", "success"} or conformance.startswith("pass:"):
         parts[2] = "pass"
     return " / ".join(parts)
+
+
+def _technical_spike_packet_contract_errors(
+    packet: dict[str, object], *, pre_release: bool,
+) -> list[str]:
+    identity = packet.get("identity", {})
+    selection = packet.get("playbook_selection", {})
+    if not isinstance(identity, dict) or not isinstance(selection, dict):
+        return []
+    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
+    if playbook != "technical_spike":
+        return []
+
+    errors: list[str] = []
+    primary_goal = str(selection.get("Primary goal", "")).strip().lower()
+    if primary_goal not in TECHNICAL_SPIKE_PRIMARY_GOALS:
+        errors.append(
+            "Technical Spike Primary goal must be Execute technical spike or Review technical spike"
+        )
+
+    state = str(identity.get("State", "")).strip().lower()
+    profiles = [
+        str(identity.get(field, "")).strip().lower()
+        for field in ("Requested profile", "Activated profile", "Executed profile")
+    ]
+    if state in {"handoff", "completed"}:
+        invalid_profiles = sorted({profile for profile in profiles if profile not in TECHNICAL_SPIKE_PROFILES})
+        if invalid_profiles:
+            errors.append(
+                "Technical Spike profiles must be standard or deep; received "
+                + ", ".join(invalid_profiles)
+            )
+        elif len(set(profiles)) != 1:
+            errors.append("Technical Spike Requested, Activated, and Executed profiles must match")
+
+    prompt_identity = str(identity.get("Prompt template / revision / conformance", "")).split(" / ", 2)
+    conformance = prompt_identity[2].strip().lower() if len(prompt_identity) == 3 else ""
+    if not re.fullmatch(r"(?:pass|fail|fail(?::|;).+)", conformance, re.IGNORECASE):
+        errors.append("Technical Spike prompt conformance must be pass or fail:<missing fields>")
+
+    workflow_outcome = str(identity.get("Workflow outcome", "")).strip().lower()
+    if pre_release and state == "handoff" and workflow_outcome == "completed":
+        errors.append(
+            "Technical Spike pre-release State handoff requires a non-completed Workflow outcome"
+        )
+
+    if primary_goal in TECHNICAL_SPIKE_PRIMARY_GOALS and state in {"handoff", "completed"}:
+        handoff = packet.get("handoff", {})
+        result = str(handoff.get("workflow_result", "") if isinstance(handoff, dict) else "").strip()
+        if result not in TECHNICAL_SPIKE_DISPOSITIONS[primary_goal]:
+            errors.append(
+                "Technical Spike handoff Workflow result must be exactly one of: "
+                + ", ".join(TECHNICAL_SPIKE_DISPOSITIONS[primary_goal])
+            )
+    return errors
 
 
 def _canonicalize_technical_spike_worker_ids(
@@ -565,6 +625,12 @@ def _validate_handoff(packet: dict[str, object]) -> None:
                 if dispositions is None:
                     raise ValueError(
                         "Technical Spike Primary goal must be Execute technical spike or Review technical spike"
+                    )
+                result = str(handoff["workflow_result"]).strip()
+                if result not in dispositions:
+                    raise ValueError(
+                        "Technical Spike handoff requires Workflow result exactly one of: "
+                        + ", ".join(dispositions)
                     )
             if state == "completed":
                 result = str(handoff["workflow_result"]).strip()
@@ -1023,12 +1089,14 @@ def finalize(
             _validate_shapes(packet, closure)
             if pre_release:
                 _validate_pre_release_state(packet)
+            errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
             _normalize_packet(packet, closure, packet_path)
             _sync_spike_report_budget(packet_path, packet, budget_status)
             packet_ready = True
         except (KeyError, TypeError, ValueError) as error:
             errors.append(str(error))
     if packet_ready:
+        errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
         try:
             _validate_handoff(packet)
@@ -1780,6 +1848,26 @@ Runtime behavior remains unverified.
                 f"{'a' * 40} (dirty); playbook technical_spike {technical_spike_version}."
             ),
         }
+        v15_packet = json.loads(json.dumps(spike_packet))
+        v15_packet["playbook_selection"]["Primary goal"] = "technical_answer"
+        v15_packet["identity"].update({
+            "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
+            "Prompt template / revision / conformance": (
+                f"templates/technical_spike_run_prompt.md / {technical_spike_prompt_version} / context-unverified"
+            ),
+            "State": "handoff", "Workflow outcome": "completed",
+        })
+        v15_packet["handoff"]["workflow_result"] = (
+            "Partially answered; State: handoff; Workflow outcome: completed; Engineering outcome: partially_solved"
+        )
+        v15_errors = _technical_spike_packet_contract_errors(v15_packet, pre_release=True)
+        assert "Technical Spike Primary goal must be Execute technical spike or Review technical spike" in v15_errors
+        assert "Technical Spike prompt conformance must be pass or fail:<missing fields>" in v15_errors
+        assert "Technical Spike pre-release State handoff requires a non-completed Workflow outcome" in v15_errors
+        v15_result_packet = json.loads(json.dumps(v15_packet))
+        v15_result_packet["playbook_selection"]["Primary goal"] = "Execute technical spike"
+        v15_result_errors = _technical_spike_packet_contract_errors(v15_result_packet, pre_release=True)
+        assert "Technical Spike handoff Workflow result must be exactly one of: Question answered, Partially answered, Inconclusive" in v15_result_errors
         spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
         spike_closure = spike_root / "runtime_closure.json"
         spike_handles = [f"01a00000-0000-7000-8000-{index:012d}" for index in range(1, 5)]

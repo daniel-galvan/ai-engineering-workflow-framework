@@ -2109,6 +2109,12 @@ Keep the current boundary pending runtime confirmation.
     assert technical_spike_report_errors(
         markdown_formatted_metadata, "Execute technical spike", "standard", "Question answered"
     ) == []
+    v15_profile_drift = valid_spike_report.replace(
+        "| Execution profile | standard |", "| Execution profile | standard / planning |"
+    )
+    assert "spike_report.md Execution profile must be standard" in technical_spike_report_errors(
+        v15_profile_drift, "Execute technical spike", "standard", "Question answered"
+    )
     invalid_decision_category = valid_spike_report.replace(
         "| Not applicable | No unresolved decision remains | None | None | Recorded |",
         "| Unknown | No unresolved decision remains | None | None | Recorded |",

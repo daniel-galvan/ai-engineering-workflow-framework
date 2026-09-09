@@ -44,6 +44,15 @@ template headings and table headers; an alternate report outline is not a
 valid terminal artifact. Populate the prepared Run ID and RFC 3339 Work Item
 Last Updated values, and preserve prompt conformance as `pass` or an explicit
 `fail:<missing fields>` value. Never emit `not exposed` for either field.
+For Technical Spike, keep Playbook Selection `Primary goal` exactly
+`Execute technical spike` or `Review technical spike`; never copy the machine
+`Requested outcome` or `Spike objective` into that field. Keep `Execution
+profile` as one token (`standard` or `deep`) and record `Lifecycle: planning`
+separately. The handoff `Workflow result` must be exactly one allowed
+disposition, not a sentence containing State or outcome fields. Keep
+`State`, `Workflow outcome`, and `Engineering outcome` separate; while
+`State: handoff`, never emit `Workflow outcome: completed` because the packaged
+finalizer owns that terminal transition.
 Never invoke `finalize_work_record.py` yourself. Return the packet to the
 Coordinator, who owns every pre-release and terminal finalizer invocation.
 Keep `handoff.established`, `handoff.best_current_explanations`, and
