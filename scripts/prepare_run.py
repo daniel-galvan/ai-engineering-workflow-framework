@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -294,10 +295,36 @@ def _document_version(path: Path) -> str:
     return match.group(1)
 
 
+def _git(repository: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repository), *args], capture_output=True, text=True, check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else "Unknown"
+
+
+def _repository_row(repository: Path) -> dict[str, str]:
+    resolved = repository.resolve()
+    revision = _git(resolved, "rev-parse", "HEAD")
+    branch = _git(resolved, "branch", "--show-current")
+    status = _git(resolved, "status", "--porcelain")
+    return {
+        "Repository role": "Execution repository",
+        "Declared path": str(repository),
+        "Resolved path": str(resolved),
+        "Branch / detached": branch if branch != "Unknown" and branch else "detached",
+        "Full revision": revision,
+        "Clean status": "Unknown" if status == "Unknown" else ("Dirty" if status else "Clean"),
+        "User-selected ref": "Current checkout",
+        "Release mapping": "Unknown",
+        "Evidence eligibility": "Eligible current-run source evidence",
+    }
+
+
 def _initial_packet(
     artifact_root: Path,
     work_item: str,
     playbook: str,
+    repository_row: dict[str, str],
     runtime_agents: Path | None,
     manifest: dict[str, object],
     manifest_path: Path,
@@ -310,6 +337,7 @@ def _initial_packet(
     packet["work_item"]["ID"] = work_item
     packet["inputs"] = list(input_manifest["inputs"])
     packet["run_input_manifest"] = input_manifest
+    packet["repositories"] = [repository_row]
     packet["playbook_selection"]["Selected playbook"] = playbook
     packet["identity"].update({
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
@@ -537,6 +565,7 @@ def prepare_run(
         primary_question = _required_spike_bound(primary_question, "primary_question")
         success_criterion = _required_spike_bound(success_criterion, "success_criterion")
     resolved_execution_repository = execution_repository.resolve()
+    repository_row = _repository_row(resolved_execution_repository)
     artifact_root = resolved_execution_repository / ".thoughts" / work_item
     # Validate supplied input and provider bindings before creating, archiving, or
     # overwriting any run artifact. This makes invalid retries transactional.
@@ -607,7 +636,10 @@ def prepare_run(
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     packet_path = artifact_root / "finalization_packet.json"
     if not continuation and not packet_path.exists():
-        packet = _initial_packet(artifact_root, work_item, playbook, resolved_runtime_agents, manifest, manifest_path)
+        packet = _initial_packet(
+            artifact_root, work_item, playbook, repository_row,
+            resolved_runtime_agents, manifest, manifest_path,
+        )
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     elif continuation and packet_path.is_file():
         packet = json.loads(packet_path.read_text())
@@ -648,6 +680,13 @@ def self_test() -> None:
 
     with tempfile.TemporaryDirectory(prefix="workflow-prepare-") as directory:
         execution = Path(directory)
+        subprocess.run(["git", "init", "-q", str(execution)], check=True)
+        subprocess.run(
+            ["git", "-C", str(execution), "config", "user.email", "test@example.com"], check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(execution), "config", "user.name", "Test"], check=True,
+        )
         input_source = execution / "inputs.json"
         input_source.write_text(json.dumps({
             "schema_version": 1,
@@ -711,6 +750,11 @@ def self_test() -> None:
         }))
         implicit = load_manifest(implicit_source, explicit=True)
         assert implicit["precedence_rule"] == DEFAULT_PRECEDENCE_RULE
+        subprocess.run(["git", "-C", str(execution), "add", "-A"], check=True)
+        subprocess.run(
+            ["git", "-C", str(execution), "commit", "-qm", "prepare fixture"], check=True,
+        )
+        expected_revision = _git(execution, "rev-parse", "HEAD")
         first = prepare_run(
             execution, "ITEM-1", "playbooks/sentry_issue_remediation.md", None, False,
             input_manifest=input_source,
@@ -754,6 +798,8 @@ def self_test() -> None:
         assert linked["provider_configuration_source_status"] == "runtime / resolved (9 definitions; 9 symlinked)"
         prepared_packet = json.loads(Path(first["finalization_packet"]).read_text())
         assert prepared_packet["work_item"]["ID"] == "ITEM-1"
+        assert prepared_packet["repositories"][0]["Full revision"] == expected_revision
+        assert prepared_packet["repositories"][0]["Clean status"] == "Clean"
         assert prepared_packet["identity"]["Role binding manifest"] == first["role_binding_manifest"]
         assert prepared_packet["identity"]["Prompt template / revision / conformance"].endswith(" / pending")
         assert prepared_packet["durable_artifacts"][0]["Artifact"] == "Role bindings"

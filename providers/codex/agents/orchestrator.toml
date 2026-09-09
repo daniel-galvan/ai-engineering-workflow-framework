@@ -126,6 +126,9 @@ Record `Primary goal` exactly as `Execute technical
 spike` or `Review technical spike`, use only the playbook's corresponding exact
 dispositions, require `spike_report.md` for a completed run, and prohibit
 `implementation_plan.md` and remediation activation.
+When a work-item identifier is supplied, assign that input and the mapped
+`work_item_read` capability to `spike-context`; its terminal ledger must show
+the attempted read or an explicit mapping-unavailable result.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
 run a packaged producer-format normalizer before validation only when the selected playbook explicitly names it. That
 normalizer records its changes and may convert only equivalent representations to canonical field types without

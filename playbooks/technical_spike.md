@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.1.9
+version: 0.1.10
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -115,6 +115,9 @@ ownership, or incompatible-alternatives decision that bounded discovery cannot r
 Recover the Jira item and only the hierarchy, links, documents, or repository context needed to interpret the question.
 Apply the [Jira Integration](../integrations/jira.md) when Jira is supplied. Separate verified facts, assumptions,
 conflicts, and unknowns. An Epic or related feature provides context, not automatic Spike scope.
+When a work-item identifier is supplied, `spike-context` must consume that input through `work_item_read` before
+repository analysis. If the capability is unavailable, record the normalized unavailable result and preserve the
+supplied identifier; do not silently omit the work-item read.
 
 For `review_spike`, identify the exact report or document under review and its claimed conclusion. Missing review
 material is indispensable-evidence failure, not authority to recreate the Spike from unrelated context.
@@ -182,6 +185,10 @@ Use these exact completed-run dispositions:
 | `review_spike` | `Accepted` | `completed` | `completed` | `solved` |
 | `review_spike` | `Changes required` | `completed` | `completed` | `partially_solved` |
 | `review_spike` | `Inconclusive` | `completed` | `completed` | `partially_solved` |
+
+Use `Question answered` only when the primary decision is resolved by current-run evidence. If the recommendation is
+conditional on an unresolved decision or indispensable evidence gate, use `Partially answered` even when the run has a
+useful architectural direction.
 
 Use `blocked` only when runtime, permission, environment, or indispensable-evidence failure prevents the selected graph
 from completing. Exhausting the declared budget with useful evidence is `Inconclusive` or `Partially answered`, not a

@@ -463,6 +463,20 @@ def _validate_handoff(packet: dict[str, object]) -> None:
                         "Technical Spike handoff requires terminal results for: "
                         + ", ".join(sorted(missing_workers))
                     )
+                context_worker = next(
+                    (
+                        row for row in packet.get("workers", [])
+                        if isinstance(row, dict)
+                        and str(row.get("Worker", "")).strip().lower() == "spike-context"
+                    ),
+                    None,
+                )
+                if not context_worker or "work_item_read" not in str(
+                    context_worker.get("Tools", "")
+                ).lower():
+                    raise ValueError(
+                        "Technical Spike handoff requires spike-context to record work_item_read"
+                    )
                 dispositions = TECHNICAL_SPIKE_DISPOSITIONS.get(primary_goal)
                 if dispositions is None:
                     raise ValueError(
@@ -646,6 +660,12 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
     handoff = packet.get("handoff")
     if isinstance(handoff, dict):
         execution = str(handoff.get("execution", ""))
+        execution = re.sub(
+            r"state remains handoff(?:\s+pending packaged finalizer)?",
+            "finalization validation passed",
+            execution,
+            flags=re.IGNORECASE,
+        )
         execution = re.sub(
             r"runtime\s+(?:pending/unknown|pending|unknown|active|in progress|not released)",
             "runtime released",
@@ -1357,6 +1377,11 @@ def self_test() -> None:
             {"Worker": worker, "Outcome": "complete"}
             for worker in ("spike-context", "spike-investigation", "handoff")
         ])
+        spike["workers"].extend([
+            {"Worker": "spike-context", "Tools": "work_item_read"},
+            {"Worker": "spike-investigation", "Tools": "mapped operations"},
+            {"Worker": "handoff", "Tools": "artifact_write"},
+        ])
         spike["handoff"].update({
             "workflow_result": "Question answered",
             "implementation_plan": "Not created; Technical Spike produces spike_report.md",
@@ -1547,6 +1572,8 @@ Runtime behavior remains unverified.
                 "Usage": "Not exposed", "Depends on": "prior stage", "Outcome": "complete",
                 "Confidence": "High",
             })
+            if worker == "spike-context":
+                spike_packet["workers"][-1]["Tools"] = "work_item_read; mapped operations"
             spike_packet["worker_results"].append({
                 "Worker": worker, "Outcome": "complete", "Confidence": "High",
                 "Unique contribution": f"Completed {worker}", "Evidence / claim refs": "E-001 / C-001",
@@ -1590,7 +1617,7 @@ Runtime behavior remains unverified.
             "next_action": {"owner": "Work-item owner", "action": "Revise existing Spike.",
                             "complete_when": "Material evidence gap is closed."},
             "artifacts": [str(spike_report), str(spike_root / "work_record.md")],
-            "execution": "deep/planning; validation passed; workers complete; runtime released",
+            "execution": "deep/planning; validation passed; workers complete; state remains handoff pending packaged finalizer",
             "provenance": (
                 f"plugin {spike_packet['identity']['Plugin package / version']}; framework revision "
                 f"{'a' * 40} (dirty); playbook technical_spike {technical_spike_version}."
@@ -1636,6 +1663,8 @@ Runtime behavior remains unverified.
         assert "| State | completed |" in spike_rendered
         assert "| Workflow outcome | completed |" in spike_rendered
         assert "| Engineering outcome | partially_solved |" in spike_rendered
+        assert "finalization validation passed" in spike_rendered
+        assert "state remains handoff" not in spike_rendered.lower()
         assert "| spike-context | Current-State Investigator |" in spike_rendered
         assert "gpt-5.6-luna / high" in spike_rendered
         assert "| Role-policy baseline ID | corrupted |" not in spike_rendered

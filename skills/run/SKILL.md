@@ -106,6 +106,9 @@ description: >-
    when the user explicitly says continue or resume. Validate the explicit manifest and provider bindings before this
    step mutates the artifact root. This one step then archives a prior terminal run, creates the artifact root and
    minimal work record, and writes `role_bindings.json`.
+   For Technical Spike, assign the supplied work-item input and `work_item_read` to `spike-context`; a completed
+   handoff is invalid if that worker silently omits the read. Preparation captures the execution checkout revision in
+   the packet before worker analysis, so workers must not replace it with `Unknown`.
    Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
    `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
    current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be

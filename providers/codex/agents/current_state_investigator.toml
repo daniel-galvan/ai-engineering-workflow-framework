@@ -24,6 +24,12 @@ preserve supplied context, and continue only within the declared evidence
 boundary. Keep Jira requirements, comments, links, and repository/runtime
 observations distinguishable.
 
+For a Technical Spike with a supplied work-item identifier, consume that input
+before repository analysis and list `work_item_read` in the worker's recorded
+tools. A recorded `unavailable` result is valid only after the mapped operation
+was attempted or the provider mapping explicitly lacks it; do not silently
+omit the work-item read.
+
 Return concise findings with exact file paths, symbols, commands, and unknowns.
 Do not modify source code, merge pull requests, or make external writes.
 """
