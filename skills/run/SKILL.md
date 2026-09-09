@@ -46,8 +46,8 @@ description: >-
    `spike_assessment` for review of an existing Spike, `implementation_plan` for implementation planning, and
    `specification_assessment` for readiness assessment. Compare it with the supplied playbook objective. If they differ,
    preserve both as authoritative inputs and stop with `run_goal_conflict`; do not silently prefer the later field.
-   Copy an explicit populated `Requested outcome:` field when supplied. If it is absent, record the playbook default; an
-   explicit override that contradicts the objective stops with `run_goal_conflict`.
+   Copy an explicit populated `Requested outcome:` field when supplied. If it is absent, record the selected playbook
+   default and provenance; an explicit override that contradicts the objective stops with `run_goal_conflict`.
    Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
@@ -84,8 +84,8 @@ description: >-
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
    When the prompt explicitly supplies a requested outcome, include `RUN-GOAL-001` using its exact value and canonical
-   provenance. When the prompt omits it, omit that row; Technical Spike preparation records the selected playbook
-   default and provenance. Preparation rejects an altered explicit row.
+   provenance. When the prompt omits it, omit that row; preparation records the selected playbook default and
+   provenance. Preparation rejects an altered explicit row.
    ```json
    {"schema_version":1,"status":"explicit","precedence_rule":"<canonical precedence rule>","inputs":[
      {"Input ID":"IN-001","Input or artifact":"<short value>","Source or path":"<source or absolute path>",

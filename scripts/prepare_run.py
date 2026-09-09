@@ -85,6 +85,18 @@ WORKFLOW_OUTCOMES = {
         "specification_assessment": "specification_assessment",
     },
 }
+PLAYBOOK_DEFAULT_GOALS = {
+    "technical_spike": {
+        "workflow_objective": "execute_spike",
+        "requested_outcome": "technical_answer",
+        "authority": "Technical Spike playbook configuration",
+    },
+    "feature_delivery": {
+        "workflow_objective": "implementation_planning",
+        "requested_outcome": "implementation_plan",
+        "authority": "Feature Delivery playbook configuration",
+    },
+}
 TECHNICAL_SPIKE_PRIMARY_GOALS = {
     "execute_spike": "Execute technical spike",
     "review_spike": "Review technical spike",
@@ -556,14 +568,15 @@ def prepare_run(
         raise ValueError("execution_repository_unavailable")
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
-    goal_defaults_used = playbook == "technical_spike" and (
+    goal_defaults_used = playbook in PLAYBOOK_DEFAULT_GOALS and (
         workflow_objective is None and requested_outcome is None
     )
+    if goal_defaults_used:
+        defaults = PLAYBOOK_DEFAULT_GOALS[playbook]
+        workflow_objective = str(defaults["workflow_objective"])
+        requested_outcome = str(defaults["requested_outcome"])
     if playbook == "technical_spike":
         defaults = _playbook_defaults(playbook)
-        if goal_defaults_used:
-            workflow_objective = "execute_spike"
-            requested_outcome = "technical_answer"
         resolved_timebox_minutes = (
             timebox_minutes if timebox_minutes is not None else defaults["timebox_minutes"]
         )
@@ -608,7 +621,10 @@ def prepare_run(
     )
     if workflow_objective:
         goal_source = "Selected playbook defaults" if goal_defaults_used else "Current user request"
-        goal_authority = "Technical Spike playbook configuration" if goal_defaults_used else "Explicit user outcome"
+        goal_authority = (
+            str(PLAYBOOK_DEFAULT_GOALS[playbook]["authority"])
+            if goal_defaults_used else "Explicit user outcome"
+        )
         run_inputs = _with_run_goal(
             run_inputs, workflow_objective, requested_outcome, goal_source, goal_authority,
         )
@@ -948,6 +964,24 @@ def self_test() -> None:
         assert defaults["run_budget"]["timebox_minutes"] == 35
         assert default_by_id["RUN-GOAL-001"]["Source or path"] == "Selected playbook defaults"
         assert default_by_id["SPIKE-SUCCESS-001"]["Source or path"] == "Selected playbook defaults"
+        feature_defaults = prepare_run(
+            execution, "ITEM-FEATURE-DEFAULTS", "feature_delivery", None, False,
+            input_manifest=input_source,
+        )
+        feature_inputs = json.loads(
+            (Path(feature_defaults["artifact_root"]) / RUN_INPUTS_FILENAME).read_text()
+        )["inputs"]
+        feature_by_id = {row["Input ID"]: row for row in feature_inputs}
+        assert feature_defaults["requested_outcome"] == "implementation_plan"
+        assert feature_defaults["workflow_objective"] == "implementation_planning"
+        assert feature_by_id["RUN-GOAL-001"]["Input or artifact"] == (
+            "Requested outcome: implementation_plan"
+        )
+        assert feature_by_id["RUN-GOAL-001"]["Source or path"] == "Selected playbook defaults"
+        assert feature_by_id["RUN-GOAL-001"]["Authority"] == "Feature Delivery playbook configuration"
+        assert feature_by_id["RUN-GOAL-002"]["Input or artifact"] == (
+            "Workflow objective: implementation_planning"
+        )
         try:
             prepare_run(
                 execution, "ITEM-NO-QUESTION", "technical_spike", None, False,
