@@ -162,6 +162,13 @@ final packet. Do not leave `pending`, `active`, `in_progress`, or `closure
 pending` values after the packet says the barrier passed. The final record,
 artifact list, plan action, and workflow/engineering outcome must agree with the final packet.
 Copy every artifact path exactly from the final packet.
+Before returning terminal, verify every path listed in Durable Artifacts and
+`handoff.artifacts` exists as a direct child of the active artifact root. If a
+worker artifact is missing, return a packet-input error; do not silently keep
+the path, delete the reference, or recreate another worker's artifact.
+Every Action Log row MUST reference exactly one Decision Log ID, and every
+Decision Log row MUST be referenced by at least one Action Log row. Split an
+action when it depends on multiple decisions.
 Do not omit or reconstruct immutable packet tables. If a required row, handle, identity value, or synchronization entry
 is absent from the Coordinator packet, return a packet-input error instead of emitting a partial packet.
 Active artifacts must be direct children of the declared current-run artifact
