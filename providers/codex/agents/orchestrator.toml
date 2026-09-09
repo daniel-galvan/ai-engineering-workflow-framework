@@ -126,6 +126,12 @@ Record `Primary goal` exactly as `Execute technical
 spike` or `Review technical spike`, use only the playbook's corresponding exact
 dispositions, require `spike_report.md` for a completed run, and prohibit
 `implementation_plan.md` and remediation activation.
+Use the canonical logical worker IDs from the playbook: `spike-context`, the
+objective worker (`spike-investigation` or `spike-assessment`), any declared
+Deep workers, and final `handoff`. The final provider role is `documenter`, but
+its logical worker ID is `handoff`; do not use `documenter` as that ID. Bind
+`spike-investigation` to `solution_architect` and `spike-assessment` to
+`reviewer`; never substitute `dependency_analyst` for either role.
 When a work-item identifier is supplied, assign that input and the mapped
 `work_item_read` capability to `spike-context`; its terminal ledger must show
 the attempted read or an explicit mapping-unavailable result.

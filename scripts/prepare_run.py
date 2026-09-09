@@ -307,16 +307,20 @@ def _repository_row(repository: Path) -> dict[str, str]:
     revision = _git(resolved, "rev-parse", "HEAD")
     branch = _git(resolved, "branch", "--show-current")
     status = _git(resolved, "status", "--porcelain")
+    clean_status = "Unknown" if status == "Unknown" else ("Dirty" if status else "Clean")
     return {
         "Repository role": "Execution repository",
         "Declared path": str(repository),
         "Resolved path": str(resolved),
         "Branch / detached": branch if branch != "Unknown" and branch else "detached",
         "Full revision": revision,
-        "Clean status": "Unknown" if status == "Unknown" else ("Dirty" if status else "Clean"),
+        "Clean status": clean_status,
         "User-selected ref": "Current checkout",
         "Release mapping": "Unknown",
-        "Evidence eligibility": "Eligible current-run source evidence",
+        "Evidence eligibility": (
+            "Caveated current-run source evidence; checkout contains uncommitted changes"
+            if clean_status == "Dirty" else "Eligible current-run source evidence"
+        ),
     }
 
 
@@ -334,12 +338,18 @@ def _initial_packet(
     prompt_path = ROOT / "templates" / PROMPT_TEMPLATES[playbook]
     plugin = json.loads(PLUGIN_MANIFEST.read_text())
     input_manifest = manifest["run_input_manifest"]
+    recorded_at = str(manifest.get("run_budget", {}).get("started_at", ""))
+    if not recorded_at:
+        recorded_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    run_stamp = re.sub(r"[^0-9A-Za-z]", "", recorded_at)
     packet["work_item"]["ID"] = work_item
+    packet["work_item"]["Last Updated"] = recorded_at
     packet["inputs"] = list(input_manifest["inputs"])
     packet["run_input_manifest"] = input_manifest
     packet["repositories"] = [repository_row]
     packet["playbook_selection"]["Selected playbook"] = playbook
     packet["identity"].update({
+        "Run ID": f"{work_item}-{run_stamp}",
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
         "Plugin package / version": f"{plugin['name']} / {plugin['version']}",
         "Provider/runtime configuration": str(runtime_agents) if runtime_agents else "Not provided",
@@ -800,6 +810,8 @@ def self_test() -> None:
         assert prepared_packet["work_item"]["ID"] == "ITEM-1"
         assert prepared_packet["repositories"][0]["Full revision"] == expected_revision
         assert prepared_packet["repositories"][0]["Clean status"] == "Clean"
+        assert prepared_packet["identity"]["Run ID"].startswith("ITEM-1-")
+        assert prepared_packet["work_item"]["Last Updated"].endswith("Z")
         assert prepared_packet["identity"]["Role binding manifest"] == first["role_binding_manifest"]
         assert prepared_packet["identity"]["Prompt template / revision / conformance"].endswith(" / pending")
         assert prepared_packet["durable_artifacts"][0]["Artifact"] == "Role bindings"

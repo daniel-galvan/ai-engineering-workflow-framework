@@ -4173,6 +4173,11 @@ _ALLOW_UNRELEASED = "--allow-unreleased" in sys.argv
 raw_arguments = list(sys.argv[1:])
 artifact_root = None
 normalized_evidence = None
+technical_spike_report = None
+technical_spike_primary_goal = None
+technical_spike_profile = None
+technical_spike_workflow_result = None
+technical_spike_budget_status = None
 if "--sentry-artifacts" in raw_arguments:
     index = raw_arguments.index("--sentry-artifacts")
     if index + 1 >= len(raw_arguments):
@@ -4185,6 +4190,29 @@ if "--normalized-evidence" in raw_arguments:
         fail("--normalized-evidence requires one artifact path")
     normalized_evidence = Path(raw_arguments[index + 1]).resolve()
     del raw_arguments[index:index + 2]
+for flag, name in (
+    ("--technical-spike-report", "technical_spike_report"),
+    ("--technical-spike-primary-goal", "technical_spike_primary_goal"),
+    ("--technical-spike-profile", "technical_spike_profile"),
+    ("--technical-spike-workflow-result", "technical_spike_workflow_result"),
+    ("--technical-spike-budget-status", "technical_spike_budget_status"),
+):
+    if flag in raw_arguments:
+        index = raw_arguments.index(flag)
+        if index + 1 >= len(raw_arguments):
+            fail(f"{flag} requires one value")
+        value = raw_arguments[index + 1]
+        if name == "technical_spike_report":
+            technical_spike_report = Path(value).resolve()
+        elif name == "technical_spike_primary_goal":
+            technical_spike_primary_goal = value
+        elif name == "technical_spike_profile":
+            technical_spike_profile = value
+        elif name == "technical_spike_workflow_result":
+            technical_spike_workflow_result = value
+        else:
+            technical_spike_budget_status = value
+        del raw_arguments[index:index + 2]
 arguments = [value for value in raw_arguments if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}]
 if emit_handoff and len(arguments) != 1:
     fail("--emit-handoff requires exactly one terminal work record")
@@ -4194,6 +4222,27 @@ if artifact_root:
     validate_sentry_artifacts(artifact_root)
 if normalized_evidence:
     validate_normalized_evidence(normalized_evidence)
+if technical_spike_report:
+    missing = [
+        name for name, value in (
+            ("--technical-spike-primary-goal", technical_spike_primary_goal),
+            ("--technical-spike-profile", technical_spike_profile),
+            ("--technical-spike-workflow-result", technical_spike_workflow_result),
+        ) if not value
+    ]
+    if missing:
+        fail("technical spike report validation requires: " + ", ".join(missing))
+    report_errors = technical_spike_report_errors(
+        technical_spike_report.read_text() if technical_spike_report.is_file() else "",
+        technical_spike_primary_goal,
+        technical_spike_profile,
+        technical_spike_workflow_result,
+        technical_spike_budget_status,
+    )
+    if report_errors:
+        fail("\n".join(report_errors))
+    if arguments:
+        fail("technical spike report validation cannot be combined with a work record")
 handoffs = [validate_work_record(Path(argument).resolve(), require_terminal=True) for argument in arguments]
 for work_record in sorted(ROOT.glob(".thoughts/*/work_record.md")):
     validate_work_record(work_record)

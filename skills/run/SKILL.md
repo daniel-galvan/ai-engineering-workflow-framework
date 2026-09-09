@@ -109,6 +109,9 @@ description: >-
    For Technical Spike, assign the supplied work-item input and `work_item_read` to `spike-context`; a completed
    handoff is invalid if that worker silently omits the read. Preparation captures the execution checkout revision in
    the packet before worker analysis, so workers must not replace it with `Unknown`.
+   Use the playbook's logical worker IDs exactly: final provider role `documenter` is recorded as `handoff`,
+   `spike-investigation` uses `solution_architect`, and `spike-assessment` uses `reviewer`. The packaged finalizer
+   validates those role bindings and validates `spike_report.md` before releasing the Documenter.
    Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
    `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
    current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be

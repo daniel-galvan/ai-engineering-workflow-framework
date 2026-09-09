@@ -57,6 +57,31 @@ TECHNICAL_SPIKE_REQUIRED_WORKERS = {
         "spike-context", "spike-assessment", "repository-integration", "handoff",
     },
 }
+TECHNICAL_SPIKE_WORKER_ROLES = {
+    ("standard", "execute technical spike"): {
+        "spike-context": "current_state_investigator",
+        "spike-investigation": "solution_architect",
+        "handoff": "documenter",
+    },
+    ("deep", "execute technical spike"): {
+        "spike-context": "current_state_investigator",
+        "spike-investigation": "solution_architect",
+        "repository-integration": "repository_integrator",
+        "spike-review": "reviewer",
+        "handoff": "documenter",
+    },
+    ("standard", "review technical spike"): {
+        "spike-context": "current_state_investigator",
+        "spike-assessment": "reviewer",
+        "handoff": "documenter",
+    },
+    ("deep", "review technical spike"): {
+        "spike-context": "current_state_investigator",
+        "spike-assessment": "reviewer",
+        "repository-integration": "repository_integrator",
+        "handoff": "documenter",
+    },
+}
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)(?:\s*;.*)?$", re.IGNORECASE
 )
@@ -203,6 +228,38 @@ def _technical_spike_missing_workers(packet: dict[str, object]) -> set[str]:
     return required - complete
 
 
+def _technical_spike_worker_contract_errors(packet: dict[str, object]) -> list[str]:
+    identity = packet.get("identity", {})
+    selection = packet.get("playbook_selection", {})
+    if not isinstance(identity, dict) or not isinstance(selection, dict):
+        return []
+    contract = TECHNICAL_SPIKE_WORKER_ROLES.get((
+        str(identity.get("Executed profile", "")).strip().lower(),
+        str(selection.get("Primary goal", "")).strip().lower(),
+    ))
+    if not contract:
+        return []
+    rows_by_worker: dict[str, list[dict[str, object]]] = {}
+    for row in packet.get("workers", []):
+        if isinstance(row, dict):
+            rows_by_worker.setdefault(str(row.get("Worker", "")).strip().lower(), []).append(row)
+    errors = []
+    for worker, expected_role in contract.items():
+        rows = rows_by_worker.get(worker, [])
+        if len(rows) > 1:
+            errors.append(f"Technical Spike worker {worker} must have exactly one execution-ledger row")
+            continue
+        if not rows:
+            continue
+        raw_role = str(rows[0].get("Role", "")).strip()
+        actual_role = ROLE_AGENTS.get(raw_role, raw_role.lower())
+        if actual_role != expected_role:
+            errors.append(
+                f"Technical Spike worker {worker} requires role {expected_role}; received {actual_role or 'empty'}"
+            )
+    return errors
+
+
 def _is_run_context_evidence(row: object) -> bool:
     if not isinstance(row, dict):
         return False
@@ -246,6 +303,29 @@ def _normalize_prompt_identity(value: object) -> object:
     return " / ".join(parts)
 
 
+def _canonicalize_technical_spike_worker_ids(
+    packet: dict[str, object], manifest: dict[str, object],
+) -> None:
+    identity = packet.get("identity", {})
+    playbook = str(manifest.get("playbook", ""))
+    if isinstance(identity, dict):
+        playbook = playbook or Path(
+            str(identity.get("Playbook / version", "")).split(" / ", 1)[0]
+        ).stem
+    if playbook != "technical_spike":
+        return
+    # Older runs called the final Documenter "documenter". Preserve that
+    # result, but do not alias analytical roles: those affect the evidence
+    # contract and must be corrected by the Coordinator.
+    for field in ("workers", "worker_results"):
+        rows = packet.get(field, [])
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict) and str(row.get("Worker", "")).strip().lower() == "documenter":
+                row["Worker"] = "handoff"
+
+
 def _frontmatter_version(path: Path) -> str:
     match = re.search(r"^version:\s*(\S+)\s*$", path.read_text(), re.MULTILINE)
     if not match:
@@ -269,6 +349,7 @@ def _normalize_packet(
     packet: dict[str, object], closure: dict[str, object], packet_path: Path | None = None,
 ) -> None:
     manifest, manifest_path = _prepared_manifest(packet_path)
+    _canonicalize_technical_spike_worker_ids(packet, manifest)
     identity = packet.get("identity", {})
     if isinstance(identity, dict):
         playbook = str(manifest.get("playbook", ""))
@@ -463,6 +544,9 @@ def _validate_handoff(packet: dict[str, object]) -> None:
                         "Technical Spike handoff requires terminal results for: "
                         + ", ".join(sorted(missing_workers))
                     )
+                worker_contract_errors = _technical_spike_worker_contract_errors(packet)
+                if worker_contract_errors:
+                    raise ValueError("\n".join(worker_contract_errors))
                 context_worker = next(
                     (
                         row for row in packet.get("workers", [])
@@ -814,6 +898,27 @@ def _record_pre_release(
     return value
 
 
+def _record_terminal_failure(
+    packet_path: Path, errors: list[str], previous: dict[str, object],
+) -> Path:
+    path = packet_path.parent / FINALIZATION_STATUS_FILENAME
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    value = {
+        "schema_version": 1,
+        "status": "failed",
+        "phase": "terminal",
+        "terminal_failure": True,
+        "attempt_count": int(previous.get("attempt_count", 0)),
+        "correction_allowed": False,
+        "first_attempt_at": previous.get("first_attempt_at") or now,
+        "last_attempt_at": now,
+        "shutdown_deadline": previous.get("shutdown_deadline"),
+        "errors": errors,
+    }
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    return path
+
+
 def _update_run_budget(packet_path: Path) -> str | None:
     path = packet_path.parent / "run_budget.json"
     if not path.is_file():
@@ -850,6 +955,35 @@ def _sync_spike_report_budget(packet_path: Path, packet: dict[str, object], stat
     )
     if count == 1:
         report.write_text(updated)
+
+
+def _technical_spike_report_errors(
+    packet_path: Path, packet: dict[str, object], budget_status: str | None,
+) -> list[str]:
+    identity = packet.get("identity", {})
+    selection = packet.get("playbook_selection", {})
+    if not isinstance(identity, dict) or not isinstance(selection, dict):
+        return []
+    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+    state = str(identity.get("State", "")).strip().lower()
+    if playbook != "technical_spike" or state not in {"handoff", "completed"}:
+        return []
+    report = packet_path.parent / "spike_report.md"
+    if not report.is_file():
+        return ["Technical Spike handoff requires spike_report.md"]
+    args = [
+        sys.executable, str(VALIDATOR),
+        "--technical-spike-report", str(report),
+        "--technical-spike-primary-goal", str(selection.get("Primary goal", "")),
+        "--technical-spike-profile", str(identity.get("Executed profile", "")),
+        "--technical-spike-workflow-result", str(packet.get("handoff", {}).get("workflow_result", "")),
+    ]
+    if budget_status:
+        args.extend(("--technical-spike-budget-status", budget_status))
+    result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=False)
+    if result.returncode:
+        return [result.stdout.strip() or result.stderr.strip() or "technical_spike_report_validation_failed"]
+    return []
 
 
 def finalize(
@@ -895,6 +1029,7 @@ def finalize(
         except (KeyError, TypeError, ValueError) as error:
             errors.append(str(error))
     if packet_ready:
+        errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
         try:
             _validate_handoff(packet)
         except ValueError as error:
@@ -939,8 +1074,11 @@ def finalize(
                 status = _record_pre_release(packet_path, "failed", errors, previous_status)
                 prefix = "finalization_contract_failure:" if status["attempt_count"] >= 2 else ""
                 raise ValueError(prefix + "\n".join(errors) + f"\nreceipt={status_path}")
-            raise ValueError("\n".join(errors))
+            terminal_status = _record_terminal_failure(packet_path, errors, previous_status)
+            raise ValueError("\n".join(errors) + f"\nreceipt={terminal_status}")
         if pre_release:
+            status_path.unlink(missing_ok=True)
+        else:
             status_path.unlink(missing_ok=True)
         if not pre_release:
             temporary.replace(record_path)
@@ -1378,9 +1516,9 @@ def self_test() -> None:
             for worker in ("spike-context", "spike-investigation", "handoff")
         ])
         spike["workers"].extend([
-            {"Worker": "spike-context", "Tools": "work_item_read"},
-            {"Worker": "spike-investigation", "Tools": "mapped operations"},
-            {"Worker": "handoff", "Tools": "artifact_write"},
+            {"Worker": "spike-context", "Role": "current_state_investigator", "Tools": "work_item_read"},
+            {"Worker": "spike-investigation", "Role": "solution_architect", "Tools": "mapped operations"},
+            {"Worker": "handoff", "Role": "documenter", "Tools": "artifact_write"},
         ])
         spike["handoff"].update({
             "workflow_result": "Question answered",
@@ -1391,6 +1529,25 @@ def self_test() -> None:
             ),
         })
         _validate_handoff(spike)
+        legacy_spike = json.loads(json.dumps(spike))
+        for row in legacy_spike["workers"]:
+            if row["Worker"] == "handoff":
+                row["Worker"] = "documenter"
+        for row in legacy_spike["worker_results"]:
+            if row["Worker"] == "handoff":
+                row["Worker"] = "documenter"
+        _canonicalize_technical_spike_worker_ids(legacy_spike, {"playbook": "technical_spike"})
+        _validate_handoff(legacy_spike)
+        wrong_role_spike = json.loads(json.dumps(spike))
+        next(row for row in wrong_role_spike["workers"] if row["Worker"] == "spike-investigation")["Role"] = (
+            "dependency_analyst"
+        )
+        try:
+            _validate_handoff(wrong_role_spike)
+        except ValueError as error:
+            assert "spike-investigation requires role solution_architect" in str(error)
+        else:
+            raise AssertionError("Technical Spike must reject an analytical role mismatch")
         spike["handoff"]["workflow_result"] = "Accepted"
         try:
             _validate_handoff(spike)
@@ -1684,6 +1841,10 @@ Runtime behavior remains unverified.
             assert "requires terminal results for: handoff" in str(error)
         else:
             raise AssertionError("a Technical Spike cannot complete without the handoff worker")
+        terminal_failure = json.loads((spike_root / FINALIZATION_STATUS_FILENAME).read_text())
+        assert terminal_failure["phase"] == "terminal"
+        assert terminal_failure["terminal_failure"] is True
+        assert any("requires terminal results for: handoff" in error for error in terminal_failure["errors"])
         blocked_profile = json.loads(json.dumps(spike_packet))
         blocked_profile["identity"].update({
             "State": "completed", "Workflow outcome": "completed", "Engineering outcome": "partially_solved",

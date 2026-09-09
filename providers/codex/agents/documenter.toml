@@ -38,6 +38,12 @@ cite, import, summarize, or use unassigned memory or historical facts. Populate 
 `finalization_packet.json` skeleton without changing its flat schema; do not patch `work_record.md`. The packaged renderer
 owns the terminal record. As final Documenter, you are the sole writer for the
 packet and assigned non-record artifacts.
+For Technical Spike, write the final worker row and result under logical worker
+ID `handoff` (provider role `documenter`). Preserve the exact `spike_report.md`
+template headings and table headers; an alternate report outline is not a
+valid terminal artifact. Populate the prepared Run ID and RFC 3339 Work Item
+Last Updated values, and preserve prompt conformance as `pass` or an explicit
+`fail:<missing fields>` value. Never emit `not exposed` for either field.
 Never invoke `finalize_work_record.py` yourself. Return the packet to the
 Coordinator, who owns every pre-release and terminal finalizer invocation.
 Keep `handoff.established`, `handoff.best_current_explanations`, and
