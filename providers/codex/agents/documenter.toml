@@ -62,6 +62,12 @@ and their references from analytical artifacts; do not replace them with
 generic placeholders. If the recommendation is conditional on an unresolved
 decision or indispensable evidence gate, use `Partially answered`; reserve
 `Question answered` for a resolved primary question.
+For Technical Spike, keep evidence and experiment/check namespaces separate:
+`Claims.Evidence refs` may contain only exact IDs present in the packet's
+Evidence rows. `CHK-*` labels from `Experiments and Checks` are not Evidence
+IDs; map each check result to its source-backed `E-*` Evidence row(s). Never
+use grouped or range identifiers such as `E-001..E-008`; write one row per
+exact ID and use only those IDs in references.
 For Feature Delivery planning, preserve the canonical logical worker IDs and
 their role bindings: standard requires `feature-context`, `impact-analysis`,
 `feature-design`, and `handoff`; include `repository-integration` when it was

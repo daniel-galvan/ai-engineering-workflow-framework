@@ -51,6 +51,12 @@ A terminal work record MUST form a complete reasoning chain:
 The framework validator checks these relationships for populated work records. Draft records may be incomplete while a
 run is active, but they MUST pass before terminal handoff.
 
+`Evidence refs` is a typed field: every reference must be an exact ID present in
+the current record's Evidence table. IDs from another section, such as an
+experiment or check (`CHK-*`), are not evidence references; copy the
+source-backed result into an Evidence row and reference that Evidence ID.
+References must be individual IDs, never prose, grouped IDs, or ranges.
+
 ## Required fields
 
 ### Evidence

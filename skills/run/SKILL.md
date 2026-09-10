@@ -247,6 +247,10 @@ description: >-
    After the second failed pre-release, replace the pending closure probe with
    the exact provider-observed release receipt (or the exact unreleased-handle
    blocker); never leave a pending probe as the run's final closure artifact.
+   For Technical Spike packets, `Claims.Evidence refs` may contain only exact
+   IDs from the packet's Evidence rows. `CHK-*` belongs only to Experiments and
+   Checks; map each check to its source-backed `E-*` Evidence row(s). Never use
+   grouped or range identifiers such as `E-001..E-008`.
    After every required worker returns a terminal envelope and analytical fan-in
    passes, set the matching Requested, Activated, and Executed profiles and
    `Profile status: executed` before activating `handoff`; only Technical Spike

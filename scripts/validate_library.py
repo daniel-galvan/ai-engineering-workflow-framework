@@ -485,7 +485,13 @@ def reasoning_record_errors(text: str) -> list[str]:
             errors.append(f"{claim_id} has no evidence refs")
         for ref in refs:
             if ref not in evidence:
-                errors.append(f"{claim_id} references missing evidence {ref}")
+                if ref.upper().startswith("CHK-"):
+                    errors.append(
+                        f"{claim_id} references missing evidence {ref}; {ref} is an experiment/check ID, "
+                        "not an Evidence-table ID; map it to a source-backed Evidence ID"
+                    )
+                else:
+                    errors.append(f"{claim_id} references missing evidence {ref}")
             else:
                 evidence_used.add(ref)
     for decision_id, row in decisions.items():
@@ -2259,6 +2265,18 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
     invalid = valid.replace("| claim-001 | evidence-001 |", "| claim-001 | evidence-999 |")
     assert "claim-001 references missing evidence evidence-999" in reasoning_record_errors(invalid)
     assert "orphaned evidence evidence-001" in reasoning_record_errors(invalid)
+    invalid_check_ref = valid.replace(
+        "| claim-001 | evidence-001 |", "| claim-001 | evidence-001; CHK-001 |"
+    )
+    assert any(
+        "claim-001 references missing evidence CHK-001; CHK-001 is an experiment/check ID, "
+        "not an Evidence-table ID" in error
+        for error in reasoning_record_errors(invalid_check_ref)
+    )
+    valid_check_evidence = valid.replace(
+        "| evidence-001 | test.log |", "| CHK-001 | test.log |"
+    ).replace("| claim-001 | evidence-001 |", "| claim-001 | CHK-001 |")
+    assert reasoning_record_errors(valid_check_evidence) == []
     contract_delta = """# Contract Delta
 
 | Boundary | Representation | Field identity / coordinate space | Evidence refs |
