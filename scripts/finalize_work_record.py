@@ -985,8 +985,14 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
     if isinstance(handoff, dict):
         execution = str(handoff.get("execution", ""))
         execution = re.sub(
-            r"state remains handoff(?:\s+pending packaged finalizer)?",
+            r"state(?:\s*:\s*|\s+)(?:remains\s+)?handoff(?:\s+pending packaged finalizer)?",
             "finalization validation passed",
+            execution,
+            flags=re.IGNORECASE,
+        )
+        execution = re.sub(
+            r"workflow remains\s+(?:in_progress|handoff)(?:\s+pending(?:\s+packaged)?\s+finalizer)?",
+            "terminal bookkeeping finalized",
             execution,
             flags=re.IGNORECASE,
         )
@@ -1177,8 +1183,11 @@ def _update_run_budget(packet_path: Path) -> str | None:
     return str(value["status"])
 
 
-def _sync_spike_report_budget(packet_path: Path, packet: dict[str, object], status: str | None) -> None:
-    if not status:
+def _sync_spike_report_budget(
+    packet_path: Path, packet: dict[str, object], status: str | None,
+    updated_at: str | None = None,
+) -> None:
+    if not status and not updated_at:
         return
     identity = packet.get("identity", {})
     playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
@@ -1187,13 +1196,46 @@ def _sync_spike_report_budget(packet_path: Path, packet: dict[str, object], stat
     report = packet_path.parent / "spike_report.md"
     if not report.is_file():
         return
-    updated, count = re.subn(
-        r"^\| Budget status \|[^|]*\|$",
-        f"| Budget status | {status} |",
-        report.read_text(),
-        flags=re.MULTILINE,
-    )
-    if count == 1:
+    original = report.read_text()
+    updated = original
+    if status:
+        updated, _ = re.subn(
+            r"^\| Budget status \|[^|]*\|$",
+            f"| Budget status | {status} |",
+            updated,
+            flags=re.MULTILINE,
+        )
+    if updated_at:
+        updated, _ = re.subn(
+            r"^last_updated:\s*\S+\s*$",
+            f"last_updated: {updated_at}",
+            updated,
+            flags=re.MULTILINE,
+        )
+        updated, _ = re.subn(
+            r"^\| Last updated \|[^|]*\|$",
+            f"| Last updated | {updated_at} |",
+            updated,
+            flags=re.MULTILINE,
+        )
+    run_budget = packet_path.parent / "run_budget.json"
+    if run_budget.is_file():
+        try:
+            timebox = json.loads(run_budget.read_text()).get("timebox_minutes")
+        except (OSError, json.JSONDecodeError):
+            timebox = None
+        if isinstance(timebox, (int, float)) and not isinstance(timebox, bool) and timebox > 0:
+            updated = re.sub(
+                r"^(\| Timebox or evidence budget \|)([^|]*)(\|)$",
+                lambda match: (
+                    f"{match.group(1)} {match.group(2).strip()}; {timebox:g} minutes {match.group(3)}"
+                    if not re.search(r"\b\d+\s*(?:minutes?|mins?)\b", match.group(2), re.IGNORECASE)
+                    else match.group(0)
+                ),
+                updated,
+                flags=re.MULTILINE,
+            )
+    if updated != original:
         report.write_text(updated)
 
 
@@ -1281,6 +1323,11 @@ def finalize(
             _reconcile_runtime_state(packet, closure["runtime_closure"])
         except (KeyError, TypeError, ValueError) as error:
             errors.append(str(error))
+        if not pre_release and not errors:
+            finalized_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            if isinstance(packet.get("work_item"), dict):
+                packet["work_item"]["Last Updated"] = finalized_at
+            _sync_spike_report_budget(packet_path, packet, None, updated_at=finalized_at)
     if packet_ready:
         try:
             rendered = render(packet)
@@ -1678,6 +1725,14 @@ def self_test() -> None:
     _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
     assert "runtime closure is pending" not in execution_packet["handoff"]["execution"].lower()
     assert "runtime released" in execution_packet["handoff"]["execution"].lower()
+    execution_packet["handoff"]["execution"] = (
+        "State handoff; standard profile executed; workflow remains in_progress "
+        "pending Coordinator finalizer; runtime released"
+    )
+    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
+    assert "state handoff" not in execution_packet["handoff"]["execution"].lower()
+    assert "workflow remains in_progress" not in execution_packet["handoff"]["execution"].lower()
+    assert "terminal bookkeeping finalized" in execution_packet["handoff"]["execution"].lower()
 
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)
@@ -2163,6 +2218,12 @@ Runtime behavior remains unverified.
         assert "| Engineering outcome | partially_solved |" in spike_rendered
         assert "finalization validation passed" in spike_rendered
         assert "state remains handoff" not in spike_rendered.lower()
+        assert "workflow remains in_progress" not in spike_rendered.lower()
+        assert "| Last Updated | 2026-09-07T00:00:00Z |" not in spike_rendered
+        assert re.search(
+            r"\| Timebox or evidence budget \|[^|]*1 minutes[^|]*\|",
+            spike_report.read_text(),
+        ), spike_report.read_text()
         assert "| spike-context | Current-State Investigator |" in spike_rendered
         assert "gpt-5.6-luna / high" in spike_rendered
         assert "| Role-policy baseline ID | corrupted |" not in spike_rendered

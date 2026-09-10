@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -30,6 +30,10 @@ budget. It is a learning artifact, not an implementation plan or authorization t
 | Comparison reference | Path or URL / Not applicable |
 | Last updated | |
 
+For duration-based runs, record the numeric prepared timebox or a bounded numeric evidence count (for example,
+`35 minutes; within_budget`), not only a profile name or completion status. The finalizer supplies the prepared numeric
+timebox when `run_budget.json` declares one.
+
 ## Scope and Non-goals
 
 State what was investigated or reviewed and what was intentionally excluded.
@@ -44,7 +48,8 @@ State what was investigated or reviewed and what was intentionally excluded.
 
 Keep final report independently usable. Cite direct repository, work-item, document, experiment, or runtime evidence;
 use an exact file/line, URL or work-item identifier, runtime artifact, or command. Do not use globs, broad directory
-labels, or a search name without the location or command that can be independently checked.
+labels, or a search name without the location or command that can be independently checked. Record an exact revision
+or version; `current`, `latest`, `HEAD`, and working-tree labels are not sufficient by themselves.
 
 | Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
 | --- | --- | --- | --- | --- | --- |
@@ -83,6 +88,8 @@ Use `Not run` when no experiment was necessary and explain why the existing evid
 List only findings supported by the evidence above. Keep facts, inferences, and unresolved unknowns distinct.
 
 ## Options and Tradeoffs
+
+Use one exact Evidence ID per option. Do not use grouped or range references such as `E-01-E-05`.
 
 | Option | Evidence | Benefits | Costs or risks | When to choose |
 | --- | --- | --- | --- | --- |

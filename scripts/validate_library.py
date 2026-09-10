@@ -28,7 +28,8 @@ RFC3339_TIMESTAMP = re.compile(
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
 RANGE_REFERENCE = re.compile(
     r"\b[A-Za-z][A-Za-z0-9_]*-\d+\s+(?:through|to)\s+(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b"
-    r"|\b[A-Za-z][A-Za-z0-9_]*-\d+\s*(?:\.\.|[–—])\s*(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b",
+    r"|\b[A-Za-z][A-Za-z0-9_]*-\d+\s*(?:\.\.|[–—])\s*(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b"
+    r"|\b[A-Za-z][A-Za-z0-9_]*-\d+-[A-Za-z][A-Za-z0-9_]*-\d+\b",
     re.IGNORECASE,
 )
 MODEL_BASELINE_ID = "codex-role-policy-v20260827032839"
@@ -311,6 +312,14 @@ def _direct_evidence_location_is_vague(value: object) -> bool:
     lowered = re.sub(r"\s+", " ", location.lower())
     if any(marker in location for marker in ("*", "...", "…")):
         return True
+    if re.search(
+        r"(?:^|[;,]\s*)(?:(?:targeted|broad|scoped)\s+)?"
+        r"(?:source(?:/schema)?|schema|repository|codebase)\s+(?:search|scan)"
+        r"|(?:^|[;,]\s*)(?:(?:targeted|broad|scoped)\s+)?"
+        r"(?:file|directory|path)\s+(?:search|scan|cleanup)",
+        lowered,
+    ):
+        return True
     return bool(re.fullmatch(
         r"(?:[a-z0-9_./-]+\s+){0,4}(?:sources?|search|cleanup|files?|directories?)", lowered,
     ))
@@ -407,6 +416,15 @@ def technical_spike_report_errors(
     for field in ("Work item", "Primary question", "Timebox or evidence budget", "Success criterion"):
         if not metadata.get(field, "").strip():
             errors.append(f"spike_report.md Metadata requires {field}")
+    timebox = normalized_metadata_value(metadata.get("Timebox or evidence budget", ""))
+    if timebox and not re.search(
+        r"\b\d+(?:\.\d+)?[- ]?(?:minutes?|mins?|hours?|checks?|commands?|items?|tests?|artifacts?|sources?)\b",
+        timebox,
+        re.IGNORECASE,
+    ):
+        errors.append(
+            "spike_report.md Timebox or evidence budget must state a numeric duration or evidence count"
+        )
     objective = normalized_metadata_value(metadata.get("Objective", ""))
     profile_value = normalized_metadata_value(metadata.get("Execution profile", ""))
     if expected_objective and objective != expected_objective:
@@ -446,6 +464,19 @@ def technical_spike_report_errors(
                 f"spike_report.md Direct Evidence {row.get('Evidence ID', 'row')} File or artifact location "
                 "must identify an exact file, document, runtime artifact, URL, or command; globs and search labels "
                 "are not sufficient"
+            )
+        revision = normalized_metadata_value(row.get("Revision or version", ""))
+        if (
+            re.search(
+                r"\b(?:current|latest|head|working\s+(?:tree|revision)|current\s+checkout)\b",
+                revision,
+                re.IGNORECASE,
+            )
+            and not re.search(r"\b[0-9a-f]{7,40}\b", revision, re.IGNORECASE)
+        ):
+            errors.append(
+                f"spike_report.md Direct Evidence {row.get('Evidence ID', 'row')} Revision or version "
+                "must identify an exact revision or version, not a current/working-tree label"
             )
     decision_context = markdown_table(text, "## Decision Context")
     if not decision_context or any(not row.get(field, "").strip() for row in decision_context for field in (
@@ -487,6 +518,8 @@ def technical_spike_report_errors(
         decision_context, "Decision Context", ("Evidence refs",)
     ))
     errors.extend(_grouped_reference_errors(criteria, "Assessment Criteria", ("Evidence refs",)))
+    options = markdown_table(text, "## Options and Tradeoffs")
+    errors.extend(_grouped_reference_errors(options, "Options and Tradeoffs", ("Evidence",)))
     checks = markdown_table(text, "## Experiments and Checks")
     if not checks or any(not row.get(field, "").strip() for row in checks for field in (
         "Hypothesis or review criterion", "Observable seam", "Command or method",
@@ -1949,8 +1982,17 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         for row in table_rows["# Worker Runtime Closure"]
     ) else "not released"
     execution = re.search(r"^Execution:\s*(.*?)\nProvenance:", handoff, re.MULTILINE | re.DOTALL)
-    if not execution or f"runtime {runtime_value}" not in " ".join(execution.group(1).lower().split()):
+    execution_text = " ".join(execution.group(1).lower().split()) if execution else ""
+    if not execution or f"runtime {runtime_value}" not in execution_text:
         fail(f"{path}: Final Handoff runtime must match Worker Runtime Closure")
+    if identity["State"].strip().lower() == "completed" and re.search(
+        r"\b(?:state(?:\s*:\s*|\s+)(?:remains\s+)?handoff|"
+        r"workflow remains\s+(?:in_progress|handoff)|"
+        r"pending(?:\s+packaged)?\s+finalizer|"
+        r"runtime closure\s+(?:is\s+)?(?:pending|unknown|active|in progress|not released))\b",
+        execution_text,
+    ):
+        fail(f"{path}: completed handoff Execution contains stale transitional state")
     for error in current_artifact_errors(
         markdown_table(text, "# Durable Artifacts"),
         path,
@@ -2136,7 +2178,7 @@ def self_test_reasoning_records() -> None:
 | Work item | SPIKE-1 |
 | Objective | execute_spike |
 | Primary question | Can the current boundary preserve the required data? |
-| Timebox or evidence budget | One repository trace and one focused test |
+| Timebox or evidence budget | 10 minutes; one repository trace and one focused test |
 | Success criterion | Request and response behavior are established |
 | Execution profile | standard |
 | Review target | Not applicable |
@@ -2216,6 +2258,33 @@ Keep the current boundary pending runtime confirmation.
     assert "File or artifact location must identify an exact" in "\n".join(
         technical_spike_report_errors(
             vague_direct_location, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    mixed_vague_direct_location = valid_spike_report.replace(
+        "| E-001 | Execution repository | abcdef1 | src/boundary.py:10 |",
+        "| E-001 | Execution repository | abcdef1 | src/boundary.py:10; targeted source/schema search |",
+    )
+    assert "File or artifact location must identify an exact" in "\n".join(
+        technical_spike_report_errors(
+            mixed_vague_direct_location, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    vague_revision = valid_spike_report.replace(
+        "| E-001 | Execution repository | abcdef1 |",
+        "| E-001 | Execution repository | current working revision |",
+    )
+    assert "Revision or version must identify an exact" in "\n".join(
+        technical_spike_report_errors(
+            vague_revision, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    grouped_option_reference = valid_spike_report.replace(
+        "| Keep boundary | E-001 |",
+        "| Keep boundary | E-02-E-05 |",
+    )
+    assert "Options and Tradeoffs" in "\n".join(
+        technical_spike_report_errors(
+            grouped_option_reference, "Execute technical spike", "standard", "Question answered"
         )
     )
     grouped_method_reference = valid_spike_report.replace(
@@ -2657,6 +2726,13 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             output = validation_output(record)
             assert expected in output, output
 
+        assert_invalid(
+            valid.replace(
+                "Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.",
+                "Execution: State handoff; workflow remains in_progress pending Coordinator finalizer; runtime released.",
+            ),
+            "completed handoff Execution contains stale transitional state",
+        )
         assert_invalid(
             valid.replace("## Evaluation Worker Timing Ledger", "## Missing Evaluation Worker Timing Ledger"),
             "Evaluation Worker Timing Ledger must contain populated timing rows",

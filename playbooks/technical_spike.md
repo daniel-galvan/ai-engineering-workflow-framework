@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -148,7 +148,8 @@ For a duration budget, use prepared `run_budget.json`. Report exactly `within_bu
 `exhausted_with_useful_result`, `exceeded_during_finalization`, or `stopped_by_indispensable_evidence`; do not use
 `Completed` as a substitute for measured deadline status. An already exhausted duration blocks before worker
 activation. The worker runtime guard reserves the last ten percent, capped at two minutes, for reporting and
-finalization; once that reserve begins, do not activate another analytical or Documenter worker.
+finalization; once that reserve begins, do not activate another analytical or Documenter worker. The report must retain
+the numeric prepared duration or a bounded numeric evidence count; `within_budget` alone is not a measurement.
 
 ### Stage 3 — Reconcile and Review
 
@@ -173,7 +174,9 @@ exact disposition. It must also preserve any Feature Delivery handoff and, for `
 comparison.
 For every declared criterion, record evidence, assessment, gap or limitation, and the next evidence or decision. Use
 `Not applicable` when no criteria were declared. It must be usable without opening every intermediate worker artifact
-and must not turn follow-up work into an implementation plan.
+and must not turn follow-up work into an implementation plan. Direct Evidence must carry exact revisions or versions,
+not only `current`, `latest`, `HEAD`, or working-tree labels; each option must cite exact Evidence IDs rather than a
+grouped or range reference.
 
 Use these exact completed-run dispositions:
 
