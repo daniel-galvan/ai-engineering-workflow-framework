@@ -1,6 +1,6 @@
 ---
 title: Claims, Evidence, Decisions, and Actions Contract
-version: 0.4.16
+version: 0.5.1
 status: Pilot
 provider_independent: true
 owner: Engineering

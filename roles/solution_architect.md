@@ -1,7 +1,7 @@
 ---
 
 title: Solution Architect Role
-version: 0.4.18
+version: 0.5.1
 status: Pilot
 category: Design
 produces_decisions: true

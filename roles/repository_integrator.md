@@ -1,7 +1,7 @@
 ---
 
 title: Repository Integrator Role
-version: 0.4.16
+version: 0.5.1
 status: Pilot
 category: Integration
 produces_decisions: true

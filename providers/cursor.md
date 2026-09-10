@@ -1,7 +1,7 @@
 ---
 
 title: Cursor Provider Adapter
-version: 0.4.16
+version: 0.5.1
 status: Pilot
 owner: Engineering
 provider: cursor

@@ -1725,13 +1725,13 @@ def self_test() -> None:
         assessment = json.loads(json.dumps(packet))
         assessment["playbook_selection"]["Primary goal"] = "Specification assessment"
         assessment["identity"].update({
-            "Playbook / version": "playbooks/feature_delivery.md / 0.4.17",
+            "Playbook / version": "playbooks/feature_delivery.md / 0.5.1",
             "Lifecycle": "planning",
             "State": "awaiting_input",
         })
         assessment["handoff"]["provenance"] = (
             f"plugin Not applicable; framework revision {'a' * 40} (clean); "
-            "playbook feature_delivery 0.4.17."
+            "playbook feature_delivery 0.5.1."
         )
         assessment["handoff"]["workflow_result"] = "Plan created"
         try:
@@ -1748,7 +1748,7 @@ def self_test() -> None:
             "Selected playbook": "Feature Delivery",
         })
         feature["identity"].update({
-            "Playbook / version": "playbooks/feature_delivery.md / 0.4.17",
+            "Playbook / version": "playbooks/feature_delivery.md / 0.5.1",
             "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
             "Profile status": "executed", "Lifecycle": "planning",
             "State": "ready_for_implementation", "Workflow outcome": "completed",

@@ -1,6 +1,6 @@
 ---
 title: Workflow Vocabulary
-version: 0.4.16
+version: 0.5.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-08-25

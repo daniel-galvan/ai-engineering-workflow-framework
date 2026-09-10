@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.4.18
+version: 0.5.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07

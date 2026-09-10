@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Example
-version: 0.1.4
+version: 0.5.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-07

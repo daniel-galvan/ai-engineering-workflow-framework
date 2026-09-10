@@ -1,7 +1,7 @@
 ---
 
 title: Orchestrator Role
-version: 0.4.16
+version: 0.5.1
 status: Pilot
 category: Coordination
 produces_decisions: true

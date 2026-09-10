@@ -1,6 +1,6 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.4.17
+version: 0.5.1
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-04
