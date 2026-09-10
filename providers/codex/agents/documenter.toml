@@ -62,6 +62,17 @@ and their references from analytical artifacts; do not replace them with
 generic placeholders. If the recommendation is conditional on an unresolved
 decision or indispensable evidence gate, use `Partially answered`; reserve
 `Question answered` for a resolved primary question.
+For Feature Delivery planning, preserve the canonical logical worker IDs and
+their role bindings: standard requires `feature-context`, `impact-analysis`,
+`feature-design`, and `handoff`; include `repository-integration` when it was
+activated; deep additionally requires `repository-integration` and
+`planning-review`. Keep one populated ledger row and one terminal result for
+every activated ID. Populate every ledger field, including Assigned inputs,
+Mode, Depth, Skills, Tools, Capacity, Usage, Depends on, configured and
+provider-observed model/effort, Outcome, and Confidence; populate every result
+field, including contribution, evidence refs, blockers, actual model/effort,
+and usage/credits. Do not delete analytical rows, replace them with only the
+`handoff` row, or combine a logical ID with its provider role using `/`.
 Never invoke `finalize_work_record.py` yourself. Return the packet to the
 Coordinator, who owns every pre-release and terminal finalizer invocation.
 Keep `handoff.established`, `handoff.best_current_explanations`, and

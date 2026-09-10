@@ -87,6 +87,45 @@ TECHNICAL_SPIKE_WORKER_ROLES = {
         "handoff": "documenter",
     },
 }
+FEATURE_DELIVERY_WORKER_ROLES = {
+    ("standard", "planning"): {
+        "feature-context": "current_state_investigator",
+        "impact-analysis": "dependency_analyst",
+        "feature-design": "solution_architect",
+        "handoff": "documenter",
+    },
+    ("deep", "planning"): {
+        "feature-context": "current_state_investigator",
+        "impact-analysis": "dependency_analyst",
+        "repository-integration": "repository_integrator",
+        "feature-design": "solution_architect",
+        "planning-review": "reviewer",
+        "handoff": "documenter",
+    },
+}
+FEATURE_DELIVERY_LEDGER_FIELDS = (
+    "Assigned inputs",
+    "Mode",
+    "Depth",
+    "Skills",
+    "Tools",
+    "Capacity",
+    "Configured model/effort",
+    "Provider-observed model/effort",
+    "Usage",
+    "Depends on",
+    "Outcome",
+    "Confidence",
+)
+FEATURE_DELIVERY_RESULT_FIELDS = (
+    "Outcome",
+    "Confidence",
+    "Unique contribution",
+    "Evidence / claim refs",
+    "Uncertainties / blockers",
+    "Actual model/effort",
+    "Usage/credits",
+)
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)(?:\s*;.*)?$", re.IGNORECASE
 )
@@ -262,6 +301,129 @@ def _technical_spike_worker_contract_errors(packet: dict[str, object]) -> list[s
             errors.append(
                 f"Technical Spike worker {worker} requires role {expected_role}; received {actual_role or 'empty'}"
             )
+    return errors
+
+
+def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[str]:
+    identity = packet.get("identity", {})
+    if not isinstance(identity, dict):
+        return []
+    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
+    if playbook != "feature_delivery" or str(identity.get("Lifecycle", "")).strip().lower() != "planning":
+        return []
+
+    state = str(identity.get("State", "")).strip().lower()
+    if state not in {"ready_for_implementation", "awaiting_input", "completed"}:
+        return []
+
+    errors: list[str] = []
+    profiles = [str(identity.get(field, "")).strip().lower() for field in (
+        "Requested profile", "Activated profile", "Executed profile",
+    )]
+    invalid_profiles = sorted({profile for profile in profiles if profile not in {"standard", "deep"}})
+    if invalid_profiles:
+        errors.append(
+            "Feature Delivery profiles must be standard or deep; received "
+            + ", ".join(invalid_profiles)
+        )
+        return errors
+    if len(set(profiles)) != 1:
+        errors.append("Feature Delivery Requested, Activated, and Executed profiles must match")
+    if str(identity.get("Profile status", "")).strip().lower() != "executed":
+        errors.append("Feature Delivery terminal planning requires Profile status executed")
+
+    expected_outcomes = {
+        "ready_for_implementation": ("completed", "plan_only"),
+        "awaiting_input": ("completed", "partially_solved"),
+    }.get(state)
+    if expected_outcomes:
+        workflow_outcome, engineering_outcome = expected_outcomes
+        if str(identity.get("Workflow outcome", "")).strip().lower() != workflow_outcome:
+            errors.append(
+                f"Feature Delivery {state} requires Workflow outcome {workflow_outcome}"
+            )
+        if str(identity.get("Engineering outcome", "")).strip().lower() != engineering_outcome:
+            errors.append(
+                f"Feature Delivery {state} requires Engineering outcome {engineering_outcome}"
+            )
+
+    profile = profiles[2]
+    contract = dict(FEATURE_DELIVERY_WORKER_ROLES[(profile, "planning")])
+    rows_by_worker: dict[str, list[dict[str, object]]] = {}
+    for row in packet.get("workers", []):
+        if isinstance(row, dict):
+            worker = str(row.get("Worker", "")).strip().lower()
+            if worker:
+                rows_by_worker.setdefault(worker, []).append(row)
+    result_rows_by_worker: dict[str, list[dict[str, object]]] = {}
+    for row in packet.get("worker_results", []):
+        if isinstance(row, dict):
+            worker = str(row.get("Worker", "")).strip().lower()
+            if worker:
+                result_rows_by_worker.setdefault(worker, []).append(row)
+    if profile == "standard" and (
+        "repository-integration" in rows_by_worker or "repository-integration" in result_rows_by_worker
+    ):
+        contract["repository-integration"] = "repository_integrator"
+
+    missing_ledgers = sorted(worker for worker in contract if not rows_by_worker.get(worker))
+    if missing_ledgers:
+        errors.append(
+            "Feature Delivery handoff requires execution-ledger rows for: "
+            + ", ".join(missing_ledgers)
+        )
+    missing_results = sorted(worker for worker in contract if not result_rows_by_worker.get(worker))
+    if missing_results:
+        errors.append(
+            "Feature Delivery handoff requires terminal results for: "
+            + ", ".join(missing_results)
+        )
+
+    for worker, expected_role in contract.items():
+        ledger_rows = rows_by_worker.get(worker, [])
+        if len(ledger_rows) > 1:
+            errors.append(f"Feature Delivery worker {worker} must have exactly one execution-ledger row")
+        if ledger_rows:
+            row = ledger_rows[0]
+            raw_role = str(row.get("Role", "")).strip()
+            actual_role = ROLE_AGENTS.get(raw_role, raw_role.lower())
+            if actual_role != expected_role:
+                errors.append(
+                    f"Feature Delivery worker {worker} requires role {expected_role}; "
+                    f"received {actual_role or 'empty'}"
+                )
+            missing_fields = [field for field in FEATURE_DELIVERY_LEDGER_FIELDS if not str(row.get(field, "")).strip()]
+            if missing_fields:
+                errors.append(
+                    f"Feature Delivery worker {worker} requires populated execution-ledger fields: "
+                    + ", ".join(missing_fields)
+                )
+            if str(row.get("Outcome", "")).strip().lower() != "complete":
+                errors.append(
+                    f"Feature Delivery worker {worker} ledger outcome must be complete; "
+                    f"received {row.get('Outcome', '') or 'empty'}"
+                )
+
+        result_rows = result_rows_by_worker.get(worker, [])
+        if len(result_rows) > 1:
+            errors.append(f"Feature Delivery worker {worker} must have exactly one worker-result row")
+        if result_rows:
+            result = result_rows[0]
+            missing_fields = [field for field in FEATURE_DELIVERY_RESULT_FIELDS if not str(result.get(field, "")).strip()]
+            if missing_fields:
+                errors.append(
+                    f"Feature Delivery worker {worker} requires populated worker-result fields: "
+                    + ", ".join(missing_fields)
+                )
+            if str(result.get("Outcome", "")).strip().lower() != "complete":
+                errors.append(
+                    f"Feature Delivery worker {worker} result outcome must be complete; "
+                    f"received {result.get('Outcome', '') or 'empty'}"
+                )
+            if ledger_rows and str(result.get("Outcome", "")).strip().lower() != str(
+                ledger_rows[0].get("Outcome", "")
+            ).strip().lower():
+                errors.append(f"Feature Delivery worker {worker} ledger/result outcomes must match")
     return errors
 
 
@@ -1102,6 +1264,7 @@ def finalize(
             errors.append(str(error))
     if packet_ready:
         errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
+        errors.extend(_feature_delivery_packet_contract_errors(packet))
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
         try:
             _validate_handoff(packet)
@@ -1579,6 +1742,61 @@ def self_test() -> None:
             raise AssertionError("specification assessment must reject a non-disposition workflow result")
         assessment["handoff"]["workflow_result"] = "Not ready for implementation"
         _validate_handoff(assessment)
+        feature = json.loads(json.dumps(packet))
+        feature["playbook_selection"].update({
+            "Primary goal": "Implementation planning",
+            "Selected playbook": "Feature Delivery",
+        })
+        feature["identity"].update({
+            "Playbook / version": "playbooks/feature_delivery.md / 0.4.17",
+            "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
+            "Profile status": "executed", "Lifecycle": "planning",
+            "State": "ready_for_implementation", "Workflow outcome": "completed",
+            "Engineering outcome": "plan_only",
+        })
+
+        def feature_ledger(worker: str, role: str, depends_on: str) -> dict[str, str]:
+            return {
+                "Worker": worker, "Role": role, "Assigned inputs": "IN-001",
+                "Mode": "investigation", "Depth": "standard", "Skills": "assigned skills",
+                "Tools": "assigned tools", "Capacity": "current task",
+                "Configured model/effort": "gpt-5.6-luna / low",
+                "Provider-observed model/effort": "Not exposed; launch binding gpt-5.6-luna / low",
+                "Usage": "Not exposed", "Depends on": depends_on, "Outcome": "complete",
+                "Confidence": "High",
+            }
+
+        def feature_result(worker: str) -> dict[str, str]:
+            return {
+                "Worker": worker, "Outcome": "complete", "Confidence": "High",
+                "Unique contribution": f"Completed {worker} analysis.",
+                "Evidence / claim refs": "E-001 / C-001", "Uncertainties / blockers": "None",
+                "Actual model/effort": "Not exposed; launch binding gpt-5.6-luna / low",
+                "Usage/credits": "Not exposed",
+            }
+
+        feature["workers"] = [
+            feature_ledger("feature-context", "current_state_investigator", "None"),
+            feature_ledger("impact-analysis", "dependency_analyst", "feature-context"),
+            feature_ledger("feature-design", "solution_architect", "impact-analysis"),
+            feature_ledger("handoff", "documenter", "feature-design"),
+        ]
+        feature["worker_results"] = [feature_result(worker) for worker in (
+            "feature-context", "impact-analysis", "feature-design", "handoff",
+        )]
+        assert _feature_delivery_packet_contract_errors(feature) == []
+        incomplete_feature = json.loads(json.dumps(feature))
+        incomplete_feature["workers"] = incomplete_feature["workers"][-1:]
+        incomplete_feature["worker_results"] = incomplete_feature["worker_results"][-1:]
+        feature_errors = _feature_delivery_packet_contract_errors(incomplete_feature)
+        assert "Feature Delivery handoff requires execution-ledger rows for:" in "\n".join(feature_errors)
+        assert "feature-context" in "\n".join(feature_errors)
+        conditional_feature = json.loads(json.dumps(feature))
+        conditional_feature["workers"].insert(
+            2, feature_ledger("repository-integration", "repository_integrator", "feature-context")
+        )
+        conditional_feature["worker_results"].insert(2, feature_result("repository-integration"))
+        assert _feature_delivery_packet_contract_errors(conditional_feature) == []
         spike = json.loads(json.dumps(packet))
         spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
         spike["identity"].update({

@@ -233,6 +233,10 @@ description: >-
    field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
    Documenter remains active, create a pending closure probe using the
    `templates/runtime_closure.json` schema and run:
+   Supply the current Coordinator model/effort (or the exact `Not exposed / Not exposed` active-parent marker), the
+   current framework revision, and its clean/dirty status to both finalizer
+   invocations; never leave Coordinator identity blank or copy it from an older
+   run.
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
@@ -251,6 +255,12 @@ description: >-
    required identity, input, repository, worker, synchronization, and artifact
    rows; the Documenter aggregates them and does not reconstruct missing immutable
    values.
+   For Feature Delivery planning, the standard packet must contain terminal
+   rows/results for `feature-context`, `impact-analysis`, `feature-design`, and
+   `handoff`; add `repository-integration` when the standard conditional seam
+   was activated, and require `repository-integration` plus `planning-review`
+   for deep. Preserve logical IDs and all execution-ledger/result fields; do
+   not let the Documenter replace analytical rows with only `handoff`.
    Build the Documenter packet from immutable run facts before activation, including real provider handles and all
    required repository, worker, synchronization, and artifact rows. Persist the first terminal Fix Design envelope
    immediately; do not reactivate a completed worker solely to copy its returned JSON. When multiple workers are active,

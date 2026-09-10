@@ -119,6 +119,22 @@ For Feature Delivery `specification_assessment`, record Playbook Selection
 follow-ups`, or `Not ready for implementation`, with the ready/awaiting state
 mapping defined by the playbook. Do not treat plan feasibility as specification
 readiness.
+For Feature Delivery implementation planning, record Playbook Selection
+`Primary goal` exactly as `Implementation planning`. Use the playbook's logical
+worker IDs: `feature-context`, `impact-analysis`, `feature-design`, and final
+`handoff` for standard planning; add `repository-integration` when the
+conditional standard seam is activated; deep planning also requires
+`repository-integration` and `planning-review`. Bind those IDs to
+`current_state_investigator`, `dependency_analyst`, `solution_architect`,
+`repository_integrator`, `reviewer`, and `documenter` respectively. Never
+collapse a logical worker ID into a `worker/role` composite.
+For every activated Feature Delivery worker, preserve one populated execution
+ledger row and one terminal result row, including Assigned inputs, Mode, Depth,
+Skills, Tools, Capacity, Usage, Depends on, configured and observed
+model/effort, Outcome, Confidence, contribution, evidence refs, blockers, and
+usage/credits. A standard run that activates `repository-integration` must
+record that row and result; do not let the final Documenter infer or recreate
+them.
 For Technical Spike, enforce the question and resolved playbook timebox before
 activation; `prepare_run.py` must require `--primary-question`, apply the
 playbook timebox and success-criterion defaults, and accept explicit overrides.
