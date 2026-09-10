@@ -164,6 +164,9 @@ Evidence cell uses exact IDs; no grouped/range identifiers remain; and
 normative guidance is categorized as `Recommended default`, not `Confirmed
 fact`. Correct these documentation errors in the packet/report before
 returning; do not broaden the analysis.
+For a new `execute_spike`, every external document URL or stable locator in
+evidence must be declared in `run_inputs.json`; do not preserve an undeclared
+historical linked document in the report.
 For Technical Spike only, keep the packet in `State: handoff` with non-terminal workflow metadata until the Coordinator's
 packaged finalizer succeeds; never predeclare `completed`. For Feature Delivery planning, use the owning design
 envelope's terminal readiness state before pre-release: `ready_for_implementation` with action `create` requires

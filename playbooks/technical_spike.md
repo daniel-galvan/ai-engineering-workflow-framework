@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -125,6 +125,10 @@ material is indispensable-evidence failure, not authority to recreate the Spike 
 For `execute_spike`, keep any existing Spike or design document as an optional comparison reference, not a review
 target. Establish the current-run findings and recommendation from independent evidence before reading or comparing
 the reference. A reference may reveal agreement, contradiction, or omission; it does not define the answer.
+For a new current-run `execute_spike`, a Jira-discovered linked historical Spike, design, prior decision, or archived
+work record is not a current-run input merely because Jira exposes it. Do not open or cite it unless the prompt
+explicitly declares it as a comparison or supporting input and it is registered in `run_inputs.json`; record an
+undisclosed linked document as excluded context.
 
 ### Stage 2 — Investigate or Assess
 

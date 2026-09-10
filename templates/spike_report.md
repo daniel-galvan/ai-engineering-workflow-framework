@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -50,6 +50,9 @@ Keep final report independently usable. Cite direct repository, work-item, docum
 use an exact file/line, URL or work-item identifier, runtime artifact, or command. Do not use globs, broad directory
 labels, or a search name without the location or command that can be independently checked. Record an exact revision
 or version; `current`, `latest`, `HEAD`, and working-tree labels are not sufficient by themselves.
+For a new current-run Spike, every external document URL or stable locator in an evidence source must be declared in
+`run_inputs.json`; a linked historical document is not current-run evidence by discovery alone. Do not cite memory or
+archived `.thoughts/.../runs/` material.
 
 | Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
 | --- | --- | --- | --- | --- | --- |

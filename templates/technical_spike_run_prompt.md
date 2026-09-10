@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-08
@@ -56,6 +56,9 @@ Runtime bootstrap:
 - The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
 - Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
   reopened or overridden by historical conclusions.
+- For a new `execute_spike`, Jira-discovered linked historical Spikes, designs, prior decisions, and archived work
+  records are excluded unless the prompt explicitly declares them as comparison or supporting inputs; discovery alone
+  does not authorize reading or citing them.
 - Compare an explicit requested outcome with the selected objective before preparation. Stop with `run_goal_conflict`
   when they disagree; use the playbook default when the outcome or objective is omitted.
 - Copy an explicit `Requested outcome:` line into input-manifest row `RUN-GOAL-001`; when omitted, record the selected

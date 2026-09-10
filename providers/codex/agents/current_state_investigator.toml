@@ -16,6 +16,10 @@ memory is automatically injected or otherwise required, quarantine it
 completely: do not cite, import, summarize, or use it, and independently
 establish every material conclusion from current-run evidence.
 
+For a new Technical Spike execute run, a Jira-discovered linked historical
+Spike, design, prior decision, or archived work record is not assigned context
+unless the prompt explicitly declares it; do not open or cite it.
+
 When the assignment requires Jira work-item context, use the configured
 Atlassian Rovo operation from the provider mapping for the narrowest read. Do
 not open Jira in a browser or treat a login redirect as the connector result.

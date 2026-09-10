@@ -26,11 +26,33 @@ RFC3339_TIMESTAMP = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
+REFERENCE_PREFIX = r"[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)*-"
+REFERENCE_ENDPOINT = rf"{REFERENCE_PREFIX}\d+"
 RANGE_REFERENCE = re.compile(
-    r"\b[A-Za-z][A-Za-z0-9_]*-\d+\s+(?:through|to)\s+(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b"
-    r"|\b[A-Za-z][A-Za-z0-9_]*-\d+\s*(?:\.\.|[–—])\s*(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b"
-    r"|\b[A-Za-z][A-Za-z0-9_]*-\d+-[A-Za-z][A-Za-z0-9_]*-\d+\b",
+    rf"\b{REFERENCE_ENDPOINT}\s+(?:through|to)\s+(?:{REFERENCE_PREFIX})?\d+\b"
+    rf"|\b{REFERENCE_ENDPOINT}\s*(?:\.\.|[–—])\s*(?:{REFERENCE_PREFIX})?\d+\b"
+    rf"|\b{REFERENCE_ENDPOINT}-{REFERENCE_ENDPOINT}\b",
     re.IGNORECASE,
+)
+URL_REFERENCE = re.compile(r"https?://[^\s|`<>]+", re.IGNORECASE)
+EXTERNAL_DOCUMENT_URL = re.compile(
+    r"https?://[^\s|`<>]*(?:confluence|/wiki(?:/|$)|notion|(?:drive|docs)\.google|/documents?(?:/|$))[^\s|`<>]*",
+    re.IGNORECASE,
+)
+EXTERNAL_DOCUMENT_MARKER = re.compile(
+    r"\b(?:confluence|wiki|notion|google\s+drive|drive|document)\b",
+    re.IGNORECASE,
+)
+FORBIDDEN_REPORT_CONTEXT_PATTERNS = (
+    ("memory_path", re.compile(r"(?i)(?:^|[/\\])memory\.md(?:$|[/\\])")),
+    ("memory_directory", re.compile(r"(?i)(?:^|[/\\])\.codex[/\\]memories(?:$|[/\\])")),
+    ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries(?:$|[/\\])")),
+    ("archived_artifact", re.compile(r"(?i)(?:^|[/\\])\.thoughts[/\\][^/\\]+[/\\]runs[/\\]")),
+    ("memory_citation", re.compile(r"(?i)<oai-mem-citation>")),
+)
+STALE_FINALIZER_REFERENCE = (
+    r"pending(?:\s+(?:packaged\s+|Coordinator\s+)?finalizer)"
+    r"|(?:packaged\s+|Coordinator\s+)?finalizer\s+pending"
 )
 MODEL_BASELINE_ID = "codex-role-policy-v20260827032839"
 POLICY_EFFORTS = {
@@ -341,6 +363,59 @@ def _grouped_reference_errors(
     return errors
 
 
+def _manifest_declares_reference(reference: str, declared_text: str) -> bool:
+    normalized = reference.rstrip(".,;:)]}").lower()
+    if normalized in declared_text:
+        return True
+    if URL_REFERENCE.fullmatch(reference):
+        ticket_ids = REFERENCE_ID.findall(reference)
+        return any(ticket_id.lower() in declared_text for ticket_id in ticket_ids)
+    return False
+
+
+def _spike_report_context_errors(
+    evidence_rows: list[dict[str, str]], direct_evidence_rows: list[dict[str, str]],
+    manifest_path: Path | None,
+) -> list[str]:
+    if manifest_path is None:
+        return []
+    try:
+        manifest = load_manifest(manifest_path, explicit=False)
+    except ValueError as error:
+        return [f"spike_report.md run input manifest is invalid: {error}"]
+    declared_text = json.dumps(manifest, sort_keys=True).lower()
+    sources = [
+        ("Method and Evidence", row.get("Evidence ID", "row"), "Method or source", row.get("Method or source", ""))
+        for row in evidence_rows
+    ] + [
+        ("Direct Evidence", row.get("Evidence ID", "row"), field, row.get(field, ""))
+        for row in direct_evidence_rows
+        for field in ("Repository or source", "File or artifact location")
+    ]
+    errors = []
+    for section, identity, field, value in sources:
+        if not value.strip():
+            continue
+        for label, pattern in FORBIDDEN_REPORT_CONTEXT_PATTERNS:
+            if pattern.search(value):
+                errors.append(
+                    f"spike_report.md {section} {identity} {field} contains forbidden context: {label}"
+                )
+        references = [
+            match.group(0).rstrip(".,;:)]}")
+            for match in EXTERNAL_DOCUMENT_URL.finditer(value)
+        ]
+        if EXTERNAL_DOCUMENT_MARKER.search(value):
+            references.extend(re.findall(r"\b\d{6,}\b", value))
+        for reference in dict.fromkeys(references):
+            if not _manifest_declares_reference(reference, declared_text):
+                errors.append(
+                    f"spike_report.md {section} {identity} {field} references undeclared external document "
+                    f"locator {reference!r}; declare it in run_inputs.json or remove it"
+                )
+    return errors
+
+
 def fenced_section(text: str, heading: str) -> str:
     match = re.search(rf"^{re.escape(heading)}\s*\n+```text\s*\n(.*?)\n```", text, re.MULTILINE | re.DOTALL)
     return match.group(1) if match else ""
@@ -388,6 +463,7 @@ def current_artifact_errors(
 def technical_spike_report_errors(
     text: str, primary_goal: str, profile: str, workflow_result: str,
     expected_budget_status: str | None = None,
+    input_manifest_path: Path | None = None,
 ) -> list[str]:
     errors = []
     required_headings = (
@@ -520,6 +596,8 @@ def technical_spike_report_errors(
     errors.extend(_grouped_reference_errors(criteria, "Assessment Criteria", ("Evidence refs",)))
     options = markdown_table(text, "## Options and Tradeoffs")
     errors.extend(_grouped_reference_errors(options, "Options and Tradeoffs", ("Evidence",)))
+    if expected_objective == "execute_spike":
+        errors.extend(_spike_report_context_errors(evidence, direct_evidence, input_manifest_path))
     checks = markdown_table(text, "## Experiments and Checks")
     if not checks or any(not row.get(field, "").strip() for row in checks for field in (
         "Hypothesis or review criterion", "Observable seam", "Command or method",
@@ -1988,7 +2066,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     if identity["State"].strip().lower() == "completed" and re.search(
         r"\b(?:state(?:\s*:\s*|\s+)(?:remains\s+)?handoff|"
         r"workflow remains\s+(?:in_progress|handoff)|"
-        r"pending(?:\s+packaged)?\s+finalizer|"
+        rf"{STALE_FINALIZER_REFERENCE}|"
         r"runtime closure\s+(?:is\s+)?(?:pending|unknown|active|in progress|not released))\b",
         execution_text,
     ):
@@ -2065,9 +2143,17 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                         budget_status = json.loads(budget_path.read_text()).get("status")
                     except (json.JSONDecodeError, OSError) as error:
                         fail(f"{path}: invalid run_budget.json: {error}")
+                manifest_path = None
+                manifest_value = identity.get("Run input manifest")
+                if manifest_value and str(manifest_value).strip().lower() not in {"none", "not applicable"}:
+                    manifest_path = Path(str(manifest_value))
+                    if not manifest_path.is_absolute():
+                        manifest_path = path.parent / manifest_path
+                    manifest_path = manifest_path.resolve()
                 for error in technical_spike_report_errors(
                     target.read_text(), primary_goal, identity["Executed profile"],
                     workflow_result.group(1) if workflow_result else "", budget_status,
+                    manifest_path,
                 ):
                     fail(f"{path}: {error}")
     if playbook_name == "sentry_issue_remediation" and codex_run:
@@ -2232,6 +2318,53 @@ Keep the current boundary pending runtime confirmation.
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    assert RANGE_REFERENCE.search("SA-E-001 through SA-E-015")
+    assert RANGE_REFERENCE.search("SA-C-001 through SA-C-009")
+    with tempfile.TemporaryDirectory(prefix="workflow-spike-context-") as directory:
+        manifest_path = Path(directory) / "run_inputs.json"
+        manifest_path.write_text(json.dumps({
+            "schema_version": 1,
+            "status": "explicit",
+            "precedence_rule": "Current user decisions govern current-run evidence and scope.",
+            "inputs": [{
+                "Input ID": "IN-001", "Input or artifact": "Jira SPIKE-1",
+                "Source or path": "Current user request", "Authority": "User",
+                "Classification": "work item", "Expected use": "Bound question",
+                "Status": "Registered",
+            }],
+        }))
+        undeclared_context = valid_spike_report.replace(
+            "| E-001 | Repository trace | Boundary preserves the data |",
+            "| E-001 | Confluence 1397227555 | Boundary preserves the data |",
+        )
+        assert "undeclared external document locator" in "\n".join(
+            technical_spike_report_errors(
+                undeclared_context, "Execute technical spike", "standard", "Question answered",
+                input_manifest_path=manifest_path,
+            )
+        )
+        undeclared_url_context = valid_spike_report.replace(
+            "| E-001 | Repository trace | Boundary preserves the data |",
+            "| E-001 | Confluence https://yext.atlassian.net/wiki/pages/1397227555 | Boundary preserves the data |",
+        )
+        assert "undeclared external document locator" in "\n".join(
+            technical_spike_report_errors(
+                undeclared_url_context, "Execute technical spike", "standard", "Question answered",
+                input_manifest_path=manifest_path,
+            )
+        )
+        declared_context = json.loads(manifest_path.read_text())
+        declared_context["inputs"].append({
+            "Input ID": "IN-002", "Input or artifact": "Confluence 1397227555",
+            "Source or path": "Current user request", "Authority": "User",
+            "Classification": "supporting document", "Expected use": "Current-run evidence",
+            "Status": "Registered",
+        })
+        manifest_path.write_text(json.dumps(declared_context))
+        assert technical_spike_report_errors(
+            undeclared_context, "Execute technical spike", "standard", "Question answered",
+            input_manifest_path=manifest_path,
+        ) == []
     invalid_decision_status = valid_spike_report.replace(
         "| Not applicable | No unresolved decision remains | None | None | Recorded |",
         "| Confirmed fact | Keep the current boundary | E-001 | Test owner | Recommended |",
@@ -2730,6 +2863,13 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             valid.replace(
                 "Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.",
                 "Execution: State handoff; workflow remains in_progress pending Coordinator finalizer; runtime released.",
+            ),
+            "completed handoff Execution contains stale transitional state",
+        )
+        assert_invalid(
+            valid.replace(
+                "Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.",
+                "Execution: standard/remediation; finalizer pending; runtime released.",
             ),
             "completed handoff Execution contains stale transitional state",
         )
@@ -4396,6 +4536,7 @@ technical_spike_primary_goal = None
 technical_spike_profile = None
 technical_spike_workflow_result = None
 technical_spike_budget_status = None
+technical_spike_input_manifest = None
 if "--sentry-artifacts" in raw_arguments:
     index = raw_arguments.index("--sentry-artifacts")
     if index + 1 >= len(raw_arguments):
@@ -4414,6 +4555,7 @@ for flag, name in (
     ("--technical-spike-profile", "technical_spike_profile"),
     ("--technical-spike-workflow-result", "technical_spike_workflow_result"),
     ("--technical-spike-budget-status", "technical_spike_budget_status"),
+    ("--technical-spike-input-manifest", "technical_spike_input_manifest"),
 ):
     if flag in raw_arguments:
         index = raw_arguments.index(flag)
@@ -4428,8 +4570,10 @@ for flag, name in (
             technical_spike_profile = value
         elif name == "technical_spike_workflow_result":
             technical_spike_workflow_result = value
-        else:
+        elif name == "technical_spike_budget_status":
             technical_spike_budget_status = value
+        else:
+            technical_spike_input_manifest = Path(value).resolve()
         del raw_arguments[index:index + 2]
 arguments = [value for value in raw_arguments if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}]
 if emit_handoff and len(arguments) != 1:
@@ -4456,6 +4600,7 @@ if technical_spike_report:
         technical_spike_profile,
         technical_spike_workflow_result,
         technical_spike_budget_status,
+        technical_spike_input_manifest,
     )
     if report_errors:
         fail("\n".join(report_errors))

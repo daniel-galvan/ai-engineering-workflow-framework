@@ -997,6 +997,13 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             flags=re.IGNORECASE,
         )
         execution = re.sub(
+            r"(?:pending(?:\s+(?:packaged\s+|Coordinator\s+)?finalizer)|"
+            r"(?:packaged\s+|Coordinator\s+)?finalizer\s+pending)",
+            "finalization validation passed",
+            execution,
+            flags=re.IGNORECASE,
+        )
+        execution = re.sub(
             r"runtime\s+(?:closure\s+is\s+)?(?:pending/unknown|pending|unknown|active|in progress|not released)(?:\s+Coordinator)?",
             "runtime released",
             execution,
@@ -1260,6 +1267,15 @@ def _technical_spike_report_errors(
         "--technical-spike-profile", str(identity.get("Executed profile", "")),
         "--technical-spike-workflow-result", str(packet.get("handoff", {}).get("workflow_result", "")),
     ]
+    manifest = packet.get("run_input_manifest")
+    manifest_path = manifest.get("path") if isinstance(manifest, dict) else None
+    if not manifest_path and isinstance(identity, dict):
+        manifest_path = identity.get("Run input manifest")
+    if manifest_path and str(manifest_path).strip().lower() not in {"none", "not applicable"}:
+        manifest_path = Path(str(manifest_path))
+        if not manifest_path.is_absolute():
+            manifest_path = packet_path.parent / manifest_path
+        args.extend(("--technical-spike-input-manifest", str(manifest_path.resolve())))
     if budget_status:
         args.extend(("--technical-spike-budget-status", budget_status))
     result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=False)
@@ -1733,6 +1749,10 @@ def self_test() -> None:
     assert "state handoff" not in execution_packet["handoff"]["execution"].lower()
     assert "workflow remains in_progress" not in execution_packet["handoff"]["execution"].lower()
     assert "terminal bookkeeping finalized" in execution_packet["handoff"]["execution"].lower()
+    execution_packet["handoff"]["execution"] = "standard profile executed; finalizer pending; runtime released"
+    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
+    assert "finalizer pending" not in execution_packet["handoff"]["execution"].lower()
+    assert "finalization validation passed" in execution_packet["handoff"]["execution"].lower()
 
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)
