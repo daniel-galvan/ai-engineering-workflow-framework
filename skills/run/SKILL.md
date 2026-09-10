@@ -240,6 +240,17 @@ description: >-
    error to the owning worker once. If the corrected packet still fails, stop within two minutes with
    `finalization_contract_failure`, preserve generated `finalization_failure.json` plus artifacts, and release all
    worker handles. Never invoke pre-release a third time; the finalizer enforces this correction limit.
+   After the second failed pre-release, replace the pending closure probe with
+   the exact provider-observed release receipt (or the exact unreleased-handle
+   blocker); never leave a pending probe as the run's final closure artifact.
+   After every required worker returns a terminal envelope and analytical fan-in
+   passes, set the matching Requested, Activated, and Executed profiles and
+   `Profile status: executed` before activating `handoff`; only Technical Spike
+   state and workflow outcome remain pre-terminal.
+   Before activating `handoff`, assert the prepared packet already contains all
+   required identity, input, repository, worker, synchronization, and artifact
+   rows; the Documenter aggregates them and does not reconstruct missing immutable
+   values.
    Build the Documenter packet from immutable run facts before activation, including real provider handles and all
    required repository, worker, synchronization, and artifact rows. Persist the first terminal Fix Design envelope
    immediately; do not reactivate a completed worker solely to copy its returned JSON. When multiple workers are active,

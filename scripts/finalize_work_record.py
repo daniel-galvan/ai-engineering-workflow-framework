@@ -374,16 +374,21 @@ def _canonicalize_technical_spike_worker_ids(
         ).stem
     if playbook != "technical_spike":
         return
-    # Older runs called the final Documenter "documenter". Preserve that
-    # result, but do not alias analytical roles: those affect the evidence
-    # contract and must be corrected by the Coordinator.
+    # Accept only provider-form composites declared by the Technical Spike
+    # worker contract; arbitrary worker aliases remain validation errors.
+    aliases = {"documenter": "handoff"}
+    for worker_roles in TECHNICAL_SPIKE_WORKER_ROLES.values():
+        aliases.update({f"{worker}/{role}": worker for worker, role in worker_roles.items()})
     for field in ("workers", "worker_results"):
         rows = packet.get(field, [])
         if not isinstance(rows, list):
             continue
         for row in rows:
-            if isinstance(row, dict) and str(row.get("Worker", "")).strip().lower() == "documenter":
-                row["Worker"] = "handoff"
+            if not isinstance(row, dict):
+                continue
+            worker = str(row.get("Worker", "")).strip().lower()
+            if worker in aliases:
+                row["Worker"] = aliases[worker]
 
 
 def _frontmatter_version(path: Path) -> str:
@@ -1612,6 +1617,20 @@ def self_test() -> None:
                 row["Worker"] = "documenter"
         _canonicalize_technical_spike_worker_ids(legacy_spike, {"playbook": "technical_spike"})
         _validate_handoff(legacy_spike)
+        composite_spike = json.loads(json.dumps(spike))
+        composite_ids = {
+            "Coordinator": "Coordinator",
+            "spike-context": "spike-context/current_state_investigator",
+            "spike-investigation": "spike-investigation/solution_architect",
+            "handoff": "handoff/documenter",
+        }
+        for field in ("workers", "worker_results"):
+            for row in composite_spike[field]:
+                row["Worker"] = composite_ids.get(row["Worker"], row["Worker"])
+        _canonicalize_technical_spike_worker_ids(composite_spike, {"playbook": "technical_spike"})
+        assert {row["Worker"] for row in composite_spike["workers"]} == set(composite_ids)
+        assert {row["Worker"] for row in composite_spike["worker_results"]} == set(composite_ids)
+        _validate_handoff(composite_spike)
         wrong_role_spike = json.loads(json.dumps(spike))
         next(row for row in wrong_role_spike["workers"] if row["Worker"] == "spike-investigation")["Role"] = (
             "dependency_analyst"

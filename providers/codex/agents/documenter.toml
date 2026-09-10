@@ -53,6 +53,15 @@ disposition, not a sentence containing State or outcome fields. Keep
 `State`, `Workflow outcome`, and `Engineering outcome` separate; while
 `State: handoff`, never emit `Workflow outcome: completed` because the packaged
 finalizer owns that terminal transition.
+When the selected profile actually ran and the requested, activated, and
+executed profiles match, record `Profile status: executed`; only the Technical
+Spike workflow state and outcome remain pre-terminal. Preserve the playbook's
+logical worker IDs exactly in both worker tables; do not combine an ID with its
+provider role using `/`. Copy substantive evidence, decision, and action text
+and their references from analytical artifacts; do not replace them with
+generic placeholders. If the recommendation is conditional on an unresolved
+decision or indispensable evidence gate, use `Partially answered`; reserve
+`Question answered` for a resolved primary question.
 Never invoke `finalize_work_record.py` yourself. Return the packet to the
 Coordinator, who owns every pre-release and terminal finalizer invocation.
 Keep `handoff.established`, `handoff.best_current_explanations`, and

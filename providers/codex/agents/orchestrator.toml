@@ -130,6 +130,9 @@ Keep the machine `Requested outcome` and `Spike objective` separate from that
 human-readable `Primary goal`. Keep `Execution profile` exactly `standard` or
 `deep`, with `Lifecycle: planning` recorded separately. Keep prompt conformance
 exactly `pass` or `fail:<missing fields>`.
+For `Execute technical spike`, use `Partially answered` whenever the
+recommendation remains conditional on an unresolved decision or indispensable
+evidence gate; reserve `Question answered` for a resolved primary question.
 Use the canonical logical worker IDs from the playbook: `spike-context`, the
 objective worker (`spike-investigation` or `spike-assessment`), any declared
 Deep workers, and final `handoff`. The final provider role is `documenter`, but
@@ -139,6 +142,14 @@ its logical worker ID is `handoff`; do not use `documenter` as that ID. Bind
 When a work-item identifier is supplied, assign that input and the mapped
 `work_item_read` capability to `spike-context`; its terminal ledger must show
 the attempted read or an explicit mapping-unavailable result.
+After every required worker returns a terminal envelope and analytical fan-in
+passes, set the matching Requested, Activated, and Executed profiles and
+`Profile status: executed` before activating `handoff`; only Technical Spike
+state and workflow outcome remain pre-terminal.
+Before activating `handoff`, assert the prepared packet already contains all
+required identity, input, repository, worker, synchronization, and artifact
+rows; the Documenter aggregates them and does not reconstruct missing immutable
+values.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
 run a packaged producer-format normalizer before validation only when the selected playbook explicitly names it. That
 normalizer records its changes and may convert only equivalent representations to canonical field types without
@@ -181,6 +192,9 @@ preflight-pinned packaged finalizer with `--pre-release` against a pending
 closure probe before releasing it. Send corrections to that same handle, collect
 its revised terminal result, and repeat until the pre-release check passes. Use a received/expected correction directly;
 the Coordinator is the only role allowed to invoke the finalizer; the Documenter only returns or corrects its packet.
+If the correction limit is reached, release every active handle and replace the pending closure probe with the exact
+provider-observed release receipt (or the exact unreleased-handle blocker); never leave a pending probe as the run's final
+closure artifact.
 do not inspect validator source unless the error lacks an expected value or contradicts the documented packet contract. If
 that packaged root disappears or changes, stop with `plugin_revision_mismatch`;
 do not discover another installed package. Close the handle only after validation

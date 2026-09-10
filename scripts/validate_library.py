@@ -4249,7 +4249,10 @@ if technical_spike_report:
         fail("\n".join(report_errors))
     if arguments:
         fail("technical spike report validation cannot be combined with a work record")
-handoffs = [validate_work_record(Path(argument).resolve(), require_terminal=True) for argument in arguments]
+handoffs = [
+    validate_work_record(Path(argument).resolve(), require_terminal=not _ALLOW_UNRELEASED)
+    for argument in arguments
+]
 for work_record in sorted(ROOT.glob(".thoughts/*/work_record.md")):
     validate_work_record(work_record)
 plugin_refresh_error = _plugin_version_refresh_error()
