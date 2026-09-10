@@ -26,6 +26,11 @@ RFC3339_TIMESTAMP = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
+RANGE_REFERENCE = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9_]*-\d+\s+(?:through|to)\s+(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b"
+    r"|\b[A-Za-z][A-Za-z0-9_]*-\d+\s*(?:\.\.|[–—])\s*(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b",
+    re.IGNORECASE,
+)
 MODEL_BASELINE_ID = "codex-role-policy-v20260827032839"
 POLICY_EFFORTS = {
     "Light": "low",
@@ -290,6 +295,43 @@ def normalized_metadata_value(value: object) -> str:
     return normalized
 
 
+def _is_not_applicable(value: object) -> bool:
+    return normalized_metadata_value(value).lower() in {"", "none", "not applicable", "n/a"}
+
+
+def _declared_spike_criteria(value: object) -> list[str]:
+    text = normalized_metadata_value(value)
+    if not text or text.lower().startswith("none declared") or _is_not_applicable(text):
+        return []
+    return [item.strip() for item in re.split(r"\s*[,;]\s*", text) if item.strip()]
+
+
+def _direct_evidence_location_is_vague(value: object) -> bool:
+    location = normalized_metadata_value(value)
+    lowered = re.sub(r"\s+", " ", location.lower())
+    if any(marker in location for marker in ("*", "...", "…")):
+        return True
+    return bool(re.fullmatch(
+        r"(?:[a-z0-9_./-]+\s+){0,4}(?:sources?|search|cleanup|files?|directories?)", lowered,
+    ))
+
+
+def _grouped_reference_errors(
+    rows: list[dict[str, str]], section: str, fields: tuple[str, ...],
+) -> list[str]:
+    errors = []
+    for index, row in enumerate(rows, start=1):
+        for field in fields:
+            match = RANGE_REFERENCE.search(row.get(field, ""))
+            if match:
+                identity = row.get("Evidence ID", "") or f"row {index}"
+                errors.append(
+                    f"spike_report.md {section} {identity} {field} must use exact IDs; "
+                    f"grouped/range reference {match.group(0)!r} is not allowed"
+                )
+    return errors
+
+
 def fenced_section(text: str, heading: str) -> str:
     match = re.search(rf"^{re.escape(heading)}\s*\n+```text\s*\n(.*?)\n```", text, re.MULTILINE | re.DOTALL)
     return match.group(1) if match else ""
@@ -396,6 +438,15 @@ def technical_spike_report_errors(
         "Status",
     )):
         errors.append("spike_report.md requires one complete direct-evidence row")
+    errors.extend(_grouped_reference_errors(evidence, "Method and Evidence", ("Evidence ID",)))
+    errors.extend(_grouped_reference_errors(direct_evidence, "Direct Evidence", ("Evidence ID",)))
+    for row in direct_evidence:
+        if _direct_evidence_location_is_vague(row.get("File or artifact location", "")):
+            errors.append(
+                f"spike_report.md Direct Evidence {row.get('Evidence ID', 'row')} File or artifact location "
+                "must identify an exact file, document, runtime artifact, URL, or command; globs and search labels "
+                "are not sufficient"
+            )
     decision_context = markdown_table(text, "## Decision Context")
     if not decision_context or any(not row.get(field, "").strip() for row in decision_context for field in (
         "Category", "Statement or branch", "Evidence refs", "Owner or decision needed", "Status",
@@ -409,11 +460,33 @@ def technical_spike_report_errors(
             "spike_report.md Decision Context Category must be Confirmed fact, Assumption or hypothesis, "
             "Open decision, Recommended default, or Not applicable"
         )
+    for row in decision_context:
+        category = row.get("Category", "").strip().lower()
+        status = row.get("Status", "").strip().lower()
+        if category == "confirmed fact" and re.match(r"^(recommended|proposed)\b", status):
+            errors.append(
+                "spike_report.md Decision Context confirmed facts cannot use a Recommended or Proposed status; "
+                "use Recommended default for normative guidance"
+            )
     criteria = markdown_table(text, "## Assessment Criteria")
     if not criteria or any(not row.get(field, "").strip() for row in criteria for field in (
         "Criterion or domain", "Evidence refs", "Assessment", "Gap or limitation", "Required next evidence or decision",
     )):
         errors.append("spike_report.md requires one complete assessment-criteria or Not applicable row")
+    declared_criteria = _declared_spike_criteria(metadata.get("Assessment criteria or control domains", ""))
+    assessed_criteria = [
+        row for row in criteria
+        if not _is_not_applicable(row.get("Criterion or domain", ""))
+    ]
+    if declared_criteria and len(assessed_criteria) != len(declared_criteria):
+        errors.append(
+            "spike_report.md Assessment Criteria must contain one row per declared criterion or control domain "
+            f"(declared {len(declared_criteria)}, assessed {len(assessed_criteria)})"
+        )
+    errors.extend(_grouped_reference_errors(
+        decision_context, "Decision Context", ("Evidence refs",)
+    ))
+    errors.extend(_grouped_reference_errors(criteria, "Assessment Criteria", ("Evidence refs",)))
     checks = markdown_table(text, "## Experiments and Checks")
     if not checks or any(not row.get(field, "").strip() for row in checks for field in (
         "Hypothesis or review criterion", "Observable seam", "Command or method",
@@ -1588,6 +1661,14 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             blockers = row.get("Uncertainties / blockers", "").strip().lower()
             if re.search(r"runtime closure pending", blockers):
                 fail(f"{path}: released runtime closure cannot retain pending worker-result closure text")
+    if playbook_name == "technical_spike":
+        for row in table_rows["# Worker Result Summary"]:
+            match = RANGE_REFERENCE.search(row.get("Evidence / claim refs", ""))
+            if match:
+                fail(
+                    f"{path}: Worker Result Summary for {row.get('Worker', 'unknown')} must use exact IDs; "
+                    f"grouped/range reference {match.group(0)!r} is not allowed"
+                )
     if identity["Workflow outcome"] == "completed" and not _ALLOW_UNRELEASED:
         for row in table_rows["# Worker Runtime Closure"]:
             if row.get("Runtime status", "").strip().lower() != "released":
@@ -2109,6 +2190,43 @@ Keep the current boundary pending runtime confirmation.
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    invalid_decision_status = valid_spike_report.replace(
+        "| Not applicable | No unresolved decision remains | None | None | Recorded |",
+        "| Confirmed fact | Keep the current boundary | E-001 | Test owner | Recommended |",
+    )
+    assert "confirmed facts cannot use" in "\n".join(
+        technical_spike_report_errors(
+            invalid_decision_status, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    declared_criteria = valid_spike_report.replace(
+        "| Primary question | Can the current boundary preserve the required data? |",
+        "| Primary question | Can the current boundary preserve the required data? |\n"
+        "| Assessment criteria or control domains | Data minimization, Query behavior |",
+    )
+    assert "declared 2, assessed 0" in "\n".join(
+        technical_spike_report_errors(
+            declared_criteria, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    vague_direct_location = valid_spike_report.replace(
+        "| E-001 | Execution repository | abcdef1 | src/boundary.py:10 |",
+        "| E-001 | Execution repository | abcdef1 | Scoped encryption search |",
+    )
+    assert "File or artifact location must identify an exact" in "\n".join(
+        technical_spike_report_errors(
+            vague_direct_location, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    grouped_method_reference = valid_spike_report.replace(
+        "| E-001 | Repository trace | Boundary preserves the data |",
+        "| REPO-001–REPO-014 | Repository trace | Boundary preserves the data |",
+    )
+    assert "grouped/range reference" in "\n".join(
+        technical_spike_report_errors(
+            grouped_method_reference, "Execute technical spike", "standard", "Question answered"
+        )
+    )
     markdown_formatted_metadata = valid_spike_report.replace(
         "| Objective | execute_spike |", "| Objective | `execute_spike` |"
     ).replace("| Execution profile | standard |", "| Execution profile | `standard` |")

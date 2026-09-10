@@ -574,6 +574,7 @@ def _prepared_manifest(packet_path: Path | None) -> tuple[dict[str, object], Pat
 
 def _normalize_packet(
     packet: dict[str, object], closure: dict[str, object], packet_path: Path | None = None,
+    budget_status: str | None = None,
 ) -> None:
     manifest, manifest_path = _prepared_manifest(packet_path)
     _canonicalize_technical_spike_worker_ids(packet, manifest)
@@ -650,13 +651,19 @@ def _normalize_packet(
             row["Actual model/effort"] = ledger.get("Provider-observed model/effort", "")
     durable_artifacts = packet.get("durable_artifacts", [])
     if isinstance(durable_artifacts, list):
-        packet["durable_artifacts"] = [
+        normalized_artifacts = [
             row for row in durable_artifacts
             if not isinstance(row, dict)
             or not str(row.get("Status", "")).strip().lower().startswith(
                 ("omitted", "not created", "prohibited")
             )
         ]
+        if budget_status:
+            for row in normalized_artifacts:
+                artifact_name = re.sub(r"[_-]+", " ", str(row.get("Artifact", "")).lower())
+                if artifact_name == "run budget":
+                    row["Status"] = budget_status
+        packet["durable_artifacts"] = normalized_artifacts
     evidence = packet.get("evidence")
     if isinstance(evidence, list):
         packet["evidence"] = [row for row in evidence if not _is_run_context_evidence(row)]
@@ -1257,7 +1264,7 @@ def finalize(
             if pre_release:
                 _validate_pre_release_state(packet)
             errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
-            _normalize_packet(packet, closure, packet_path)
+            _normalize_packet(packet, closure, packet_path, budget_status)
             _sync_spike_report_budget(packet_path, packet, budget_status)
             packet_ready = True
         except (KeyError, TypeError, ValueError) as error:
@@ -1655,6 +1662,9 @@ def self_test() -> None:
         == normalization["prompt_after"]
     )
     assert [row["Role"] for row in normalization_packet["workers"]] == list(normalization["roles"].values())
+    budget_packet = {"durable_artifacts": [{"Artifact": "Run budget", "Status": "Active"}]}
+    _normalize_packet(budget_packet, {"runtime_closure": []}, budget_status="within_budget")
+    assert budget_packet["durable_artifacts"][0]["Status"] == "within_budget"
     context_packet = {
         "identity": {"Coordinator model/effort": "Packet-input error: active parent model/effort not exposed"},
         "evidence": [{"Evidence ID": "E-001", "Source": "current user clean-run constraint"}],

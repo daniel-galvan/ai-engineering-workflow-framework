@@ -43,7 +43,8 @@ State what was investigated or reviewed and what was intentionally excluded.
 ## Direct Evidence
 
 Keep final report independently usable. Cite direct repository, work-item, document, experiment, or runtime evidence;
-do not make every row point only to an intermediate worker artifact.
+use an exact file/line, URL or work-item identifier, runtime artifact, or command. Do not use globs, broad directory
+labels, or a search name without the location or command that can be independently checked.
 
 | Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
 | --- | --- | --- | --- | --- | --- |
@@ -52,7 +53,8 @@ do not make every row point only to an intermediate worker artifact.
 ## Decision Context
 
 Separate confirmed facts, assumptions, open decisions, and recommended defaults. Record one `Not applicable` row when
-no additional decision remains for this Spike.
+no additional decision remains for this Spike. A normative recommendation must use `Recommended default`, not
+`Confirmed fact`.
 
 | Category | Statement or branch | Evidence refs | Owner or decision needed | Status |
 | --- | --- | --- | --- | --- |
@@ -60,8 +62,9 @@ no additional decision remains for this Spike.
 
 ## Assessment Criteria
 
-When the run declares evaluation criteria, assess each one against the evidence. Do not convert an unknown into a gap
-or a satisfied control. Use one `Not applicable` row when no external criteria or control baseline was declared.
+When the run declares evaluation criteria, assess each one against the evidence with one row per declared criterion or
+control domain. Do not convert an unknown into a gap or a satisfied control. Use one `Not applicable` row when no
+external criteria or control baseline was declared.
 
 | Criterion or domain | Evidence refs | Assessment | Gap or limitation | Required next evidence or decision |
 | --- | --- | --- | --- | --- |

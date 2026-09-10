@@ -154,6 +154,12 @@ gap or limitation, and required next evidence or decision. Use one `Not
 applicable` row when no decision or criteria were declared. Do not create
 `implementation_plan.md`; set the handoff field to `Not created; Technical
 Spike produces spike_report.md`.
+Before returning, perform a local completeness check: every declared criterion
+has exactly one assessment row; every direct-evidence location is an exact
+file/line, document or work-item location, runtime artifact, URL, or command;
+no grouped/range identifiers remain; and normative guidance is categorized as
+`Recommended default`, not `Confirmed fact`. Correct these documentation
+errors in the packet/report before returning; do not broaden the analysis.
 For Technical Spike only, keep the packet in `State: handoff` with non-terminal workflow metadata until the Coordinator's
 packaged finalizer succeeds; never predeclare `completed`. For Feature Delivery planning, use the owning design
 envelope's terminal readiness state before pre-release: `ready_for_implementation` with action `create` requires

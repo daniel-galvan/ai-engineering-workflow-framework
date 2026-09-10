@@ -92,12 +92,12 @@ description: >-
       "Authority":"<authority>","Classification":"<classification>","Expected use":"<use>","Status":"Registered"}
    ]}
    ```
-   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and any explicit
-   `--requested-outcome <outcome>` or `--workflow-objective <objective>` values, plus an optional verified runtime-agent
-   directory
-   (`--runtime-agents <path>`). For Technical Spike pass the validated `--primary-question <question>`; pass
-   `--success-criterion <criterion>` and `--timebox-minutes <minutes>` only for run-specific overrides. Technical Spike
-   permits `technical_answer + execute_spike` or
+   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and an optional
+   verified runtime-agent directory (`--runtime-agents <path>`). Pass `--requested-outcome` and
+   `--workflow-objective` only when the prompt explicitly supplied a complete compatible pair; when the prompt omits
+   both, omit both flags so preparation records the selected playbook defaults and provenance. For Technical Spike pass
+   the validated `--primary-question <question>`; pass `--success-criterion <criterion>` and `--timebox-minutes
+   <minutes>` only for run-specific overrides. Technical Spike permits `technical_answer + execute_spike` or
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
    `specification_assessment + specification_assessment`. Technical Spike is budget-gated: always pass the captured
    current-turn RFC 3339 start as `--started-at` and the resolved playbook/default or override as `--timebox-minutes`; a
