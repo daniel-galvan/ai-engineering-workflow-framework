@@ -382,6 +382,66 @@ def _grouped_reference_errors(
     return errors
 
 
+def _grouped_reference_text_errors(text: str, section: str) -> list[str]:
+    match = re.search(
+        rf"^{re.escape(section)}\s*\n(.*?)(?=^##\s|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not match:
+        return []
+    return [
+        f"spike_report.md {section} must use exact IDs; grouped/range reference {reference!r} is not allowed"
+        for reference in dict.fromkeys(RANGE_REFERENCE.findall(match.group(1)))
+    ]
+
+
+def _technical_spike_evidence_reference_errors(
+    rows: list[dict[str, str]], section: str, fields: tuple[str, ...],
+    evidence_ids: set[str], *, allow_check_ids: bool = False,
+) -> list[str]:
+    errors = []
+    for index, row in enumerate(rows, start=1):
+        identity = row.get("Evidence ID", "") or row.get("Option", "") or f"row {index}"
+        for field in fields:
+            for reference in REFERENCE_ID.findall(row.get(field, "")):
+                if reference.upper().startswith("CHK-") and not allow_check_ids:
+                    errors.append(
+                        f"spike_report.md {section} {identity} {field} must reference Evidence IDs; "
+                        f"{reference!r} is an experiment/check ID"
+                    )
+                elif reference.upper().startswith("E-") and reference not in evidence_ids:
+                    errors.append(
+                        f"spike_report.md {section} {identity} {field} references undeclared Evidence ID "
+                        f"{reference!r}"
+                    )
+    return errors
+
+
+def _technical_spike_evidence_text_errors(
+    text: str, section: str, evidence_ids: set[str],
+) -> list[str]:
+    match = re.search(
+        rf"^{re.escape(section)}\s*\n(.*?)(?=^##\s|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not match:
+        return []
+    errors = []
+    for reference in dict.fromkeys(REFERENCE_ID.findall(match.group(1))):
+        if reference.upper().startswith("CHK-"):
+            errors.append(
+                f"spike_report.md {section} must not use experiment/check ID {reference!r}; "
+                "map it to a source-backed Evidence ID"
+            )
+        elif reference.upper().startswith("E-") and reference not in evidence_ids:
+            errors.append(
+                f"spike_report.md {section} references undeclared Evidence ID {reference!r}"
+            )
+    return errors
+
+
 def _manifest_declares_reference(reference: str, declared_text: str) -> bool:
     normalized = reference.rstrip(".,;:)]}").lower()
     if normalized in declared_text:
@@ -695,6 +755,11 @@ def technical_spike_report_errors(
                 f"spike_report.md Direct Evidence {row.get('Evidence ID', 'row')} Revision or version "
                 "must identify an exact revision or version, not a current/working-tree label"
             )
+    declared_evidence_ids = {
+        row.get("Evidence ID", "").strip()
+        for row in evidence + direct_evidence
+        if row.get("Evidence ID", "").strip()
+    }
     decision_context = markdown_table(text, "## Decision Context")
     if not decision_context or any(not row.get(field, "").strip() for row in decision_context for field in (
         "Category", "Statement or branch", "Evidence refs", "Owner or decision needed", "Status",
@@ -734,9 +799,28 @@ def technical_spike_report_errors(
     errors.extend(_grouped_reference_errors(
         decision_context, "Decision Context", ("Evidence refs",)
     ))
+    errors.extend(_technical_spike_evidence_reference_errors(
+        decision_context, "Decision Context", ("Evidence refs",), declared_evidence_ids
+    ))
     errors.extend(_grouped_reference_errors(criteria, "Assessment Criteria", ("Evidence refs",)))
+    errors.extend(_technical_spike_evidence_reference_errors(
+        criteria, "Assessment Criteria", ("Evidence refs",), declared_evidence_ids
+    ))
     options = markdown_table(text, "## Options and Tradeoffs")
     errors.extend(_grouped_reference_errors(options, "Options and Tradeoffs", ("Evidence",)))
+    errors.extend(_technical_spike_evidence_reference_errors(
+        options, "Options and Tradeoffs", ("Evidence",), declared_evidence_ids
+    ))
+    for index, row in enumerate(options, start=1):
+        if _is_not_applicable(row.get("Option", "")):
+            continue
+        if not any(
+            reference in declared_evidence_ids
+            for reference in REFERENCE_ID.findall(row.get("Evidence", ""))
+        ):
+            errors.append(
+                f"spike_report.md Options and Tradeoffs row {index} must cite at least one exact Evidence ID"
+            )
     if expected_objective == "execute_spike":
         errors.extend(_spike_report_context_errors(evidence, direct_evidence, input_manifest_path))
     checks = markdown_table(text, "## Experiments and Checks")
@@ -746,6 +830,29 @@ def technical_spike_report_errors(
         "Disposition impact",
     )):
         errors.append("spike_report.md requires one complete experiment or Not run row")
+    errors.extend(_grouped_reference_errors(
+        checks,
+        "Experiments and Checks",
+        (
+            "Hypothesis or review criterion", "Observable seam", "Command or method",
+            "Expected discriminating outcomes", "Actual result", "Disposition impact",
+        ),
+    ))
+    errors.extend(_technical_spike_evidence_reference_errors(
+        checks,
+        "Experiments and Checks",
+        (
+            "Hypothesis or review criterion", "Observable seam", "Command or method",
+            "Expected discriminating outcomes", "Actual result", "Disposition impact",
+        ),
+        declared_evidence_ids,
+        allow_check_ids=True,
+    ))
+    for section in (
+        "## Findings", "## Recommendation", "## Remaining Unknowns and Follow-up", "## Reference Comparison",
+    ):
+        errors.extend(_grouped_reference_text_errors(text, section))
+        errors.extend(_technical_spike_evidence_text_errors(text, section, declared_evidence_ids))
     comparison = markdown_table(text, "## Reference Comparison")
     if not comparison or any(not row.get(field, "").strip() for row in comparison for field in (
         "Reference", "Agreement", "Difference or omission", "Impact on recommendation",
@@ -2590,6 +2697,33 @@ Keep the current boundary pending runtime confirmation.
             grouped_option_reference, "Execute technical spike", "standard", "Question answered"
         )
     )
+    undeclared_option_reference = valid_spike_report.replace(
+        "| Keep boundary | E-001 |",
+        "| Keep boundary | E-999 |",
+    )
+    assert "references undeclared Evidence ID 'E-999'" in "\n".join(
+        technical_spike_report_errors(
+            undeclared_option_reference, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    check_id_in_option = valid_spike_report.replace(
+        "| Keep boundary | E-001 |",
+        "| Keep boundary | CHK-001 |",
+    )
+    assert "is an experiment/check ID" in "\n".join(
+        technical_spike_report_errors(
+            check_id_in_option, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    missing_option_reference = valid_spike_report.replace(
+        "| Keep boundary | E-001 |",
+        "| Keep boundary | Not applicable |",
+    )
+    assert "must cite at least one exact Evidence ID" in "\n".join(
+        technical_spike_report_errors(
+            missing_option_reference, "Execute technical spike", "standard", "Question answered"
+        )
+    )
     grouped_method_reference = valid_spike_report.replace(
         "| E-001 | Repository trace | Boundary preserves the data |",
         "| REPO-001–REPO-014 | Repository trace | Boundary preserves the data |",
@@ -2597,6 +2731,24 @@ Keep the current boundary pending runtime confirmation.
     assert "grouped/range reference" in "\n".join(
         technical_spike_report_errors(
             grouped_method_reference, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    grouped_check_reference = valid_spike_report.replace(
+        "| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained | Supports answer |",
+        "| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained (E-001–E-002) | Supports answer |",
+    )
+    assert "Experiments and Checks" in "\n".join(
+        technical_spike_report_errors(
+            grouped_check_reference, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    grouped_finding_reference = valid_spike_report.replace(
+        "The current boundary preserves the required data.",
+        "The current boundary preserves the required data (E-001–E-002).",
+    )
+    assert "Findings" in "\n".join(
+        technical_spike_report_errors(
+            grouped_finding_reference, "Execute technical spike", "standard", "Question answered"
         )
     )
     markdown_formatted_metadata = valid_spike_report.replace(

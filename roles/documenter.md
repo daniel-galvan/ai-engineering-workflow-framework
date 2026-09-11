@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -70,6 +70,12 @@ maintenance.
   keep `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct.
 * Preserve the canonical `Playbook Selection`, `Run and Evaluation Identity`, `Evidence`, `Claims`, `Decision Log`, and
   `Action Log` sections; compact wording inside those sections instead of replacing them with legacy headings.
+* For Technical Spike finalization, populate the packet's Evidence, Claims, Decision Log, and Action Log arrays with
+  substantive rows and exact references. Remove template rows and unresolved markers such as `To be normalized`; a
+  `spike_report.md` alone does not satisfy the canonical work-record contract.
+* In Technical Spike evidence references, use comma-separated exact IDs everywhere, including checks, findings, options,
+  and handoff text; never use ranges. Preserve source observations as `Verified` and architectural conclusions as
+  `Inferred`, and list every directly supporting Evidence ID for each option.
 * Before terminal handoff, run the packaged framework validator against the execution repository's work record. A failed
   validation is a correction loop, not a successful finalization.
 * Record the related-run check and post-closure polls from the Coordinator's finalized packet.

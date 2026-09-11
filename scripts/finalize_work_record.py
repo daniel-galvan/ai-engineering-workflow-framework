@@ -51,6 +51,11 @@ V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_co
 V34_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
+TECHNICAL_SPIKE_RANGE_REFERENCE = re.compile(
+    r"\b[A-Za-z][A-Za-z0-9_]*-\d+\s*(?:-|\.\.|[–—]|through|to)\s*"
+    r"(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b",
+    re.IGNORECASE,
+)
 FEATURE_ASSESSMENT_DISPOSITIONS = {
     "awaiting_input": {"Not ready for implementation"},
     "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
@@ -72,6 +77,25 @@ TECHNICAL_SPIKE_PRIMARY_GOALS = {
     "review technical spike",
 }
 TECHNICAL_SPIKE_PROFILES = {"standard", "deep"}
+TECHNICAL_SPIKE_REASONING_TABLES = (
+    (
+        "evidence", "Evidence", "Evidence ID",
+        ("Evidence ID", "Source", "Summary", "Confidence", "Uncertainty", "Status"),
+    ),
+    (
+        "claims", "Claims", "Claim ID",
+        ("Claim ID", "Claim", "Evidence refs", "Confidence", "Uncertainty", "Status"),
+    ),
+    (
+        "decisions", "Decision Log", "Decision ID",
+        ("Decision ID", "Decision", "Claim refs", "Owner", "Status"),
+    ),
+    (
+        "actions", "Action Log", "Action ID",
+        ("Action ID", "Action", "Decision ref", "Owner", "Status"),
+    ),
+)
+TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF = "to be normalized"
 TECHNICAL_SPIKE_REQUIRED_WORKERS = {
     ("standard", "execute technical spike"): {"spike-context", "spike-investigation", "handoff"},
     ("deep", "execute technical spike"): {
@@ -664,6 +688,55 @@ def _technical_spike_packet_contract_errors(
             )
         elif len(set(profiles)) != 1:
             errors.append("Technical Spike Requested, Activated, and Executed profiles must match")
+
+        missing_tables = []
+        incomplete_rows = []
+        for field, label, identity_field, required_fields in TECHNICAL_SPIKE_REASONING_TABLES:
+            rows = _material_rows(packet.get(field), identity_field)
+            if not rows:
+                missing_tables.append(label)
+                continue
+            for index, row in enumerate(rows, start=1):
+                missing_fields = [name for name in required_fields if not str(row.get(name, "")).strip()]
+                if missing_fields:
+                    incomplete_rows.append(f"{label} row {index}: {', '.join(missing_fields)}")
+        if missing_tables:
+            errors.append(
+                "Technical Spike finalization packet requires populated rows for: "
+                + ", ".join(missing_tables)
+            )
+        if incomplete_rows:
+            errors.append(
+                "Technical Spike finalization packet contains incomplete reasoning rows: "
+                + "; ".join(incomplete_rows)
+            )
+        for row in packet.get("worker_results", []):
+            if not isinstance(row, dict):
+                continue
+            refs = str(row.get("Evidence / claim refs", "")).strip().lower()
+            if refs.startswith(TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF):
+                worker = str(row.get("Worker", "")).strip() or "row"
+                errors.append(
+                    f"Technical Spike worker result {worker} Evidence / claim refs must be finalized"
+                )
+            grouped = TECHNICAL_SPIKE_RANGE_REFERENCE.search(refs)
+            if grouped:
+                worker = str(row.get("Worker", "")).strip() or "row"
+                errors.append(
+                    f"Technical Spike worker result {worker} Evidence / claim refs must use exact IDs; "
+                    f"grouped/range reference {grouped.group(0)!r} is not allowed"
+                )
+
+        handoff = packet.get("handoff", {})
+        if isinstance(handoff, dict):
+            for field in ("established", "best_current_explanations"):
+                for index, item in enumerate(handoff.get(field, [])):
+                    grouped = TECHNICAL_SPIKE_RANGE_REFERENCE.search(str(item))
+                    if grouped:
+                        errors.append(
+                            f"Technical Spike handoff {field}[{index}] must use exact IDs; "
+                            f"grouped/range reference {grouped.group(0)!r} is not allowed"
+                        )
 
     prompt_identity = str(identity.get("Prompt template / revision / conformance", "")).split(" / ", 2)
     conformance = prompt_identity[2].strip().lower() if len(prompt_identity) == 3 else ""
@@ -2470,6 +2543,61 @@ Runtime behavior remains unverified.
         v15_result_packet["playbook_selection"]["Primary goal"] = "Execute technical spike"
         v15_result_errors = _technical_spike_packet_contract_errors(v15_result_packet, pre_release=True)
         assert "Technical Spike handoff Workflow result must be exactly one of: Question answered, Partially answered, Inconclusive" in v15_result_errors
+        empty_reasoning_packet = json.loads(json.dumps(spike_packet))
+        empty_reasoning_packet.update({
+            "evidence": [{"Evidence ID": "", "Source": "", "Summary": "", "Confidence": "",
+                          "Uncertainty": "", "Status": ""}],
+            "claims": [{"Claim ID": "", "Claim": "", "Evidence refs": "", "Confidence": "",
+                        "Uncertainty": "", "Status": ""}],
+            "decisions": [{"Decision ID": "", "Decision": "", "Claim refs": "", "Owner": "",
+                           "Status": ""}],
+            "actions": [{"Action ID": "", "Action": "", "Decision ref": "", "Owner": "",
+                         "Status": ""}],
+        })
+        empty_reasoning_errors = _technical_spike_packet_contract_errors(
+            empty_reasoning_packet, pre_release=True
+        )
+        assert any(
+            "requires populated rows for: Evidence, Claims, Decision Log, Action Log" in error
+            for error in empty_reasoning_errors
+        )
+        partial_reasoning_packet = json.loads(json.dumps(spike_packet))
+        partial_reasoning_packet["claims"][0] = {
+            "Claim ID": "C-001", "Claim": "", "Evidence refs": "E-001",
+            "Confidence": "high", "Uncertainty": "None", "Status": "Supported",
+        }
+        partial_reasoning_errors = _technical_spike_packet_contract_errors(
+            partial_reasoning_packet, pre_release=True
+        )
+        assert any(
+            "incomplete reasoning rows: Claims row 1: Claim" in error
+            for error in partial_reasoning_errors
+        )
+        placeholder_worker_packet = json.loads(json.dumps(spike_packet))
+        placeholder_worker_packet["worker_results"][0]["Evidence / claim refs"] = (
+            "To be normalized by handoff into exact E-* rows"
+        )
+        placeholder_errors = _technical_spike_packet_contract_errors(
+            placeholder_worker_packet, pre_release=True
+        )
+        assert any(
+            "spike-context Evidence / claim refs must be finalized" in error
+            for error in placeholder_errors
+        )
+        grouped_packet = json.loads(json.dumps(spike_packet))
+        grouped_packet["worker_results"][0]["Evidence / claim refs"] = "E-001 through E-002 / C-001"
+        grouped_packet["handoff"]["established"][0] = "Existing Spike needs revision (E-001–E-002)."
+        grouped_errors = _technical_spike_packet_contract_errors(
+            grouped_packet, pre_release=True
+        )
+        assert any(
+            "worker result spike-context" in error and "grouped/range reference" in error
+            for error in grouped_errors
+        )
+        assert any(
+            "handoff established[0]" in error and "grouped/range reference" in error
+            for error in grouped_errors
+        )
         spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
         spike_closure = spike_root / "runtime_closure.json"
         spike_handles = [f"01a00000-0000-7000-8000-{index:012d}" for index in range(1, 5)]

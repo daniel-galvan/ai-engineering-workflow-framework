@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -9,7 +9,7 @@ default_timebox_minutes: 35
 default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
 validation_summary: deep review failed; corrective controls regression-covered; live rerun pending
 owner: Engineering
-last_updated: 2026-09-08
+last_updated: 2026-09-10
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -181,6 +181,12 @@ For every declared criterion, record evidence, assessment, gap or limitation, an
 and must not turn follow-up work into an implementation plan. Direct Evidence must carry exact revisions or versions,
 not only `current`, `latest`, `HEAD`, or working-tree labels; each option must cite exact Evidence IDs rather than a
 grouped or range reference.
+The finalization packet must also contain populated Evidence, Claims, Decision Log, and Action Log rows with exact
+references; a self-contained `spike_report.md` does not replace those canonical packet fields. Use comma-separated exact
+Evidence IDs in checks, findings, options, and handoff text; never use grouped or range notation. Keep verified source
+observations separate from inferred architectural conclusions, and list every directly supporting Evidence ID for each
+option. If Standard execution cannot establish an infrastructure or control domain, name the unsearched surface and
+record the targeted follow-up or Deep-profile requirement.
 
 Use these exact completed-run dispositions:
 
