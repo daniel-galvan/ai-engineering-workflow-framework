@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -21,7 +21,7 @@ budget. It is a learning artifact, not an implementation plan or authorization t
 | Work item | |
 | Objective | `execute_spike` / `review_spike` |
 | Primary question | |
-| Assessment criteria or control domains | None declared / list the criteria used to judge the answer |
+| Assessment criteria or control domains | None declared / semicolon-separated criteria or control domains |
 | Timebox or evidence budget | |
 | Success criterion | |
 | Execution profile | `standard` / `deep` |
@@ -33,6 +33,9 @@ budget. It is a learning artifact, not an implementation plan or authorization t
 For duration-based runs, record the numeric prepared timebox or a bounded numeric evidence count (for example,
 `35 minutes; within_budget`), not only a profile name or completion status. The finalizer supplies the prepared numeric
 timebox when `run_budget.json` declares one.
+
+Separate multiple assessment criteria or control domains with semicolons in this Metadata field. Commas inside a
+criterion or domain name are content and must be preserved.
 
 ## Scope and Non-goals
 
@@ -85,14 +88,18 @@ external criteria or control baseline was declared.
 | | | | | | |
 
 Use `Not run` when no experiment was necessary and explain why the existing evidence answered the question.
+Record at least one exact source-backed Evidence ID in each check. A `CHK-*` label identifies a check but does not
+replace its `E-*` evidence reference.
 
 ## Findings
 
-List only findings supported by the evidence above. Keep facts, inferences, and unresolved unknowns distinct.
+List only findings supported by the evidence above. Keep facts, inferences, and unresolved unknowns distinct. Include
+the exact Evidence IDs that directly support each finding.
 
 ## Options and Tradeoffs
 
-Use one exact Evidence ID per option. Do not use grouped or range references such as `E-01-E-05`.
+Use comma-separated exact Evidence IDs for each option and list every directly supporting ID. Do not use grouped or
+range references such as `E-01-E-05`.
 
 | Option | Evidence | Benefits | Costs or risks | When to choose |
 | --- | --- | --- | --- | --- |
@@ -100,8 +107,9 @@ Use one exact Evidence ID per option. Do not use grouped or range references suc
 
 ## Recommendation
 
-State the answer or best-supported direction, confidence, rationale, and material limitations. `Inconclusive` is valid
-when the budget was exhausted without enough evidence.
+State the answer or best-supported direction, confidence, rationale, and material limitations. Include the exact
+Evidence IDs supporting the answer and rationale. `Inconclusive` is valid when the budget was exhausted without enough
+evidence.
 
 ## Reference Comparison
 

@@ -345,7 +345,12 @@ def _declared_spike_criteria(value: object) -> list[str]:
     text = normalized_metadata_value(value)
     if not text or text.lower().startswith("none declared") or _is_not_applicable(text):
         return []
-    return [item.strip() for item in re.split(r"\s*[,;]\s*", text) if item.strip()]
+    separator = r"\s*;\s*" if ";" in text else r"\s*,\s*"
+    return [item.strip() for item in re.split(separator, text) if item.strip()]
+
+
+def _normalized_spike_criterion(value: object) -> str:
+    return re.sub(r"\s+", " ", normalized_metadata_value(value)).strip().casefold()
 
 
 def _direct_evidence_location_is_vague(value: object) -> bool:
@@ -419,7 +424,7 @@ def _technical_spike_evidence_reference_errors(
 
 
 def _technical_spike_evidence_text_errors(
-    text: str, section: str, evidence_ids: set[str],
+    text: str, section: str, evidence_ids: set[str], *, require_evidence: bool = False,
 ) -> list[str]:
     match = re.search(
         rf"^{re.escape(section)}\s*\n(.*?)(?=^##\s|\Z)",
@@ -429,7 +434,8 @@ def _technical_spike_evidence_text_errors(
     if not match:
         return []
     errors = []
-    for reference in dict.fromkeys(REFERENCE_ID.findall(match.group(1))):
+    references = tuple(dict.fromkeys(REFERENCE_ID.findall(match.group(1))))
+    for reference in references:
         if reference.upper().startswith("CHK-"):
             errors.append(
                 f"spike_report.md {section} must not use experiment/check ID {reference!r}; "
@@ -438,6 +444,29 @@ def _technical_spike_evidence_text_errors(
         elif reference.upper().startswith("E-") and reference not in evidence_ids:
             errors.append(
                 f"spike_report.md {section} references undeclared Evidence ID {reference!r}"
+            )
+    if require_evidence and not any(reference.upper().startswith("E-") for reference in references):
+        errors.append(f"spike_report.md {section} must cite at least one exact Evidence ID")
+    return errors
+
+
+def _technical_spike_check_evidence_errors(
+    rows: list[dict[str, str]], evidence_ids: set[str],
+) -> list[str]:
+    errors = []
+    for index, row in enumerate(rows, start=1):
+        references = tuple(dict.fromkeys(
+            reference
+            for field in (
+                "Hypothesis or review criterion", "Observable seam", "Command or method",
+                "Expected discriminating outcomes", "Actual result", "Disposition impact",
+            )
+            for reference in REFERENCE_ID.findall(row.get(field, ""))
+        ))
+        if not any(reference.upper().startswith("E-") for reference in references):
+            identity = row.get("Hypothesis or review criterion", "") or f"row {index}"
+            errors.append(
+                f"spike_report.md Experiments and Checks {identity} must cite at least one exact Evidence ID"
             )
     return errors
 
@@ -796,6 +825,14 @@ def technical_spike_report_errors(
             "spike_report.md Assessment Criteria must contain one row per declared criterion or control domain "
             f"(declared {len(declared_criteria)}, assessed {len(assessed_criteria)})"
         )
+    elif declared_criteria and Counter(
+        _normalized_spike_criterion(row.get("Criterion or domain", "")) for row in assessed_criteria
+    ) != Counter(_normalized_spike_criterion(item) for item in declared_criteria):
+        errors.append(
+            "spike_report.md Assessment Criteria names must match the declared criterion or control-domain names "
+            f"(declared {declared_criteria!r}, assessed "
+            f"{[row.get('Criterion or domain', '').strip() for row in assessed_criteria]!r})"
+        )
     errors.extend(_grouped_reference_errors(
         decision_context, "Decision Context", ("Evidence refs",)
     ))
@@ -848,11 +885,17 @@ def technical_spike_report_errors(
         declared_evidence_ids,
         allow_check_ids=True,
     ))
+    errors.extend(_technical_spike_check_evidence_errors(checks, declared_evidence_ids))
     for section in (
         "## Findings", "## Recommendation", "## Remaining Unknowns and Follow-up", "## Reference Comparison",
     ):
         errors.extend(_grouped_reference_text_errors(text, section))
-        errors.extend(_technical_spike_evidence_text_errors(text, section, declared_evidence_ids))
+        errors.extend(_technical_spike_evidence_text_errors(
+            text,
+            section,
+            declared_evidence_ids,
+            require_evidence=section in {"## Findings", "## Recommendation"},
+        ))
     comparison = markdown_table(text, "## Reference Comparison")
     if not comparison or any(not row.get(field, "").strip() for row in comparison for field in (
         "Reference", "Agreement", "Difference or omission", "Impact on recommendation",
@@ -2567,15 +2610,15 @@ Bounded path only.
 ## Experiments and Checks
 | Hypothesis or review criterion | Observable seam | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
 | --- | --- | --- | --- | --- | --- |
-| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained | Supports answer |
+| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained (E-001) | Supports answer |
 ## Findings
-The current boundary preserves the required data.
+The current boundary preserves the required data (E-001).
 ## Options and Tradeoffs
 | Option | Evidence | Benefits | Costs or risks | When to choose |
 | --- | --- | --- | --- | --- |
 | Keep boundary | E-001 | No change | Runtime unverified | Current scope |
 ## Recommendation
-Keep the current boundary pending runtime confirmation.
+Keep the current boundary pending runtime confirmation (E-001).
 ## Reference Comparison
 | Reference | Agreement | Difference or omission | Impact on recommendation |
 | --- | --- | --- | --- |
@@ -2661,6 +2704,29 @@ Keep the current boundary pending runtime confirmation.
             declared_criteria, "Execute technical spike", "standard", "Question answered"
         )
     )
+    comma_safe_criteria = valid_spike_report.replace(
+        "| Assessment criteria or control domains | None declared / list the criteria used to judge the answer |",
+        "| Assessment criteria or control domains | Data paths; Current access, transport and storage controls; "
+        "Retention, deletion and downstream boundaries |",
+    ).replace(
+        "| Not applicable | Not applicable | No external assessment baseline declared | None | None |",
+        "| Data paths | E-001 | Established | Runtime unverified | Observe deployment |\n"
+        "| Current access, transport and storage controls | E-001 | Partially established | Deployment unverified | "
+        "Observe deployment |\n"
+        "| Retention, deletion and downstream boundaries | E-001 | Partially established | Downstream unverified | "
+        "Trace lineage |",
+    )
+    assert technical_spike_report_errors(
+        comma_safe_criteria, "Execute technical spike", "standard", "Question answered"
+    ) == []
+    mismatched_criteria = comma_safe_criteria.replace(
+        "| Data paths | E-001 |", "| Different domain | E-001 |", 1
+    )
+    assert "Assessment Criteria names must match" in "\n".join(
+        technical_spike_report_errors(
+            mismatched_criteria, "Execute technical spike", "standard", "Question answered"
+        )
+    )
     vague_direct_location = valid_spike_report.replace(
         "| E-001 | Execution repository | abcdef1 | src/boundary.py:10 |",
         "| E-001 | Execution repository | abcdef1 | Scoped encryption search |",
@@ -2734,7 +2800,7 @@ Keep the current boundary pending runtime confirmation.
         )
     )
     grouped_check_reference = valid_spike_report.replace(
-        "| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained | Supports answer |",
+        "| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained (E-001) | Supports answer |",
         "| Boundary preserves data | Public request/response boundary | Focused test | Data retained or lost | Retained (E-001–E-002) | Supports answer |",
     )
     assert "Experiments and Checks" in "\n".join(
@@ -2743,12 +2809,36 @@ Keep the current boundary pending runtime confirmation.
         )
     )
     grouped_finding_reference = valid_spike_report.replace(
-        "The current boundary preserves the required data.",
+        "The current boundary preserves the required data (E-001).",
         "The current boundary preserves the required data (E-001–E-002).",
     )
     assert "Findings" in "\n".join(
         technical_spike_report_errors(
             grouped_finding_reference, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    missing_check_evidence = valid_spike_report.replace("Retained (E-001)", "Retained")
+    assert "Experiments and Checks Boundary preserves data must cite" in "\n".join(
+        technical_spike_report_errors(
+            missing_check_evidence, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    missing_finding_evidence = valid_spike_report.replace(
+        "The current boundary preserves the required data (E-001).",
+        "The current boundary preserves the required data.",
+    )
+    assert "spike_report.md ## Findings must cite" in "\n".join(
+        technical_spike_report_errors(
+            missing_finding_evidence, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    missing_recommendation_evidence = valid_spike_report.replace(
+        "Keep the current boundary pending runtime confirmation (E-001).",
+        "Keep the current boundary pending runtime confirmation.",
+    )
+    assert "spike_report.md ## Recommendation must cite" in "\n".join(
+        technical_spike_report_errors(
+            missing_recommendation_evidence, "Execute technical spike", "standard", "Question answered"
         )
     )
     markdown_formatted_metadata = valid_spike_report.replace(

@@ -2364,10 +2364,10 @@ Review only; no implementation plan.
 ## Experiments and Checks
 | Hypothesis or review criterion | Observable seam | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
 | --- | --- | --- | --- | --- | --- |
-| Existing evidence is complete | Supplied Spike report boundary | Not run | Complete or incomplete | Not run; source review was sufficient | Changes required |
+| Existing evidence is complete | Supplied Spike report boundary | Not run | Complete or incomplete | Not run; source review was sufficient (E-001) | Changes required |
 
 ## Findings
-One material evidence gap remains.
+One material evidence gap remains (E-001).
 
 ## Options and Tradeoffs
 | Option | Evidence | Benefits | Costs or risks | When to choose |
@@ -2375,7 +2375,7 @@ One material evidence gap remains.
 | Revise Spike | E-001 | Closes evidence gap | Additional review | Before Feature Delivery |
 
 ## Recommendation
-Revise the existing Spike.
+Revise the existing Spike (E-001).
 
 ## Reference Comparison
 | Reference | Agreement | Difference or omission | Impact on recommendation |

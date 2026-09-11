@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Example
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-11
 depends_on:
   - ../playbooks/technical_spike.md
   - ../templates/technical_spike_run_prompt.md
@@ -33,7 +33,7 @@ Requested outcome: technical_answer
 Spike objective: execute_spike
 Primary question: <ONE-DECISION-RELEVANT-QUESTION>
 Decision context: <FACTS-ASSUMPTIONS-OPEN-DECISIONS-RECOMMENDED-DEFAULTS>
-Assessment criteria or control domains: <NONE-OR-LIST-OF-CRITERIA>
+Assessment criteria or control domains: <NONE-OR-SEMICOLON-SEPARATED-LIST-OF-CRITERIA>
 Timebox or evidence budget: <BOUNDED-LIMIT>
 Success criterion: <OBSERVABLE-ANSWER-CONDITION>
 Review target: None

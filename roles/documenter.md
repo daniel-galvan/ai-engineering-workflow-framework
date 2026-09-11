@@ -1,12 +1,12 @@
 ---
 
 title: Documenter Role
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-11
 required_documents:
 
   - ../frameworks/investigation.md
@@ -73,8 +73,12 @@ maintenance.
 * For Technical Spike finalization, populate the packet's Evidence, Claims, Decision Log, and Action Log arrays with
   substantive rows and exact references. Remove template rows and unresolved markers such as `To be normalized`; a
   `spike_report.md` alone does not satisfy the canonical work-record contract.
-* In Technical Spike evidence references, use comma-separated exact IDs everywhere, including checks, findings, options,
-  and handoff text; never use ranges. Preserve source observations as `Verified` and architectural conclusions as
+* In Technical Spike Metadata, separate assessment criteria or control domains with semicolons; commas inside a
+  criterion or domain name are content. Every check, finding, and recommendation must cite at least one exact
+  source-backed Evidence ID.
+* In Technical Spike evidence references, use comma-separated exact `E-*` IDs everywhere, including checks, findings,
+  options, and handoff text; a `CHK-*` label may identify a check but never replaces its source-backed Evidence ID.
+  Never use ranges. Preserve source observations as `Verified` and architectural conclusions as
   `Inferred`, and list every directly supporting Evidence ID for each option.
 * Before terminal handoff, run the packaged framework validator against the execution repository's work record. A failed
   validation is a correction loop, not a successful finalization.

@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-08
+last_updated: 2026-09-11
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/technical_spike.md
@@ -72,7 +72,7 @@ Runtime bootstrap:
 
 Spike question and bounds:
 - Primary question: <ONE-DECISION-RELEVANT-TECHNICAL-QUESTION>
-- Assessment criteria or control domains: <NONE-OR-LIST-OF-CRITERIA>
+- Assessment criteria or control domains: <NONE-OR-SEMICOLON-SEPARATED-LIST-OF-CRITERIA>
 - Timebox or evidence budget override (optional): <OMIT TO USE THE PLAYBOOK DEFAULT>
 - Success criterion override (optional): <OMIT TO USE THE PLAYBOOK DEFAULT>
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
