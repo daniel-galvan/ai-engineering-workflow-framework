@@ -49,11 +49,6 @@ Use it for work with meaningful uncertainty, dependencies, risk, or coordination
 Do not use the full worker graph for a trivial, well-bounded change. Use the smallest role and skill set that provides
 enough evidence and validation.
 
-## Setup
-
-For cloning, execution-repository selection, Codex agent links, prompt creation, and validation, see
-[SETUP.md](SETUP.md).
-
 ## Quick start
 
 1. Complete [SETUP.md](SETUP.md) for the framework and execution repository; configure a provider runtime view when
@@ -155,11 +150,8 @@ canonical run template.
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
 
-The four delivery playbooks have been exercised across every profile/lifecycle combination. Technical Spike is a
-planning-only playbook now under exercise: one deep review exposed failures, corrective controls are
-regression-covered, and a live rerun remains pending. Add another playbook only when the existing stages, gates, and
-artifacts cannot express the scenario cleanly. See [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md) for exercise state and
-worker graphs.
+Exercise state and worker graphs are maintained in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md). Add another playbook only
+when the existing stages, gates, and artifacts cannot express the scenario cleanly.
 
 ## Guides and examples
 
@@ -193,29 +185,10 @@ templates/       canonical prompts and durable work artifacts
 tests/           redacted regression fixtures
 ```
 
-The Codex plugin is a thin package over the same repository: [`.codex-plugin/plugin.json`](.codex-plugin/plugin.json)
-declares the plugin, [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) exposes it to Codex,
-[`skills/run/`](skills/run/) provides the explicit launcher, and [`scripts/run_preflight.py`](scripts/run_preflight.py)
-guards package identity before a workflow starts. [`scripts/prepare_run.py`](scripts/prepare_run.py) archives prior
-runs, creates the current record, resolves exact worker bindings, and emits hashed role envelopes. The launcher uses
-[`scripts/validate_worker_runtime.py`](scripts/validate_worker_runtime.py) to validate each envelope and reject unsafe
-interrupt, close, replacement, or fan-in transitions while a worker is still active. For successful Standard Sentry
-planning,
-[`scripts/finalize_sentry_planning.py`](scripts/finalize_sentry_planning.py) stages and validates the complete terminal
-artifact set from the validated Fix Design result, then publishes it transactionally without a documentation worker.
-Before activation, `prepare_run.py` copies and hashes an explicit current-run input manifest to `run_inputs.json` and
-passes it through every worker packet. Supplied context, decisions, and named artifacts remain authoritative; live
-runtime evidence is additive unless live-only analysis is explicitly requested. Prepared worker contracts assign
-`normalized_evidence.md` and `fix_design_result.json` directly to their owning workers,
-so the Coordinator validates those files instead of reconstructing large result messages. These files do not duplicate
-playbook or contract behavior. An Evidence Topology runtime failure may finalize without a nonexistent evidence link;
-the terminal record instead cites the provider runtime receipt. Because the installed plugin bundles this repository,
-every tracked content change refreshes the plugin's `+codex.<timestamp>` build metadata; validation and preflight reject
-a reused build identity.
-
-Codex users should read [providers/codex.md](providers/codex.md) and
-[providers/codex/model_effort_policy.md](providers/codex/model_effort_policy.md). The provider adapter is the source of
-truth for Codex model and effort selection; prompt text does not override a pinned agent configuration.
+The Codex plugin is a thin package over this repository; it does not duplicate framework behavior. See the
+[launcher setup](SETUP.md#optional-codex-launcher-plugin) for package layout, installation, and update requirements;
+[`skills/run/SKILL.md`](skills/run/SKILL.md) for execution controls; and [providers/codex.md](providers/codex.md) plus
+[the model and effort policy](providers/codex/model_effort_policy.md) for provider behavior.
 
 ## Quality and evolution
 
@@ -228,14 +201,6 @@ python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 
 The optional path validates a terminal work record's identity, playbook-selection evidence, repository revisions, and
 evidence-to-action references.
-
-For Standard Sentry planning that reaches `ready_for_implementation`, the Coordinator releases every activated
-analytical worker, then runs `scripts/finalize_sentry_planning.py` once. It copies the exact structured plan and
-interface contract, records conditional-worker handles, stages and validates the plan, packet, closure receipt, and work
-record, then publishes the terminal set transactionally; no Documenter is activated.
-Clarification, Deep, and remediation paths retain the Documenter flow: pre-release validation while the worker remains
-active, provider closure after release, then normal terminal rendering. A nonzero result returns the exact error to its
-owning technical or documentation path; never repair generated Markdown by hand.
 
 Document facts and limitations in the work record. Exercise changes against real work items, then simplify. See
 [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
