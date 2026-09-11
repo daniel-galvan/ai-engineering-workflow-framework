@@ -30,6 +30,8 @@ last_updated: 2026-09-04
 * Unknowns requiring validation
 * A normalized `work_item_read` request/result pair conforming to the shared
   [Work-Item Read Contract](../contracts/workflow_execution.md#work-item-read-contract)
+* A complete current-run `asset_manifest.json` for Jira attachments and every explicitly supplied file, folder, or URL
+  source when used by Feature Delivery
 
 ## Source-Specific Recovery
 
@@ -52,6 +54,11 @@ Classify the recovered context as one of:
 For `clarification_required`, preserve the recovered evidence and ask focused questions. Before escalating, use bounded
 repository, contract, test, and related-work discovery when it can reduce the uncertainty; record feasible options,
 recommendation, and the smallest decision needed. Do not create an implementation plan or invent requirements.
+
+For Feature Delivery, context is not sufficient until attachment and supplied-asset inventory is complete. Review each
+available image or visual asset directly, classify every asset as material or non-material, and record the observation,
+disposition, and downstream worker that consumes it. Missing or inaccessible assets remain explicit unknowns; they are
+not silently treated as empty.
 
 ## Completion Criteria
 

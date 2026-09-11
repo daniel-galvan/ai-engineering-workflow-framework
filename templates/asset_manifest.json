@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "status": "awaiting_input",
+  "work_item": "<WORK-ITEM-ID>",
+  "sources": [
+    {
+      "source_id": "SRC-JIRA-001",
+      "input_id": "IN-###",
+      "kind": "jira_issue_attachments",
+      "locator": "Jira <WORK-ITEM-ID> attachments",
+      "requiredness": "required",
+      "discovery_status": "complete or empty",
+      "discovery_method": "Read the complete Jira attachment inventory",
+      "limitation": "None, or the exact retrieval limitation",
+      "asset_ids": [],
+      "evidence_refs": ["E-###"]
+    },
+    {
+      "source_id": "SRC-FOLDER-001",
+      "input_id": "IN-###",
+      "kind": "directory",
+      "locator": "/absolute/path/to/supplied/folder",
+      "requiredness": "supporting",
+      "discovery_status": "complete or empty",
+      "discovery_method": "Recursive inventory including hidden entries and symlinks",
+      "limitation": "None, or the exact retrieval limitation",
+      "asset_ids": [],
+      "evidence_refs": ["E-###"]
+    }
+  ],
+  "assets": [
+    {
+      "asset_id": "ASSET-001",
+      "source_id": "SRC-JIRA-001",
+      "name": "<file name>",
+      "kind": "image",
+      "locator": "<exact attachment URL or absolute file path>",
+      "availability": "available",
+      "requiredness": "required",
+      "review_method": "visual_inspection",
+      "review_status": "consumed",
+      "relevance": "material",
+      "observation": "<what the asset shows>",
+      "used_by": ["feature-context", "feature-design"],
+      "evidence_refs": ["E-###"],
+      "disposition": "<how it changed scope, acceptance, validation, or why it does not>"
+    }
+  ],
+  "gate": {
+    "inventory_complete": true,
+    "all_assets_accounted_for": true,
+    "all_available_assets_reviewed": true,
+    "all_material_assets_linked": true,
+    "reviewed_before_plan": true,
+    "unresolved_asset_ids": [],
+    "blocking_source_ids": []
+  }
+}

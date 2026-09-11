@@ -135,6 +135,15 @@ model/effort, Outcome, Confidence, contribution, evidence refs, blockers, and
 usage/credits. A standard run that activates `repository-integration` must
 record that row and result; do not let the final Documenter infer or recreate
 them.
+Before activating any downstream Feature Delivery planning worker, require
+`feature-context` to produce `asset_manifest.json`. The manifest must contain
+the complete Jira attachment inventory and every declared file, folder, or URL
+source, including explicit empty or unavailable results. Do not treat a Jira
+description or filename as asset consumption. Before fan-in, validate that
+every available asset has been reviewed and dispositioned, visual assets were
+visually inspected or rendered, and every material asset reaches the design
+claim/plan chain. Any unresolved asset keeps the run at `awaiting_input` and
+prohibits `implementation_plan.md`.
 For Technical Spike, enforce the question and resolved playbook timebox before
 activation; `prepare_run.py` must require `--primary-question`, apply the
 playbook timebox and success-criterion defaults, and accept explicit overrides.

@@ -179,6 +179,17 @@ facts. Keep current-user constraints in the Input Register or Decision Context; 
 IDs. Copy the template's table header and separator widths exactly, especially `## Direct Evidence`; do not hand-write a
 shortened separator row.
 
+For every Feature Delivery run, preserve `asset_manifest.json` as a current-run
+root artifact and include it in both Durable Artifacts and `handoff.artifacts`.
+Do not emit a ready plan unless its manifest is `passed`: the manifest must
+show the Jira attachment inventory and every declared file/folder/URL source,
+with every available asset reviewed and dispositioned. Copy the asset gate and
+asset observations into the work record's Asset Inventory and Review section.
+For a material asset, preserve its evidence references and ensure the
+implementation plan names the asset and its consequence. If a source or asset
+is missing, inaccessible, or unreviewed, retain `awaiting_input` and the
+concrete limitation; never mark it empty or non-material by inference.
+
 For a bounded dependency route, omit empty or inapplicable template sections and reference evidence instead of repeating
 it. Do not reopen investigation after fan-in; return the artifacts within the playbook's two-minute documentation target.
 

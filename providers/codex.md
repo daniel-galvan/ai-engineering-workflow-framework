@@ -102,7 +102,7 @@ connector payload.
 | `item` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Read the exact `cloudId` plus issue key/ID with only the fields needed for the request. |
 | `hierarchy` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Read the returned parent and required ancestors by exact IDs/keys; do not scan a project or board. |
 | `selected_links` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and `mcp__codex_apps__atlassian_rovo_getjiraissueremoteissuelinks` | Follow only selected issue, remote, pull-request, or document links and record the selection reason. |
-| `history` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Request only relevant comments, attachments, change history, or delivery records; avoid unrestricted history by default. |
+| `history` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | For Feature Delivery, request the complete attachment collection plus relevant comments/change history; otherwise request only relevant history. |
 | `write_metadata` | `mcp__codex_apps__atlassian_rovo_getvisiblejiraprojects`, `mcp__codex_apps__atlassian_rovo_getjiraprojectissuetypesmetadata`, `mcp__codex_apps__atlassian_rovo_getjiraissuetypemetawithfields`, and `mcp__codex_apps__atlassian_rovo_gettransitionsforjiraissue` | Read live project, issue-type, field, allowed-value, or transition metadata only; this scope never performs a write. |
 
 Use `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` only for bounded identity resolution or an explicitly
@@ -114,6 +114,11 @@ If the connector is unavailable, use authoritative supplied context when present
 `unavailable` state. Preserve `not_found`, `empty`, `permission_denied`, `partial`, `stale`, and `conflict` rather than
 coercing them to successful context. `work_item_read` MUST NOT invoke Jira create, edit, transition, comment, worklog,
 or other write operations; approved writes use a separate capability and gate.
+
+For Feature Delivery, an attachment field is not optional when `history` is requested: return an explicit complete,
+empty, partial, unavailable, or permission-denied collection. Do not report a screenshot as consumed from its filename,
+description, or attachment count; the downstream asset manifest requires the stable locator and review result for each
+available attachment.
 
 Reference mapping from framework skills to Codex capabilities.
 

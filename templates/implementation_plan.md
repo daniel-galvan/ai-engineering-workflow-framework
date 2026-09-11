@@ -72,6 +72,14 @@ rollback, and reporting requirements.
 Record the verified issue behavior, code repository and revision, affected component, event or request topology,
 in-scope changes, and explicit exclusions.
 
+# Asset Baseline
+
+Link the current-run [`asset_manifest.json`](asset_manifest.json). State that the Jira attachment inventory and every
+declared file, folder, or URL source were enumerated, and preserve the manifest's gate status. For each material asset,
+record the evidence reference, the observed requirement or behavior, and the resulting acceptance, source, test,
+validation, rollout, or explicit non-impact consequence. A ready plan is invalid when an available asset is unreviewed,
+when a visual asset was only inspected by metadata, or when a material asset is absent from this section.
+
 # 2. Root Cause and Behavior Contract
 
 Record the confirmed cause or best-supported hypothesis, evidence references, current behavior, expected behavior,

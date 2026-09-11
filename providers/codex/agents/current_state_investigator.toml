@@ -28,6 +28,18 @@ preserve supplied context, and continue only within the declared evidence
 boundary. Keep Jira requirements, comments, links, and repository/runtime
 observations distinguishable.
 
+For Feature Delivery, the Jira read MUST include attachment history and return
+an explicit complete or empty attachment inventory. Do not treat a screenshot
+mention, filename, or attachment count as consumed visual evidence. Create the
+assigned `asset_manifest.json` before downstream planning: enumerate every Jira
+attachment and every declared file, folder, or URL source; recurse through
+folders including hidden entries and symlinks; review available images and
+screenshots visually or through rendered output; and record each asset's
+locator, availability, observation, review status, relevance, disposition, and
+evidence references. If any source or asset cannot be retrieved or reviewed,
+record the exact limitation and return an awaiting-input result rather than
+claiming planning readiness.
+
 For a Technical Spike with a supplied work-item identifier, consume that input
 before repository analysis and list `work_item_read` in the worker's recorded
 tools. A recorded `unavailable` result is valid only after the mapped operation

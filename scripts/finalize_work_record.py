@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -11,6 +12,24 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+try:
+    from run_input_manifest import load_manifest
+except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
+    from scripts.run_input_manifest import load_manifest
+
+try:
+    from asset_manifest import (
+        ASSET_MANIFEST_FILENAME,
+        asset_plan_errors,
+        validate_asset_manifest,
+    )
+except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
+    from scripts.asset_manifest import (
+        ASSET_MANIFEST_FILENAME,
+        asset_plan_errors,
+        validate_asset_manifest,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +50,7 @@ V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contrac
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
 V34_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
 FEATURE_ASSESSMENT_DISPOSITIONS = {
     "awaiting_input": {"Not ready for implementation"},
     "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
@@ -302,6 +322,148 @@ def _technical_spike_worker_contract_errors(packet: dict[str, object]) -> list[s
                 f"Technical Spike worker {worker} requires role {expected_role}; received {actual_role or 'empty'}"
             )
     return errors
+
+
+def _feature_asset_manifest(packet: dict[str, object]) -> tuple[Path, dict[str, object] | None]:
+    finalization = packet.get("finalization", {})
+    root = finalization.get("Durable artifact root") if isinstance(finalization, dict) else None
+    root_path = Path(str(root)) if root else Path(".")
+    path = root_path / ASSET_MANIFEST_FILENAME
+    if not path.is_file():
+        return path, None
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return path, None
+    return path, value if isinstance(value, dict) else None
+
+
+def _feature_asset_artifact_path(value: object, root: Path) -> Path | None:
+    text = str(value).strip()
+    if text.startswith("[") and "](" in text and text.endswith(")"):
+        text = text.split("](", 1)[1][:-1]
+    if not text:
+        return None
+    path = Path(text)
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _feature_expected_inputs(packet: dict[str, object], root: Path) -> tuple[dict[str, object], list[str]]:
+    packet_rows = {
+        str(row.get("Input ID")): row
+        for row in packet.get("inputs", [])
+        if isinstance(row, dict) and str(row.get("Input ID", "")).strip()
+    }
+    metadata = packet.get("run_input_manifest")
+    identity = packet.get("identity")
+    reference = metadata.get("path") if isinstance(metadata, dict) else None
+    if not reference and isinstance(identity, dict):
+        reference = identity.get("Run input manifest")
+    if not reference or str(reference).strip().lower() in {"none", "not applicable"}:
+        return packet_rows, ["Feature Delivery requires run_input_manifest metadata for asset source reconciliation"]
+    path = Path(str(reference))
+    path = path if path.is_absolute() else root / path
+    if not path.is_file():
+        return packet_rows, [f"Feature Delivery requires readable run_inputs.json for asset source reconciliation: {path}"]
+    expected_hash = metadata.get("sha256") if isinstance(metadata, dict) else None
+    if not expected_hash and isinstance(identity, dict):
+        expected_hash = identity.get("Run input manifest hash")
+    if not isinstance(expected_hash, str) or not expected_hash.strip():
+        return packet_rows, ["Feature Delivery requires the run_inputs.json content hash for asset source reconciliation"]
+    try:
+        actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as error:
+        return packet_rows, [f"Feature Delivery cannot hash run_inputs.json for asset source reconciliation: {error}"]
+    if actual_hash != expected_hash:
+        return packet_rows, ["Feature Delivery run_inputs.json hash does not match finalization metadata"]
+    try:
+        value = load_manifest(path, explicit=False)
+    except (OSError, ValueError) as error:
+        return packet_rows, [f"Feature Delivery cannot read run_inputs.json for asset source reconciliation: {error}"]
+    if value.get("status") != "explicit":
+        return packet_rows, ["Feature Delivery run_inputs.json must have status explicit for asset source reconciliation"]
+    expected_ids = metadata.get("input_ids") if isinstance(metadata, dict) else None
+    actual_ids = [str(row.get("Input ID")) for row in value["inputs"]]
+    if not isinstance(expected_ids, list) or [str(item) for item in expected_ids] != actual_ids:
+        return packet_rows, ["Feature Delivery run_inputs.json input IDs do not match finalization metadata"]
+    prepared_rows = {
+        str(row.get("Input ID")): row
+        for row in value["inputs"]
+        if isinstance(row, dict) and str(row.get("Input ID", "")).strip()
+    }
+    missing = sorted(set(prepared_rows) - set(packet_rows))
+    extra = sorted(set(packet_rows) - set(prepared_rows))
+    errors = []
+    if missing:
+        errors.append("Feature Delivery finalization packet dropped run inputs: " + ", ".join(missing))
+    if extra:
+        errors.append("Feature Delivery finalization packet added undeclared run inputs: " + ", ".join(extra))
+    return prepared_rows, errors
+
+
+def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[str]:
+    identity = packet.get("identity", {})
+    if not isinstance(identity, dict):
+        return []
+    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
+    if playbook != "feature_delivery":
+        return []
+    lifecycle = str(identity.get("Lifecycle", "")).strip().lower()
+    state = str(identity.get("State", "")).strip().lower()
+    if lifecycle != "planning" or state not in {"ready_for_implementation", "awaiting_input", "completed"}:
+        return []
+
+    errors: list[str] = []
+    manifest_path, manifest = _feature_asset_manifest(packet)
+    if manifest is None:
+        return [f"Feature Delivery requires a valid {ASSET_MANIFEST_FILENAME}: {manifest_path}"]
+    root = manifest_path.parent.resolve()
+    input_rows, input_errors = _feature_expected_inputs(packet, root)
+    errors.extend(input_errors)
+    evidence_ids = {
+        str(row.get("Evidence ID"))
+        for row in packet.get("evidence", [])
+        if isinstance(row, dict) and str(row.get("Evidence ID", "")).strip()
+    }
+    claim_evidence_ids = {
+        reference
+        for row in packet.get("claims", [])
+        if isinstance(row, dict)
+        for reference in REFERENCE_ID.findall(str(row.get("Evidence refs", "")))
+    }
+    errors.extend(validate_asset_manifest(
+        manifest,
+        work_item=str(packet.get("work_item", {}).get("ID", "")),
+        expected_input_ids=input_rows,
+        expected_inputs=input_rows,
+        expected_evidence_ids=evidence_ids,
+        material_claim_evidence_ids=claim_evidence_ids,
+        require_jira_source=True,
+        require_passed=state in {"ready_for_implementation", "completed"},
+    ))
+    if state == "awaiting_input" and manifest.get("status") != "awaiting_input":
+        errors.append("Feature Delivery awaiting_input requires asset_manifest status awaiting_input")
+    durable_paths = {
+        _feature_asset_artifact_path(row.get("Path"), root)
+        for row in packet.get("durable_artifacts", [])
+        if isinstance(row, dict)
+    }
+    if manifest_path.resolve() not in durable_paths:
+        errors.append("Feature Delivery finalization must register asset_manifest.json as a durable artifact")
+    handoff = packet.get("handoff", {})
+    handoff_paths = {
+        _feature_asset_artifact_path(value, root)
+        for value in handoff.get("artifacts", [])
+    } if isinstance(handoff, dict) and isinstance(handoff.get("artifacts"), list) else set()
+    if manifest_path.resolve() not in handoff_paths:
+        errors.append("Feature Delivery finalization must link asset_manifest.json in the Final Handoff")
+    if state in {"ready_for_implementation", "completed"}:
+        plan_path = root / "implementation_plan.md"
+        if not plan_path.is_file():
+            errors.append(f"Feature Delivery {state} requires implementation_plan.md")
+        else:
+            errors.extend(asset_plan_errors(plan_path.read_text(), manifest))
+    return list(dict.fromkeys(errors))
 
 
 def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[str]:
@@ -600,6 +762,7 @@ def _normalize_packet(
                 ("Provider configuration source/status", manifest.get("provider_configuration_source_status")),
                 ("Role-policy baseline ID", manifest.get("baseline_id")),
                 ("Run input manifest", manifest.get("run_input_manifest", {}).get("path")),
+                ("Run input manifest hash", manifest.get("run_input_manifest", {}).get("sha256")),
             ):
                 if value:
                     identity[field] = value
@@ -912,6 +1075,67 @@ def _artifact_rows_for_record(packet: dict[str, object]) -> list[dict[str, objec
     ]
 
 
+def _feature_asset_section(packet: dict[str, object]) -> str:
+    path, manifest = _feature_asset_manifest(packet)
+    if manifest is None:
+        return f"Asset manifest unavailable: {path}. Terminal planning is prohibited."
+    root = path.parent.resolve()
+    sources = [
+        {
+            "Source ID": source.get("source_id", ""),
+            "Input ID": source.get("input_id", ""),
+            "Kind": source.get("kind", ""),
+            "Locator": source.get("locator", ""),
+            "Discovery": source.get("discovery_status", ""),
+            "Limitation": source.get("limitation", ""),
+            "Evidence refs": ", ".join(source.get("evidence_refs", [])),
+        }
+        for source in manifest.get("sources", [])
+        if isinstance(source, dict)
+    ]
+    assets = [
+        {
+            "Asset ID": asset.get("asset_id", ""),
+            "Source ID": asset.get("source_id", ""),
+            "Kind": asset.get("kind", ""),
+            "Locator": asset.get("locator", ""),
+            "Review": asset.get("review_status", ""),
+            "Method": asset.get("review_method", ""),
+            "Relevance": asset.get("relevance", ""),
+            "Observation / disposition": (
+                f"{asset.get('observation', '')} {asset.get('disposition', '')}"
+            ).strip(),
+            "Evidence refs": ", ".join(asset.get("evidence_refs", [])),
+        }
+        for asset in manifest.get("assets", [])
+        if isinstance(asset, dict)
+    ]
+    gate = manifest.get("gate", {})
+    gate_status = str(manifest.get("status", ""))
+    body = (
+        f"Manifest: [{path.name}]({_relative_artifact_path(path, root)})\n\n"
+        f"Asset gate: {gate_status}; inventory_complete={gate.get('inventory_complete')}; "
+        f"all_assets_accounted_for={gate.get('all_assets_accounted_for')}; "
+        f"all_available_assets_reviewed={gate.get('all_available_assets_reviewed')}; "
+        f"all_material_assets_linked={gate.get('all_material_assets_linked')}; "
+        f"reviewed_before_plan={gate.get('reviewed_before_plan')}.\n\n"
+        "Source inventory:\n"
+        + _table(("Source ID", "Input ID", "Kind", "Locator", "Discovery", "Limitation", "Evidence refs"), sources)
+    )
+    if assets:
+        body += (
+            "\n\nAsset review:\n"
+            + _table(
+                ("Asset ID", "Source ID", "Kind", "Locator", "Review", "Method", "Relevance",
+                 "Observation / disposition", "Evidence refs"),
+                assets,
+            )
+        )
+    else:
+        body += "\n\nAsset review: No individual assets; every declared source reported an explicit empty inventory."
+    return body
+
+
 def _cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", "<br>")
 
@@ -1114,6 +1338,9 @@ Provenance: {handoff['provenance']}
         )),
         _section("Final Handoff", handoff_text),
     ]
+    playbook_name = Path(str(packet["identity"].get("Playbook / version", "")).split(" / ", 1)[0]).stem
+    if playbook_name == "feature_delivery":
+        sections.insert(4, _section("Asset Inventory and Review", _feature_asset_section(packet)))
     return "\n".join(sections)
 
 
@@ -1330,6 +1557,7 @@ def finalize(
     if packet_ready:
         errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
         errors.extend(_feature_delivery_packet_contract_errors(packet))
+        errors.extend(_feature_delivery_asset_contract_errors(packet))
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
         try:
             _validate_handoff(packet)
@@ -1869,7 +2097,53 @@ def self_test() -> None:
         feature["worker_results"] = [feature_result(worker) for worker in (
             "feature-context", "impact-analysis", "feature-design", "handoff",
         )]
+        feature_root = root / "feature-assets"
+        feature_root.mkdir()
+        feature["finalization"]["Durable artifact root"] = str(feature_root)
+        feature["inputs"] = [{
+            "Input ID": "IN-001", "Input or artifact": "Work item ITEM-1", "Source or path": "Jira ITEM-1",
+            "Authority": "Current work item", "Status": "Consumed",
+        }]
+        run_inputs_path = feature_root / "run_inputs.json"
+        run_inputs_text = json.dumps({
+            "schema_version": 1, "status": "explicit", "inputs": feature["inputs"],
+        }) + "\n"
+        run_inputs_path.write_text(run_inputs_text)
+        feature["run_input_manifest"] = {
+            "path": str(run_inputs_path),
+            "sha256": hashlib.sha256(run_inputs_text.encode()).hexdigest(),
+            "input_ids": ["IN-001"],
+        }
+        (feature_root / ASSET_MANIFEST_FILENAME).write_text(json.dumps({
+            "schema_version": 1, "status": "passed", "work_item": "ITEM-1",
+            "sources": [{
+                "source_id": "SRC-JIRA", "input_id": "IN-001", "kind": "jira_issue_attachments",
+                "locator": "Jira ITEM-1 attachments", "requiredness": "required", "discovery_status": "empty",
+                "discovery_method": "read Jira attachment inventory",
+                "limitation": "Synthetic fixture has no Jira attachments.",
+                "asset_ids": [], "evidence_refs": ["E-001"],
+            }], "assets": [], "gate": {
+                "inventory_complete": True, "all_assets_accounted_for": True,
+                "all_available_assets_reviewed": True, "all_material_assets_linked": True,
+                "reviewed_before_plan": True, "unresolved_asset_ids": [], "blocking_source_ids": [],
+            },
+        }))
+        (feature_root / "implementation_plan.md").write_text(
+            "# Asset Baseline\n\nasset_manifest.json\n"
+        )
+        feature["durable_artifacts"].append({
+            "Artifact": "Asset manifest", "Path": str(feature_root / ASSET_MANIFEST_FILENAME),
+            "Status": "Passed", "Purpose": "Asset gate",
+        })
+        feature["handoff"]["artifacts"].append(str(feature_root / ASSET_MANIFEST_FILENAME))
         assert _feature_delivery_packet_contract_errors(feature) == []
+        assert _feature_delivery_asset_contract_errors(feature) == []
+        missing_asset_feature = json.loads(json.dumps(feature))
+        missing_asset_feature["finalization"]["Durable artifact root"] = str(feature_root / "missing")
+        assert any(
+            "requires a valid asset_manifest.json" in error
+            for error in _feature_delivery_asset_contract_errors(missing_asset_feature)
+        )
         incomplete_feature = json.loads(json.dumps(feature))
         incomplete_feature["workers"] = incomplete_feature["workers"][-1:]
         incomplete_feature["worker_results"] = incomplete_feature["worker_results"][-1:]

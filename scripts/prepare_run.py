@@ -39,6 +39,7 @@ BUNDLED_AGENTS = ROOT / "providers" / "codex" / "agents"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_contract.json"
 SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
+ASSET_MANIFEST_TEMPLATE = ROOT / "templates" / "asset_manifest.json"
 SENTRY_FIX_DESIGN_NORMALIZER = ROOT / "scripts" / "normalize_fix_design_result.py"
 SENTRY_PLANNING_FINALIZER = ROOT / "scripts" / "finalize_sentry_planning.py"
 WORKER_RUNTIME_GUARD = ROOT / "scripts" / "validate_worker_runtime.py"
@@ -380,6 +381,7 @@ def _initial_packet(
         "Role binding manifest": str(manifest_path),
         "Provider / model configuration": "Codex / Worker Execution Ledger",
         "Run input manifest": input_manifest["path"],
+        "Run input manifest hash": input_manifest["sha256"],
         "Coordinator execution": "active parent session; no dedicated Coordinator worker spawned",
     })
     packet["finalization"]["Durable artifact root"] = str(artifact_root)
@@ -410,6 +412,11 @@ def _initial_packet(
         packet["durable_artifacts"].append({
             "Artifact": "Run budget", "Path": manifest["run_budget"]["path"], "Status": "Active",
             "Purpose": "End-to-end deadline and terminal budget status",
+        })
+    if playbook == "feature_delivery":
+        packet["durable_artifacts"].append({
+            "Artifact": "Asset manifest", "Path": str(artifact_root / "asset_manifest.json"),
+            "Status": "Required before planning fan-in", "Purpose": "Complete current-run asset inventory and review gate",
         })
     return packet
 
@@ -443,6 +450,7 @@ def _write_activation_packets(
         "sentry_current_state_investigator": worker_contracts.get("evidence_topology"),
         "sentry_repository_integrator": worker_contracts.get("repository_integration"),
         "sentry_solution_architect": worker_contracts.get("fix_design"),
+        "current_state_investigator": worker_contracts.get("feature_asset_inventory"),
     }
     packets: dict[str, dict[str, object]] = {}
     for agent, binding in manifest["bindings"].items():
@@ -599,6 +607,8 @@ def prepare_run(
     artifact_root = resolved_execution_repository / ".thoughts" / work_item
     # Validate supplied input and provider bindings before creating, archiving, or
     # overwriting any run artifact. This makes invalid retries transactional.
+    if playbook == "feature_delivery" and input_manifest is None:
+        raise ValueError("run_input_manifest_required")
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
     _validate_run_goal(
         playbook, workflow_objective, requested_outcome, validated_supplied,
@@ -661,6 +671,13 @@ def prepare_run(
             "standard_planning_finalization": {
                 "finalizer": str(SENTRY_PLANNING_FINALIZER),
                 "owner": "Coordinator",
+            },
+        }
+    if playbook == "feature_delivery":
+        manifest["worker_contracts"] = {
+            "feature_asset_inventory": {
+                "contract": str(ASSET_MANIFEST_TEMPLATE),
+                "output": str(artifact_root / "asset_manifest.json"),
             },
         }
     manifest["worker_runtime_guard"] = str(WORKER_RUNTIME_GUARD)
@@ -982,6 +999,24 @@ def self_test() -> None:
         assert feature_by_id["RUN-GOAL-002"]["Input or artifact"] == (
             "Workflow objective: implementation_planning"
         )
+        assert feature_defaults["worker_contracts"]["feature_asset_inventory"]["contract"] == str(
+            ASSET_MANIFEST_TEMPLATE
+        )
+        feature_bundle = json.loads(Path(feature_defaults["activation_packet_bundle"]["path"]).read_text())
+        assert feature_bundle["packets"]["current_state_investigator"]["worker_contract"]["output"].endswith(
+            "asset_manifest.json"
+        )
+        assert any(
+            row["Artifact"] == "Asset manifest"
+            for row in json.loads(Path(feature_defaults["finalization_packet"]).read_text())["durable_artifacts"]
+        )
+        try:
+            prepare_run(execution, "ITEM-FEATURE-NO-MANIFEST", "feature_delivery", None, False)
+        except ValueError as error:
+            assert str(error) == "run_input_manifest_required"
+        else:
+            raise AssertionError("Feature Delivery must require an explicit input manifest")
+        assert not (execution / ".thoughts" / "ITEM-FEATURE-NO-MANIFEST").exists()
         try:
             prepare_run(
                 execution, "ITEM-NO-QUESTION", "technical_spike", None, False,

@@ -8,6 +8,7 @@ depends_on:
   - ../playbooks/feature_delivery.md
   - ../templates/feature_delivery_run_prompt.md
   - ../templates/implementation_plan.md
+  - ../templates/asset_manifest.json
   - ../contracts/workflow_execution.md
 ---
 
@@ -31,6 +32,7 @@ as automatic scope.
 | Primary or additional code repositories | Affected repository checkouts |
 | Parent or ancestor context | `<JIRA-URLS-OR-UNKNOWN>` |
 | Related siblings or decisions | `<JIRA-URLS-OR-NONE>` |
+| Jira attachments and supporting asset sources | Complete attachment inventory plus explicitly marked file/folder/URL inputs |
 | Desired outcome | `<DESCRIPTION-OR-UNKNOWN>` |
 | Constraints and non-goals | `<DESCRIPTION-OR-NONE>` |
 
@@ -59,13 +61,17 @@ The work record is created at:
 
 When context is incomplete, perform bounded discovery and record a Clarification Brief with feasible options and a
 recommendation. Do not create an implementation plan until the minimum implementable outcome is clear and planning
-fan-in passes.
+fan-in passes. The current run must also contain a passed `asset_manifest.json` covering the complete Jira attachment
+inventory and every declared supporting source.
 
 When ready, create:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
+
+The implementation plan carries an Asset Baseline naming each material asset, its observation, evidence, and planning
+consequence.
 
 ## Approved Delivery
 

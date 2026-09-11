@@ -7,6 +7,7 @@ last_updated: 2026-09-07
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/feature_delivery.md
+  - ../templates/asset_manifest.json
 ---
 
 # Feature Delivery Run Prompt
@@ -63,11 +64,22 @@ Runtime bootstrap:
   a passed Delivery Activation Barrier before edits.
 - The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
   fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
+- Before activating downstream planning workers, `feature-context` must create `asset_manifest.json` from a complete
+  Jira attachment/history read and every declared asset source. A Jira description or attachment filename is not an
+  asset review.
+- Feature Delivery requires the explicit current-run input manifest; a generated-minimum manifest cannot establish the
+  complete set of additional asset sources.
 
 Additional repositories and working directories (optional; the execution
 repository is already declared):
 - Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
   Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
+
+Additional asset sources (optional; every entry is inventoried, not silently ignored):
+- Source ID: <OPTIONAL-ID>
+  Path or URL: <ABSOLUTE-FILE-OR-FOLDER-PATH-OR-URL>
+  Intended use: <DESCRIPTION>
+  Corresponding input row: `Asset source: true`
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>
@@ -85,8 +97,11 @@ Feature context and constraints (unverified until reconciled):
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
 - Constraints, dependencies, or release timing: <NONE-OR-DESCRIPTION>
 
-Optional supporting artifacts:
+Optional supporting artifacts (each file or folder is an asset source and must be inventoried):
 - <NONE-OR-ABSOLUTE-PATHS>
+
+For every listed artifact, add a corresponding current-run input row with `Asset source: true`; do not hide an asset
+source in free-form context.
 
 Additional supplied context (preserve and classify):
 - <NONE-OR-DESCRIPTION-OR-REFERENCE>
@@ -95,6 +110,17 @@ Additional run-specific constraints or approvals:
 - <NONE-OR-ENTER-CONSTRAINT>
 
 Follow the selected playbook and its required dependencies.
+
+Asset gate:
+- Enumerate the complete Jira attachment inventory, including an explicit empty/unavailable result.
+- Recursively enumerate every declared folder, including hidden entries and symlinks; enumerate every declared file or
+  URL individually.
+- Review every available asset with the appropriate method. Images and screenshots require visual inspection or
+  rendered reading, not metadata-only review.
+- Record source IDs, asset IDs, locators, availability, observations, review status, relevance, disposition, and
+  evidence references in `asset_manifest.json`.
+- Do not create `implementation_plan.md` or report `ready_for_implementation` until the asset manifest status is
+  `passed`; unresolved retrieval or review becomes `awaiting_input`.
 
 At handoff, use the contract's canonical human-readable template. Do not include Run Metrics or Worker Timing unless
 this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable

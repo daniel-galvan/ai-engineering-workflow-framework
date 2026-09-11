@@ -83,6 +83,8 @@ description: >-
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
+   For Feature Delivery, add `Asset source: true` to the input row for each explicitly supplied file, folder, or URL
+   that must be inventoried; the asset gate reconciles those markers against `asset_manifest.json`.
    When the prompt explicitly supplies a requested outcome, include `RUN-GOAL-001` using its exact value and canonical
    provenance. When the prompt omits it, omit that row; preparation records the selected playbook default and
    provenance. Preparation rejects an altered explicit row.
@@ -112,6 +114,9 @@ description: >-
    Use the playbook's logical worker IDs exactly: final provider role `documenter` is recorded as `handoff`,
    `spike-investigation` uses `solution_architect`, and `spike-assessment` uses `reviewer`. The packaged finalizer
    validates those role bindings and validates `spike_report.md` before releasing the Documenter.
+   For Feature Delivery, do not activate `impact-analysis`, `repository-integration`, or `feature-design` until
+   `feature-context` has written and passed `asset_manifest.json`; a missing or unresolved source yields
+   `awaiting_input` and no implementation plan.
    Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
    `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
    current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be

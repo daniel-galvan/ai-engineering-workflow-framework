@@ -57,6 +57,8 @@ Build a shared understanding of the current system.
 * Identify similar implementations.
 * Record facts, assumptions, and unknowns.
 * Produce an accurate picture of the current state.
+* For Feature Delivery, inventory and review every Jira attachment and every explicitly supplied asset source before
+  downstream planning begins.
 
 ---
 
@@ -76,6 +78,7 @@ Optional
 * Previous pull requests
 * Related work items
 * Architecture diagrams
+* Jira attachments and explicitly supplied files or folders
 
 ---
 
@@ -89,6 +92,7 @@ Optional
 * Assumptions
 * Unknowns
 * Initial Dependency Inventory
+* Current-run `asset_manifest.json` with source inventory, asset review, and disposition
 
 ---
 
@@ -145,6 +149,11 @@ Priority:
 5. ADRs
 6. Documentation
 7. Architecture diagrams
+
+For Feature Delivery, read Jira attachment history explicitly and enumerate every declared file, folder, or URL source.
+Folder inventories include hidden entries and symlinks. Review available visual assets directly, record their
+observations and relevance, and mark retrieval or review limitations as explicit unknowns; do not infer empty or
+non-material status.
 
 ---
 

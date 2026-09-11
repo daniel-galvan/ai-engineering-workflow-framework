@@ -6,7 +6,7 @@
       "key": "EXAMPLE-123",
       "url": "https://jira.example.invalid/browse/EXAMPLE-123"
     },
-    "scope": ["item", "hierarchy"],
+    "scope": ["item", "hierarchy", "history"],
     "requiredness": "required",
     "selection_reason": "Primary work item"
   },
@@ -28,6 +28,7 @@
       "repositories": [],
       "constraints": []
     },
+    "assets": [],
     "related_context": [],
     "evidence": [
       {

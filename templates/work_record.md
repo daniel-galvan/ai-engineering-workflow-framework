@@ -82,6 +82,32 @@ cites the Coordinator/provider observation. Reserve `Current user` for inputs ac
 
 ---
 
+# Asset Inventory and Review
+
+Feature Delivery requires `asset_manifest.json` before planning fan-in. Preserve the complete Jira attachment inventory
+and every explicitly supplied file, folder, or URL source. Folder inventories are recursive and include hidden entries
+and symlinks. Every available asset receives an observation, review method, review status, relevance, disposition, and
+evidence references. Visual assets require visual inspection or rendered reading. An unavailable source or unreviewed
+asset is an explicit planning unknown, not an empty or non-material result.
+
+Source inventory:
+
+| Source ID | Input ID | Kind | Locator | Discovery | Limitation | Evidence refs |
+| --- | --- | --- | --- | --- | --- | --- |
+| SRC-001 | IN-### | jira_issue_attachments / directory / file / url | | complete / empty / unavailable | | E-### |
+
+Asset review:
+
+| Asset ID | Source ID | Kind | Locator | Availability | Review method | Review status | Relevance | Observation / disposition | Evidence refs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ASSET-001 | SRC-001 | image / document / other | | available / unavailable | visual_inspection / rendered_read / text_read / metadata_read | consumed / reviewed_not_relevant / unavailable | material / non_material | | E-### |
+
+Record the source-level gate in `asset_manifest.json`: `inventory_complete`, `all_assets_accounted_for`,
+`all_available_assets_reviewed`, `all_material_assets_linked`, `reviewed_before_plan`, unresolved asset IDs, and
+blocking source IDs.
+`ready_for_implementation` requires manifest status `passed`; `awaiting_input` is required for unresolved material asset
+retrieval or review.
+
 # Path Verification
 
 Before reporting that an explicitly named repository, provider configuration, artifact, or evidence path is absent,

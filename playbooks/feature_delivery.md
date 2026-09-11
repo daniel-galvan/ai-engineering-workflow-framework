@@ -16,6 +16,7 @@ depends_on:
   - ../skills/work_item_context.md
   - ../templates/work_record.md
   - ../templates/implementation_plan.md
+  - ../templates/asset_manifest.json
   - ../templates/feature_delivery_run_prompt.md
   - ../examples/feature_delivery.md
 ---
@@ -64,6 +65,28 @@ The worker classifies context as `sufficient_for_planning`, `partially_recovered
 clarification-required run may complete discovery and hand off focused questions, but it must not create
 `implementation_plan.md` or claim implementation readiness.
 
+## Asset Inventory and Review Gate
+
+Every Feature Delivery run MUST create `asset_manifest.json` before downstream planning fan-in. The `feature-context`
+worker MUST inventory the complete Jira attachment collection and every file or folder explicitly supplied in the run
+prompt or `run_inputs.json`. A folder inventory is recursive and includes hidden entries and symlinks; an empty filtered
+search is not an empty folder. Each source must record `complete`, `empty`, `unavailable`, `permission_denied`, or
+`partial`, or `conflict` explicitly.
+
+Feature Delivery requires an explicit current-run `run_inputs.json`; a generated-minimum manifest cannot establish the
+complete set of additional asset sources and therefore cannot reach planning readiness.
+
+Every available asset must receive an individual manifest row, a source locator, an observation, a review method, a
+review status, a relevance classification, a disposition, and evidence references. Images, screenshots, diagrams, and
+other visual assets require visual inspection or rendered reading; metadata alone is not review. Material assets must
+reach `feature-design` (or `planning-review` in `deep`), influence the evidence/claim chain, and be named in the
+implementation plan. A Jira description that mentions screenshots is not evidence that the attachments were retrieved
+or reviewed.
+
+If the Jira attachment inventory or a declared supporting source cannot be retrieved, the run records the limitation in
+the manifest and returns `awaiting_input`; it MUST NOT create an implementation plan. `ready_for_implementation` is
+permitted only when the manifest status is `passed` and every asset gate is true.
+
 ## Execution Profiles and Lifecycle
 
 The profile selects independent evidence and review. It does not change the model or effort assigned to a role by the
@@ -105,7 +128,7 @@ Activate one final Documenter after analytical fan-in.
 
 | Worker | Role | Skills | Tools | Activation / dependency |
 | --- | --- | --- | --- | --- |
-| `feature-context` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `architecture_mapping` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; after Coordinator initialization |
+| `feature-context` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `architecture_mapping` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required; after Coordinator initialization; writes `asset_manifest.json` |
 | `impact-analysis` | `dependency_analyst` | `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write` | Required; after `feature-context` |
 | `repository-integration` | `repository_integrator` | `destination_integration`, `architecture_mapping`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `build_run`, `test_run`, `artifact_write` | Required for `deep`; conditional for `standard`; after `feature-context` |
 | `feature-design` | `solution_architect` | `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `impact-analysis` and any required integration analysis |
@@ -141,7 +164,7 @@ after approval unless new evidence contradicts the approved plan or expands scop
   record.
 
 For `deep`, start `impact-analysis` and `repository-integration` in parallel after `feature-context`. Each consumes the
-context artifact and repeats upstream discovery only for a recorded discrepancy.
+context and asset-manifest artifacts and repeats upstream discovery only for a recorded discrepancy.
 
 ## Stages
 
@@ -178,6 +201,9 @@ feature, the executed check and result in `checks_performed`, any unavailable
 checks in `checks_remaining`, and the plain-language decision or action that
 remains. Do not defer a runnable source or test check to the user.
 
+The Asset Inventory and Review Gate is part of context recovery, not optional supporting work. Do not activate
+downstream design workers until the Jira attachment inventory and all declared asset sources have a current manifest.
+
 ### Stage 2 — Analyze Impact and Integration
 
 Trace the code path, module seam, data, contracts, configuration, tests, ownership, and operational implications
@@ -204,7 +230,8 @@ clarification result when the repository can answer part of the question.
 ### Stage 4 — Review, Plan, and Handoff
 
 For `deep`, the Planning Reviewer challenges the design before the plan is accepted. After all required planning workers
-return terminal envelopes, fan-in passes, and context is sufficient for planning, the Documenter creates:
+return terminal envelopes, fan-in passes, context is sufficient for planning, and the Asset Inventory and Review Gate
+passes, the Documenter creates:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
@@ -254,13 +281,16 @@ When created, the plan must include:
 4. ordered source, test, configuration, documentation, rollout, and integration changes;
 5. validation ladder, including focused regression tests and applicable CI;
 6. risks, compatibility, rollback, monitoring, and release evidence; and
-7. completion criteria and unresolved assumptions.
+7. completion criteria and unresolved assumptions; and
+8. the asset baseline: `asset_manifest.json`, source inventory status, review method/status, material-asset
+   observations, and acceptance/validation consequences.
 
 ## Gates
 
 | Gate | Pass condition |
 | --- | --- |
 | Context recovered | Jira sources, conflicts, assumptions, and unknowns are recorded. |
+| Asset inventory passed | Jira attachments and every declared file/folder source are enumerated; every available asset is reviewed and dispositioned; material assets link into evidence and the plan. |
 | Clarification framed | When needed, bounded discovery, feasible options, recommendation, and the smallest decision request are recorded. |
 | Planning context sufficient | Outcome, affected surface, and observable acceptance conditions are supported. |
 | Specification assessed | The exact readiness disposition is stated; material scope, architecture, security, acceptance, and validation unknowns prevent a ready disposition. |
@@ -293,6 +323,7 @@ clarification, approval, environment, or worker gate.
 - [`../integrations/jira.md`](../integrations/jira.md)
 - [`../templates/work_record.md`](../templates/work_record.md)
 - [`../templates/implementation_plan.md`](../templates/implementation_plan.md)
+- [`../templates/asset_manifest.json`](../templates/asset_manifest.json)
 - [`../examples/feature_delivery.md`](../examples/feature_delivery.md)
 
 [planning-readiness]: ../contracts/workflow_execution.md#planning-readiness-and-implementation-work

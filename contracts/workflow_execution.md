@@ -144,6 +144,7 @@ the source of truth.
 | `INV-39` | Worker model and effort MUST come from the prepared role-binding manifest and match the activation record. | [Profile Execution Semantics](#profile-execution-semantics) |
 | `INV-40` | Delegated workers MUST start in fresh context and MUST NOT repeat Coordinator initialization. | [Worker Contract](#worker-contract) |
 | `INV-41` | Explicit current-run skill or plugin enable/disable directives MUST be propagated to every worker and correction turn. | [Authoritative Run Inputs](#authoritative-run-inputs) |
+| `INV-42` | Feature Delivery MUST inventory and review Jira attachments and every declared asset source before planning readiness. | [Feature Delivery Asset Gate](#feature-delivery-asset-gate) |
 
 ---
 
@@ -232,6 +233,29 @@ preserve both sources and record any conflict for reconciliation. The manifest a
 under the active run root before worker activation.
 Live runtime evidence is additive unless the user explicitly selects live-only analysis.
 The persisted manifest is named `run_inputs.json`.
+
+## Feature Delivery Asset Gate
+
+Feature Delivery treats Jira attachments and explicitly supplied files, folders, and URLs as first-class current-run
+inputs. Before downstream planning workers are activated, `feature-context` MUST create `asset_manifest.json` under the
+active run root. The manifest MUST contain one source row for the Jira attachment inventory, even when it is explicitly
+empty, and one row for each declared supporting source. Each supporting file, folder, or URL input MUST be marked
+`Asset source: true` in the current-run input manifest so source-to-manifest reconciliation is deterministic. A
+directory source MUST enumerate every file and symlink recursively, including hidden entries; an empty filtered search
+is not a complete inventory.
+Feature Delivery MUST use an explicit `run_inputs.json`; a generated-minimum input manifest cannot prove that all
+additional sources were declared.
+
+Each discovered asset MUST have a stable locator, availability, observation, review method, review status, relevance,
+disposition, and evidence references. Available visual assets require visual inspection or rendered reading. A material
+asset MUST be consumed by feature design or planning review, linked to a claim, and named in the implementation plan.
+An unavailable, permission-denied, redacted, conflicting, or unreviewed asset is an explicit unresolved input. It may
+produce `awaiting_input`, but it MUST NOT be converted to an empty or non-material result by inference.
+
+The asset gate passes only when the manifest status is `passed`, all sources are complete or explicitly empty, every
+available asset is reviewed and dispositioned, every material asset is linked into the evidence/claim chain, and the
+manifest records `reviewed_before_plan: true`. A ready Feature Delivery plan and terminal work record MUST register and
+link `asset_manifest.json`; the work record MUST preserve the source inventory and asset review table.
 
 ## Input Delivery and Consumption Gate
 
@@ -376,6 +400,7 @@ Each result preserves:
 | --- | --- | --- |
 | `state` | Yes | One of the shared retrieval states below. |
 | `work_item` | Conditional | Normalized work item when the requested source data is available. |
+| `assets` | Conditional | Attachment or reference-asset inventory when `history` is requested; preserve an explicit empty or unavailable result. |
 | `related_context` | Yes | Selected related records with stable identifiers and relationship types. |
 | `evidence` | Yes | Source locations, observed values, authority, status, redaction, and limitations. |
 | `source_updated_at` / `source_version` | Conditional | Source freshness metadata when supplied by the provider. |

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -18,6 +19,21 @@ try:
     from run_input_manifest import load_manifest
 except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
     from scripts.run_input_manifest import load_manifest
+
+try:
+    from asset_manifest import (
+        ASSET_MANIFEST_FILENAME,
+        asset_plan_errors,
+        self_test as asset_manifest_self_test,
+        validate_asset_manifest,
+    )
+except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
+    from scripts.asset_manifest import (
+        ASSET_MANIFEST_FILENAME,
+        asset_plan_errors,
+        self_test as asset_manifest_self_test,
+        validate_asset_manifest,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +114,7 @@ JIRA_REQUIRED_HEADINGS = (
     "## Source boundary",
     "## Read path",
     "## Adapter Contract",
+    "## Attachment and Asset Inventory",
     "## Context recovery order",
     "## Evidence normalization",
     "## Retrieval result states",
@@ -117,6 +134,7 @@ WORK_ITEM_READ_RESULT_STATES = {
     "conflict",
 }
 WORK_ITEM_READ_EVIDENCE_STATUSES = {"verified", "inferred", "contradicted", "unknown"}
+WORK_ITEM_ASSET_AVAILABILITIES = {"available", "unavailable", "permission_denied", "redacted", "not_found"}
 SKILLS = {
     path.stem for path in (ROOT / "skills").glob("*.md") if path.stem != "README"
 }
@@ -136,6 +154,7 @@ CODEX_AGENT_DIR = ROOT / "providers" / "codex" / "agents"
 IMPLEMENTATION_HANDOFF_TEMPLATE = ROOT / "templates" / "implementation_handoff.md"
 SENTRY_WORK_RECORD_TEMPLATE = ROOT / "templates" / "sentry_work_record.md"
 FINALIZATION_PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
+ASSET_MANIFEST_TEMPLATE = ROOT / "templates" / ASSET_MANIFEST_FILENAME
 RUNTIME_CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 RUN_SKILL = ROOT / "skills" / "run" / "SKILL.md"
 RUN_PREFLIGHT = ROOT / "scripts" / "run_preflight.py"
@@ -458,6 +477,128 @@ def current_artifact_errors(
         ):
             errors.append(f"{record_path}: durable artifact {artifact} does not exist: {target}")
     return errors
+
+
+def _feature_record_expected_inputs(
+    text: str, identity: dict[str, str], root: Path,
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    record_rows = {
+        row.get("Input ID", ""): row
+        for row in markdown_table(text, "# Input Register")
+        if row.get("Input ID", "").strip()
+    }
+    reference = str(identity.get("Run input manifest", "")).strip()
+    if not reference or reference.lower() in {"none", "not applicable"}:
+        return record_rows, ["Feature Delivery requires Run input manifest for asset source reconciliation"]
+    path = Path(reference)
+    path = path if path.is_absolute() else root / path
+    if not path.is_file():
+        return record_rows, [f"Feature Delivery requires readable run_inputs.json for asset source reconciliation: {path}"]
+    expected_hash = str(identity.get("Run input manifest hash", "")).strip()
+    if not expected_hash:
+        return record_rows, ["Feature Delivery requires the run_inputs.json content hash for asset source reconciliation"]
+    try:
+        actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as error:
+        return record_rows, [f"Feature Delivery cannot hash run_inputs.json for asset source reconciliation: {error}"]
+    if actual_hash != expected_hash:
+        return record_rows, ["Feature Delivery run_inputs.json hash does not match finalization metadata"]
+    try:
+        prepared = load_manifest(path, explicit=False)
+    except ValueError as error:
+        return record_rows, [f"Feature Delivery cannot read run_inputs.json for asset source reconciliation: {error}"]
+    if prepared.get("status") != "explicit":
+        return record_rows, ["Feature Delivery run_inputs.json must have status explicit for asset source reconciliation"]
+    prepared_rows = {
+        str(row.get("Input ID")): row
+        for row in prepared["inputs"]
+        if isinstance(row, dict) and str(row.get("Input ID", "")).strip()
+    }
+    missing = sorted(set(prepared_rows) - set(record_rows))
+    extra = sorted(set(record_rows) - set(prepared_rows))
+    errors = []
+    if missing:
+        errors.append("Feature Delivery work record dropped run inputs: " + ", ".join(missing))
+    if extra:
+        errors.append("Feature Delivery work record added undeclared run inputs: " + ", ".join(extra))
+    return prepared_rows, errors
+
+
+def feature_asset_record_errors(
+    text: str, path: Path, identity: dict[str, str], finalization: dict[str, str],
+) -> list[str]:
+    playbook_name = Path(identity.get("Playbook / version", "").split(" / ", 1)[0]).stem
+    if (
+        playbook_name != "feature_delivery"
+        or identity.get("Lifecycle") != "planning"
+        or identity.get("State") not in {"ready_for_implementation", "awaiting_input", "completed"}
+    ):
+        return []
+    root_value = finalization.get("Durable artifact root", "")
+    root = Path(root_value).resolve() if root_value else path.parent.resolve()
+    manifest_path = root / ASSET_MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return [f"{path}: Feature Delivery requires {ASSET_MANIFEST_FILENAME}"]
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        return [f"{path}: invalid {ASSET_MANIFEST_FILENAME}: {error}"]
+    input_rows, input_errors = _feature_record_expected_inputs(text, identity, root)
+    evidence_ids = {
+        row.get("Evidence ID", "")
+        for row in markdown_table(text, "# Evidence")
+        if row.get("Evidence ID", "").strip()
+    }
+    claim_evidence_ids = {
+        reference
+        for row in markdown_table(text, "# Claims")
+        for reference in REFERENCE_ID.findall(row.get("Evidence refs", ""))
+    }
+    work_item = {
+        row.get("Field", ""): row.get("Value", "")
+        for row in markdown_table(text, "# Work Item")
+    }
+    errors = input_errors + validate_asset_manifest(
+        manifest,
+        work_item=work_item.get("Identifier") or work_item.get("ID") or None,
+        expected_input_ids=input_rows,
+        expected_inputs=input_rows,
+        expected_evidence_ids=evidence_ids,
+        material_claim_evidence_ids=claim_evidence_ids,
+        require_jira_source=True,
+        require_passed=identity.get("State") in {"ready_for_implementation", "completed"}
+        and identity.get("Lifecycle") == "planning",
+    )
+    if identity.get("State") == "awaiting_input" and manifest.get("status") != "awaiting_input":
+        errors.append("Feature Delivery awaiting_input requires asset_manifest status awaiting_input")
+    if "# Asset Inventory and Review" not in text or ASSET_MANIFEST_FILENAME not in text:
+        errors.append("Feature Delivery work record requires the Asset Inventory and Review section")
+    durable_targets = {
+        target
+        for row in markdown_table(text, "# Durable Artifacts")
+        if (target := _artifact_path(row.get("Path", ""), path)) is not None
+    }
+    if manifest_path.resolve() not in durable_targets:
+        errors.append("Feature Delivery work record must register asset_manifest.json")
+    handoff = fenced_section(text, "# Final Handoff")
+    handoff_targets = {
+        target
+        for line in handoff.splitlines()
+        if line.startswith("- ")
+        and (target := _artifact_path(line[2:], path)) is not None
+    }
+    if manifest_path.resolve() not in handoff_targets:
+        errors.append("Feature Delivery Final Handoff must link asset_manifest.json")
+    if identity.get("Lifecycle") == "planning" and identity.get("State") in {"ready_for_implementation", "completed"}:
+        plan = root / "implementation_plan.md"
+        if plan.is_file():
+            errors.extend(asset_plan_errors(plan.read_text(), manifest))
+        else:
+            errors.append(f"{path}: Feature Delivery planning requires implementation_plan.md")
+    if identity.get("Lifecycle") == "planning" and identity.get("State") == "awaiting_input":
+        if (root / "implementation_plan.md").is_file():
+            errors.append("Feature Delivery awaiting_input must not retain implementation_plan.md")
+    return list(dict.fromkeys(f"{path}: {error}" for error in errors))
 
 
 def technical_spike_report_errors(
@@ -846,6 +987,31 @@ def work_item_read_contract_errors(
                 errors.append(f"{label} evidence {index} has an invalid status")
             if not isinstance(record.get("redacted"), bool):
                 errors.append(f"{label} evidence {index} redacted must be boolean")
+    if isinstance(scopes, list) and "history" in scopes:
+        assets = result.get("assets")
+        if not isinstance(assets, list):
+            errors.append(f"{label} history result requires an explicit assets list")
+        else:
+            asset_ids: set[str] = set()
+            for index, asset in enumerate(assets):
+                if not isinstance(asset, dict):
+                    errors.append(f"{label} asset {index} must be an object")
+                    continue
+                for field in (
+                    "asset_id", "source_location", "locator", "name", "media_type", "availability",
+                    "retrieval_limitation",
+                ):
+                    if not isinstance(asset.get(field), str) or not asset[field].strip():
+                        errors.append(f"{label} asset {index} is missing {field}")
+                asset_id = asset.get("asset_id")
+                if isinstance(asset_id, str) and asset_id in asset_ids:
+                    errors.append(f"{label} duplicate asset_id {asset_id}")
+                if isinstance(asset_id, str):
+                    asset_ids.add(asset_id)
+                if asset.get("availability") not in WORK_ITEM_ASSET_AVAILABILITIES:
+                    errors.append(f"{label} asset {index} has an invalid availability")
+                if not isinstance(asset.get("redacted"), bool):
+                    errors.append(f"{label} asset {index} redacted must be boolean")
     for field in ("related_context", "limitations"):
         if not isinstance(result.get(field), list):
             errors.append(f"{label} {field} must be a list")
@@ -1680,6 +1846,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         row.get("Field", ""): row.get("Value", "")
         for row in markdown_table(text, "# Run Isolation and Finalization")
     }
+    for error in feature_asset_record_errors(text, path, identity, finalization):
+        fail(error)
     repositories = markdown_table(text, "# Repository Evidence Eligibility")
     if not repositories or any(not row.get("Full revision") for row in repositories):
         fail(f"{path}: every relevant repository must record its full revision")
@@ -2179,6 +2347,7 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> str:
 
 
 def self_test_reasoning_records() -> None:
+    asset_manifest_self_test()
     assert table_cells(r"| Field | message \| link_title \| link_summary |") == [
         "Field", "message | link_title | link_summary"
     ]
@@ -2188,7 +2357,7 @@ def self_test_reasoning_records() -> None:
         "request": {
             "capability": "work_item_read",
             "identity": {"source_system": "Jira", "key": "EXAMPLE-123"},
-            "scope": ["item", "hierarchy"],
+            "scope": ["item", "hierarchy", "history"],
             "requiredness": "required",
             "selection_reason": "Primary work item",
         },
@@ -2203,6 +2372,7 @@ def self_test_reasoning_records() -> None:
                 "title": "Example work item",
                 "description": "Synthetic fixture content",
             },
+            "assets": [],
             "related_context": [],
             "evidence": [{
                 "evidence_id": "jira-001",
@@ -3347,6 +3517,12 @@ for filename in (
 
 feature_playbook = (ROOT / "playbooks" / "feature_delivery.md").read_text()
 feature_prompt = (ROOT / "templates" / "feature_delivery_run_prompt.md").read_text()
+if not ASSET_MANIFEST_TEMPLATE.is_file():
+    fail("templates/asset_manifest.json is missing")
+try:
+    json.loads(ASSET_MANIFEST_TEMPLATE.read_text())
+except (OSError, json.JSONDecodeError) as error:
+    fail(f"templates/asset_manifest.json is invalid JSON: {error}")
 for text, label in (
     (feature_playbook, "playbooks/feature_delivery.md"),
     (feature_prompt, "templates/feature_delivery_run_prompt.md"),
@@ -3362,6 +3538,28 @@ for text, label in (
             fail(f"{label} is missing specification-assessment control: {phrase}")
 if "Planning objective: implementation_planning" not in feature_prompt:
     fail("templates/feature_delivery_run_prompt.md is missing the default planning objective")
+for text, label in (
+    (feature_playbook, "playbooks/feature_delivery.md"),
+    (feature_prompt, "templates/feature_delivery_run_prompt.md"),
+    (JIRA_INTEGRATION.read_text(), "integrations/jira.md"),
+):
+    for phrase in ("asset_manifest.json", "attachment inventory", "awaiting_input"):
+        if phrase not in text:
+            fail(f"{label} is missing asset-gate control: {phrase}")
+for phrase in (
+    "# Asset Inventory and Review",
+    "asset_manifest.json",
+    "all_assets_accounted_for",
+    "reviewed_before_plan",
+):
+    if phrase not in (ROOT / "templates" / "work_record.md").read_text():
+        fail(f"templates/work_record.md is missing asset-gate control: {phrase}")
+for phrase in ("# Asset Baseline", "asset_manifest.json", "material asset"):
+    if phrase not in (ROOT / "templates" / "implementation_plan.md").read_text():
+        fail(f"templates/implementation_plan.md is missing asset-gate control: {phrase}")
+for phrase in ("Asset source: true", "asset_manifest.json", "awaiting_input"):
+    if phrase not in RUN_SKILL.read_text():
+        fail(f"skills/run/SKILL.md is missing asset-gate control: {phrase}")
 
 technical_spike_playbook = (ROOT / "playbooks" / "technical_spike.md").read_text()
 technical_spike_prompt = (ROOT / "templates" / "technical_spike_run_prompt.md").read_text()

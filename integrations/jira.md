@@ -45,6 +45,7 @@ Select the smallest read operation that answers the question:
 | Dependency or precedent | Selected siblings, linked issues, pull requests, or documents with a recorded selection reason |
 | Current writable shape | Live project, issue-type, field, allowed-value, and transition metadata immediately before a write |
 | Related history | Comments, attachments, change history, or linked delivery records relevant to the question |
+| Visual or reference assets | Complete attachment inventory, including an explicit empty/unavailable result and stable locators for every attachment. |
 
 Use a direct issue read when a stable key or URL is available. Use search only to
 resolve a missing identity or answer an explicitly broad question. Do not scan an
@@ -68,6 +69,20 @@ shapes or provider-specific operation names:
 
 The canonical offline fixture shape is
 [`tests/fixtures/jira_adapter_contract.json`](../tests/fixtures/jira_adapter_contract.json).
+
+## Attachment and Asset Inventory
+
+When Feature Delivery is selected, the `feature-context` read MUST include the Jira `history` scope for attachments.
+The normalized result must preserve each attachment's stable name/locator, type, availability, redaction state, and
+retrieval limitation. A valid empty attachment collection is recorded as `empty`; an omitted attachment field is not an
+empty result. If the connector cannot enumerate or retrieve the collection, record `unavailable`, `partial`, or
+`permission_denied` with the attempted operation and keep planning at `awaiting_input` when the missing material could
+change scope, acceptance, or the implementation boundary.
+
+The Feature Delivery `asset_manifest.json` is the review-level companion to the normalized Jira read. It must include
+the Jira attachment source even when the collection is empty, plus every explicitly supplied file, folder, or URL
+source. It is not valid to cite the issue description, an attachment count, or a filename as proof that an image or
+document was reviewed.
 
 ## Context recovery order
 
@@ -162,7 +177,9 @@ effect must remain visible in the work record.
 ## Playbook use
 
 - Technical Spike uses this integration for the Spike ticket, bounded hierarchy context, and linked research material.
-- Feature Delivery uses this integration for issue and hierarchy context recovery.
+- Feature Delivery uses this integration for issue, hierarchy, and complete attachment inventory recovery. Its asset
+  review gate is not passed until the attachment collection and all declared supporting asset sources are explicitly
+  accounted for.
 - TechOps Issue Remediation uses it for issue reports, comments, attachments,
   links, and related operational work.
 - Vulnerability Investigation may use it for `VULN-*` work-item context and

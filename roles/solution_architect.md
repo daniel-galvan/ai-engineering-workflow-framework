@@ -61,6 +61,8 @@ smallest reasonable change.
   uncertainties.
 * Produce an implementation-ready design.
 * Consume all supplied context and supporting artifacts before requesting clarification.
+* Consume the complete Feature Delivery asset manifest and carry every material asset's evidence and disposition into
+  acceptance criteria and the implementation plan.
 * Execute the smallest safe falsification check before requesting clarification, and record the result and any remaining
   unavailable checks.
 * Record the strongest supported hypothesis and a plain-language next action when implementation readiness is not
@@ -78,6 +80,7 @@ Required
 * Architecture Summary
 * Dependency Analysis
 * Impact Assessment
+* Feature Delivery `asset_manifest.json`, when the playbook is Jira-sourced
 
 Optional
 
