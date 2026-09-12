@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-08
+last_updated: 2026-09-11
 ---
 
 # Workflow Execution Contract
@@ -1197,6 +1197,12 @@ correction to that same handle and collect the revised result. Only after the pr
 handle, then write one provider-observed `runtime_closure.json` receipt. The receipt contains only the exact closure
 table rows from `templates/runtime_closure.json`, records `Receipt owner: Coordinator`, and is not a second
 interpretation of the workflow outcome. A Documenter-authored or ownerless released receipt fails finalization.
+
+Before Technical Spike pre-release, the Documenter MUST write `spike_report.candidate.md` from the framework template
+and invoke the packaged `--publish-technical-spike-report` mode. That mode validates the finalization-packet reasoning
+graph and canonical report structure before atomically replacing `spike_report.md`. A failed candidate MUST preserve
+the last valid report and MUST NOT consume a pre-release correction attempt. Handwritten heading, table, grep, or
+reference checks are not substitutes for this gate.
 
 Once the final Documenter is activated, it is the sole writer for its assigned non-record artifacts and packet. The
 Coordinator invokes the renderer but MUST NOT edit the packet or rendered record.

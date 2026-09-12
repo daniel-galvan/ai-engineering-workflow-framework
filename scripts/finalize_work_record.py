@@ -249,6 +249,54 @@ def _material_rows(value: object, identity_field: str) -> list[dict[str, object]
     return rows if any(str(row.get(identity_field, "")).strip() for row in rows) else []
 
 
+def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[str]:
+    specs = (
+        ("evidence", "Evidence ID", "evidence"),
+        ("claims", "Claim ID", "claim"),
+        ("decisions", "Decision ID", "decision"),
+        ("actions", "Action ID", "action"),
+    )
+    records: dict[str, dict[str, dict[str, object]]] = {}
+    errors: list[str] = []
+    for field, identity_field, label in specs:
+        rows = _material_rows(packet.get(field), identity_field)
+        ids = [str(row.get(identity_field, "")).strip() for row in rows]
+        for duplicate in sorted({value for value in ids if ids.count(value) > 1}):
+            errors.append(f"Technical Spike packet contains duplicate {label} {duplicate}")
+        records[field] = {str(row.get(identity_field, "")).strip(): row for row in rows}
+    if not all(records.values()):
+        return errors
+
+    evidence_used: set[str] = set()
+    claims_used: set[str] = set()
+    decisions_used: set[str] = set()
+    links = (
+        ("claims", "Evidence refs", "evidence", "evidence", evidence_used),
+        ("decisions", "Claim refs", "claims", "claim", claims_used),
+        ("actions", "Decision ref", "decisions", "decision", decisions_used),
+    )
+    for source, ref_field, target, target_label, used in links:
+        for source_id, row in records[source].items():
+            refs = set(REFERENCE_ID.findall(str(row.get(ref_field, ""))))
+            if source == "actions" and len(refs) != 1:
+                errors.append(f"Technical Spike packet {source_id} must reference exactly one decision")
+            elif not refs:
+                errors.append(f"Technical Spike packet {source_id} has no {target_label} refs")
+            for ref in refs:
+                if ref not in records[target]:
+                    errors.append(f"Technical Spike packet {source_id} references missing {target_label} {ref}")
+                else:
+                    used.add(ref)
+    for label, rows, used in (
+        ("evidence", records["evidence"], evidence_used),
+        ("claim", records["claims"], claims_used),
+        ("decision", records["decisions"], decisions_used),
+    ):
+        for orphan in sorted(set(rows) - used):
+            errors.append(f"Technical Spike packet contains orphaned {label} {orphan}")
+    return errors
+
+
 def _append_unique_artifact(rows: list[dict[str, object]], row: dict[str, object]) -> None:
     path = str(row["Path"])
     if not any(str(existing.get("Path", "")) == path for existing in rows):
@@ -710,6 +758,7 @@ def _technical_spike_packet_contract_errors(
                 "Technical Spike finalization packet contains incomplete reasoning rows: "
                 + "; ".join(incomplete_rows)
             )
+        errors.extend(_technical_spike_reasoning_graph_errors(packet))
         for row in packet.get("worker_results", []):
             if not isinstance(row, dict):
                 continue
@@ -1472,20 +1521,24 @@ def _record_terminal_failure(
     return path
 
 
+def _resolved_run_budget_status(value: dict[str, object]) -> str:
+    if value.get("status") in {
+        "exhausted_with_useful_result",
+        "stopped_by_indispensable_evidence",
+        "exceeded_during_finalization",
+    }:
+        return str(value["status"])
+    deadline = datetime.fromisoformat(str(value["deadline_at"]).replace("Z", "+00:00"))
+    return "within_budget" if datetime.now(timezone.utc) <= deadline else "exceeded_during_finalization"
+
+
 def _update_run_budget(packet_path: Path) -> str | None:
     path = packet_path.parent / "run_budget.json"
     if not path.is_file():
         return None
     value = json.loads(path.read_text())
-    deadline = datetime.fromisoformat(str(value["deadline_at"]).replace("Z", "+00:00"))
-    now = datetime.now(timezone.utc)
-    if value.get("status") not in {
-        "exhausted_with_useful_result",
-        "stopped_by_indispensable_evidence",
-        "exceeded_during_finalization",
-    }:
-        value["status"] = "within_budget" if now <= deadline else "exceeded_during_finalization"
-    value["last_checked_at"] = now.isoformat().replace("+00:00", "Z")
+    value["status"] = _resolved_run_budget_status(value)
+    value["last_checked_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
     return str(value["status"])
 
@@ -1493,6 +1546,7 @@ def _update_run_budget(packet_path: Path) -> str | None:
 def _sync_spike_report_budget(
     packet_path: Path, packet: dict[str, object], status: str | None,
     updated_at: str | None = None,
+    report_path: Path | None = None,
 ) -> None:
     if not status and not updated_at:
         return
@@ -1500,7 +1554,7 @@ def _sync_spike_report_budget(
     playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
     if playbook != "technical_spike":
         return
-    report = packet_path.parent / "spike_report.md"
+    report = report_path or packet_path.parent / "spike_report.md"
     if not report.is_file():
         return
     original = report.read_text()
@@ -1548,6 +1602,7 @@ def _sync_spike_report_budget(
 
 def _technical_spike_report_errors(
     packet_path: Path, packet: dict[str, object], budget_status: str | None,
+    report_path: Path | None = None,
 ) -> list[str]:
     identity = packet.get("identity", {})
     selection = packet.get("playbook_selection", {})
@@ -1557,7 +1612,7 @@ def _technical_spike_report_errors(
     state = str(identity.get("State", "")).strip().lower()
     if playbook != "technical_spike" or state not in {"handoff", "completed"}:
         return []
-    report = packet_path.parent / "spike_report.md"
+    report = report_path or packet_path.parent / "spike_report.md"
     if not report.is_file():
         return ["Technical Spike handoff requires spike_report.md"]
     args = [
@@ -1582,6 +1637,40 @@ def _technical_spike_report_errors(
     if result.returncode:
         return [result.stdout.strip() or result.stderr.strip() or "technical_spike_report_validation_failed"]
     return []
+
+
+def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> None:
+    packet_path = packet_path.resolve()
+    candidate_path = candidate_path.resolve()
+    if candidate_path.parent != packet_path.parent or candidate_path.name != "spike_report.candidate.md":
+        raise ValueError("Technical Spike report candidate must be spike_report.candidate.md beside the packet")
+    packet = json.loads(packet_path.read_text())
+    shape_errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
+    if shape_errors:
+        raise ValueError("packet_schema_invalid: " + "; ".join(shape_errors))
+    playbook = Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
+    if playbook != "technical_spike":
+        raise ValueError("--publish-technical-spike-report requires a Technical Spike packet")
+    errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
+    try:
+        _validate_handoff(packet)
+    except ValueError as error:
+        errors.append(str(error))
+    budget_status = None
+    budget_path = packet_path.parent / "run_budget.json"
+    if budget_path.is_file():
+        budget_status = _resolved_run_budget_status(json.loads(budget_path.read_text()))
+    _sync_spike_report_budget(
+        packet_path, packet, budget_status, report_path=candidate_path,
+    )
+    errors.extend(_technical_spike_report_errors(
+        packet_path, packet, budget_status, report_path=candidate_path,
+    ))
+    errors = list(dict.fromkeys(errors))
+    if errors:
+        raise ValueError("\n".join(errors))
+    candidate_path.replace(packet_path.parent / "spike_report.md")
+    print("Technical Spike artifact validation: passed")
 
 
 def finalize(
@@ -2324,7 +2413,15 @@ def self_test() -> None:
         prepared_spike_data = json.loads(prepared_spike.stdout)
         spike_root = Path(prepared_spike_data["artifact_root"])
         spike_report = spike_root / "spike_report.md"
-        spike_report.write_text("""# Technical Spike Report
+        spike_report.write_text("""---
+title: Technical Spike Report
+version: test
+status: Pilot
+owner: Engineering
+last_updated: 2026-09-11T00:00:00Z
+---
+
+# Technical Spike Report
 
 ## Metadata
 | Field | Value |
@@ -2598,6 +2695,14 @@ Runtime behavior remains unverified.
             "handoff established[0]" in error and "grouped/range reference" in error
             for error in grouped_errors
         )
+        orphan_packet = json.loads(json.dumps(spike_packet))
+        orphan_packet["evidence"].append({
+            "Evidence ID": "E-999", "Source": "orphaned source", "Summary": "Not used",
+            "Confidence": "High", "Uncertainty": "None", "Status": "Verified",
+        })
+        assert "Technical Spike packet contains orphaned evidence E-999" in (
+            _technical_spike_packet_contract_errors(orphan_packet, pre_release=True)
+        )
         spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
         spike_closure = spike_root / "runtime_closure.json"
         spike_handles = [f"01a00000-0000-7000-8000-{index:012d}" for index in range(1, 5)]
@@ -2609,6 +2714,23 @@ Runtime behavior remains unverified.
         }]}, indent=2) + "\n")
         spike_record = spike_root / "work_record.md"
         valid_spike_report = spike_report.read_text()
+        candidate = spike_root / "spike_report.candidate.md"
+        candidate.write_text(valid_spike_report)
+        spike_report.write_text("previous valid report\n")
+        publish_technical_spike_report(spike_packet_path, candidate)
+        assert not candidate.exists()
+        valid_spike_report = spike_report.read_text()
+        invalid_candidate = valid_spike_report.replace("## Findings", "## Missing Findings")
+        candidate.write_text(invalid_candidate)
+        try:
+            publish_technical_spike_report(spike_packet_path, candidate)
+        except ValueError as error:
+            assert "spike_report.md is missing ## Findings" in str(error)
+        else:
+            raise AssertionError("invalid candidate report must not be published")
+        assert spike_report.read_text() == valid_spike_report
+        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
+        candidate.unlink()
         spike_report.write_text(valid_spike_report.replace("## Direct Evidence", "## Missing Direct Evidence"))
         try:
             finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
@@ -2993,6 +3115,7 @@ def main() -> int:
     parser.add_argument("--closure", type=Path)
     parser.add_argument("--record", type=Path)
     parser.add_argument("--pre-release", action="store_true")
+    parser.add_argument("--publish-technical-spike-report", type=Path)
     parser.add_argument("--analytical-failure")
     parser.add_argument("--analytical-failure-stage", choices=tuple(ANALYTICAL_FAILURE_STAGES))
     parser.add_argument("--completed-handle", action="append", default=[])
@@ -3004,6 +3127,17 @@ def main() -> int:
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return 0
+    if args.publish_technical_spike_report:
+        if not args.packet:
+            parser.error("--publish-technical-spike-report requires --packet")
+        try:
+            publish_technical_spike_report(
+                args.packet, args.publish_technical_spike_report,
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError) as error:
+            print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
+            return 2
         return 0
     if not args.packet or not args.closure or not args.record:
         parser.error("--packet, --closure, and --record are required")

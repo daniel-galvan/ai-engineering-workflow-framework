@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.5
+version: 0.5.6
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -166,10 +166,11 @@ once before Documenter activation. Do not start another investigation or review 
 
 ### Stage 4 — Report and Handoff
 
-After required analytical workers return terminal envelopes and fan-in passes, the final Documenter creates:
+After required analytical workers return terminal envelopes and fan-in passes, the final Documenter writes the
+template-based candidate at:
 
 ```text
-<execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.md
+<execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.candidate.md
 ```
 
 The report must preserve the question, declared assessment criteria or control domains, decision context, and budget,
@@ -190,6 +191,11 @@ recommendation must cite at least one exact Evidence ID. Keep verified source ob
 architectural conclusions, and list every directly supporting Evidence ID for each option. If Standard execution cannot
 establish an infrastructure or control domain, name the unsearched surface and record the targeted follow-up or
 Deep-profile requirement.
+Before returning, the Documenter must run the packaged
+`finalize_work_record.py --packet <finalization-packet> --publish-technical-spike-report <candidate>` command. It
+validates the complete packet reasoning graph and canonical report structure, then atomically publishes
+`spike_report.md`. Do not replace it with a handwritten heading, table, grep, or reference check. A failed candidate
+must not replace the last valid report or consume a pre-release finalization attempt.
 
 Use these exact completed-run dispositions:
 

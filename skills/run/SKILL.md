@@ -237,11 +237,18 @@ description: >-
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
    field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
    Documenter remains active, create a pending closure probe using the
-   `templates/runtime_closure.json` schema and run:
+   `templates/runtime_closure.json` schema.
+   For Technical Spike, the Documenter must first write `spike_report.candidate.md` from the framework template and run
+   `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet <artifact-root>/finalization_packet.json
+   --publish-technical-spike-report <artifact-root>/spike_report.candidate.md`. Require exit status zero and the exact
+   `Technical Spike artifact validation: passed` output before the first pre-release attempt. This validates the packet
+   reasoning graph and report structure, then atomically publishes `spike_report.md`; do not substitute a handwritten
+   heading, table, grep, or reference check.
    Supply the current Coordinator model/effort (or the exact `Not exposed / Not exposed` active-parent marker), the
    current framework revision, and its clean/dirty status to both finalizer
    invocations; never leave Coordinator identity blank or copy it from an older
    run.
+   Then run:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`

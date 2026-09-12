@@ -1,7 +1,7 @@
 ---
 
 title: Documenter Role
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 category: Documentation
 produces_decisions: false
@@ -80,14 +80,18 @@ maintenance.
   options, and handoff text; a `CHK-*` label may identify a check but never replaces its source-backed Evidence ID.
   Never use ranges. Preserve source observations as `Verified` and architectural conclusions as
   `Inferred`, and list every directly supporting Evidence ID for each option.
-* Before terminal handoff, run the packaged framework validator against the execution repository's work record. A failed
-  validation is a correction loop, not a successful finalization.
+* For Technical Spike, write `spike_report.candidate.md` from the framework template, then use the packaged
+  `--publish-technical-spike-report` command to validate the packet reasoning graph and report before atomically
+  publishing `spike_report.md`. Do not substitute handwritten heading, table, grep, or reference checks.
+* Treat a failed packaged validation as a correction loop, not a successful finalization; the Coordinator owns
+  pre-release and terminal work-record validation.
 * Record the related-run check and post-closure polls from the Coordinator's finalized packet.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.
 * Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook
   reaches its planning-completion gate.
-* For Technical Spike, create `spike_report.md` after analytical fan-in and do not create `implementation_plan.md`.
+* For Technical Spike, publish `spike_report.md` from its validated candidate after analytical fan-in and do not create
+  `implementation_plan.md`.
 * Record findings from every role.
 * Record evidence and references.
 * Preserve evidence, claim, decision, and action IDs across artifacts.

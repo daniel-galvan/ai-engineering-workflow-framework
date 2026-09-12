@@ -696,6 +696,10 @@ def technical_spike_report_errors(
     input_manifest_path: Path | None = None,
 ) -> list[str]:
     errors = []
+    if not re.match(r"\A---\s*\n.*?\n---\s*\n", text, re.DOTALL):
+        errors.append("spike_report.md must preserve the framework template frontmatter")
+    if not re.search(r"^# Technical Spike Report\s*$", text, re.MULTILINE):
+        errors.append("spike_report.md must preserve the # Technical Spike Report title")
     required_headings = (
         "## Metadata",
         "## Scope and Non-goals",
@@ -711,9 +715,15 @@ def technical_spike_report_errors(
         "## Remaining Unknowns and Follow-up",
         "## Disposition",
     )
+    heading_positions = []
     for heading in required_headings:
-        if heading not in text:
+        match = re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE)
+        if not match:
             errors.append(f"spike_report.md is missing {heading}")
+        else:
+            heading_positions.append(match.start())
+    if len(heading_positions) == len(required_headings) and heading_positions != sorted(heading_positions):
+        errors.append("spike_report.md canonical sections must preserve the framework template order")
     metadata = {row.get("Field", ""): row.get("Value", "") for row in markdown_table(text, "## Metadata")}
     expected_objective = {
         "execute technical spike": "execute_spike",
@@ -844,6 +854,10 @@ def technical_spike_report_errors(
         criteria, "Assessment Criteria", ("Evidence refs",), declared_evidence_ids
     ))
     options = markdown_table(text, "## Options and Tradeoffs")
+    if not options or any(not row.get(field, "").strip() for row in options for field in (
+        "Option", "Evidence", "Benefits", "Costs or risks", "When to choose",
+    )):
+        errors.append("spike_report.md requires one complete option row")
     errors.extend(_grouped_reference_errors(options, "Options and Tradeoffs", ("Evidence",)))
     errors.extend(_technical_spike_evidence_reference_errors(
         options, "Options and Tradeoffs", ("Evidence",), declared_evidence_ids
@@ -2578,12 +2592,23 @@ def self_test_reasoning_records() -> None:
         "technical_spike", "planning", "completed", "Review technical spike",
         "Accepted", "completed", "partially_solved",
     )
-    valid_spike_report = """## Metadata
+    valid_spike_report = """---
+title: Technical Spike Report
+version: test
+status: Pilot
+owner: Engineering
+last_updated: 2026-09-11T00:00:00Z
+---
+
+# Technical Spike Report
+
+## Metadata
 | Field | Value |
 | --- | --- |
 | Work item | SPIKE-1 |
 | Objective | execute_spike |
 | Primary question | Can the current boundary preserve the required data? |
+| Assessment criteria or control domains | None declared |
 | Timebox or evidence budget | 10 minutes; one repository trace and one focused test |
 | Success criterion | Request and response behavior are established |
 | Execution profile | standard |
@@ -2638,6 +2663,12 @@ Keep the current boundary pending runtime confirmation (E-001).
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    assert "must preserve the framework template frontmatter" in "\n".join(
+        technical_spike_report_errors(
+            valid_spike_report.split("---\n", 2)[2].lstrip(),
+            "Execute technical spike", "standard", "Question answered",
+        )
+    )
     assert RANGE_REFERENCE.search("SA-E-001 through SA-E-015")
     assert RANGE_REFERENCE.search("SA-C-001 through SA-C-009")
     with tempfile.TemporaryDirectory(prefix="workflow-spike-context-") as directory:
@@ -2695,9 +2726,8 @@ Keep the current boundary pending runtime confirmation (E-001).
         )
     )
     declared_criteria = valid_spike_report.replace(
-        "| Primary question | Can the current boundary preserve the required data? |",
-        "| Primary question | Can the current boundary preserve the required data? |\n"
-        "| Assessment criteria or control domains | Data minimization, Query behavior |",
+        "| Assessment criteria or control domains | None declared |",
+        "| Assessment criteria or control domains | Data minimization; Query behavior |",
     )
     assert "declared 2, assessed 0" in "\n".join(
         technical_spike_report_errors(
@@ -2705,7 +2735,7 @@ Keep the current boundary pending runtime confirmation (E-001).
         )
     )
     comma_safe_criteria = valid_spike_report.replace(
-        "| Assessment criteria or control domains | None declared / list the criteria used to judge the answer |",
+        "| Assessment criteria or control domains | None declared |",
         "| Assessment criteria or control domains | Data paths; Current access, transport and storage controls; "
         "Retention, deletion and downstream boundaries |",
     ).replace(
@@ -2725,6 +2755,29 @@ Keep the current boundary pending runtime confirmation (E-001).
     assert "Assessment Criteria names must match" in "\n".join(
         technical_spike_report_errors(
             mismatched_criteria, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    reordered_sections = valid_spike_report.replace(
+        "## Findings\nThe current boundary preserves the required data (E-001).\n"
+        "## Options and Tradeoffs",
+        "## Options and Tradeoffs",
+    ).replace(
+        "## Recommendation\n",
+        "## Findings\nThe current boundary preserves the required data (E-001).\n"
+        "## Recommendation\n",
+    )
+    assert "canonical sections must preserve" in "\n".join(
+        technical_spike_report_errors(
+            reordered_sections, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    missing_option = valid_spike_report.replace(
+        "| Keep boundary | E-001 | No change | Runtime unverified | Current scope |",
+        "| | | | | |",
+    )
+    assert "requires one complete option row" in "\n".join(
+        technical_spike_report_errors(
+            missing_option, "Execute technical spike", "standard", "Question answered"
         )
     )
     vague_direct_location = valid_spike_report.replace(

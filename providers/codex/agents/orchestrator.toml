@@ -179,6 +179,10 @@ IDs in the packet's Evidence rows. For Technical Spike, `CHK-*` belongs only
 to `Experiments and Checks`; map each check to its source-backed `E-*`
 Evidence row(s), and reject grouped or range identifiers such as
 `E-001..E-008`.
+Require the Technical Spike Documenter to publish `spike_report.md` through the
+packaged `--publish-technical-spike-report` mode before the first pre-release
+attempt. That mode is the report-shape and packet-reasoning gate. Do not accept
+a handwritten heading, table, grep, or reference check as a substitute.
 Validate every terminal envelope before fan-in. Return an invalid enum or readiness/action pair to the same worker;
 run a packaged producer-format normalizer before validation only when the selected playbook explicitly names it. That
 normalizer records its changes and may convert only equivalent representations to canonical field types without
