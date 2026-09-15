@@ -358,6 +358,8 @@ def _direct_evidence_location_is_vague(value: object) -> bool:
     lowered = re.sub(r"\s+", " ", location.lower())
     if any(marker in location for marker in ("*", "...", "…")):
         return True
+    if re.search(r"\s+\bor\s+", lowered):
+        return True
     if re.search(
         r"(?:^|[;,]\s*)(?:(?:targeted|broad|scoped)\s+)?"
         r"(?:source(?:/schema)?|schema|repository|codebase)\s+(?:search|scan)"
@@ -368,6 +370,16 @@ def _direct_evidence_location_is_vague(value: object) -> bool:
         return True
     return bool(re.fullmatch(
         r"(?:[a-z0-9_./-]+\s+){0,4}(?:sources?|search|cleanup|files?|directories?)", lowered,
+    ))
+
+
+def _direct_evidence_observation_is_vague(value: object) -> bool:
+    observation = re.sub(r"\s+", " ", normalized_metadata_value(value)).strip()
+    return bool(re.fullmatch(
+        r"current-run\s+(?:verified\s+)?(?:evidence\s+)?observation"
+        r"(?:\s+retained\s+in\s+(?:the\s+)?analytical\s+artifact)?\.?",
+        observation,
+        re.IGNORECASE,
     ))
 
 
@@ -780,6 +792,11 @@ def technical_spike_report_errors(
                 f"spike_report.md Direct Evidence {row.get('Evidence ID', 'row')} File or artifact location "
                 "must identify an exact file, document, runtime artifact, URL, or command; globs and search labels "
                 "are not sufficient"
+            )
+        if _direct_evidence_observation_is_vague(row.get("Observation", "")):
+            errors.append(
+                f"spike_report.md Direct Evidence {row.get('Evidence ID', 'row')} Observation must describe "
+                "the verified source observation; generic placeholder is not sufficient"
             )
         revision = normalized_metadata_value(row.get("Revision or version", ""))
         if (
@@ -2663,6 +2680,24 @@ Keep the current boundary pending runtime confirmation (E-001).
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    ambiguous_direct_location = valid_spike_report.replace(
+        "src/boundary.py:10 | Boundary preserves the data",
+        "src/boundary.py:10 or src/other.py:20 | Boundary preserves the data",
+    )
+    assert "File or artifact location must identify an exact" in "\n".join(
+        technical_spike_report_errors(
+            ambiguous_direct_location, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    generic_direct_observation = valid_spike_report.replace(
+        "src/boundary.py:10 | Boundary preserves the data",
+        "src/boundary.py:10 | Current-run evidence observation.",
+    )
+    assert "Observation must describe the verified source observation" in "\n".join(
+        technical_spike_report_errors(
+            generic_direct_observation, "Execute technical spike", "standard", "Question answered"
+        )
+    )
     assert "must preserve the framework template frontmatter" in "\n".join(
         technical_spike_report_errors(
             valid_spike_report.split("---\n", 2)[2].lstrip(),

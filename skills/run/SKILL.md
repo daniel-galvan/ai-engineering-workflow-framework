@@ -283,6 +283,8 @@ description: >-
    use one provider-supported multi-handle or event-driven wait with bounded backoff. Before closing a completed
    analytical worker, verify its assigned artifact still exists under the active artifact root; keep the handle open
    through pre-release when the provider may reclaim worker-owned artifact state on close.
+   A provider task path or name is not a closure handle; use only the exact value returned by the spawn primitive. If no
+   provider handle or release status is available, record `worker_runtime_release_unavailable` and keep the run blocked.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`

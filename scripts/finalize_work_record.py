@@ -96,6 +96,11 @@ TECHNICAL_SPIKE_REASONING_TABLES = (
     ),
 )
 TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF = "to be normalized"
+TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY = re.compile(
+    r"^current-run\s+(?:verified\s+)?(?:evidence\s+)?observation"
+    r"(?:\s+retained\s+in\s+(?:the\s+)?analytical\s+artifact)?\.?$",
+    re.IGNORECASE,
+)
 TECHNICAL_SPIKE_REQUIRED_WORKERS = {
     ("standard", "execute technical spike"): {"spike-context", "spike-investigation", "handoff"},
     ("deep", "execute technical spike"): {
@@ -704,6 +709,44 @@ def _normalize_prompt_identity(value: object) -> object:
     return " / ".join(parts)
 
 
+def _technical_spike_packet_evidence_quality_errors(packet: dict[str, object]) -> list[str]:
+    errors = []
+    for index, row in enumerate(packet.get("evidence", [])):
+        if not isinstance(row, dict):
+            continue
+        summary = re.sub(r"\s+", " ", str(row.get("Summary", ""))).strip()
+        if TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY.fullmatch(summary):
+            evidence_id = str(row.get("Evidence ID", "row")).strip() or f"row {index + 1}"
+            errors.append(
+                f"Technical Spike packet Evidence {evidence_id} has a generic placeholder Summary; "
+                "preserve the source-specific observation"
+            )
+    return errors
+
+
+def _technical_spike_candidate_reference_errors(packet: dict[str, object]) -> list[str]:
+    references: list[tuple[str, object]] = []
+    for index, row in enumerate(packet.get("durable_artifacts", [])):
+        if isinstance(row, dict):
+            references.append((f"packet.durable_artifacts[{index}].Path", row.get("Path", "")))
+    handoff = packet.get("handoff", {})
+    if isinstance(handoff, dict):
+        for index, value in enumerate(handoff.get("artifacts", [])):
+            references.append((f"packet.handoff.artifacts[{index}]", value))
+
+    errors = []
+    for field, value in references:
+        text = str(value).strip()
+        if text.startswith("[") and "](" in text and text.endswith(")"):
+            text = text.split("](", 1)[1][:-1]
+        if Path(text).name == "spike_report.candidate.md":
+            errors.append(
+                "Technical Spike packet must reference published spike_report.md before candidate "
+                f"publication: {field}"
+            )
+    return errors
+
+
 def _technical_spike_packet_contract_errors(
     packet: dict[str, object], *, pre_release: bool,
 ) -> list[str]:
@@ -758,6 +801,7 @@ def _technical_spike_packet_contract_errors(
                 "Technical Spike finalization packet contains incomplete reasoning rows: "
                 + "; ".join(incomplete_rows)
             )
+        errors.extend(_technical_spike_packet_evidence_quality_errors(packet))
         errors.extend(_technical_spike_reasoning_graph_errors(packet))
         for row in packet.get("worker_results", []):
             if not isinstance(row, dict):
@@ -1651,7 +1695,8 @@ def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> N
     playbook = Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
     if playbook != "technical_spike":
         raise ValueError("--publish-technical-spike-report requires a Technical Spike packet")
-    errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
+    errors = _technical_spike_candidate_reference_errors(packet)
+    errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=True))
     try:
         _validate_handoff(packet)
     except ValueError as error:
@@ -2703,6 +2748,14 @@ Runtime behavior remains unverified.
         assert "Technical Spike packet contains orphaned evidence E-999" in (
             _technical_spike_packet_contract_errors(orphan_packet, pre_release=True)
         )
+        generic_evidence_packet = json.loads(json.dumps(spike_packet))
+        generic_evidence_packet["evidence"][0]["Summary"] = (
+            "Current-run verified observation retained in analytical artifact."
+        )
+        assert any(
+            "generic placeholder Summary" in error
+            for error in _technical_spike_packet_contract_errors(generic_evidence_packet, pre_release=True)
+        )
         spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
         spike_closure = spike_root / "runtime_closure.json"
         spike_handles = [f"01a00000-0000-7000-8000-{index:012d}" for index in range(1, 5)]
@@ -2717,6 +2770,24 @@ Runtime behavior remains unverified.
         candidate = spike_root / "spike_report.candidate.md"
         candidate.write_text(valid_spike_report)
         spike_report.write_text("previous valid report\n")
+        stale_packet = json.loads(json.dumps(spike_packet))
+        for artifact in stale_packet["durable_artifacts"]:
+            if Path(str(artifact.get("Path", ""))).name == "spike_report.md":
+                artifact["Path"] = str(candidate)
+        stale_packet["handoff"]["artifacts"] = [
+            str(value).replace("spike_report.md", "spike_report.candidate.md")
+            for value in stale_packet["handoff"]["artifacts"]
+        ]
+        spike_packet_path.write_text(json.dumps(stale_packet, indent=2) + "\n")
+        try:
+            publish_technical_spike_report(spike_packet_path, candidate)
+        except ValueError as error:
+            assert "must reference published spike_report.md" in str(error)
+        else:
+            raise AssertionError("candidate references must be rejected before publication")
+        assert candidate.exists()
+        assert spike_report.read_text() == "previous valid report\n"
+        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
         publish_technical_spike_report(spike_packet_path, candidate)
         assert not candidate.exists()
         valid_spike_report = spike_report.read_text()

@@ -213,6 +213,9 @@ provider status before starting a replacement. Record coordinator-observed activ
 time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
 continuation, add only new inputs; never retroactively assign them to earlier workers. On Documenter-owned paths, use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
+The provider-returned handle is the only value valid for wait, follow-up, and close; agent paths, worker IDs, task names,
+and canonical artifact paths are labels only. If no provider handle or release status is exposed, record
+`worker_runtime_release_unavailable`, keep the run blocked, and never substitute a label.
 Join the stored handle to each ordinary worker result during fan-in; do not ask a worker to invent or repeat a handle it
 was not given. Follow a playbook-specific handle-delivery protocol only when its durable artifact contract requires it.
 Count every successful provider activation, including that Documenter. A

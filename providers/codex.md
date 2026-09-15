@@ -1,7 +1,7 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
 provider: codex
@@ -52,6 +52,10 @@ inherit the Coordinator transcript or initialize the run again.
 in the worker message before the typed assignment. This is the binding-delivery fallback when the in-task runtime does
 not expose `agent_role` or `agent_path`; observed metadata must match when present. Run the same guard before interrupt,
 close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
+
+Persist the exact provider-returned handle from each spawn. An agent path, worker ID, task name, or canonical artifact
+path is a label, not a release handle. If the runtime exposes no provider handle or release status, record
+`worker_runtime_release_unavailable`, keep the run blocked, and never substitute a label.
 
 Before worker activation, `prepare_run.py` also copies and hashes the current-run input manifest as `run_inputs.json`.
 Supplied context, decisions, and named artifacts remain authoritative; live runtime evidence is additive unless the user

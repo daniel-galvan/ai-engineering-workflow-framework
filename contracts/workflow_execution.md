@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -945,6 +945,11 @@ The Coordinator MUST store the provider-returned worker handle and pass that sto
 operations; it MUST NOT manually reproduce or edit the handle. A `not_found` result requires reconciliation against the
 original spawn result, durable artifacts, and provider status before replacement. Record every spawn
 attempt, handle discrepancy, replacement, and duplicated result.
+
+The handle is the exact provider value returned by the spawn primitive. Worker IDs, agent paths, task names, and
+canonical artifact paths are labels only and MUST NOT be substituted for a provider handle. If the provider exposes no
+handle or release-status value, record `worker_runtime_release_unavailable`, keep the run blocked, and do not claim
+runtime closure.
 
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
