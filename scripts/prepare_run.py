@@ -413,6 +413,11 @@ def _initial_packet(
             "Artifact": "Run budget", "Path": manifest["run_budget"]["path"], "Status": "Active",
             "Purpose": "End-to-end deadline and terminal budget status",
         })
+    if playbook == "technical_spike":
+        packet["durable_artifacts"].append({
+            "Artifact": "Technical Spike report", "Path": str(artifact_root / "spike_report.md"),
+            "Status": "Expected before terminal finalization", "Purpose": "Canonical Technical Spike report",
+        })
     if playbook == "feature_delivery":
         packet["durable_artifacts"].append({
             "Artifact": "Asset manifest", "Path": str(artifact_root / "asset_manifest.json"),
@@ -974,6 +979,12 @@ def self_test() -> None:
         )
         defaults_packet = json.loads(Path(defaults["finalization_packet"]).read_text())
         assert defaults_packet["playbook_selection"]["Primary goal"] == "Execute technical spike"
+        assert any(
+            row["Artifact"] == "Technical Spike report"
+            and Path(row["Path"]).name == "spike_report.md"
+            and row["Status"] == "Expected before terminal finalization"
+            for row in defaults_packet["durable_artifacts"]
+        )
         default_inputs = json.loads(
             (Path(defaults["artifact_root"]) / RUN_INPUTS_FILENAME).read_text()
         )["inputs"]

@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-11
@@ -136,6 +136,9 @@ Make `spike_report.md` self-contained with compact direct repository/document ev
 disposition, strongest evidence, unresolved decisions, exact next workflow, measured budget status, and link
 `spike_report.md` plus terminal `work_record.md`. On finalization failure, link `finalization_failure.json` instead of
 claiming terminal validation passed.
+For every Evidence ID cited outside Method and Evidence, include an exact Direct Evidence row or a source-specific
+Method and Evidence row with an exact locator or command and a substantive observation. Preserve named material
+integration participants and explicitly mark their evidence status or unknown.
 
 For `execute_spike`, keep `Review target` as `None`. An existing Spike is a comparison reference only and may be read
 after independent findings and a recommendation are established. For `review_spike`, the existing Spike is the review

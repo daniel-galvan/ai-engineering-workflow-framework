@@ -271,6 +271,11 @@ description: >-
    required identity, input, repository, worker, synchronization, and artifact
    rows; the Documenter aggregates them and does not reconstruct missing immutable
    values.
+   For Technical Spike, that assertion must include the durable artifact row for
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.md` with status
+   `Expected before terminal finalization`.
+   If it is absent, add it while the packet is still Coordinator-owned before activating `handoff`; the packaged
+   publisher also rejects an omitted declaration before pre-release.
    For Feature Delivery planning, the standard packet must contain terminal
    rows/results for `feature-context`, `impact-analysis`, `feature-design`, and
    `handoff`; add `repository-integration` when the standard conditional seam

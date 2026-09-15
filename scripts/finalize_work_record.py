@@ -793,6 +793,25 @@ def _technical_spike_candidate_reference_errors(packet: dict[str, object]) -> li
     return errors
 
 
+def _technical_spike_report_artifact_errors(packet: dict[str, object], packet_path: Path) -> list[str]:
+    expected = (packet_path.parent / "spike_report.md").resolve()
+    for row in packet.get("durable_artifacts", []):
+        if not isinstance(row, dict):
+            continue
+        value = str(row.get("Path", "")).strip()
+        if value.startswith("[") and "](" in value and value.endswith(")"):
+            value = value.split("](", 1)[1][:-1]
+        if value:
+            path = Path(value)
+            if not path.is_absolute():
+                path = packet_path.parent / path
+            if path.resolve() == expected:
+                return []
+    return [
+        "Technical Spike packet must predeclare durable artifact spike_report.md before report publication"
+    ]
+
+
 def _technical_spike_packet_contract_errors(
     packet: dict[str, object], *, pre_release: bool,
 ) -> list[str]:
@@ -1038,6 +1057,11 @@ def _normalize_packet(
                 artifact_name = re.sub(r"[_-]+", " ", str(row.get("Artifact", "")).lower())
                 if artifact_name == "run budget":
                     row["Status"] = budget_status
+        if playbook == "technical_spike" and packet_path is not None:
+            report = (packet_path.parent / "spike_report.md").resolve()
+            for row in normalized_artifacts:
+                if Path(str(row.get("Path", ""))).name == "spike_report.md" and report.is_file():
+                    row["Status"] = "Published"
         packet["durable_artifacts"] = normalized_artifacts
     evidence = packet.get("evidence")
     if isinstance(evidence, list):
@@ -1741,7 +1765,8 @@ def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> N
     playbook = Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
     if playbook != "technical_spike":
         raise ValueError("--publish-technical-spike-report requires a Technical Spike packet")
-    errors = _technical_spike_candidate_reference_errors(packet)
+    errors = _technical_spike_report_artifact_errors(packet, packet_path)
+    errors.extend(_technical_spike_candidate_reference_errors(packet))
     errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=True))
     try:
         _validate_handoff(packet)
@@ -2527,6 +2552,11 @@ last_updated: 2026-09-11T00:00:00Z
 ## Scope and Non-goals
 Review only; no implementation plan.
 
+## Integration Participants and Boundaries
+| Participant or technology | Role or boundary | Evidence refs | Evidence status or unknown |
+| --- | --- | --- | --- |
+| Not applicable | Not applicable | Not applicable | No material integration participants |
+
 ## Method and Evidence
 | Evidence ID | Method or source | Observation | Status | Limitation |
 | --- | --- | --- | --- | --- |
@@ -2830,6 +2860,20 @@ Runtime behavior remains unverified.
         candidate = spike_root / "spike_report.candidate.md"
         candidate.write_text(valid_spike_report)
         spike_report.write_text("previous valid report\n")
+        unregistered_packet = json.loads(json.dumps(spike_packet))
+        unregistered_packet["durable_artifacts"] = [
+            row for row in unregistered_packet["durable_artifacts"]
+            if Path(str(row.get("Path", ""))).name != "spike_report.md"
+        ]
+        spike_packet_path.write_text(json.dumps(unregistered_packet, indent=2) + "\n")
+        try:
+            publish_technical_spike_report(spike_packet_path, candidate)
+        except ValueError as error:
+            assert "must predeclare durable artifact spike_report.md" in str(error)
+        else:
+            raise AssertionError("the report must be predeclared before publication")
+        assert candidate.exists()
+        assert spike_report.read_text() == "previous valid report\n"
         stale_packet = json.loads(json.dumps(spike_packet))
         for artifact in stale_packet["durable_artifacts"]:
             if Path(str(artifact.get("Path", ""))).name == "spike_report.md":

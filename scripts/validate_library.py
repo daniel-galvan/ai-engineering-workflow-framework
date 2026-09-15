@@ -51,6 +51,14 @@ RANGE_REFERENCE = re.compile(
     re.IGNORECASE,
 )
 URL_REFERENCE = re.compile(r"https?://[^\s|`<>]+", re.IGNORECASE)
+TECHNICAL_SPIKE_SOURCE_LOCATOR = re.compile(
+    r"https?://[^\s|`<>]+"
+    r"|(?:^|[\s`(])(?:/|\./|[A-Za-z0-9_.-]+/)[^\s|`<>]+"
+    r"|(?<![-\w])[A-Z][A-Z0-9_]+-\d+\b"
+    r"|\b[0-9a-f]{7,40}\b"
+    r"|`[^`]+`",
+    re.IGNORECASE,
+)
 EXTERNAL_DOCUMENT_URL = re.compile(
     r"https?://[^\s|`<>]*(?:confluence|/wiki(?:/|$)|notion|(?:drive|docs)\.google|/documents?(?:/|$))[^\s|`<>]*",
     re.IGNORECASE,
@@ -379,8 +387,9 @@ def _direct_evidence_location_is_vague(value: object) -> bool:
 def _direct_evidence_observation_is_vague(value: object) -> bool:
     observation = re.sub(r"\s+", " ", normalized_metadata_value(value)).strip()
     return bool(re.fullmatch(
-        r"current-run\s+(?:verified\s+)?(?:evidence\s+)?observation"
-        r"(?:\s+retained\s+in\s+(?:the\s+)?analytical\s+artifact)?\.?",
+        r"(?:current-run\s+)?(?:source-backed\s+)?(?:verified\s+)?"
+        r"(?:evidence\s+)?observation"
+        r"(?:\s+retained(?:\s+in\s+(?:the\s+)?analytical\s+artifact)?)?\.?",
         observation,
         re.IGNORECASE,
     ))
@@ -486,6 +495,69 @@ def _technical_spike_check_evidence_errors(
     return errors
 
 
+def _technical_spike_report_evidence_traceability_errors(
+    evidence_rows: list[dict[str, str]], direct_evidence_rows: list[dict[str, str]],
+    decision_context: list[dict[str, str]], criteria: list[dict[str, str]],
+    integration: list[dict[str, str]], options: list[dict[str, str]],
+    checks: list[dict[str, str]], text: str,
+) -> list[str]:
+    referenced: set[str] = set()
+
+    def collect(rows: list[dict[str, str]], fields: tuple[str, ...]) -> None:
+        for row in rows:
+            for field in fields:
+                referenced.update(
+                    reference for reference in REFERENCE_ID.findall(row.get(field, ""))
+                    if reference.upper().startswith("E-")
+                )
+
+    collect(decision_context, ("Evidence refs",))
+    collect(criteria, ("Evidence refs",))
+    collect(integration, ("Evidence refs",))
+    collect(options, ("Evidence",))
+    collect(checks, (
+        "Hypothesis or review criterion", "Observable seam", "Command or method",
+        "Expected discriminating outcomes", "Actual result", "Disposition impact",
+    ))
+    for section in (
+        "## Findings", "## Recommendation", "## Remaining Unknowns and Follow-up", "## Reference Comparison",
+    ):
+        match = re.search(rf"^{re.escape(section)}\s*\n(.*?)(?=^##\s|\Z)", text, re.MULTILINE | re.DOTALL)
+        if match:
+            referenced.update(
+                reference for reference in REFERENCE_ID.findall(match.group(1))
+                if reference.upper().startswith("E-")
+            )
+
+    direct_ids = {
+        row.get("Evidence ID", "").strip() for row in direct_evidence_rows
+        if row.get("Evidence ID", "").strip()
+    }
+    evidence_by_id = {
+        row.get("Evidence ID", "").strip(): row for row in evidence_rows
+        if row.get("Evidence ID", "").strip()
+    }
+    errors = []
+    for evidence_id in sorted(referenced):
+        if evidence_id in direct_ids:
+            continue
+        row = evidence_by_id.get(evidence_id)
+        if not row:
+            continue
+        source = row.get("Method or source", "")
+        if not TECHNICAL_SPIKE_SOURCE_LOCATOR.search(source):
+            errors.append(
+                f"spike_report.md Evidence {evidence_id} Method or source must include an exact source "
+                "locator or direct-evidence row"
+            )
+        if _direct_evidence_observation_is_vague(row.get("Observation", "")):
+            errors.append(
+                f"spike_report.md Evidence {evidence_id} Observation must describe the source-backed "
+                "observation; generic placeholder is not sufficient"
+            )
+    return errors
+
+
 def _manifest_declares_reference(reference: str, declared_text: str) -> bool:
     normalized = reference.rstrip(".,;:)]}").lower()
     if normalized in declared_text:
@@ -576,7 +648,12 @@ def current_artifact_errors(
             errors.append(f"{record_path}: durable artifact {artifact} escapes the current artifact root")
         elif target.parent != root:
             errors.append(f"{record_path}: durable artifact {artifact} must be a current-run root file, not an archive")
-        if require_files and not target.is_file() and not (
+        expected_before_terminal = (
+            artifact.lower() == "technical spike report"
+            and target.name == "spike_report.md"
+            and row.get("Status", "").strip().lower() == "expected before terminal finalization"
+        )
+        if require_files and not target.is_file() and not expected_before_terminal and not (
             target.name == "work_record.md" and target.parent == record_path.parent
         ):
             errors.append(f"{record_path}: durable artifact {artifact} does not exist: {target}")
@@ -718,6 +795,7 @@ def technical_spike_report_errors(
     required_headings = (
         "## Metadata",
         "## Scope and Non-goals",
+        "## Integration Participants and Boundaries",
         "## Method and Evidence",
         "## Direct Evidence",
         "## Decision Context",
@@ -787,6 +865,11 @@ def technical_spike_report_errors(
         "Status",
     )):
         errors.append("spike_report.md requires one complete direct-evidence row")
+    integration = markdown_table(text, "## Integration Participants and Boundaries")
+    if not integration or any(not row.get(field, "").strip() for row in integration for field in (
+        "Participant or technology", "Role or boundary", "Evidence refs", "Evidence status or unknown",
+    )):
+        errors.append("spike_report.md requires one complete integration-participant row")
     errors.extend(_grouped_reference_errors(evidence, "Method and Evidence", ("Evidence ID",)))
     errors.extend(_grouped_reference_errors(direct_evidence, "Direct Evidence", ("Evidence ID",)))
     for row in direct_evidence:
@@ -873,6 +956,10 @@ def technical_spike_report_errors(
     errors.extend(_technical_spike_evidence_reference_errors(
         criteria, "Assessment Criteria", ("Evidence refs",), declared_evidence_ids
     ))
+    errors.extend(_grouped_reference_errors(integration, "Integration Participants and Boundaries", ("Evidence refs",)))
+    errors.extend(_technical_spike_evidence_reference_errors(
+        integration, "Integration Participants and Boundaries", ("Evidence refs",), declared_evidence_ids
+    ))
     options = markdown_table(text, "## Options and Tradeoffs")
     if not options or any(not row.get(field, "").strip() for row in options for field in (
         "Option", "Evidence", "Benefits", "Costs or risks", "When to choose",
@@ -930,6 +1017,9 @@ def technical_spike_report_errors(
             declared_evidence_ids,
             require_evidence=section in {"## Findings", "## Recommendation"},
         ))
+    errors.extend(_technical_spike_report_evidence_traceability_errors(
+        evidence, direct_evidence, decision_context, criteria, integration, options, checks, text,
+    ))
     comparison = markdown_table(text, "## Reference Comparison")
     if not comparison or any(not row.get(field, "").strip() for row in comparison for field in (
         "Reference", "Agreement", "Difference or omission", "Impact on recommendation",
@@ -2636,6 +2726,10 @@ last_updated: 2026-09-11T00:00:00Z
 | Comparison reference | Not applicable |
 ## Scope and Non-goals
 Bounded path only.
+## Integration Participants and Boundaries
+| Participant or technology | Role or boundary | Evidence refs | Evidence status or unknown |
+| --- | --- | --- | --- |
+| Not applicable | Not applicable | Not applicable | No material integration participants |
 ## Method and Evidence
 | Evidence ID | Method or source | Observation | Status | Limitation |
 | --- | --- | --- | --- | --- |
@@ -2683,6 +2777,24 @@ Keep the current boundary pending runtime confirmation (E-001).
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    unanchored_method = valid_spike_report.replace(
+        "| E-001 | Execution repository | abcdef1 | src/boundary.py:10 | Boundary preserves the data | Verified |",
+        "| E-999 | Execution repository | abcdef1 | src/boundary.py:10 | Boundary preserves the data | Verified |",
+    )
+    assert "Evidence E-001 Method or source must include an exact source locator" in "\n".join(
+        technical_spike_report_errors(
+            unanchored_method, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    generic_method_observation = unanchored_method.replace(
+        "| E-001 | Repository trace | Boundary preserves the data | Verified | Runtime not observed |",
+        "| E-001 | src/boundary.py:10 @ abcdef1 | Source-backed observation retained. | Verified | Runtime not observed |",
+    )
+    assert "Evidence E-001 Observation must describe the source-backed observation" in "\n".join(
+        technical_spike_report_errors(
+            generic_method_observation, "Execute technical spike", "standard", "Question answered"
+        )
+    )
     ambiguous_direct_location = valid_spike_report.replace(
         "src/boundary.py:10 | Boundary preserves the data",
         "src/boundary.py:10 or src/other.py:20 | Boundary preserves the data",
@@ -3921,6 +4033,7 @@ for text, label in (
         "Prompt-completeness gate",
         "comparison reference",
         "source of truth",
+        "source-specific",
     ):
         if phrase not in text:
             fail(f"{label} is missing Technical Spike control: {phrase}")
@@ -3944,6 +4057,7 @@ for phrase in (
         fail(f"templates/technical_spike_run_prompt.md is missing prompt-completeness control: {phrase}")
 for phrase in (
     "Timebox or evidence budget",
+    "Integration Participants and Boundaries",
     "Direct Evidence",
     "Decision Context",
     "Assessment Criteria",

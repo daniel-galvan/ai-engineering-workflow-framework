@@ -1,13 +1,13 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.7
+version: 0.5.8
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
 exercise_scope: standard + planning; deep + planning
 default_timebox_minutes: 35
 default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
-validation_summary: deep review failed; corrective controls regression-covered; live rerun pending
+validation_summary: V28 terminal rerun passed; evidence and artifact-predeclaration hardening added; live rerun pending
 owner: Engineering
 last_updated: 2026-09-11
 depends_on:
@@ -186,6 +186,10 @@ semicolons to separate criteria in Metadata; commas inside criterion or control-
 and must not turn follow-up work into an implementation plan. Direct Evidence must carry exact revisions or versions,
 not only `current`, `latest`, `HEAD`, or working-tree labels; each option must cite exact Evidence IDs rather than a
 grouped or range reference.
+Every Evidence ID cited by a decision, assessment, check, finding, option, or recommendation must either appear in
+Direct Evidence or have a source-specific Method and Evidence row with an exact locator or command and a substantive
+observation; generic artifact placeholders are not traceability. Preserve named material integration participants or
+technologies in the canonical report, with their evidence status or explicit unknown.
 The finalization packet must also contain populated Evidence, Claims, Decision Log, and Action Log rows with exact
 references; a self-contained `spike_report.md` does not replace those canonical packet fields. Use comma-separated exact
 E-* Evidence IDs in checks, findings, options, and handoff text; CHK-* labels may identify checks but never replace
@@ -194,6 +198,9 @@ recommendation must cite at least one exact Evidence ID. Keep verified source ob
 architectural conclusions, and list every directly supporting Evidence ID for each option. If Standard execution cannot
 establish an infrastructure or control domain, name the unsearched surface and record the targeted follow-up or
 Deep-profile requirement.
+Before activating `handoff`, the prepared packet must contain the durable artifact row for
+`<execution-repository>/.thoughts/<WORK-ITEM-ID>/spike_report.md` with status `Expected before terminal finalization`.
+The packaged publisher rejects a missing declaration before pre-release finalization.
 Before returning, the Documenter must run the packaged
 `finalize_work_record.py --packet <finalization-packet> --publish-technical-spike-report <candidate>` command. It
 validates the complete packet reasoning graph and canonical report structure, then atomically publishes

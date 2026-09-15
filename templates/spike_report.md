@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.5.4
+version: 0.5.5
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -41,11 +41,26 @@ criterion or domain name are content and must be preserved.
 
 State what was investigated or reviewed and what was intentionally excluded.
 
+## Integration Participants and Boundaries
+
+Record material integration participants or technologies named by supplied context or current evidence. State whether
+the path or control evidence is verified, supplied but unverified, or unknown. Use `Not applicable` when none are
+material.
+
+| Participant or technology | Role or boundary | Evidence refs | Evidence status or unknown |
+| --- | --- | --- | --- |
+| | | | |
+
 ## Method and Evidence
 
 | Evidence ID | Method or source | Observation | Status | Limitation |
 | --- | --- | --- | --- | --- |
 | | | | Verified / Inferred / Contradicted / Unknown | |
+
+For every Evidence ID cited by a decision, assessment, check, finding, option, or recommendation, either include an
+exact direct-evidence row below or make this row source-specific: include an exact source locator or command and the
+actual source-backed observation. `Current-run artifact`, `analytical artifact`, and `observation retained` are not
+traceability.
 
 ## Direct Evidence
 
