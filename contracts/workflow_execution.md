@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -1269,6 +1269,8 @@ preflight-resolved packaged framework root for the entire run; if it disappears 
 `plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and
 recording provider closure in `runtime_closure.json`, finalization passes only when the finalizer exits zero and its
 first output line is exactly `Workflow-framework validation: passed`; the remaining output is the canonical handoff.
+For a completed Technical Spike, the finalizer also rejects a released closure receipt when it lists fewer unique
+provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise

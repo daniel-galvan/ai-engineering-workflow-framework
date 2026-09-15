@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.6
+version: 0.5.7
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -177,6 +177,9 @@ The report must preserve the question, declared assessment criteria or control d
 method, direct source evidence, experiments, findings, options, recommendation, limitations, remaining unknowns, and
 exact disposition. It must also preserve any Feature Delivery handoff and, for `execute_spike`, the independent
 comparison.
+When supplied flow or context artifacts name material integration participants or technologies, preserve those names
+in evidence or limitations; when a path or control is not established, say so explicitly instead of inferring or
+silently collapsing it into an unnamed adjacent participant.
 For every declared criterion, record evidence, assessment, gap or limitation, and the next evidence or decision. Use
 semicolons to separate criteria in Metadata; commas inside criterion or control-domain names are content. Use
 `Not applicable` when no criteria were declared. It must be usable without opening every intermediate worker artifact

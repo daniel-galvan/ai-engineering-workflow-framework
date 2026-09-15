@@ -70,6 +70,9 @@ STALE_FINALIZER_REFERENCE = (
     r"pending(?:\s+(?:packaged\s+|Coordinator\s+)?finalizer)"
     r"|(?:packaged\s+|Coordinator\s+)?finalizer\s+pending"
 )
+NO_ACTIVE_HANDLES = re.compile(
+    r"^(?:none|0)(?:\s+(?:observed|confirmed) after close request)?$", re.IGNORECASE
+)
 MODEL_BASELINE_ID = "codex-role-policy-v20260827032839"
 POLICY_EFFORTS = {
     "Light": "low",
@@ -1687,7 +1690,7 @@ def validate_sentry_artifacts(root: Path) -> None:
         released = bool(closure_rows) and all(
             isinstance(row, dict)
             and str(row.get("Runtime status", "")).strip().lower() == "released"
-            and str(row.get("Remaining active handles", "")).strip().lower() in {"none", "0"}
+            and NO_ACTIVE_HANDLES.fullmatch(str(row.get("Remaining active handles", "")).strip())
             for row in closure_rows
         )
         terminal_packet = (
@@ -2070,7 +2073,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 f"{path}: runtime closure Receipt owner received {receipt_owner!r}; expected 'Coordinator'"
             )
         if row.get("Runtime status", "").strip().lower() == "released":
-            if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
+            if not NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip()):
                 fail(f"{path}: released runtime closure must have no active handles")
             closure_evidence = row.get("Closure evidence or blocker", "").strip().lower()
             if "provider" not in closure_evidence or not any(word in closure_evidence for word in ("release", "close")):
@@ -2096,7 +2099,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 )
     runtime_released = bool(table_rows["# Worker Runtime Closure"]) and all(
         row.get("Runtime status", "").strip().lower() == "released"
-        and row.get("Remaining active handles", "").strip().lower() in {"none", "0"}
+        and NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip())
         for row in table_rows["# Worker Runtime Closure"]
     )
     if runtime_released:
@@ -2133,7 +2136,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         for row in table_rows["# Worker Runtime Closure"]:
             if row.get("Runtime status", "").strip().lower() != "released":
                 fail(f"{path}: completed workflow requires released runtime closure")
-            if row.get("Remaining active handles", "").strip().lower() not in {"none", "0"}:
+            if not NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip()):
                 fail(f"{path}: completed workflow requires zero active handles")
     worker_rows = table_rows["# Worker Execution Ledger"]
     result_rows = table_rows["# Worker Result Summary"]
@@ -3358,6 +3361,13 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         def assert_invalid(record: str, expected: str) -> None:
             output = validation_output(record)
             assert expected in output, output
+
+        path.write_text(valid.replace("| Released | None |", "| Released | None observed after close request |"))
+        validate_work_record(path, require_terminal=True)
+        assert_invalid(
+            valid.replace("| Released | None |", "| Released | None observed but not checked |"),
+            "released runtime closure must have no active handles",
+        )
 
         assert_invalid(
             valid.replace(

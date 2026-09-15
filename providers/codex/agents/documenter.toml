@@ -87,6 +87,10 @@ Keep `handoff.established`, `handoff.best_current_explanations`, and
 `handoff.artifacts` as arrays, even when they contain one item. A finalizer
 error is not a completion result; return the exact error and wait for the
 Coordinator's correction request.
+For a reasoning-graph error, connect a retained row through its required parent
+reference; if removing a row, remove its report references too. After each
+failed packaged command, inspect the aggregated error once and do not rerun an
+unchanged packet.
 Treat the Coordinator's finalized packet as immutable input. Format and persist
 its selected state, readiness, outcomes, worker results, and artifact actions;
 do not choose, normalize, upgrade, downgrade, or reinterpret them. If the packet

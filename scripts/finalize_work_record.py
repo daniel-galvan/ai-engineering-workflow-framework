@@ -101,6 +101,9 @@ TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY = re.compile(
     r"(?:\s+retained\s+in\s+(?:the\s+)?analytical\s+artifact)?\.?$",
     re.IGNORECASE,
 )
+NO_ACTIVE_HANDLES = re.compile(
+    r"^(?:none|0)(?:\s+(?:observed|confirmed) after close request)?$", re.IGNORECASE
+)
 TECHNICAL_SPIKE_REQUIRED_WORKERS = {
     ("standard", "execute technical spike"): {"spike-context", "spike-investigation", "handoff"},
     ("deep", "execute technical spike"): {
@@ -298,8 +301,51 @@ def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[s
         ("decision", records["decisions"], decisions_used),
     ):
         for orphan in sorted(set(rows) - used):
-            errors.append(f"Technical Spike packet contains orphaned {label} {orphan}")
+            parent = {
+                "evidence": "a claim's Evidence refs",
+                "claim": "a decision's Claim refs",
+                "decision": "an action's Decision ref",
+            }[label]
+            errors.append(
+                f"Technical Spike packet contains orphaned {label} {orphan}; add {orphan} to {parent} "
+                f"or remove the {label} row and all report references"
+            )
     return errors
+
+
+def _technical_spike_runtime_closure_errors(
+    packet: dict[str, object], closure: list[dict[str, object]],
+) -> list[str]:
+    identity = packet.get("identity", {})
+    if not isinstance(identity, dict):
+        return []
+    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
+    if playbook != "technical_spike" or str(identity.get("State", "")).strip().lower() != "completed":
+        return []
+    if _technical_spike_missing_workers(packet):
+        return []
+    completed_workers = {
+        str(row.get("Worker", "")).strip().lower()
+        for row in packet.get("worker_results", [])
+        if isinstance(row, dict) and str(row.get("Outcome", "")).strip().lower() == "complete"
+    }
+    if not completed_workers or not _runtime_released(closure):
+        return []
+    # ponytail: closure has no worker-to-handle mapping; count is the minimum gate until that schema exists.
+    released_handles = {
+        handle.lower()
+        for row in closure
+        if isinstance(row, dict)
+        for handle in UUID_PATTERN.findall(str(row.get("Completed worker handles", "")))
+    }
+    if len(released_handles) < len(completed_workers):
+        workers = ", ".join(sorted(completed_workers))
+        return [
+            "Technical Spike runtime closure is incomplete: released "
+            f"provider handles released={len(released_handles)}; completed workers={len(completed_workers)} "
+            f"({workers}); include every completed worker handle in runtime_closure.json"
+        ]
+    return []
 
 
 def _append_unique_artifact(rows: list[dict[str, object]], row: dict[str, object]) -> None:
@@ -1334,7 +1380,7 @@ def _section(title: str, body: str) -> str:
 def _runtime_released(rows: list[dict[str, object]]) -> bool:
     return bool(rows) and all(
         str(row.get("Runtime status", "")).strip().lower() == "released"
-        and str(row.get("Remaining active handles", "")).strip().lower() in {"none", "0"}
+        and NO_ACTIVE_HANDLES.fullmatch(str(row.get("Remaining active handles", "")).strip())
         for row in rows
     )
 
@@ -1770,6 +1816,8 @@ def finalize(
             _validate_handoff(packet)
         except ValueError as error:
             errors.append(str(error))
+        if not pre_release:
+            errors.extend(_technical_spike_runtime_closure_errors(packet, closure["runtime_closure"]))
         try:
             _reconcile_runtime_state(packet, closure["runtime_closure"])
         except (KeyError, TypeError, ValueError) as error:
@@ -2036,11 +2084,7 @@ def prepare_analytical_failure(
     if closure_path.is_file():
         existing_closure = json.loads(closure_path.read_text())
         rows = _material_rows(existing_closure.get("runtime_closure"), "Run or stage")
-        if rows and all(
-            str(row.get("Runtime status", "")).strip().lower() == "released"
-            and str(row.get("Remaining active handles", "")).strip().lower() in {"none", "0"}
-            for row in rows
-        ):
+        if rows and _runtime_released(rows):
             closure = existing_closure
     packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     closure_path.write_text(json.dumps(closure, indent=2) + "\n")
@@ -2745,8 +2789,10 @@ Runtime behavior remains unverified.
             "Evidence ID": "E-999", "Source": "orphaned source", "Summary": "Not used",
             "Confidence": "High", "Uncertainty": "None", "Status": "Verified",
         })
-        assert "Technical Spike packet contains orphaned evidence E-999" in (
-            _technical_spike_packet_contract_errors(orphan_packet, pre_release=True)
+        orphan_errors = _technical_spike_packet_contract_errors(orphan_packet, pre_release=True)
+        assert any(
+            "orphaned evidence E-999; add E-999 to a claim's Evidence refs" in error
+            for error in orphan_errors
         )
         generic_evidence_packet = json.loads(json.dumps(spike_packet))
         generic_evidence_packet["evidence"][0]["Summary"] = (
@@ -2765,6 +2811,20 @@ Runtime behavior remains unverified.
             "Remaining active handles": "None",
             "Closure evidence or blocker": f"Provider release confirmed. Completed handles: {', '.join(spike_handles)}.",
         }]}, indent=2) + "\n")
+        completed_spike_packet = json.loads(json.dumps(spike_packet))
+        completed_spike_packet["identity"]["State"] = "completed"
+        incomplete_closure_errors = _technical_spike_runtime_closure_errors(
+            completed_spike_packet,
+            [{
+                "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
+                "Completed worker handles": spike_handles[0], "Runtime status": "Released",
+                "Remaining active handles": "None", "Closure evidence or blocker": "Provider release confirmed.",
+            }],
+        )
+        assert any(
+            "provider handles released=1; completed workers=4" in error
+            for error in incomplete_closure_errors
+        )
         spike_record = spike_root / "work_record.md"
         valid_spike_report = spike_report.read_text()
         candidate = spike_root / "spike_report.candidate.md"
