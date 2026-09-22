@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.5.5
+version: 0.5.7
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -40,6 +40,13 @@ criterion or domain name are content and must be preserved.
 ## Scope and Non-goals
 
 State what was investigated or reviewed and what was intentionally excluded.
+
+## Plain-Language Summary
+
+Explain the result before the detailed evidence. Use as many short sentences as needed to say what was checked, what
+the evidence shows, what is still unknown, and what should happen next. Define an acronym or technical term the first
+time it appears. Keep exact IDs, revisions, commands, and file paths in the detailed sections; explain their meaning
+here in everyday words.
 
 ## Integration Participants and Boundaries
 

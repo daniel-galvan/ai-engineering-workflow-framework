@@ -128,8 +128,10 @@ description: >-
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
    Preparation also writes exact role envelopes to the direct-child `worker_activation_packets.json` bundle and records
-   its path and hash in `role_bindings.json`. Before each spawn, run the manifest's `worker_runtime_guard` with
-   `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`. Start the
+   its path and hash in `role_bindings.json`. Before each spawn, run the manifest's `worker_runtime_guard` in activation
+   mode with `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`.
+   Use one guard invocation per mode; never combine activation arguments with `--transition`, `--provider-status`, or
+   `--trace`. Start the
    worker message with the returned `activation_packet` envelope's literal
    `Coordinator initialization: complete` prefix, include the complete envelope unchanged, then append only the typed
    assignment and current-run input manifest. When spawn metadata does not expose `agent_role` or `agent_path`, this
@@ -222,8 +224,10 @@ description: >-
    conditional worker and let the finalizer record its `not_applicable` decision. Provider-role aliases for the two
    implicit workers are accepted only when their handles match the implicit Evidence/Fix results. Pass
    `--provider-release-confirmed` only after every activated analytical release succeeds.
-   Before any `interrupt_agent`, `close_agent`, or replacement, run the manifest's `worker_runtime_guard` with the
-   intended `--transition` and latest provider-observed `--provider-status`. A blocked guard result is authoritative:
+   Before any `interrupt_agent`, `close_agent`, or replacement, run the manifest's `worker_runtime_guard` in transition
+   mode with the intended `--transition` and latest provider-observed `--provider-status`. Use one guard invocation per
+   mode; never combine transition arguments with activation arguments or `--trace`. A blocked guard result is
+   authoritative:
    leave a `pending_init`, `running`, `in_progress`, or `awaiting_dependency` worker active and wait again or leave the
    run open. Never interrupt a live worker to satisfy an elapsed-time target.
    That deterministic finalizer copies the exact Fix Design disposition and, according to the validated readiness/action
@@ -325,5 +329,7 @@ description: >-
    `What we established:`, optional
    `Best current explanations:`, `Next action:` with `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`,
    `Execution:`, and `Provenance:`. Copy artifact links exactly from the finalized packet. Omit Run Metrics and Worker
-   Timing for normal runs. The plugin does not override any canonical contract, playbook, template, role, skill, or
+   Timing for normal runs. Use easy-to-read wording in the report and handoff: short sentences, common words, and a
+   simple explanation next to each necessary technical term. Technical Spike reports must include the required
+   `Plain-Language Summary`. The plugin does not override any canonical contract, playbook, template, role, skill, or
    provider policy.

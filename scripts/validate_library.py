@@ -786,6 +786,7 @@ def technical_spike_report_errors(
     text: str, primary_goal: str, profile: str, workflow_result: str,
     expected_budget_status: str | None = None,
     input_manifest_path: Path | None = None,
+    expected_revisions: tuple[str, ...] = (),
 ) -> list[str]:
     errors = []
     if not re.match(r"\A---\s*\n.*?\n---\s*\n", text, re.DOTALL):
@@ -795,6 +796,7 @@ def technical_spike_report_errors(
     required_headings = (
         "## Metadata",
         "## Scope and Non-goals",
+        "## Plain-Language Summary",
         "## Integration Participants and Boundaries",
         "## Method and Evidence",
         "## Direct Evidence",
@@ -818,6 +820,20 @@ def technical_spike_report_errors(
     if len(heading_positions) == len(required_headings) and heading_positions != sorted(heading_positions):
         errors.append("spike_report.md canonical sections must preserve the framework template order")
     metadata = {row.get("Field", ""): row.get("Value", "") for row in markdown_table(text, "## Metadata")}
+    plain_summary = re.search(
+        r"^## Plain-Language Summary\s*\n(.*?)(?=^## |\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not plain_summary or not plain_summary.group(1).strip():
+        errors.append("spike_report.md Plain-Language Summary must contain a readable explanation")
+    declared_revisions = normalized_metadata_value(metadata.get("Repositories and revisions", ""))
+    for revision in expected_revisions:
+        if revision and revision not in declared_revisions:
+            errors.append(
+                "spike_report.md Metadata Repositories and revisions must include the prepared execution "
+                f"repository revision {revision}"
+            )
     expected_objective = {
         "execute technical spike": "execute_spike",
         "review technical spike": "review_spike",
@@ -2508,6 +2524,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     if identity["State"].strip().lower() == "completed" and re.search(
         r"\b(?:state(?:\s*:\s*|\s+)(?:remains\s+)?handoff|"
         r"workflow remains\s+(?:in_progress|handoff)|"
+        r"workflow\s+outcome\s*:\s*(?:incomplete|in_progress|handoff|pending|blocked|unknown)|"
         rf"{STALE_FINALIZER_REFERENCE}|"
         r"runtime closure\s+(?:is\s+)?(?:pending|unknown|active|in progress|not released))\b",
         execution_text,
@@ -2722,10 +2739,16 @@ last_updated: 2026-09-11T00:00:00Z
 | Timebox or evidence budget | 10 minutes; one repository trace and one focused test |
 | Success criterion | Request and response behavior are established |
 | Execution profile | standard |
+| Repositories and revisions | abcdef1234567890abcdef1234567890abcdef12 |
 | Review target | Not applicable |
 | Comparison reference | Not applicable |
 ## Scope and Non-goals
 Bounded path only.
+
+## Plain-Language Summary
+The check shows that the boundary keeps the data. Runtime behavior was not checked. The next step is to confirm the
+same result after deployment.
+
 ## Integration Participants and Boundaries
 | Participant or technology | Role or boundary | Evidence refs | Evidence status or unknown |
 | --- | --- | --- | --- |
@@ -2777,6 +2800,12 @@ Keep the current boundary pending runtime confirmation (E-001).
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    assert "prepared execution repository revision" in "\n".join(
+        technical_spike_report_errors(
+            valid_spike_report, "Execute technical spike", "standard", "Question answered",
+            expected_revisions=("f" * 40,),
+        )
+    )
     unanchored_method = valid_spike_report.replace(
         "| E-001 | Execution repository | abcdef1 | src/boundary.py:10 | Boundary preserves the data | Verified |",
         "| E-999 | Execution repository | abcdef1 | src/boundary.py:10 | Boundary preserves the data | Verified |",
@@ -3491,6 +3520,13 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         assert_invalid(
             valid.replace(
                 "Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.",
+                "Execution: standard/remediation; Workflow outcome: incomplete; runtime released.",
+            ),
+            "completed handoff Execution contains stale transitional state",
+        )
+        assert_invalid(
+            valid.replace(
+                "Execution: standard/remediation; validation passed; workers complete; runtime released; source or external changes none.",
                 "Execution: standard/remediation; finalizer pending; runtime released.",
             ),
             "completed handoff Execution contains stale transitional state",
@@ -4034,6 +4070,7 @@ for text, label in (
         "comparison reference",
         "source of truth",
         "source-specific",
+        "Plain-Language Summary",
     ):
         if phrase not in text:
             fail(f"{label} is missing Technical Spike control: {phrase}")
@@ -4066,6 +4103,7 @@ for phrase in (
     "Comparison reference",
     "Reference Comparison",
     "Feature Delivery handoff",
+    "Plain-Language Summary",
 ):
     if phrase not in technical_spike_report:
         fail(f"templates/spike_report.md is missing Technical Spike report field: {phrase}")
@@ -4545,6 +4583,7 @@ for phrase in (
     "one provider handle through finalization",
     "Normal runs MUST NOT include `Run metrics` or `Worker timing`",
     "Provenance: plugin <package and version, or Not applicable>",
+    "Use easy-to-read wording",
 ):
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing runtime integrity rule: {phrase}")
@@ -5189,6 +5228,7 @@ technical_spike_profile = None
 technical_spike_workflow_result = None
 technical_spike_budget_status = None
 technical_spike_input_manifest = None
+technical_spike_expected_revisions: list[str] = []
 if "--sentry-artifacts" in raw_arguments:
     index = raw_arguments.index("--sentry-artifacts")
     if index + 1 >= len(raw_arguments):
@@ -5227,6 +5267,12 @@ for flag, name in (
         else:
             technical_spike_input_manifest = Path(value).resolve()
         del raw_arguments[index:index + 2]
+while "--technical-spike-expected-revision" in raw_arguments:
+    index = raw_arguments.index("--technical-spike-expected-revision")
+    if index + 1 >= len(raw_arguments):
+        fail("--technical-spike-expected-revision requires one value")
+    technical_spike_expected_revisions.append(raw_arguments[index + 1])
+    del raw_arguments[index:index + 2]
 arguments = [value for value in raw_arguments if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}]
 if emit_handoff and len(arguments) != 1:
     fail("--emit-handoff requires exactly one terminal work record")
@@ -5253,6 +5299,7 @@ if technical_spike_report:
         technical_spike_workflow_result,
         technical_spike_budget_status,
         technical_spike_input_manifest,
+        tuple(technical_spike_expected_revisions),
     )
     if report_errors:
         fail("\n".join(report_errors))

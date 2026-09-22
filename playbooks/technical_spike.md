@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.8
+version: 0.5.10
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -177,6 +177,11 @@ The report must preserve the question, declared assessment criteria or control d
 method, direct source evidence, experiments, findings, options, recommendation, limitations, remaining unknowns, and
 exact disposition. It must also preserve any Feature Delivery handoff and, for `execute_spike`, the independent
 comparison.
+The report must begin its explanation with a `Plain-Language Summary`. Use as many short sentences as needed to explain
+what was checked, what the evidence means, what remains unknown, and what should happen next. Define technical terms on
+first use and explain why exact IDs, revisions, commands, or paths matter. Keep detailed technical evidence in the
+tables
+and sections that follow; do not make the reader decode jargon to understand the decision.
 When supplied flow or context artifacts name material integration participants or technologies, preserve those names
 in evidence or limitations; when a path or control is not established, say so explicitly instead of inferring or
 silently collapsing it into an unnamed adjacent participant.

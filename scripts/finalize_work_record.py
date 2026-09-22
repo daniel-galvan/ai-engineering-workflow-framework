@@ -1456,6 +1456,13 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             execution,
             flags=re.IGNORECASE,
         )
+        if str(packet.get("identity", {}).get("State", "")).strip().lower() == "completed":
+            execution = re.sub(
+                r"workflow\s+outcome\s*:\s*(?:incomplete|in_progress|handoff|pending|blocked|unknown)",
+                "workflow outcome: completed",
+                execution,
+                flags=re.IGNORECASE,
+            )
         execution = re.sub(
             r"(?:pending(?:\s+(?:packaged\s+|Coordinator\s+)?finalizer)|"
             r"(?:packaged\s+|Coordinator\s+)?finalizer\s+pending)",
@@ -1745,6 +1752,12 @@ def _technical_spike_report_errors(
         if not manifest_path.is_absolute():
             manifest_path = packet_path.parent / manifest_path
         args.extend(("--technical-spike-input-manifest", str(manifest_path.resolve())))
+    for row in packet.get("repositories", []):
+        if not isinstance(row, dict):
+            continue
+        revision = str(row.get("Full revision", "")).strip()
+        if re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+            args.extend(("--technical-spike-expected-revision", revision))
     if budget_status:
         args.extend(("--technical-spike-budget-status", budget_status))
     result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=False)
@@ -2245,6 +2258,13 @@ def self_test() -> None:
     _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
     assert "runtime closure is pending" not in execution_packet["handoff"]["execution"].lower()
     assert "runtime released" in execution_packet["handoff"]["execution"].lower()
+    execution_packet["identity"]["State"] = "completed"
+    execution_packet["handoff"]["execution"] = (
+        "standard profile executed; Workflow outcome: incomplete; runtime released"
+    )
+    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
+    assert "workflow outcome: incomplete" not in execution_packet["handoff"]["execution"].lower()
+    assert "workflow outcome: completed" in execution_packet["handoff"]["execution"].lower()
     execution_packet["handoff"]["execution"] = (
         "State handoff; standard profile executed; workflow remains in_progress "
         "pending Coordinator finalizer; runtime released"
@@ -2546,11 +2566,16 @@ last_updated: 2026-09-11T00:00:00Z
 | Timebox or evidence budget | One bounded review |
 | Success criterion | Separate supported claims from unknowns |
 | Execution profile | deep |
+| Repositories and revisions | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
 | Review target | Existing Spike |
 | Comparison reference | Not applicable |
 
 ## Scope and Non-goals
 Review only; no implementation plan.
+
+## Plain-Language Summary
+The existing Spike has an evidence gap. The current review identifies what is missing and what should be checked next.
+No implementation change is proposed by this report.
 
 ## Integration Participants and Boundaries
 | Participant or technology | Role or boundary | Evidence refs | Evidence status or unknown |

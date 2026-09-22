@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.5.4
+version: 0.5.6
 status: Pilot
 owner: Engineering
 last_updated: 2026-09-11
@@ -119,6 +119,12 @@ Additional run-specific constraints or approvals:
 - <NONE-OR-ENTER-CONSTRAINT>
 
 Follow the selected playbook and its required dependencies.
+
+Writing requirement: make the report and handoff easy to read. Start the report with the required
+Plain-Language Summary. Use short sentences, define technical terms the first time they appear, and explain why a
+command, revision,
+or file path matters. Keep exact technical values for verification, but pair them with a simple explanation. Do not use
+technical detail as a substitute for stating the answer, the uncertainty, or the next action.
 
 At handoff, use the contract's canonical human-readable template. Do not include Run Metrics or Worker Timing unless
 this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable

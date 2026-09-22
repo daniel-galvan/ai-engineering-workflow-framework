@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.4
+version: 0.5.5
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -1120,6 +1120,11 @@ do not reproduce the worker ledger in the user-facing answer.
 ## Human-Readable Handoff
 
 Every playbook uses this final-answer order. Omit conditional sections that do not apply.
+
+Use easy-to-read wording. Prefer short sentences and common words. Define technical terms and acronyms on first use,
+then explain why the detail matters. Keep exact identifiers, commands, revisions, and paths when they are needed for
+verification, but do not make them carry the explanation by themselves. State the answer, uncertainty, and next action
+in plain language.
 
 ```text
 Workflow result: <plain-language outcome>
