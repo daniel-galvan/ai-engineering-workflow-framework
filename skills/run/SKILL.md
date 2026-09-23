@@ -83,6 +83,11 @@ description: >-
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
+   Before worker activation, try to open each declared file, folder, URL, or attachment and confirm its contents can be
+   passed to the assigned worker. Keep the original locator in `Source or path` and record the access result in that
+   input row's `Status`; do not leave an inaccessible artifact marked only `Registered`. If unavailable, record the
+   attempted route and its impact, tell the user promptly, and continue only if independent evidence can still produce
+   a useful partial result; otherwise stop for the indispensable input.
    For Feature Delivery, add `Asset source: true` to the input row for each explicitly supplied file, folder, or URL
    that must be inventoried; the asset gate reconciles those markers against `asset_manifest.json`.
    When the prompt explicitly supplies a requested outcome, include `RUN-GOAL-001` using its exact value and canonical
@@ -252,6 +257,10 @@ description: >-
    current framework revision, and its clean/dirty status to both finalizer
    invocations; never leave Coordinator identity blank or copy it from an older
    run.
+   Before the first pre-release command, compare each required worker's outcome in
+   `workers` with its corresponding `worker_results` row. If they differ, return
+   the exact mismatch to the same Documenter and correct it before spending a
+   pre-release correction attempt; the packaged finalizer repeats this check.
    Then run:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
@@ -270,7 +279,12 @@ description: >-
    After every required worker returns a terminal envelope and analytical fan-in
    passes, set the matching Requested, Activated, and Executed profiles and
    `Profile status: executed` before activating `handoff`; only Technical Spike
-   state and workflow outcome remain pre-terminal.
+   state and workflow outcome remain pre-terminal. Engineering state must already
+   use a canonical enum value, never a lifecycle phrase such as
+   `handoff pending finalization`; choose `understood` only when the problem and
+   material scope are evidence-backed, otherwise use `unknown`. The Coordinator
+   records this value in the prepared packet before Documenter activation, and the
+   Documenter preserves it unchanged.
    Before activating `handoff`, assert the prepared packet already contains all
    required identity, input, repository, worker, synchronization, and artifact
    rows; the Documenter aggregates them and does not reconstruct missing immutable
@@ -316,20 +330,22 @@ description: >-
    Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.
    Treat finalizer errors as self-contained received/expected corrections. Do not read or search validator source unless
    an error lacks an expected value or contradicts the documented packet contract.
-   For Technical Spike, final response names disposition, strongest direct evidence, unresolved decisions, measured
-   budget status, and exact next workflow. Link `spike_report.md` and terminal `work_record.md`. If finalization fails,
-   link `finalization_failure.json`; do not claim terminal validation passed.
+   For Technical Spike, the emitted canonical handoff already contains the disposition, strongest evidence, unresolved
+   decisions, measured budget, next workflow, and artifact links. After successful finalization, send only that block;
+   do not add a second summary. If finalization fails, link `finalization_failure.json`; do not claim validation passed.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; it is rendered from the finalized work record. Never compose a second summary or regenerate, shorten, or
    replace it with a compact status list. If the block contains `Best current explanations:`, copy that complete
-   section; do not omit it. Before sending, verify the exact ordered labels
+   section; do not omit it. Include `Engineering state` as a distinct field.
+   Before sending, verify the exact ordered labels
    `Workflow result:`,
-   the fields `State:`, `Workflow outcome:`, `Engineering outcome:`, and `Implementation plan:`, then
-   `What we established:`, optional
+   the fields `State:`, `Engineering state:`, `Workflow outcome:`, `Engineering outcome:`, and
+   `Implementation plan:`, then `What we established:`, optional
    `Best current explanations:`, `Next action:` with `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`,
-   `Execution:`, and `Provenance:`. Copy artifact links exactly from the finalized packet. Omit Run Metrics and Worker
-   Timing for normal runs. Use easy-to-read wording in the report and handoff: short sentences, common words, and a
-   simple explanation next to each necessary technical term. Technical Spike reports must include the required
+   `Execution:`, and `Provenance:`. Do not add a preamble or postscript. Copy artifact links exactly from the finalized
+   packet. Omit Run Metrics and Worker Timing for normal runs. Use easy-to-read wording in the report and handoff: short
+   sentences, common words, and a simple explanation next to each necessary technical term. Technical Spike reports
+   must include the required
    `Plain-Language Summary`. The plugin does not override any canonical contract, playbook, template, role, skill, or
    provider policy.

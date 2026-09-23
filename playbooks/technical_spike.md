@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.10
+version: 0.5.11
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -9,7 +9,7 @@ default_timebox_minutes: 35
 default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
 validation_summary: V28 terminal rerun passed; evidence and artifact-predeclaration hardening added; live rerun pending
 owner: Engineering
-last_updated: 2026-09-11
+last_updated: 2026-09-22
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -119,6 +119,12 @@ When a work-item identifier is supplied, `spike-context` must consume that input
 repository analysis. If the capability is unavailable, record the normalized unavailable result and preserve the
 supplied identifier; do not silently omit the work-item read.
 
+Before repository analysis, confirm that every explicitly supplied supporting file, folder, URL, or attachment can be
+opened and that its contents are available to the assigned worker. Keep its original locator in `Source or path` and
+record the access result in that input row's `Status`. If a source cannot be read, tell the user promptly, record the
+attempted route and which part of the question it limits, and continue only if the remaining evidence can support a
+useful partial answer. Never describe an unread attachment as reviewed or leave it marked only `Registered`.
+
 For `review_spike`, identify the exact report or document under review and its claimed conclusion. Missing review
 material is indispensable-evidence failure, not authority to recreate the Spike from unrelated context.
 
@@ -182,6 +188,9 @@ what was checked, what the evidence means, what remains unknown, and what should
 first use and explain why exact IDs, revisions, commands, or paths matter. Keep detailed technical evidence in the
 tables
 and sections that follow; do not make the reader decode jargon to understand the decision.
+Keep workflow labels such as `Workflow result` in `Disposition`, not in the summary. Give every direct source one
+Evidence ID; when repository evidence and an external report support the same point, record them separately and connect
+them through the claim or finding.
 When supplied flow or context artifacts name material integration participants or technologies, preserve those names
 in evidence or limitations; when a path or control is not established, say so explicitly instead of inferring or
 silently collapsing it into an unnamed adjacent participant.

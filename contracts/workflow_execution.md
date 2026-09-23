@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.5
+version: 0.5.6
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-11
+last_updated: 2026-09-22
 ---
 
 # Workflow Execution Contract
@@ -273,6 +273,14 @@ result, the Coordinator MUST reconcile assigned and consumed inputs. An assigned
 that is neither consumed nor explicitly recorded as unavailable, conflicting, or out of scope makes the result
 incomplete. Return the worker once with the missing Input IDs; never ask the user to repeat the underlying information.
 If the worker cannot consume them, preserve the partial result and record the concrete runtime or access limitation.
+
+Before worker activation, the Coordinator MUST try to open every explicitly supplied file, folder, URL, or attachment
+through an available local path or connected source and confirm its contents can be delivered to the assigned worker.
+Keep the original locator in `Source or path` and record the access result in that input row's `Status`; do not leave an
+inaccessible artifact marked only `Registered`. If access fails, record the attempted route and which question or
+conclusion it limits, then tell the user promptly. Continue only when the remaining evidence can still produce a useful
+bounded result; otherwise stop for the indispensable input. A name, link, or attachment count does not prove that its
+contents were reviewed.
 
 Supporting inputs may be unused only when the worker records why they were irrelevant to its declared responsibility.
 The gate checks information flow; it does not require every worker to consume every run input.
@@ -1130,6 +1138,7 @@ in plain language.
 Workflow result: <plain-language outcome>
 
 - State: <canonical state>
+- Engineering state: <unknown | understood | designed | approved | implemented | validated | released | stabilized | not_applicable>
 - Workflow outcome: <completed | incomplete | blocked>
 - Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>
 - Implementation plan: <created path, or omitted and why>
@@ -1248,7 +1257,7 @@ provider release, or a different workflow outcome.
 The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. With
 `--emit-handoff`, the standalone validator checks its ordered labels, verifies that its state and outcomes equal the Run
 Identity and runtime-closure tables, and emits that block after the validation receipt. The Coordinator copies the
-emitted block verbatim as the user-facing answer.
+emitted block verbatim as the entire user-facing answer, without a preamble, postscript, or replacement summary.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
 `engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;
@@ -1278,9 +1287,14 @@ For a completed Technical Spike, the finalizer also rejects a released closure r
 provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
-reconciled record as distinct fields. It MUST NOT relabel `state: awaiting_input` as the engineering state or otherwise
-substitute one vocabulary value for another. The selected playbook's required artifact set is part of reconciliation:
+reconciled record as distinct fields. The terminal `Engineering state` MUST use one value from the canonical enum; a
+handoff lifecycle phrase such as `handoff pending finalization` is invalid. It MUST NOT relabel `state: awaiting_input`
+as the engineering state or otherwise substitute one vocabulary value for another. The selected playbook's required
+artifact set is part of reconciliation:
 an artifact count is not sufficient when a required artifact is absent.
+
+Before Technical Spike pre-release, every required worker MUST have exactly one execution-ledger row and one worker
+result, and their `Outcome` values MUST agree. A mismatch is returned to the same Documenter for correction.
 
 When the workflow stops for clarification or a blocker, the next action must
 name the specific decision, artifact, file, command, or owner involved. It

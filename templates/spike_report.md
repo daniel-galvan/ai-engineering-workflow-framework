@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Report
-version: 0.5.7
+version: 0.5.8
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -46,7 +46,7 @@ State what was investigated or reviewed and what was intentionally excluded.
 Explain the result before the detailed evidence. Use as many short sentences as needed to say what was checked, what
 the evidence shows, what is still unknown, and what should happen next. Define an acronym or technical term the first
 time it appears. Keep exact IDs, revisions, commands, and file paths in the detailed sections; explain their meaning
-here in everyday words.
+here in everyday words. Keep labels such as `Workflow result` in Disposition, not in this summary.
 
 ## Integration Participants and Boundaries
 
@@ -78,6 +78,8 @@ or version; `current`, `latest`, `HEAD`, and working-tree labels are not suffici
 For a new current-run Spike, every external document URL or stable locator in an evidence source must be declared in
 `run_inputs.json`; a linked historical document is not current-run evidence by discovery alone. Do not cite memory or
 archived `.thoughts/.../runs/` material.
+Each Evidence ID must identify one source and one source-backed observation. Give corroborating repository, Jira, Slack,
+or runtime sources separate Evidence IDs, then connect those IDs through the relevant claim or finding.
 
 | Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
 | --- | --- | --- | --- | --- | --- |

@@ -427,23 +427,40 @@ def _technical_spike_worker_contract_errors(packet: dict[str, object]) -> list[s
     if not contract:
         return []
     rows_by_worker: dict[str, list[dict[str, object]]] = {}
+    results_by_worker: dict[str, list[dict[str, object]]] = {}
     for row in packet.get("workers", []):
         if isinstance(row, dict):
             rows_by_worker.setdefault(str(row.get("Worker", "")).strip().lower(), []).append(row)
+    for row in packet.get("worker_results", []):
+        if isinstance(row, dict):
+            results_by_worker.setdefault(str(row.get("Worker", "")).strip().lower(), []).append(row)
     errors = []
     for worker, expected_role in contract.items():
         rows = rows_by_worker.get(worker, [])
         if len(rows) > 1:
             errors.append(f"Technical Spike worker {worker} must have exactly one execution-ledger row")
-            continue
-        if not rows:
-            continue
-        raw_role = str(rows[0].get("Role", "")).strip()
-        actual_role = ROLE_AGENTS.get(raw_role, raw_role.lower())
-        if actual_role != expected_role:
-            errors.append(
-                f"Technical Spike worker {worker} requires role {expected_role}; received {actual_role or 'empty'}"
-            )
+        elif not rows:
+            errors.append(f"Technical Spike worker {worker} is missing its execution-ledger row")
+        else:
+            raw_role = str(rows[0].get("Role", "")).strip()
+            actual_role = ROLE_AGENTS.get(raw_role, raw_role.lower())
+            if actual_role != expected_role:
+                errors.append(
+                    f"Technical Spike worker {worker} requires role {expected_role}; received {actual_role or 'empty'}"
+                )
+        results = results_by_worker.get(worker, [])
+        if len(results) > 1:
+            errors.append(f"Technical Spike worker {worker} must have exactly one worker-result row")
+        elif not results:
+            errors.append(f"Technical Spike worker {worker} is missing its worker-result row")
+        if rows and results:
+            ledger_outcome = str(rows[0].get("Outcome", "")).strip().lower()
+            result_outcome = str(results[0].get("Outcome", "")).strip().lower()
+            if ledger_outcome != result_outcome:
+                errors.append(
+                    f"Technical Spike worker {worker} outcome mismatch: execution ledger is "
+                    f"{ledger_outcome or 'empty'}; worker result is {result_outcome or 'empty'}"
+                )
     return errors
 
 
@@ -1456,6 +1473,12 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             execution,
             flags=re.IGNORECASE,
         )
+        execution = re.sub(
+            r"pre-release and terminal release not run",
+            "pre-release validation and terminal finalization passed",
+            execution,
+            flags=re.IGNORECASE,
+        )
         if str(packet.get("identity", {}).get("State", "")).strip().lower() == "completed":
             execution = re.sub(
                 r"workflow\s+outcome\s*:\s*(?:incomplete|in_progress|handoff|pending|blocked|unknown)",
@@ -1514,6 +1537,7 @@ def render(packet: dict[str, object]) -> str:
 Workflow result: {handoff['workflow_result']}
 
 - State: {packet['identity']['State']}
+- Engineering state: {packet['identity']['Engineering state']}
 - Workflow outcome: {packet['identity']['Workflow outcome']}
 - Engineering outcome: {packet['identity']['Engineering outcome']}
 - Implementation plan: {handoff['implementation_plan']}
@@ -2468,9 +2492,11 @@ def self_test() -> None:
             for worker in ("spike-context", "spike-investigation", "handoff")
         ])
         spike["workers"].extend([
-            {"Worker": "spike-context", "Role": "current_state_investigator", "Tools": "work_item_read"},
-            {"Worker": "spike-investigation", "Role": "solution_architect", "Tools": "mapped operations"},
-            {"Worker": "handoff", "Role": "documenter", "Tools": "artifact_write"},
+            {"Worker": "spike-context", "Role": "current_state_investigator", "Tools": "work_item_read",
+             "Outcome": "complete"},
+            {"Worker": "spike-investigation", "Role": "solution_architect", "Tools": "mapped operations",
+             "Outcome": "complete"},
+            {"Worker": "handoff", "Role": "documenter", "Tools": "artifact_write", "Outcome": "complete"},
         ])
         spike["handoff"].update({
             "workflow_result": "Question answered",
@@ -2481,6 +2507,15 @@ def self_test() -> None:
             ),
         })
         _validate_handoff(spike)
+        mismatched_spike = json.loads(json.dumps(spike))
+        context_row = next(row for row in mismatched_spike["workers"] if row["Worker"] == "spike-context")
+        context_row["Outcome"] = "pending"
+        try:
+            _validate_handoff(mismatched_spike)
+        except ValueError as error:
+            assert "spike-context outcome mismatch" in str(error)
+        else:
+            raise AssertionError("Technical Spike must reject differing worker and ledger outcomes")
         legacy_spike = json.loads(json.dumps(spike))
         for row in legacy_spike["workers"]:
             if row["Worker"] == "handoff":

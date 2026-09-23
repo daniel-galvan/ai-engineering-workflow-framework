@@ -636,7 +636,7 @@ def _finalize_standard_sentry_in_place(
         "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
         "Profile status": "executed", "Lifecycle": "planning",
         "State": "awaiting_input" if awaiting_input else "ready_for_implementation",
-        "Engineering state": "understood_with_blocking_unknowns" if awaiting_input else "designed",
+        "Engineering state": "understood" if awaiting_input else "designed",
         "Workflow outcome": "completed",
         "Engineering outcome": "partially_solved" if awaiting_input else "plan_only",
         "Run input manifest": str(artifact_root / "run_inputs.json"),

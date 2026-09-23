@@ -186,6 +186,10 @@ V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contrac
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
 V32_FIX_DESIGN_RECOVERY_FIXTURE = ROOT / "tests" / "fixtures" / "v32_sentry_fix_design_recovery.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
+ENGINEERING_STATES = {
+    "unknown", "understood", "designed", "approved", "implemented", "validated", "released", "stabilized",
+    "not_applicable",
+}
 PROFILE_STATUSES = {"requested", "in_progress", "executed", "not_executed", "blocked"}
 PROFILES = {"standard", "deep"}
 WORKFLOW_OUTCOMES = {"completed", "incomplete", "blocked"}
@@ -827,6 +831,15 @@ def technical_spike_report_errors(
     )
     if not plain_summary or not plain_summary.group(1).strip():
         errors.append("spike_report.md Plain-Language Summary must contain a readable explanation")
+    elif re.search(r"\bWorkflow result\s*:", plain_summary.group(1), re.IGNORECASE):
+        errors.append("spike_report.md Plain-Language Summary must not contain workflow disposition metadata")
+    for row in markdown_table(text, "## Direct Evidence"):
+        source = row.get("Repository or source", "")
+        if re.search(r"\s+(?:\+|plus)\s+", source, re.IGNORECASE):
+            errors.append(
+                f"spike_report.md Direct Evidence {row.get('Evidence ID', 'row')} combines sources; "
+                "use separate Evidence IDs for each source"
+            )
     declared_revisions = normalized_metadata_value(metadata.get("Repositories and revisions", ""))
     for revision in expected_revisions:
         if revision and revision not in declared_revisions:
@@ -1840,6 +1853,7 @@ def terminal_semantics_errors(identity: dict[str, str]) -> list[str]:
         "Profile status": PROFILE_STATUSES,
         "Lifecycle": LIFECYCLES,
         "State": TERMINAL_STATES,
+        "Engineering state": ENGINEERING_STATES,
         "Workflow outcome": WORKFLOW_OUTCOMES,
         "Engineering outcome": ENGINEERING_OUTCOMES,
     }
@@ -2453,6 +2467,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     required_handoff = (
         "Workflow result:",
         "- State:",
+        "- Engineering state:",
         "- Workflow outcome:",
         "- Engineering outcome:",
         "- Implementation plan:",
@@ -2472,6 +2487,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         fail(f"{path}: Final Handoff must contain exactly one Workflow result prefix")
     for label in (
         "Workflow result:",
+        "- Engineering state:",
         "- Implementation plan:",
         "- Owner:",
         "- Action:",
@@ -2484,6 +2500,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             fail(f"{path}: Final Handoff {label.rstrip(':')} must be populated")
     for label, field in (
         ("- State:", "State"),
+        ("- Engineering state:", "Engineering state"),
         ("- Workflow outcome:", "Workflow outcome"),
         ("- Engineering outcome:", "Engineering outcome"),
     ):
@@ -2521,10 +2538,11 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     execution_text = " ".join(execution.group(1).lower().split()) if execution else ""
     if not execution or f"runtime {runtime_value}" not in execution_text:
         fail(f"{path}: Final Handoff runtime must match Worker Runtime Closure")
-    if identity["State"].strip().lower() == "completed" and re.search(
+    if identity["State"].strip().lower() == "completed" and not _ALLOW_UNRELEASED and re.search(
         r"\b(?:state(?:\s*:\s*|\s+)(?:remains\s+)?handoff|"
         r"workflow remains\s+(?:in_progress|handoff)|"
         r"workflow\s+outcome\s*:\s*(?:incomplete|in_progress|handoff|pending|blocked|unknown)|"
+        r"pre-release and terminal release not run|"
         rf"{STALE_FINALIZER_REFERENCE}|"
         r"runtime closure\s+(?:is\s+)?(?:pending|unknown|active|in progress|not released))\b",
         execution_text,
@@ -2800,6 +2818,24 @@ Keep the current boundary pending runtime confirmation (E-001).
     assert technical_spike_report_errors(
         valid_spike_report, "Execute technical spike", "standard", "Question answered"
     ) == []
+    workflow_metadata_summary = valid_spike_report.replace(
+        "## Plain-Language Summary\n",
+        "## Plain-Language Summary\nWorkflow result: Question answered.\n",
+    )
+    assert "must not contain workflow disposition metadata" in "\n".join(
+        technical_spike_report_errors(
+            workflow_metadata_summary, "Execute technical spike", "standard", "Question answered"
+        )
+    )
+    mixed_source_report = valid_spike_report.replace(
+        "| E-001 | Execution repository | abcdef1 | src/boundary.py:10 |",
+        "| E-001 | Execution repository plus Jira and Slack | abcdef1 | src/boundary.py:10 |",
+    )
+    assert "combines sources" in "\n".join(
+        technical_spike_report_errors(
+            mixed_source_report, "Execute technical spike", "standard", "Question answered"
+        )
+    )
     assert "prepared execution repository revision" in "\n".join(
         technical_spike_report_errors(
             valid_spike_report, "Execute technical spike", "standard", "Question answered",
@@ -3205,6 +3241,7 @@ Keep the current boundary pending runtime confirmation (E-001).
 Workflow result: Completed test run
 
 - State: completed
+- Engineering state: validated
 - Workflow outcome: completed
 - Engineering outcome: solved
 - Implementation plan: omitted; test fixture
@@ -4173,6 +4210,7 @@ for phrase in (
     if phrase not in workflow_contract:
         fail(f"contracts/workflow_execution.md is missing planning-readiness rule: {phrase}")
 for phrase in (
+    "- Engineering state: <unknown | understood | designed | approved | implemented | validated | released | stabilized | not_applicable>",
     "Workflow outcome: <completed | incomplete | blocked>",
     "Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>",
 ):

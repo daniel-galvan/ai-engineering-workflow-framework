@@ -1,6 +1,6 @@
 ---
 title: Compact Sentry Work Record
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 ---
 
@@ -38,7 +38,7 @@ status: Pilot
 | --- | --- |
 | Run ID | |
 | Evaluation run ID | Not applicable |
-| Playbook / version | playbooks/sentry_issue_remediation.md / 0.5.1 |
+| Playbook / version | playbooks/sentry_issue_remediation.md / 0.5.2 |
 | Framework commit / status | |
 | Plugin package / version | |
 | Provider/runtime configuration | Not provided |
@@ -138,6 +138,7 @@ status: Pilot
 Workflow result: Pending
 
 - State: intake
+- Engineering state: unknown
 - Workflow outcome: incomplete
 - Engineering outcome: partially_solved
 - Implementation plan: omitted; investigation is incomplete

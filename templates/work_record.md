@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Record
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-22
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -312,6 +312,7 @@ unavailable model, token, or credit data.
 Workflow result: <plain-language outcome>
 
 - State: <canonical state>
+- Engineering state: <unknown | understood | designed | approved | implemented | validated | released | stabilized | not_applicable>
 - Workflow outcome: <completed | incomplete | blocked>
 - Engineering outcome: <solved | partially_solved | plan_only | blocked | incorrect>
 - Implementation plan: <created path, or omitted and why>

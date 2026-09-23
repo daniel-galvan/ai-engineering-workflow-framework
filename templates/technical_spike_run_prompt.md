@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.5.6
+version: 0.5.7
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-11
+last_updated: 2026-09-22
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/technical_spike.md
@@ -126,22 +126,21 @@ command, revision,
 or file path matters. Keep exact technical values for verification, but pair them with a simple explanation. Do not use
 technical detail as a substitute for stating the answer, the uncertainty, or the next action.
 
-At handoff, use the contract's canonical human-readable template. Do not include Run Metrics or Worker Timing unless
-this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable
-implementation plan; Technical Spike never does. Preserve distinct `Workflow outcome` and `Engineering outcome`
-fields. Set `Implementation plan` to `Not created; Technical Spike produces spike_report.md` and link the completed
-`spike_report.md`.
+At handoff, copy the contract's canonical human-readable block emitted by the finalizer exactly. Do not add a summary
+before or after it. The block contains the disposition, evidence, uncertainty, next action, budget, and artifact links.
+Do not include Run Metrics or
+Worker Timing unless this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that
+produced a usable implementation plan; Technical Spike never does. Keep workflow and engineering outcomes distinct.
 
 Keep `Execution profile` exactly `standard` or `deep`; record `Lifecycle` separately as `planning`. Keep prompt
-conformance as `pass` or `fail:<missing fields>`. Keep `State`, `Workflow outcome`, and `Engineering outcome` as
-separate fields. A pre-release `State: handoff` packet must not claim `Workflow outcome: completed`; the packaged
-finalizer performs that terminal transition. The handoff `Workflow result` must be exactly one allowed disposition,
-not a combined status sentence.
+conformance as `pass` or `fail:<missing fields>`. Keep `State`, `Engineering state`, `Workflow outcome`, and
+`Engineering outcome` as separate fields. Engineering state must use a canonical enum value, never a lifecycle phrase.
+A pre-release `State: handoff` packet must not claim `Workflow outcome: completed`; the packaged finalizer performs that
+terminal transition. The handoff `Workflow result` must be exactly one allowed disposition, not a combined status sentence.
 
-Make `spike_report.md` self-contained with compact direct repository/document evidence. Final response must name the
-disposition, strongest evidence, unresolved decisions, exact next workflow, measured budget status, and link
-`spike_report.md` plus terminal `work_record.md`. On finalization failure, link `finalization_failure.json` instead of
-claiming terminal validation passed.
+Make `spike_report.md` self-contained with compact direct repository/document evidence. The final response is the
+complete canonical block emitted after terminal validation; do not write a separate summary. On finalization failure,
+link `finalization_failure.json` instead of claiming terminal validation passed.
 For every Evidence ID cited outside Method and Evidence, include an exact Direct Evidence row or a source-specific
 Method and Evidence row with an exact locator or command and a substantive observation. Preserve named material
 integration participants and explicitly mark their evidence status or unknown.
