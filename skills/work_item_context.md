@@ -1,12 +1,12 @@
 ---
 
 title: Work-Item Context
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 category: Context
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 ---
 
 # Work-Item Context
@@ -27,6 +27,8 @@ last_updated: 2026-09-04
 * Constraints and non-goals
 * Related work and prior context
 * Context-source map and conflicts
+* A related-work coverage inventory with every associated Jira issue's key, type, status, relationship, relevance,
+  read state, and attachment-inventory state; each attachment's owner and review result
 * Unknowns requiring validation
 * A normalized `work_item_read` request/result pair conforming to the shared
   [Work-Item Read Contract](../contracts/workflow_execution.md#work-item-read-contract)
@@ -41,6 +43,9 @@ This skill owns normalized context outputs and context sufficiency; the
 integration owns source-specific retrieval, freshness, evidence states, and
 write rules. Preserve the normalized request/result pair in the context artifact
 before downstream workers consume it.
+For Jira, preserve the full related-work and asset coverage inventory in that same artifact. A complete primary issue
+read does not make an unqueried child or attachment collection empty. If a material related issue or asset cannot be
+read, state which conclusion is limited and classify the context as partial.
 
 ## Context Sufficiency
 

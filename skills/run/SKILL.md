@@ -90,6 +90,13 @@ description: >-
    a useful partial result; otherwise stop for the indispensable input.
    For Feature Delivery, add `Asset source: true` to the input row for each explicitly supplied file, folder, or URL
    that must be inventoried; the asset gate reconciles those markers against `asset_manifest.json`.
+   Jira-related children, linked issues, and attachments are discovered evidence,
+   not extra prompt fields the user must enumerate. For every Jira-backed run,
+   require the context worker to recover and record their complete direct
+   inventory under the shared Jira Integration before downstream work. Reconcile
+   issue and asset read states in the context artifact; return one correction
+   for omissions. Unavailable or unreviewed material stays explicit and prevents
+   a false claim of complete context or readiness.
    When the prompt explicitly supplies a requested outcome, include `RUN-GOAL-001` using its exact value and canonical
    provenance. When the prompt omits it, omit that row; preparation records the selected playbook default and
    provenance. Preparation rejects an altered explicit row.
@@ -278,6 +285,11 @@ description: >-
    IDs from the packet's Evidence rows. `CHK-*` belongs only to Experiments and
    Checks; map each check to its source-backed `E-*` Evidence row(s). Never use
    grouped or range identifiers such as `E-001..E-008`.
+   Before marking Technical Spike fan-in passed, complete the playbook's Stage 3
+   cross-artifact check. If a material conflict remains after one correction to
+   its owning worker, include both claims, their evidence, and the unresolved
+   conflict in the Documenter assignment; require it to remain an explicit
+   limitation and use `Partially answered` when the conclusion is affected.
    After every required worker returns a terminal envelope and analytical fan-in
    passes, set the matching Requested, Activated, and Executed profiles and
    `Profile status: executed` before activating `handoff`; only Technical Spike
@@ -309,7 +321,9 @@ description: >-
    analytical worker, verify its assigned artifact still exists under the active artifact root; keep the handle open
    through pre-release when the provider may reclaim worker-owned artifact state on close.
    A provider task path or name is not a closure handle; use only the exact value returned by the spawn primitive. If no
-   provider handle or release status is available, record `worker_runtime_release_unavailable` and keep the run blocked.
+   provider handle or release status is available, keep the run blocked and write the Coordinator-owned closure row with
+   `Runtime status: Blocked`, `worker_runtime_release_unavailable` in `Closure evidence or blocker`, and nonzero or
+   unknown remaining active handles.
    For a Technical Spike with a published report and complete worker results, write that Coordinator-owned unavailable
    receipt to `runtime_closure.json`, then run the pinned `finalize_work_record.py --blocked-runtime-snapshot` with the
    packet, closure, record, and Coordinator/framework identity arguments below. Require exit zero and

@@ -144,6 +144,15 @@ every available asset has been reviewed and dispositioned, visual assets were
 visually inspected or rendered, and every material asset reaches the design
 claim/plan chain. Any unresolved asset keeps the run at `awaiting_input` and
 prohibits `implementation_plan.md`.
+For every Jira-backed run, require the context worker's artifact to inventory the
+supplied issue, all direct children of an Epic (or the parent and direct siblings
+of a supplied child), directly linked Jira issues, and each issue's attachments.
+Check every issue's key/type/status/relationship/relevance/read state and every
+attachment's owner/review state before downstream analysis or fan-in. A direct
+child query is required even when the Epic issue read has no children field.
+Return one correction to the context worker for missing coverage; if unresolved,
+preserve `partial` and its effect on the answer. Do not report full context,
+readiness, or a complete result from the supplied issue alone.
 For Technical Spike, enforce the question and resolved playbook timebox before
 activation; `prepare_run.py` must require `--primary-question`, apply the
 playbook timebox and success-criterion defaults, and accept explicit overrides.
@@ -214,8 +223,10 @@ time, spawn attempts, discrepancies, and replacements only for an explicit evalu
 continuation, add only new inputs; never retroactively assign them to earlier workers. On Documenter-owned paths, use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
 The provider-returned handle is the only value valid for wait, follow-up, and close; agent paths, worker IDs, task names,
-and canonical artifact paths are labels only. If no provider handle or release status is exposed, record
-`worker_runtime_release_unavailable`, keep the run blocked, and never substitute a label.
+and canonical artifact paths are labels only. If no provider handle or release status is exposed, write the
+Coordinator-owned closure row with `Runtime status: Blocked`, `worker_runtime_release_unavailable` in
+`Closure evidence or blocker`, and nonzero or unknown remaining active handles. Keep the run blocked and never
+substitute a label.
 Join the stored handle to each ordinary worker result during fan-in; do not ask a worker to invent or repeat a handle it
 was not given. Follow a playbook-specific handle-delivery protocol only when its durable artifact contract requires it.
 Count every successful provider activation, including that Documenter. A

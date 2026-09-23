@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.7
+version: 0.5.9
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-22
+last_updated: 2026-09-23
 ---
 
 # Workflow Execution Contract
@@ -145,6 +145,7 @@ the source of truth.
 | `INV-40` | Delegated workers MUST start in fresh context and MUST NOT repeat Coordinator initialization. | [Worker Contract](#worker-contract) |
 | `INV-41` | Explicit current-run skill or plugin enable/disable directives MUST be propagated to every worker and correction turn. | [Authoritative Run Inputs](#authoritative-run-inputs) |
 | `INV-42` | Feature Delivery MUST inventory and review Jira attachments and every declared asset source before planning readiness. | [Feature Delivery Asset Gate](#feature-delivery-asset-gate) |
+| `INV-43` | Every Jira-backed run MUST reconcile related-work and attachment coverage before downstream analysis or fan-in. | [Work-Item Read Contract](#work-item-read-contract) |
 
 ---
 
@@ -236,10 +237,12 @@ The persisted manifest is named `run_inputs.json`.
 
 ## Feature Delivery Asset Gate
 
-Feature Delivery treats Jira attachments and explicitly supplied files, folders, and URLs as first-class current-run
-inputs. Before downstream planning workers are activated, `feature-context` MUST create `asset_manifest.json` under the
+Feature Delivery treats Jira attachments from the supplied and inventoried related issues, plus explicitly supplied
+files, folders, and URLs, as first-class current-run inputs. Before downstream planning workers are activated,
+`feature-context` MUST create `asset_manifest.json` under the
 active run root. The manifest MUST contain one source row for the Jira attachment inventory, even when it is explicitly
-empty, and one row for each declared supporting source. Each supporting file, folder, or URL input MUST be marked
+empty, and one row for each declared supporting source. The Jira source row may group associated issue attachments,
+but each attachment locator must identify its owning issue. Each supporting file, folder, or URL input MUST be marked
 `Asset source: true` in the current-run input manifest so source-to-manifest reconciliation is deterministic. A
 directory source MUST enumerate every file and symlink recursively, including hidden entries; an empty filtered search
 is not a complete inventory.
@@ -409,7 +412,7 @@ Each result preserves:
 | `state` | Yes | One of the shared retrieval states below. |
 | `work_item` | Conditional | Normalized work item when the requested source data is available. |
 | `assets` | Conditional | Attachment or reference-asset inventory when `history` is requested; preserve an explicit empty or unavailable result. |
-| `related_context` | Yes | Selected related records with stable identifiers and relationship types. |
+| `related_context` | Yes | Inventoried related records with stable identifiers, relationship types, and explicit read/disposition states. |
 | `evidence` | Yes | Source locations, observed values, authority, status, redaction, and limitations. |
 | `source_updated_at` / `source_version` | Conditional | Source freshness metadata when supplied by the provider. |
 | `retrieved_at` | Yes | Time the adapter obtained the result. |
@@ -433,6 +436,19 @@ expose a write operation through `work_item_read`. `write_metadata` is a
 read-only preparation scope and is valid only for an explicitly approved
 external action. Source-specific integrations define how their provider maps
 onto this contract; they do not change the shared worker or workflow states.
+
+For a Jira-backed run, request `item`, `hierarchy`, `selected_links`, and `history` together. A supplied Epic requires
+its complete direct-child collection; a supplied Story, Task, Bug, or Spike requires its parent and that parent's
+direct-child collection, plus direct Jira links in either case. Inventory every associated issue regardless of type or
+status. The normalized result and context artifact must record each issue's key, relationship, type, status, relevance,
+read state, and attachment-inventory state; each attachment must identify its owning issue and actual review result.
+The context worker may mark an item irrelevant with a reason, but may not silently omit it. Empty collections require
+a successful query; a failed, truncated, or unpaged collection is `partial` or `unavailable`, never `empty`.
+Before downstream analysis or fan-in, the Coordinator reconciles this coverage against the context artifact and sends
+one correction to the owning context worker for missing rows. If coverage remains incomplete, keep the result partial
+and name the affected conclusion; no completed or ready result may imply that all related work/assets were reviewed.
+Prior Jira issues are context evidence, not automatically current-run requirements or permission to reuse an unrelated
+historical report.
 
 ## Worker Handoff
 
@@ -956,8 +972,8 @@ attempt, handle discrepancy, replacement, and duplicated result.
 
 The handle is the exact provider value returned by the spawn primitive. Worker IDs, agent paths, task names, and
 canonical artifact paths are labels only and MUST NOT be substituted for a provider handle. If the provider exposes no
-handle or release-status value, record `worker_runtime_release_unavailable`, keep the run blocked, and do not claim
-runtime closure.
+handle or release-status value, keep the run blocked and write the Coordinator-owned closure row defined under
+[Worker Runtime Closure](#worker-runtime-closure). Do not claim runtime closure.
 
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
@@ -1288,8 +1304,9 @@ first output line is exactly `Workflow-framework validation: passed`; the remain
 For a completed Technical Spike, the finalizer also rejects a released closure receipt when it lists fewer unique
 provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
 If the provider does not expose release handles or receipts after the Technical Spike report is published and every
-worker result is complete, the Coordinator records `worker_runtime_release_unavailable` and invokes the packaged
-`--blocked-runtime-snapshot` mode. It validates and saves `work_record.md` with `State: blocked` and
+worker result is complete, the Coordinator writes the blocked closure row defined under
+[Worker Runtime Closure](#worker-runtime-closure) and invokes the packaged `--blocked-runtime-snapshot` mode. It
+validates and saves `work_record.md` with `State: blocked` and
 `Workflow outcome: blocked`, while preserving the published report and the original handoff packet for later
 finalization. This is a blocked record, never evidence that provider workers were released or the workflow completed.
 
@@ -1345,8 +1362,13 @@ After result envelopes and artifacts are persisted, the Orchestrator must:
 4. record each exact provider handle and its provider release confirmation before marking the run complete or starting
    a new lifecycle run.
 
-Role names, terminal envelopes, and statements such as “all workers released” are not closure evidence. The closure row
-must contain the provider-returned handles, no remaining active handles, and the provider close/release confirmation.
+Role names, terminal envelopes, and statements such as “all workers released” are not closure evidence. A row marked
+`Released` must contain the provider-returned handles, no remaining active handles, and the provider close/release
+confirmation.
+
+For an unavailable-release receipt, `Runtime status` MUST be `Blocked`, `Closure evidence or blocker` MUST include the
+exact marker `worker_runtime_release_unavailable`, and `Remaining active handles` MUST be nonzero or explicitly unknown.
+The marker describes the blocker; it is not a runtime-status value.
 
 Before starting another lifecycle or remediation run, apply the [Concurrent Run Isolation](#concurrent-run-isolation)
 gate. A clean read-only planning run may remain concurrent; any run with a writer
@@ -1356,9 +1378,9 @@ artifact root.
 Never close a worker before collecting its terminal result envelope unless the provider has explicitly confirmed a
 terminal failure or that the worker is no longer running. A later run reuses durable artifacts, not live worker handles
 from the previous run. If the provider cannot expose release or active-handle status, record
-`worker_runtime_release_unavailable` and keep the run `blocked` until the provider confirms that the new run has
-capacity; do not silently downgrade or claim that the run is closed. A force-closed active worker is a Coordinator
-interruption, not evidence of provider release or worker failure.
+the unavailable-release receipt as defined above and keep the run `blocked` until the provider confirms that the new
+run has capacity; do not silently downgrade or claim that the run is closed. A force-closed active worker is a
+Coordinator interruption, not evidence of provider release or worker failure.
 
 ---
 
@@ -1495,6 +1517,7 @@ A pilot run MUST NOT be called contract-compliant unless its work record can ans
 - What was each worker's unique result, outcome, and limitation?
 - Did every required fan-in barrier pass before completion?
 - What evidence supports the current understanding?
+- For Jira-backed work, were all direct child/linked issues and their attachments inventoried, reviewed, and reconciled?
 - Does every action, decision, claim, and evidence reference resolve to a source-backed chain without orphans?
 - Which gates passed or failed?
 - What errors, blockers, and unknowns occurred?

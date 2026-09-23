@@ -16,9 +16,11 @@ memory is automatically injected or otherwise required, quarantine it
 completely: do not cite, import, summarize, or use it, and independently
 establish every material conclusion from current-run evidence.
 
-For a new Technical Spike execute run, a Jira-discovered linked historical
-Spike, design, prior decision, or archived work record is not assigned context
-unless the prompt explicitly declares it; do not open or cite it.
+For a new Technical Spike execute run, a Jira-discovered historical report,
+design document, prior-decision document, or archived work record is not an
+assigned comparison input unless the prompt explicitly declares it. Related
+Jira issues (including Done Spikes and resulting Stories), comments, and
+attachments are work-item context, not excluded historical documents.
 
 When the assignment requires Jira work-item context, use the configured
 Atlassian Rovo operation from the provider mapping for the narrowest read. Do
@@ -27,6 +29,14 @@ If the connector is unavailable, record the normalized `unavailable` state,
 preserve supplied context, and continue only within the declared evidence
 boundary. Keep Jira requirements, comments, links, and repository/runtime
 observations distinguishable.
+
+For every Jira-backed assignment, enumerate the supplied Epic's direct children
+or the supplied issue's parent and direct siblings, plus directly linked Jira
+issues. Record every issue's type, status, relationship, relevance, read state,
+and attachment inventory in the context artifact. Review available attachment
+contents, including rendered images/video and readable logs/documents; record
+unavailable or irrelevant assets. Do not call the context complete if a material
+issue or asset remains unread.
 
 For Feature Delivery, the Jira read MUST include attachment history and return
 an explicit complete or empty attachment inventory. Do not treat a screenshot

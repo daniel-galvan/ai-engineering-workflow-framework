@@ -1,15 +1,15 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.12
+version: 0.5.14
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
 exercise_scope: standard + planning; deep + planning
 default_timebox_minutes: 35
 default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
-validation_summary: V28 terminal rerun passed; evidence and artifact-predeclaration hardening added; live rerun pending
+validation_summary: Jira related-work and attachment coverage gate added; live rerun pending
 owner: Engineering
-last_updated: 2026-09-22
+last_updated: 2026-09-23
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -115,6 +115,11 @@ ownership, or incompatible-alternatives decision that bounded discovery cannot r
 Recover the Jira item and only the hierarchy, links, documents, or repository context needed to interpret the question.
 Apply the [Jira Integration](../integrations/jira.md) when Jira is supplied. Separate verified facts, assumptions,
 conflicts, and unknowns. An Epic or related feature provides context, not automatic Spike scope.
+Before repository investigation, `spike-context` must enumerate the Epic's direct children (or the supplied issue's
+parent and direct siblings), directly linked Jira issues, and each issue's attachment collection. Record the issue key,
+type, status, relationship, relevance, and read/asset status in `spike_context.md`. A Done child Spike and Stories it
+produced are Jira work-item evidence, even when the Spike has no report attachment. Unread relevant issues or assets
+make context partial; preserve the limitation and do not claim a complete answer from the Epic alone.
 When a work-item identifier is supplied, `spike-context` must consume that input through `work_item_read` before
 repository analysis. If the capability is unavailable, record the normalized unavailable result and preserve the
 supplied identifier; do not silently omit the work-item read.
@@ -131,10 +136,10 @@ material is indispensable-evidence failure, not authority to recreate the Spike 
 For `execute_spike`, keep any existing Spike or design document as an optional comparison reference, not a review
 target. Establish the current-run findings and recommendation from independent evidence before reading or comparing
 the reference. A reference may reveal agreement, contradiction, or omission; it does not define the answer.
-For a new current-run `execute_spike`, a Jira-discovered linked historical Spike, design, prior decision, or archived
-work record is not a current-run input merely because Jira exposes it. Do not open or cite it unless the prompt
-explicitly declares it as a comparison or supporting input and it is registered in `run_inputs.json`; record an
-undisclosed linked document as excluded context.
+For a new current-run `execute_spike`, a Jira-discovered historical report, design document, prior-decision document,
+or archived work record is not a current-run comparison input merely because Jira links it. Do not open or cite that
+document unless the prompt explicitly declares it as comparison/supporting input in `run_inputs.json`; record it as
+excluded context. This restriction does not exclude related Jira issues, their comments, or their attachments.
 
 ### Stage 2 — Investigate or Assess
 
@@ -166,6 +171,15 @@ the numeric prepared duration or a bounded numeric evidence count; `within_budge
 Deep execution adds repository integration and independent review. Reconcile only material disagreement. A blocked or
 failed required worker receives one recovery attempt under the shared contract; do not substitute the Coordinator or a
 different role.
+
+Before analytical fan-in passes, compare `spike_context.md` with each later analytical artifact. Check for material
+changes to a conclusion, confidence, scope, or recommendation; wording differences alone do not need correction.
+For a material conflict, record the exact claims and evidence, then send one correction to the worker that owns the
+artifact needing revision. Respect the shared worker and timebox limits. That worker updates its own artifact. The
+Coordinator must not edit the file, and the Documenter must not hide the conflict.
+If one correction fails, keep both claims and their evidence as a report limitation. Do not mark fan-in passed until the
+unresolved conflict is recorded in the Documenter packet. Use `Partially answered` if it affects the conclusion.
+Do not present either claim as settled. Do not start another worker or broaden the investigation.
 
 For Deep `review_spike`, return any material repository-integration discrepancy to the same `spike-assessment` worker
 once before Documenter activation. Do not start another investigation or review worker.
@@ -257,8 +271,10 @@ one concrete next action. Since this playbook has no delivery lifecycle, it neve
 
 If pre-release or terminal finalization fails, preserve the exact failure receipt and report the run as blocked or
 incomplete. A generated `spike_report.md` does not authorize `Question answered` or a completed terminal handoff.
-When the report is published and worker results are complete but the provider cannot confirm release, use the packaged
-`--blocked-runtime-snapshot` mode to save a validated, blocked `work_record.md` alongside the report.
+When the report is published and worker results are complete but the provider cannot confirm release, record
+`Runtime status: Blocked`, include `worker_runtime_release_unavailable` in `Closure evidence or blocker`, and keep
+remaining active handles nonzero or unknown. Then use the packaged `--blocked-runtime-snapshot` mode to save a
+validated, blocked `work_record.md` alongside the report.
 
 ## Gates
 

@@ -1,12 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -68,8 +68,9 @@ clarification-required run may complete discovery and hand off focused questions
 ## Asset Inventory and Review Gate
 
 Every Feature Delivery run MUST create `asset_manifest.json` before downstream planning fan-in. The `feature-context`
-worker MUST inventory the complete Jira attachment collection and every file or folder explicitly supplied in the run
-prompt or `run_inputs.json`. A folder inventory is recursive and includes hidden entries and symlinks; an empty filtered
+worker MUST inventory the complete Jira attachment collections of the supplied issue and its related-work inventory,
+plus every file or folder explicitly supplied in the run prompt or `run_inputs.json`. A folder inventory is recursive
+and includes hidden entries and symlinks; an empty filtered
 search is not an empty folder. Each source must record `complete`, `empty`, `unavailable`, `permission_denied`, or
 `partial`, or `conflict` explicitly.
 

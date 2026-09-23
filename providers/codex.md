@@ -54,8 +54,10 @@ not expose `agent_role` or `agent_path`; observed metadata must match when prese
 close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
 
 Persist the exact provider-returned handle from each spawn. An agent path, worker ID, task name, or canonical artifact
-path is a label, not a release handle. If the runtime exposes no provider handle or release status, record
-`worker_runtime_release_unavailable`, keep the run blocked, and never substitute a label.
+path is a label, not a release handle. If the runtime exposes no provider handle or release status, write the
+Coordinator-owned closure row with `Runtime status: Blocked`, `worker_runtime_release_unavailable` in
+`Closure evidence or blocker`, and nonzero or unknown remaining active handles. Keep the run blocked and never
+substitute a label.
 
 Before worker activation, `prepare_run.py` also copies and hashes the current-run input manifest as `run_inputs.json`.
 Supplied context, decisions, and named artifacts remain authoritative; live runtime evidence is additive unless the user
@@ -104,14 +106,15 @@ connector payload.
 | Shared scope | Codex operation | Boundary |
 | --- | --- | --- |
 | `item` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Read the exact `cloudId` plus issue key/ID with only the fields needed for the request. |
-| `hierarchy` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Read the returned parent and required ancestors by exact IDs/keys; do not scan a project or board. |
-| `selected_links` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and `mcp__codex_apps__atlassian_rovo_getjiraissueremoteissuelinks` | Follow only selected issue, remote, pull-request, or document links and record the selection reason. |
-| `history` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | For Feature Delivery, request the complete attachment collection plus relevant comments/change history; otherwise request only relevant history. |
+| `hierarchy` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and bounded `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` | Read the parent/ancestors by exact key and page through all direct children of the supplied Epic or immediate parent. |
+| `selected_links` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and `mcp__codex_apps__atlassian_rovo_getjiraissueremoteissuelinks` | Inventory directly linked Jira issues; read those bearing on the objective and record dispositions for the rest. Select remote/document links by relevance. |
+| `history` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Request comments and complete attachment collections for the supplied and associated issues; retrieve actual contents of available assets through the configured connector. |
 | `write_metadata` | `mcp__codex_apps__atlassian_rovo_getvisiblejiraprojects`, `mcp__codex_apps__atlassian_rovo_getjiraprojectissuetypesmetadata`, `mcp__codex_apps__atlassian_rovo_getjiraissuetypemetawithfields`, and `mcp__codex_apps__atlassian_rovo_gettransitionsforjiraissue` | Read live project, issue-type, field, allowed-value, or transition metadata only; this scope never performs a write. |
 
-Use `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` only for bounded identity resolution or an explicitly
-requested broader question when a stable issue key or URL is unavailable. Bound the JQL, result count, and pagination;
-do not substitute an unbounded project/board scan or natural-language cross-product search. `cloudId` must come from
+Use `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` for bounded identity resolution and direct-child
+enumeration even when the Epic key is known. Query by exact parent key (or the Jira instance's Epic-link field), bound
+the page size, and follow pagination until the collection is complete or record `partial`. Do not substitute an
+unbounded project/board scan or natural-language cross-product search. `cloudId` must come from
 configured provider context and must never be hardcoded or guessed.
 
 If the connector is unavailable, use authoritative supplied context when present; otherwise return the shared
@@ -119,7 +122,7 @@ If the connector is unavailable, use authoritative supplied context when present
 coercing them to successful context. `work_item_read` MUST NOT invoke Jira create, edit, transition, comment, worklog,
 or other write operations; approved writes use a separate capability and gate.
 
-For Feature Delivery, an attachment field is not optional when `history` is requested: return an explicit complete,
+For any Jira-backed run, an attachment field is not optional when `history` is requested: return an explicit complete,
 empty, partial, unavailable, or permission-denied collection. Do not report a screenshot as consumed from its filename,
 description, or attachment count; the downstream asset manifest requires the stable locator and review result for each
 available attachment.

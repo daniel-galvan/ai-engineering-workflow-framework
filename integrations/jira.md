@@ -1,10 +1,10 @@
 ---
 title: Jira Integration
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 provider: mcp
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 ---
 
 # Jira Integration
@@ -42,15 +42,17 @@ Select the smallest read operation that answers the question:
 | Task scope | The issue's summary, description, acceptance criteria, status, type, and explicitly stated constraints |
 | Immediate outcome | The directly linked parent work item and its relevant scope |
 | Broader objective | Ancestor Stories, Epics, Initiatives, or equivalent hierarchy only when needed |
-| Dependency or precedent | Selected siblings, linked issues, pull requests, or documents with a recorded selection reason |
+| Related work | Complete direct-child inventory for an Epic; for a Story, Task, Bug, or Spike, its parent and that parent's direct-child inventory; directly linked issues. Record type, status, relationship, and relevance for every issue. |
+| Dependency or precedent | Read related issue content, pull requests, or documents with a recorded selection reason |
 | Current writable shape | Live project, issue-type, field, allowed-value, and transition metadata immediately before a write |
 | Related history | Comments, attachments, change history, or linked delivery records relevant to the question |
 | Visual or reference assets | Complete attachment inventory, including an explicit empty/unavailable result and stable locators for every attachment. |
 
-Use a direct issue read when a stable key or URL is available. Use search only to
-resolve a missing identity or answer an explicitly broad question. Do not scan an
-entire project, board, or initiative when the issue hierarchy or links provide a
-narrower route.
+Use a direct issue read when a stable key or URL is available. A bounded child
+query is still required when the supplied item is an Epic or its parent has other
+children: the Epic issue response alone does not prove the child collection is
+empty. Page through the complete direct-child collection; do not scan an entire
+project, board, or initiative. Do not recursively traverse unrelated links.
 
 ## Adapter Contract
 
@@ -62,9 +64,9 @@ shapes or provider-specific operation names:
 | Shared scope | Jira-specific read |
 | --- | --- |
 | `item` | Direct issue read by exact key or URL. |
-| `hierarchy` | Immediate parent and required ancestors. |
-| `selected_links` | Narrowly selected siblings, linked issues, pull requests, or documents. |
-| `history` | Relevant comments, attachments, change history, or delivery records. |
+| `hierarchy` | Parent/ancestors and a complete direct-child inventory of the supplied Epic or immediate parent. |
+| `selected_links` | Directly linked issues and selected pull requests or documents. |
+| `history` | Comments, complete attachment inventory, and relevant change history or delivery records for each in-scope issue. |
 | `write_metadata` | Live project, issue-type, field, allowed-value, and transition metadata before an approved write. |
 
 The canonical offline fixture shape is
@@ -72,7 +74,26 @@ The canonical offline fixture shape is
 
 ## Attachment and Asset Inventory
 
-When Feature Delivery is selected, the `feature-context` read MUST include the Jira `history` scope for attachments.
+For every Jira-backed playbook, the context read MUST include the Jira `hierarchy`, `selected_links`, and `history`
+scopes. Inventory every direct child and directly linked issue regardless of type or status, including Done Spikes and
+the Stories they produced. Read each inventoried issue's summary, description, acceptance criteria, comments, and
+relevant history before classifying its relevance; record why an issue is non-material. A Done status or absence of a
+report attachment is not evidence that a Spike produced no output: check related issues, issue history, and the
+resulting delivery breakdown. Do not treat those issues as inherited
+requirements.
+
+Inventory attachments on the supplied item and every inventoried issue. Review every available attachment's actual
+contents before treating its evidence as covered: render or visually inspect images and video; read logs and documents.
+Record inaccessible, redacted, unsupported, or irrelevant assets explicitly. An unread file name or attachment count
+is not evidence. If a material issue or asset cannot be read within the run, preserve `partial` or `unavailable` and
+its effect on the answer; do not claim complete context or readiness.
+
+The normalized result must include the related-issue inventory with each issue's key, relationship, type, status,
+read/disposition state, and source locator; the attachment inventory must identify its owner issue. Reconcile both
+inventories in the context artifact before downstream analysis or fan-in. An empty child/link/attachment collection
+requires a successful collection read; an omitted field is not an empty result.
+
+For Feature Delivery, `feature-context` additionally produces the plan-level `asset_manifest.json` gate.
 The normalized result must preserve each attachment's stable name/locator, type, availability, redaction state, and
 retrieval limitation. A valid empty attachment collection is recorded as `empty`; an omitted attachment field is not an
 empty result. If the connector cannot enumerate or retrieve the collection, record `unavailable`, `partial`, or

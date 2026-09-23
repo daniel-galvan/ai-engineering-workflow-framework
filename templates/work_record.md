@@ -84,10 +84,11 @@ cites the Coordinator/provider observation. Reserve `Current user` for inputs ac
 
 # Asset Inventory and Review
 
-Feature Delivery requires `asset_manifest.json` before planning fan-in. Preserve the complete Jira attachment inventory
-and every explicitly supplied file, folder, or URL source. Folder inventories are recursive and include hidden entries
-and symlinks. Every available asset receives an observation, review method, review status, relevance, disposition, and
-evidence references. Visual assets require visual inspection or rendered reading. An unavailable source or unreviewed
+Feature Delivery requires `asset_manifest.json` before planning fan-in. Preserve complete Jira attachment inventories
+for the supplied issue and its associated Jira issues, plus every explicitly supplied file, folder, or URL source.
+Folder inventories are recursive and include hidden entries and symlinks. Every available asset receives an observation,
+review method, review status, relevance, disposition, and evidence references. Visual assets require visual inspection
+or rendered reading. An unavailable source or unreviewed
 asset is an explicit planning unknown, not an empty or non-material result.
 
 Source inventory:

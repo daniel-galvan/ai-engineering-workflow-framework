@@ -4085,6 +4085,15 @@ for phrase in ("# Asset Baseline", "asset_manifest.json", "material asset"):
 for phrase in ("Asset source: true", "asset_manifest.json", "awaiting_input"):
     if phrase not in RUN_SKILL.read_text():
         fail(f"skills/run/SKILL.md is missing asset-gate control: {phrase}")
+for path, phrase in (
+    (ROOT / "integrations" / "jira.md", "complete direct-child inventory"),
+    (ROOT / "integrations" / "jira.md", "Inventory attachments on the supplied item and every inventoried issue"),
+    (ROOT / "providers" / "codex.md", "enumeration even when the Epic key is known"),
+    (ROOT / "playbooks" / "technical_spike.md", "A Done child Spike and Stories"),
+    (CODEX_AGENT_DIR / "orchestrator.toml", "For every Jira-backed run"),
+):
+    if phrase not in path.read_text():
+        fail(f"{path.relative_to(ROOT)} is missing Jira related-work coverage: {phrase}")
 
 technical_spike_playbook = (ROOT / "playbooks" / "technical_spike.md").read_text()
 technical_spike_prompt = (ROOT / "templates" / "technical_spike_run_prompt.md").read_text()

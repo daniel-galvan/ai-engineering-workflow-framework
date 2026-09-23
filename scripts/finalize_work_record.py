@@ -1845,12 +1845,15 @@ def _prepare_spike_blocked_snapshot(
     rows = closure["runtime_closure"]
     if not rows or any(
         row["Receipt owner"] != "Coordinator"
-        or row["Runtime status"] != "worker_runtime_release_unavailable"
+        or str(row["Runtime status"]).strip().lower() != "blocked"
         or NO_ACTIVE_HANDLES.fullmatch(str(row["Remaining active handles"]).strip())
-        or not str(row["Closure evidence or blocker"]).strip()
+        or "worker_runtime_release_unavailable" not in str(row["Closure evidence or blocker"]).lower()
         for row in rows
     ):
-        raise ValueError("blocked runtime snapshot requires a Coordinator-owned unavailable-release receipt")
+        raise ValueError(
+            "blocked runtime snapshot requires a Coordinator-owned receipt with Runtime status Blocked, "
+            "worker_runtime_release_unavailable in Closure evidence or blocker, and nonzero or unknown active handles"
+        )
     errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
     errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
     try:
@@ -3060,38 +3063,65 @@ Runtime behavior remains unverified.
         released_receipt = spike_closure.read_text()
         spike_closure.write_text(json.dumps({"runtime_closure": [{
             "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
-            "Completed worker handles": "Unavailable", "Runtime status": "worker_runtime_release_unavailable",
+            "Completed worker handles": "Unavailable", "Runtime status": "Blocked",
             "Remaining active handles": "Unknown",
-            "Closure evidence or blocker": "Provider release receipts unavailable for completed workers.",
+            "Closure evidence or blocker": (
+                "worker_runtime_release_unavailable: no exact provider-returned closure handle or release receipt "
+                "was exposed for the completed workers. Provider traces were also unavailable."
+            ),
         }]}, indent=2) + "\n")
         spike_record.write_text("prepared template\n")
         finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
         blocked_record = spike_record.read_text()
+        blocked_receipt = spike_closure.read_text()
         assert "| State | blocked |" in blocked_record
         assert "| Workflow outcome | blocked |" in blocked_record
+        assert "| Blocked | Unknown |" in blocked_record
         assert "worker_runtime_release_unavailable" in blocked_record
         assert "| State | handoff |" not in blocked_record
         assert "state remains handoff" not in blocked_record.lower()
         assert "workflow remains in_progress" not in blocked_record.lower()
         assert json.loads(spike_packet_path.read_text())["identity"]["State"] == "handoff"
+        spike_closure.write_text(json.dumps({"runtime_closure": [{
+            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
+            "Completed worker handles": "Unavailable", "Runtime status": "Blocked",
+            "Remaining active handles": "Unknown",
+            "Closure evidence or blocker": "Provider release receipts unavailable for completed workers.",
+        }]}, indent=2) + "\n")
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
+        except ValueError as error:
+            assert "worker_runtime_release_unavailable" in str(error)
+        else:
+            raise AssertionError("a blocked receipt must identify the unavailable-release blocker")
+        assert spike_record.read_text() == blocked_record
+        assert (spike_root / FINALIZATION_STATUS_FILENAME).exists()
+        spike_closure.write_text(blocked_receipt)
+        finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
+        blocked_record = spike_record.read_text()
+        assert "| State | blocked |" in blocked_record
+        assert "| Blocked | Unknown |" in blocked_record
+        assert "worker_runtime_release_unavailable" in blocked_record
+        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
         spike_closure.write_text(released_receipt)
         try:
             finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
         except ValueError as error:
-            assert "unavailable-release receipt" in str(error)
+            assert "Coordinator-owned receipt with Runtime status Blocked" in str(error)
         else:
             raise AssertionError("a released receipt must not create a blocked snapshot")
         assert spike_record.read_text() == blocked_record
         unavailable_with_false_zero = {"runtime_closure": [{
             "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
-            "Completed worker handles": "Unavailable", "Runtime status": "worker_runtime_release_unavailable",
-            "Remaining active handles": "None", "Closure evidence or blocker": "Provider release unknown.",
+            "Completed worker handles": "Unavailable", "Runtime status": "Blocked",
+            "Remaining active handles": "None",
+            "Closure evidence or blocker": "worker_runtime_release_unavailable: provider release unknown.",
         }]}
         spike_closure.write_text(json.dumps(unavailable_with_false_zero))
         try:
             finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
         except ValueError as error:
-            assert "unavailable-release receipt" in str(error)
+            assert "Coordinator-owned receipt with Runtime status Blocked" in str(error)
         else:
             raise AssertionError("unavailable release cannot claim zero active handles")
         assert spike_record.read_text() == blocked_record
