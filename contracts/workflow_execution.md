@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.6
+version: 0.5.7
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -1221,7 +1221,9 @@ Before Technical Spike pre-release, the Documenter MUST write `spike_report.cand
 and invoke the packaged `--publish-technical-spike-report` mode. That mode validates the finalization-packet reasoning
 graph and canonical report structure before atomically replacing `spike_report.md`. A failed candidate MUST preserve
 the last valid report and MUST NOT consume a pre-release correction attempt. Handwritten heading, table, grep, or
-reference checks are not substitutes for this gate.
+reference checks are not substitutes for this gate. Publication requires terminal analytical worker results but allows
+the Documenter's own `handoff` result to remain pending. After publication, the Documenter records its completed
+`handoff` ledger and result rows before returning; pre-release still requires every worker result to be complete.
 
 Once the final Documenter is activated, it is the sole writer for its assigned non-record artifacts and packet. The
 Coordinator invokes the renderer but MUST NOT edit the packet or rendered record.
@@ -1285,6 +1287,11 @@ recording provider closure in `runtime_closure.json`, finalization passes only w
 first output line is exactly `Workflow-framework validation: passed`; the remaining output is the canonical handoff.
 For a completed Technical Spike, the finalizer also rejects a released closure receipt when it lists fewer unique
 provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
+If the provider does not expose release handles or receipts after the Technical Spike report is published and every
+worker result is complete, the Coordinator records `worker_runtime_release_unavailable` and invokes the packaged
+`--blocked-runtime-snapshot` mode. It validates and saves `work_record.md` with `State: blocked` and
+`Workflow outcome: blocked`, while preserving the published report and the original handoff packet for later
+finalization. This is a blocked record, never evidence that provider workers were released or the workflow completed.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. The terminal `Engineering state` MUST use one value from the canonical enum; a

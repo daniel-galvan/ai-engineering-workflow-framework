@@ -252,7 +252,9 @@ description: >-
    --publish-technical-spike-report <artifact-root>/spike_report.candidate.md`. Require exit status zero and the exact
    `Technical Spike artifact validation: passed` output before the first pre-release attempt. This validates the packet
    reasoning graph and report structure, then atomically publishes `spike_report.md`; do not substitute a handwritten
-   heading, table, grep, or reference check.
+   heading, table, grep, or reference check. The publisher permits `handoff` to remain pending while the Documenter
+   publishes; the Documenter then records its own complete ledger/result rows before returning. Pre-release requires
+   that completed result.
    Supply the current Coordinator model/effort (or the exact `Not exposed / Not exposed` active-parent marker), the
    current framework revision, and its clean/dirty status to both finalizer
    invocations; never leave Coordinator identity blank or copy it from an older
@@ -308,6 +310,11 @@ description: >-
    through pre-release when the provider may reclaim worker-owned artifact state on close.
    A provider task path or name is not a closure handle; use only the exact value returned by the spawn primitive. If no
    provider handle or release status is available, record `worker_runtime_release_unavailable` and keep the run blocked.
+   For a Technical Spike with a published report and complete worker results, write that Coordinator-owned unavailable
+   receipt to `runtime_closure.json`, then run the pinned `finalize_work_record.py --blocked-runtime-snapshot` with the
+   packet, closure, record, and Coordinator/framework identity arguments below. Require exit zero and
+   `Technical Spike blocked work record: saved; runtime release unverified` before linking the blocked work record.
+   Do not claim a completed workflow or substitute worker labels for release handles.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`

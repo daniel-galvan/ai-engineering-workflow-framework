@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.11
+version: 0.5.12
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -257,6 +257,8 @@ one concrete next action. Since this playbook has no delivery lifecycle, it neve
 
 If pre-release or terminal finalization fails, preserve the exact failure receipt and report the run as blocked or
 incomplete. A generated `spike_report.md` does not authorize `Question answered` or a completed terminal handoff.
+When the report is published and worker results are complete but the provider cannot confirm release, use the packaged
+`--blocked-runtime-snapshot` mode to save a validated, blocked `work_record.md` alongside the report.
 
 ## Gates
 

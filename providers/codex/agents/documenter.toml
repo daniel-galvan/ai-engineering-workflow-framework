@@ -181,6 +181,11 @@ This packaged check validates the packet reasoning graph and canonical report,
 then atomically publishes `spike_report.md`. A nonzero result must be corrected
 before returning. Do not replace this command with a handwritten heading,
 table, grep, or reference check.
+The publisher permits your `handoff` result to remain pending while you publish;
+it still requires every analytical worker result to be complete. After it passes,
+write your `handoff` ledger and result rows as `complete` before returning so
+the Coordinator can run pre-release. Do not mark yourself complete before the
+report is published.
 For a new `execute_spike`, every external document URL or stable locator in
 evidence must be declared in `run_inputs.json`; do not preserve an undeclared
 historical linked document in the report.

@@ -415,7 +415,9 @@ def _technical_spike_missing_workers(packet: dict[str, object]) -> set[str]:
     return required - complete
 
 
-def _technical_spike_worker_contract_errors(packet: dict[str, object]) -> list[str]:
+def _technical_spike_worker_contract_errors(
+    packet: dict[str, object], *, publishing: bool = False,
+) -> list[str]:
     identity = packet.get("identity", {})
     selection = packet.get("playbook_selection", {})
     if not isinstance(identity, dict) or not isinstance(selection, dict):
@@ -436,6 +438,8 @@ def _technical_spike_worker_contract_errors(packet: dict[str, object]) -> list[s
             results_by_worker.setdefault(str(row.get("Worker", "")).strip().lower(), []).append(row)
     errors = []
     for worker, expected_role in contract.items():
+        if publishing and worker == "handoff":
+            continue
         rows = rows_by_worker.get(worker, [])
         if len(rows) > 1:
             errors.append(f"Technical Spike worker {worker} must have exactly one execution-ledger row")
@@ -1129,7 +1133,7 @@ def _normalize_packet(
                 )
 
 
-def _validate_handoff(packet: dict[str, object]) -> None:
+def _validate_handoff(packet: dict[str, object], *, publishing: bool = False) -> None:
     handoff = packet.get("handoff", {})
     if not isinstance(handoff, dict):
         raise ValueError("packet.handoff must be an object")
@@ -1189,12 +1193,16 @@ def _validate_handoff(packet: dict[str, object]) -> None:
                         "Technical Spike handoff requires Profile status executed and matching profiles"
                     )
                 missing_workers = _technical_spike_missing_workers(packet)
+                if publishing:
+                    missing_workers.discard("handoff")
                 if missing_workers:
                     raise ValueError(
                         "Technical Spike handoff requires terminal results for: "
                         + ", ".join(sorted(missing_workers))
                     )
-                worker_contract_errors = _technical_spike_worker_contract_errors(packet)
+                worker_contract_errors = _technical_spike_worker_contract_errors(
+                    packet, publishing=publishing,
+                )
                 if worker_contract_errors:
                     raise ValueError("\n".join(worker_contract_errors))
                 context_worker = next(
@@ -1806,7 +1814,7 @@ def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> N
     errors.extend(_technical_spike_candidate_reference_errors(packet))
     errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=True))
     try:
-        _validate_handoff(packet)
+        _validate_handoff(packet, publishing=True)
     except ValueError as error:
         errors.append(str(error))
     budget_status = None
@@ -1826,12 +1834,63 @@ def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> N
     print("Technical Spike artifact validation: passed")
 
 
+def _prepare_spike_blocked_snapshot(
+    packet: dict[str, object], closure: dict[str, object], packet_path: Path,
+    budget_status: str | None,
+) -> None:
+    identity = packet["identity"]
+    playbook = Path(str(identity["Playbook / version"]).split(" / ", 1)[0]).stem
+    if playbook != "technical_spike" or identity["State"] != "handoff":
+        raise ValueError("blocked runtime snapshot requires a Technical Spike handoff packet")
+    rows = closure["runtime_closure"]
+    if not rows or any(
+        row["Receipt owner"] != "Coordinator"
+        or row["Runtime status"] != "worker_runtime_release_unavailable"
+        or NO_ACTIVE_HANDLES.fullmatch(str(row["Remaining active handles"]).strip())
+        or not str(row["Closure evidence or blocker"]).strip()
+        for row in rows
+    ):
+        raise ValueError("blocked runtime snapshot requires a Coordinator-owned unavailable-release receipt")
+    errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
+    errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
+    try:
+        _validate_handoff(packet)
+    except ValueError as error:
+        errors.append(str(error))
+    if errors:
+        raise ValueError("\n".join(dict.fromkeys(errors)))
+    primary_goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
+    result = str(packet["handoff"]["workflow_result"]).strip()
+    identity.update({
+        "State": "blocked", "Workflow outcome": "blocked",
+        "Engineering outcome": TECHNICAL_SPIKE_DISPOSITIONS[primary_goal][result],
+    })
+    packet["finalization"].update({
+        "Final reconciliation": "Blocked; provider runtime release unverified",
+        "Finalization schema": "Passed for blocked work record",
+    })
+    execution = re.sub(
+        r"(?i)(?:state remains handoff|workflow remains in_progress)[^;.]*",
+        "", str(packet["handoff"]["execution"]),
+    ).rstrip(" .;")
+    packet["handoff"]["execution"] = (
+        execution + "; provider release unavailable; workflow blocked pending provider receipt"
+    )
+    for artifact in packet["durable_artifacts"]:
+        name = Path(str(artifact.get("Path", ""))).name
+        if name == "work_record.md":
+            artifact["Status"] = "Blocked snapshot"
+        elif name == "runtime_closure.json":
+            artifact["Status"] = "Unverified"
+
+
 def finalize(
     packet_path: Path,
     closure_path: Path,
     record_path: Path,
     *,
     pre_release: bool = False,
+    blocked_runtime_snapshot: bool = False,
     coordinator_model_effort: str | None = None,
     framework_revision: str | None = None,
     framework_status: str | None = None,
@@ -1863,6 +1922,8 @@ def finalize(
             _validate_shapes(packet, closure)
             if pre_release:
                 _validate_pre_release_state(packet)
+            if blocked_runtime_snapshot:
+                _prepare_spike_blocked_snapshot(packet, closure, packet_path, budget_status)
             errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
             _normalize_packet(packet, closure, packet_path, budget_status)
             _sync_spike_report_budget(packet_path, packet, budget_status)
@@ -1934,6 +1995,8 @@ def finalize(
         if not pre_release:
             temporary.replace(record_path)
         if result:
+            if blocked_runtime_snapshot:
+                print("Technical Spike blocked work record: saved; runtime release unverified")
             print(result.stdout, end="")
     finally:
         temporary.unlink(missing_ok=True)
@@ -2955,6 +3018,34 @@ Runtime behavior remains unverified.
         publish_technical_spike_report(spike_packet_path, candidate)
         assert not candidate.exists()
         valid_spike_report = spike_report.read_text()
+        publishing_packet = json.loads(json.dumps(spike_packet))
+        for field in ("workers", "worker_results"):
+            publishing_packet[field] = [
+                row for row in publishing_packet[field] if row["Worker"] != "handoff"
+            ]
+        spike_packet_path.write_text(json.dumps(publishing_packet, indent=2) + "\n")
+        candidate.write_text(valid_spike_report)
+        publish_technical_spike_report(spike_packet_path, candidate)
+        assert not candidate.exists()
+        try:
+            _validate_handoff(publishing_packet)
+        except ValueError as error:
+            assert "requires terminal results for: handoff" in str(error)
+        else:
+            raise AssertionError("pre-release must still require the completed Documenter")
+        publishing_packet["worker_results"] = [
+            row for row in publishing_packet["worker_results"] if row["Worker"] != "spike-context"
+        ]
+        spike_packet_path.write_text(json.dumps(publishing_packet, indent=2) + "\n")
+        candidate.write_text(valid_spike_report)
+        try:
+            publish_technical_spike_report(spike_packet_path, candidate)
+        except ValueError as error:
+            assert "requires terminal results for: spike-context" in str(error)
+        else:
+            raise AssertionError("report publication must require completed analytical workers")
+        candidate.unlink()
+        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
         invalid_candidate = valid_spike_report.replace("## Findings", "## Missing Findings")
         candidate.write_text(invalid_candidate)
         try:
@@ -2966,6 +3057,45 @@ Runtime behavior remains unverified.
         assert spike_report.read_text() == valid_spike_report
         assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
         candidate.unlink()
+        released_receipt = spike_closure.read_text()
+        spike_closure.write_text(json.dumps({"runtime_closure": [{
+            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
+            "Completed worker handles": "Unavailable", "Runtime status": "worker_runtime_release_unavailable",
+            "Remaining active handles": "Unknown",
+            "Closure evidence or blocker": "Provider release receipts unavailable for completed workers.",
+        }]}, indent=2) + "\n")
+        spike_record.write_text("prepared template\n")
+        finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
+        blocked_record = spike_record.read_text()
+        assert "| State | blocked |" in blocked_record
+        assert "| Workflow outcome | blocked |" in blocked_record
+        assert "worker_runtime_release_unavailable" in blocked_record
+        assert "| State | handoff |" not in blocked_record
+        assert "state remains handoff" not in blocked_record.lower()
+        assert "workflow remains in_progress" not in blocked_record.lower()
+        assert json.loads(spike_packet_path.read_text())["identity"]["State"] == "handoff"
+        spike_closure.write_text(released_receipt)
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
+        except ValueError as error:
+            assert "unavailable-release receipt" in str(error)
+        else:
+            raise AssertionError("a released receipt must not create a blocked snapshot")
+        assert spike_record.read_text() == blocked_record
+        unavailable_with_false_zero = {"runtime_closure": [{
+            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
+            "Completed worker handles": "Unavailable", "Runtime status": "worker_runtime_release_unavailable",
+            "Remaining active handles": "None", "Closure evidence or blocker": "Provider release unknown.",
+        }]}
+        spike_closure.write_text(json.dumps(unavailable_with_false_zero))
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
+        except ValueError as error:
+            assert "unavailable-release receipt" in str(error)
+        else:
+            raise AssertionError("unavailable release cannot claim zero active handles")
+        assert spike_record.read_text() == blocked_record
+        spike_closure.write_text(released_receipt)
         spike_report.write_text(valid_spike_report.replace("## Direct Evidence", "## Missing Direct Evidence"))
         try:
             finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
@@ -3004,7 +3134,8 @@ Runtime behavior remains unverified.
             spike_report.read_text(),
         ), spike_report.read_text()
         assert "| spike-context | Current-State Investigator |" in spike_rendered
-        assert "gpt-5.6-luna / high" in spike_rendered
+        context_binding = spike_manifest["bindings"]["current_state_investigator"]
+        assert f"{context_binding['model']} / {context_binding['effort']}" in spike_rendered
         assert "| Role-policy baseline ID | corrupted |" not in spike_rendered
         assert "[spike_report.md](./spike_report.md)" in spike_rendered
         incomplete_terminal = json.loads(spike_packet_path.read_text())
@@ -3153,6 +3284,17 @@ Runtime behavior remains unverified.
             .replace("__FRAMEWORK_ROOT__", str(ROOT))
             .replace("__ARTIFACT_ROOT__", str(root))
         )
+        try:
+            from prepare_run import resolve_bindings
+        except ModuleNotFoundError:
+            from scripts.prepare_run import resolve_bindings
+
+        current_bindings = resolve_bindings("sentry_issue_remediation", None)
+        fixture_bindings = fixture["files"]["role_bindings.json"]
+        fixture_bindings["baseline_id"] = current_bindings["baseline_id"]
+        for agent, binding in fixture_bindings["bindings"].items():
+            binding["model"] = current_bindings["bindings"][agent]["model"]
+            binding["effort"] = current_bindings["bindings"][agent]["effort"]
         fixture_packet_data = fixture["files"]["finalization_packet.json"]
         fixture["files"]["fix_design_result.json"]["plan"] = json.loads(
             V34_FINALIZATION_FIXTURE.read_text()
@@ -3164,7 +3306,7 @@ Runtime behavior remains unverified.
         fixture_packet_data["identity"]["Prompt template / revision / conformance"] = (
             f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass"
         )
-        fixture_packet_data["identity"]["Coordinator model/effort"] = "gpt-5.6-luna/medium"
+        fixture_packet_data["identity"]["Coordinator model/effort"] = "gpt-6-luna/medium"
         fixture_packet_data["handoff"]["workflow_result"] = "Workflow result: Ready for implementation"
         fixture_packet_data["handoff"]["next_action"] = {
             "owner": "Coordinator",
@@ -3192,7 +3334,7 @@ Runtime behavior remains unverified.
         assert f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass" in fixture_rendered
         assert f"{'a' * 40} / Clean" in fixture_rendered
         assert f"playbooks/sentry_issue_remediation.md / {sentry_playbook_version}" in fixture_rendered
-        assert "gpt-5.6-luna / medium" in fixture_rendered
+        assert "gpt-6-luna / medium" in fixture_rendered
         assert "evidence 01a00000" not in fixture_rendered
         assert "runtime closure released" in fixture_rendered
         assert "Workflow result: Workflow result:" not in fixture_rendered
@@ -3350,6 +3492,7 @@ def main() -> int:
     parser.add_argument("--closure", type=Path)
     parser.add_argument("--record", type=Path)
     parser.add_argument("--pre-release", action="store_true")
+    parser.add_argument("--blocked-runtime-snapshot", action="store_true")
     parser.add_argument("--publish-technical-spike-report", type=Path)
     parser.add_argument("--analytical-failure")
     parser.add_argument("--analytical-failure-stage", choices=tuple(ANALYTICAL_FAILURE_STAGES))
@@ -3363,6 +3506,8 @@ def main() -> int:
     if args.self_test:
         self_test()
         return 0
+    if args.blocked_runtime_snapshot and (args.pre_release or args.publish_technical_spike_report or args.analytical_failure):
+        parser.error("--blocked-runtime-snapshot cannot be combined with another finalization mode")
     if args.publish_technical_spike_report:
         if not args.packet:
             parser.error("--publish-technical-spike-report requires --packet")
@@ -3398,6 +3543,7 @@ def main() -> int:
             finalize(
                 args.packet.resolve(), args.closure.resolve(), args.record.resolve(),
                 pre_release=args.pre_release,
+                blocked_runtime_snapshot=args.blocked_runtime_snapshot,
                 coordinator_model_effort=args.coordinator_model_effort,
                 framework_revision=args.framework_revision,
                 framework_status=args.framework_status,
