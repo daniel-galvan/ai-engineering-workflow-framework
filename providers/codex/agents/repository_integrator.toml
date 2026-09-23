@@ -1,6 +1,6 @@
 name = "repository_integrator"
 description = "Discovers and adapts destination repository conventions and operations."
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 

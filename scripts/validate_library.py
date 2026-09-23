@@ -81,7 +81,7 @@ STALE_FINALIZER_REFERENCE = (
 NO_ACTIVE_HANDLES = re.compile(
     r"^(?:none|0)(?:\s+(?:observed|confirmed) after close request)?$", re.IGNORECASE
 )
-MODEL_BASELINE_ID = "codex-role-policy-v20260827032839"
+MODEL_BASELINE_ID = "codex-role-policy-gpt6-luna-orchestrator-v20260922"
 POLICY_EFFORTS = {
     "Light": "low",
     "Medium": "medium",
@@ -3167,10 +3167,10 @@ Keep the current boundary pending runtime confirmation (E-001).
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
 | Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.5.1 / pass |
-| Role-policy baseline ID | codex-role-policy-v20260827032839 |
+| Role-policy baseline ID | codex-role-policy-gpt6-luna-orchestrator-v20260922 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
-| Coordinator model/effort | gpt-5.6-luna / medium |
+| Coordinator model/effort | gpt-6-luna / medium |
 | Requested profile | standard |
 | Activated profile | standard |
 | Executed profile | standard |
@@ -3500,7 +3500,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "bindings": {
                 "current_state_investigator": {
                     "definition": str(CODEX_AGENT_DIR / "current_state_investigator.toml"),
-                    "model": "gpt-5.6-luna",
+                    "model": "gpt-6-luna",
                     "effort": "high",
                 },
             },
@@ -3510,7 +3510,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
 
         normal = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Not applicable |")
         normal = normal.replace(
-            "| Role-policy baseline ID | codex-role-policy-v20260827032839 |",
+            "| Role-policy baseline ID | codex-role-policy-gpt6-luna-orchestrator-v20260922 |",
             "| Role-policy baseline ID | Not applicable |",
         )
         normal = normal.replace("| Role binding manifest | role_bindings.json |", "| Role binding manifest | Not applicable |")
@@ -3584,7 +3584,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "Evaluation run ID must identify the evaluated run",
         )
         assert_invalid(
-            valid.replace("| Role-policy baseline ID | codex-role-policy-v20260827032839 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
+            valid.replace("| Role-policy baseline ID | codex-role-policy-gpt6-luna-orchestrator-v20260922 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
             "Role-policy baseline ID must be an identifier, not a path",
         )
         assert_invalid(valid.replace("| TechOps |", "| None selected |"), "run-specific evidence")
@@ -3641,7 +3641,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         assert_invalid(bound_worker, "configured model/effort received 'gpt-5.6-luna / low'; expected 'gpt-5.6-luna / high'")
         multiple = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |")
         multiple = multiple.replace(
-            "| Role-policy baseline ID | codex-role-policy-v20260827032839 |",
+            "| Role-policy baseline ID | codex-role-policy-gpt6-luna-orchestrator-v20260922 |",
             "| Role-policy baseline ID | providers/codex/model_effort_policy.md |",
         )
         output = validation_output(multiple)
@@ -5192,11 +5192,11 @@ if "Post-finalization Coordinator edits" not in evaluation_addendum:
     fail("templates/evaluation_work_record_addendum.md is missing evaluation control evidence")
 for phrase in (
     "initial hypothesis: an experimental baseline",
-    "Orchestrator | `gpt-5.6-luna` | Extra High | `xhigh`",
-    "Dependency Analyst | `gpt-5.6-luna` | High | `high`",
-    "Repository Integrator | `gpt-5.6-luna` | High | `high`",
-    "Solution Architect | `gpt-5.6-sol` | Light | `low`",
-    "Reviewer | `gpt-5.6-sol` | Light | `low`",
+    "Orchestrator | `gpt-6-luna` | Extra High | `xhigh`",
+    "Dependency Analyst | `gpt-6-luna` | High | `high`",
+    "Repository Integrator | `gpt-6-luna` | High | `high`",
+    "Solution Architect | `gpt-6-sol` | Light | `low`",
+    "Reviewer | `gpt-6-sol` | Light | `low`",
 ):
     if phrase not in policy_text:
         fail(f"{CODEX_POLICY.relative_to(ROOT)} is missing experimental baseline: {phrase}")

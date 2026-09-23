@@ -1,6 +1,6 @@
 name = "sentry_current_state_investigator"
 description = "Collects Sentry evidence and maps the reported failure to repository code."
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 

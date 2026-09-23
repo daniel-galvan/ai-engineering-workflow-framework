@@ -1,13 +1,13 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.5.1
+version: 0.5.3
 status: Pilot
 provider: codex
 provider_independent_profiles: true
-baseline_id: codex-role-policy-v20260827032839
+baseline_id: codex-role-policy-gpt6-luna-orchestrator-v20260922
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-22
 ---
 
 # Codex Model and Effort Policy
@@ -17,8 +17,9 @@ Remediation, Vulnerability Investigation, and Sentry Issue Remediation. It is ad
 normal run input. The role policy below is an initial hypothesis: an experimental baseline to validate against real
 runs, not a claim of optimal model selection.
 
-The experimental baseline is `codex-role-policy-v20260827032839` and is shared across Technical Spike, Feature Delivery,
-Sentry, TechOps Issue Remediation, and Vulnerability Investigation. Profiles select which roles run; they do not change
+The experimental baseline is `codex-role-policy-gpt6-luna-orchestrator-v20260922` and is shared across Technical Spike,
+Feature Delivery, Sentry, TechOps Issue Remediation, and Vulnerability Investigation. Profiles select which roles run;
+they do not change
 a role's model or reasoning effort. Record the baseline ID plus requested and resolved values in the work record, and
 revise it only from comparable evaluation evidence.
 
@@ -33,28 +34,42 @@ Codex policy labels map to configuration values as follows:
 | Max | `max` |
 | Ultra | `ultra` (Codex App/runtime-specific; not portable) |
 
-OpenAI's current GPT-5.6 guidance documents `none`, `low`, `medium`, `high`, `xhigh`, and `max` as reasoning-effort
-values. This pilot uses explicit `gpt-5.6-luna`, `gpt-5.6-sol`, and `gpt-5.6-terra` model IDs; it does not use the
-`gpt-5.6` alias because that alias routes to Sol. Verify any Codex App-only label, such as `Ultra`, in the target
-runtime before pinning it in an agent definition. See the [official GPT-5.6 model
-guidance](https://developers.openai.com/api/docs/guides/latest-model).
+This GPT-6 pilot uses `gpt-6-sol` for demanding design and review work, and `gpt-6-luna` for coordination and
+repeatable,
+high-volume roles. Both IDs are available in the current Codex runtime. GPT-6 Sol and Luna support `none`, `low`,
+`medium`, `high`,
+`xhigh`, and `max`; Astra supports `low`, `medium`, `high`, `xhigh`, and `max`, but Astra is not in this runtime's
+available model set and is not pinned here. Preserve each role's current effort where the target model supports it.
+`Ultra` remains Codex App/runtime-specific and must be verified in the target runtime before use. See the
+[official GPT-6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
+and [GPT-6 prompting guidance](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra).
+
+OpenAI reports lower estimated task cost for GPT-6 Astra in evaluations despite its higher per-token price. That is not
+a general promise that every GPT-6 model or workload costs less. Keep this role mapping experimental until comparable
+runs confirm quality, elapsed time, and human effort.
+
+GPT-6 follows long instructions more closely and can be more sensitive to conflicting skill and `AGENTS.md` guidance.
+Keep instruction precedence explicit, state when the workflow should proceed autonomously or delegate, and calibrate
+testing to the change's risk instead of repeating broad checks by default. Review the loaded instruction set when
+results differ from the prior baseline.
 
 ## Experimental Role Baseline
 
 | Role | Codex model | Policy effort | TOML value |
 | --- | --- | --- | --- |
-| Orchestrator | `gpt-5.6-luna` | Extra High | `xhigh` |
-| Current-State Investigator | `gpt-5.6-luna` | High | `high` |
-| Dependency Analyst | `gpt-5.6-luna` | High | `high` |
-| Repository Integrator | `gpt-5.6-luna` | High | `high` |
-| Solution Architect | `gpt-5.6-sol` | Light | `low` |
-| Reviewer | `gpt-5.6-sol` | Light | `low` |
-| Implementer | `gpt-5.6-luna` | Extra High | `xhigh` |
-| Tester | `gpt-5.6-luna` | Extra High | `xhigh` |
-| Documenter | `gpt-5.6-luna` | Light | `low` |
+| Orchestrator | `gpt-6-luna` | Extra High | `xhigh` |
+| Current-State Investigator | `gpt-6-luna` | High | `high` |
+| Dependency Analyst | `gpt-6-luna` | High | `high` |
+| Repository Integrator | `gpt-6-luna` | High | `high` |
+| Solution Architect | `gpt-6-sol` | Light | `low` |
+| Reviewer | `gpt-6-sol` | Light | `low` |
+| Implementer | `gpt-6-luna` | Extra High | `xhigh` |
+| Tester | `gpt-6-luna` | Extra High | `xhigh` |
+| Documenter | `gpt-6-luna` | Light | `low` |
 
-This baseline assigns Luna with Extra High effort to coordination, Sol with Light effort to design and review, and keeps
-the existing investigation, implementation, testing, and documentation assignments. Keep the baseline only when
+This baseline assigns Luna with Extra High effort to coordination and repeatable investigation, implementation,
+and testing,
+while Sol handles design and review and Luna documents at Light effort. Keep the baseline only when
 comparable runs show that it maintains or improves quality, elapsed-time, and human-effort metrics.
 
 ## Agent selection
@@ -71,7 +86,7 @@ Only Sentry-specific investigation uses specialized `sentry_*.toml` agents.
 | --- | --- | --- |
 | Diagnosis, architecture, implementation, and review | Role-specific | Role-specific |
 | Sentry evidence and testing | Role-specific | Role-specific |
-| Work-record documentation | `gpt-5.6-luna` | `low` (Light) |
+| Work-record documentation | `gpt-6-luna` | `low` (Light) |
 
 This profile is enforced by the named agent files when the Orchestrator uses those agents. Prompt text alone does not
 override a pinned agent model or effort.

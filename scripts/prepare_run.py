@@ -815,7 +815,7 @@ def self_test() -> None:
             input_manifest=input_source,
         )
         assert first["playbook"] == "sentry_issue_remediation"
-        assert first["bindings"]["sentry_solution_architect"]["model"] == "gpt-5.6-sol"
+        assert first["bindings"]["sentry_solution_architect"]["model"] == "gpt-6-sol"
         assert first["provider_tool_mapping"]["repository_read"] == "exec_command"
         fixture = json.loads((ROOT / "tests" / "fixtures" / "v25_capability_mapping.json").read_text())
         assert first["provider_tool_mapping"] == fixture["expected_codex_mapping"]

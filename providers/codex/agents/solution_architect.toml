@@ -1,6 +1,6 @@
 name = "solution_architect"
 description = "Deep architecture and implementation-planning agent for engineering work."
-model = "gpt-5.6-sol"
+model = "gpt-6-sol"
 model_reasoning_effort = "low"
 sandbox_mode = "read-only"
 
