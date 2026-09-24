@@ -31,6 +31,11 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
         validate_asset_manifest,
     )
 
+try:
+    from specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
+except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
+    from scripts.specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
+
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
@@ -585,8 +590,6 @@ def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[s
         require_jira_source=True,
         require_passed=state in {"ready_for_implementation", "completed"},
     ))
-    if state == "awaiting_input" and manifest.get("status") != "awaiting_input":
-        errors.append("Feature Delivery awaiting_input requires asset_manifest status awaiting_input")
     durable_paths = {
         _feature_asset_artifact_path(row.get("Path"), root)
         for row in packet.get("durable_artifacts", [])
@@ -601,7 +604,28 @@ def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[s
     } if isinstance(handoff, dict) and isinstance(handoff.get("artifacts"), list) else set()
     if manifest_path.resolve() not in handoff_paths:
         errors.append("Feature Delivery finalization must link asset_manifest.json in the Final Handoff")
-    if state in {"ready_for_implementation", "completed"}:
+    selection = packet.get("playbook_selection", {})
+    assessment = isinstance(selection, dict) and str(selection.get("Primary goal", "")).strip().lower() == (
+        "specification assessment"
+    )
+    if assessment:
+        report_path = root / REPORT_NAME
+        if not report_path.is_file():
+            errors.append(f"Feature Delivery specification assessment requires {REPORT_NAME}")
+        else:
+            result = str(handoff.get("workflow_result", "")) if isinstance(handoff, dict) else ""
+            material_ids = tuple(
+                str(asset.get("asset_id", "")) for asset in manifest.get("assets", [])
+                if isinstance(asset, dict) and asset.get("relevance") == "material"
+            )
+            errors.extend(assessment_report_errors(report_path.read_text(), result, material_ids))
+        if report_path.resolve() not in durable_paths:
+            errors.append(f"Feature Delivery finalization must register {REPORT_NAME}")
+        if report_path.resolve() not in handoff_paths:
+            errors.append(f"Feature Delivery finalization must link {REPORT_NAME} in the Final Handoff")
+        if (root / "implementation_plan.md").is_file():
+            errors.append("Feature Delivery specification assessment must not create implementation_plan.md")
+    elif state in {"ready_for_implementation", "completed"}:
         plan_path = root / "implementation_plan.md"
         if not plan_path.is_file():
             errors.append(f"Feature Delivery {state} requires implementation_plan.md")
@@ -639,7 +663,10 @@ def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[
         errors.append("Feature Delivery terminal planning requires Profile status executed")
 
     expected_outcomes = {
-        "ready_for_implementation": ("completed", "plan_only"),
+        "ready_for_implementation": (
+            "completed", "solved" if str(packet.get("playbook_selection", {}).get("Primary goal", "")).strip().lower()
+            == "specification assessment" else "plan_only"
+        ),
         "awaiting_input": ("completed", "partially_solved"),
     }.get(state)
     if expected_outcomes:
@@ -1165,6 +1192,8 @@ def _validate_handoff(packet: dict[str, object], *, publishing: bool = False) ->
                     f"Feature Delivery specification assessment state {state} requires Workflow result exactly one of: "
                     + ", ".join(sorted(allowed))
                 )
+            if allowed and str(handoff["implementation_plan"]).strip() != NO_PLAN_MESSAGE:
+                raise ValueError(f"Feature Delivery specification assessment Implementation plan must be {NO_PLAN_MESSAGE}")
         if playbook_name == "technical_spike":
             lifecycle = str(identity.get("Lifecycle", "")).strip().lower()
             state = str(identity.get("State", "")).strip().lower()
@@ -2440,6 +2469,7 @@ def self_test() -> None:
         else:
             raise AssertionError("specification assessment must reject a non-disposition workflow result")
         assessment["handoff"]["workflow_result"] = "Not ready for implementation"
+        assessment["handoff"]["implementation_plan"] = NO_PLAN_MESSAGE
         _validate_handoff(assessment)
         feature = json.loads(json.dumps(packet))
         feature["playbook_selection"].update({
@@ -2542,6 +2572,36 @@ def self_test() -> None:
         )
         conditional_feature["worker_results"].insert(2, feature_result("repository-integration"))
         assert _feature_delivery_packet_contract_errors(conditional_feature) == []
+        assessment_feature = json.loads(json.dumps(feature))
+        assessment_feature["playbook_selection"]["Primary goal"] = "Specification assessment"
+        assessment_feature["identity"]["Engineering outcome"] = "solved"
+        assessment_feature["handoff"]["workflow_result"] = "Ready for implementation"
+        assessment_feature["handoff"]["implementation_plan"] = NO_PLAN_MESSAGE
+        report_path = feature_root / REPORT_NAME
+        assert "requires specification_assessment.md" in " ".join(
+            _feature_delivery_asset_contract_errors(assessment_feature)
+        )
+        (feature_root / "implementation_plan.md").unlink()
+        report_path.write_text(
+            "# Specification Assessment\n## Question and Result\nWorkflow result: Ready for implementation\n"
+            "## Source and Asset Baseline\n"
+            "asset_manifest.json\n## Coverage\n"
+            "| Requirement / behavior | Story coverage | Evidence | Status | Gap or follow-up | Owner |\n"
+            "| --- | --- | --- | --- | --- | --- |\n"
+            "| Outcome | ITEM-2 | E-001 | Covered | None | Team |\n"
+            "## Gaps, Risks, and Decisions\n## Disposition and Next Action\n"
+        )
+        assessment_feature["durable_artifacts"].append({"Artifact": "Specification assessment", "Path": str(report_path)})
+        assessment_feature["handoff"]["artifacts"].append(str(report_path))
+        assert _feature_delivery_packet_contract_errors(assessment_feature) == []
+        assert _feature_delivery_asset_contract_errors(assessment_feature) == []
+        assessment_feature["identity"].update({"State": "awaiting_input", "Engineering outcome": "partially_solved"})
+        assessment_feature["handoff"]["workflow_result"] = "Not ready for implementation"
+        report_path.write_text(report_path.read_text().replace(
+            "Workflow result: Ready for implementation", "Workflow result: Not ready for implementation",
+        ))
+        assert _feature_delivery_packet_contract_errors(assessment_feature) == []
+        assert _feature_delivery_asset_contract_errors(assessment_feature) == []
         spike = json.loads(json.dumps(packet))
         spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
         spike["identity"].update({

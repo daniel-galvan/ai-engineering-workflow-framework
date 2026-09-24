@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Record
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-22
+last_updated: 2026-09-23
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -189,7 +189,8 @@ evidence, decision, and worker ledger.
 
 When the selected playbook requires a different terminal artifact, add that artifact as a current-run root file and
 follow the playbook's plan-creation rule. Technical Spike requires `spike_report.md` and prohibits
-`implementation_plan.md`.
+`implementation_plan.md`. Feature Delivery specification assessment requires `specification_assessment.md` for ready
+and not-ready results and prohibits an implementation plan in that assessment run.
 
 | Artifact | Path | Status | Purpose |
 | --- | --- | --- | --- |

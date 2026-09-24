@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.9
+version: 0.5.10
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -753,7 +753,8 @@ ownership, or incompatible-alternatives decision remains after bounded discovery
 return a terminal result. A worker whose investigation is complete MUST return `complete` with recorded limitations,
 not `blocked`, merely because implementation or validation work remains.
 
-`ready_for_implementation` requires terminal planning fan-in and an implementation plan with:
+`ready_for_implementation` requires terminal planning fan-in and, for implementation-planning runs, an implementation
+plan with:
 
 - required claims established by source-backed evidence;
 - critical assumptions supported, contradicted, or explicitly accepted as implementation risk;
@@ -772,8 +773,11 @@ or fixes, the plan remains `draft` and the workflow returns a Clarification Brie
 an evidence-supported remediation boundary and intended change; a list of mutually conditional candidate files is not
 a feasible implementation scope.
 
-For a specification or proposal assessment, plan feasibility and specification readiness are separate decisions. The
-ability to order future discovery, approval, security, dependency, or implementation work does not make the reviewed
+For a specification or proposal assessment, the selected playbook may require a coverage/readiness assessment instead
+of an implementation plan. This is an assessment-only terminal path: it does not authorize remediation re-entry; an
+implementation-planning run must produce a plan before delivery.
+For these runs, plan feasibility and specification readiness are separate decisions.
+The ability to order future discovery, approval, security, dependency, or implementation work does not make the reviewed
 specification ready. An unknown that can materially change scope, ownership, architecture, security or privacy controls,
 acceptance criteria, or validation strategy is a blocking unknown. Use `awaiting_input`, omit the implementation plan,
 and produce a Clarification Brief until that uncertainty is resolved. Do not demote it to a plan step merely because an
@@ -1434,7 +1438,7 @@ flowchart TB
 | `in_progress` | A required stage or worker graph is active and has not reached its gate. | `awaiting_input`, `blocked`, or `ready_for_implementation` |
 | `awaiting_input` | A human decision or missing requirement remains after bounded discovery. | `in_progress`, or `blocked` if the input cannot be obtained |
 | `blocked` | An environment, permission, runtime, or indispensable-evidence problem prevents safe progress. | `in_progress` after recovery, or terminal `blocked` |
-| `ready_for_implementation` | Planning fan-in passed and the implementation plan is ready; source changes are still prohibited. | `implementation` only after explicit approval, or `awaiting_input` / `blocked` |
+| `ready_for_implementation` | Planning fan-in passed and the playbook's required readiness artifact is ready; source changes are still prohibited. | `implementation` only after explicit approval and an implementation plan, or `awaiting_input` / `blocked` |
 | `implementation` | Approved source or configuration changes are being made by the Implementer. | `code_review` or `blocked` |
 | `code_review` | The Reviewer is assessing the approved change. | `implementation` for in-scope findings, `validation` when accepted, `awaiting_input` for replanning, or `blocked` |
 | `validation` | Tests, build, security, runtime, or other declared validation are being run. | `implementation` for an in-scope failure, `handoff` when the gate passes, or `blocked` |

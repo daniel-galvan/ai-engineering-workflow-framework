@@ -1,10 +1,10 @@
 ---
 title: Feature Delivery Playbook
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
-validation_summary: all combinations exercised; mixed reliability; not delivery-validated
+validation_summary: profile/lifecycle combinations exercised; assessment-only output contract-tested, not live-validated
 owner: Engineering
 last_updated: 2026-09-23
 depends_on:
@@ -16,6 +16,7 @@ depends_on:
   - ../skills/work_item_context.md
   - ../templates/work_record.md
   - ../templates/implementation_plan.md
+  - ../templates/specification_assessment.md
   - ../templates/asset_manifest.json
   - ../templates/feature_delivery_run_prompt.md
   - ../examples/feature_delivery.md
@@ -48,7 +49,8 @@ implementation.
 
 Use `specification_assessment` when the primary goal is to judge an existing Spike, proposal, or specification. Record
 the Playbook Selection `Primary goal` exactly as `Specification assessment`. This route reuses the planning graph; it
-does not presume that an implementation plan should be created.
+produces `specification_assessment.md`, not an implementation plan. For an Epic with a completed Spike whose results
+are implementation Stories, assess the Story set against the Epic outcome and Spike findings; do not rerun the Spike.
 
 Use [`templates/feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md) for every run. The prompt
 supplies scenario inputs; this playbook owns process, worker activation, gates, and handoff behavior.
@@ -81,12 +83,14 @@ Every available asset must receive an individual manifest row, a source locator,
 review status, a relevance classification, a disposition, and evidence references. Images, screenshots, diagrams, and
 other visual assets require visual inspection or rendered reading; metadata alone is not review. Material assets must
 reach `feature-design` (or `planning-review` in `deep`), influence the evidence/claim chain, and be named in the
-implementation plan. A Jira description that mentions screenshots is not evidence that the attachments were retrieved
+selected terminal artifact. A Jira description mentioning screenshots does not prove that attachments were retrieved
 or reviewed.
 
 If the Jira attachment inventory or a declared supporting source cannot be retrieved, the run records the limitation in
 the manifest and returns `awaiting_input`; it MUST NOT create an implementation plan. `ready_for_implementation` is
 permitted only when the manifest status is `passed` and every asset gate is true.
+An assessment may still return `awaiting_input` with a passed asset manifest when the assets were reviewed but a
+material specification decision or Story gap remains.
 
 ## Execution Profiles and Lifecycle
 
@@ -230,9 +234,9 @@ clarification result when the repository can answer part of the question.
 
 ### Stage 4 — Review, Plan, and Handoff
 
-For `deep`, the Planning Reviewer challenges the design before the plan is accepted. After all required planning workers
-return terminal envelopes, fan-in passes, context is sufficient for planning, and the Asset Inventory and Review Gate
-passes, the Documenter creates:
+For `deep`, the Planning Reviewer challenges the design or assessment before acceptance. After all required planning
+workers return terminal envelopes and fan-in passes, the Documenter creates the objective-specific artifact. For
+`implementation_planning`, when context is sufficient and the Asset Inventory and Review Gate passes, create:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
@@ -245,7 +249,19 @@ Apply the shared [planning-readiness rule][planning-readiness]. Remaining code, 
 environment, operational, rollout, or validation work belongs in the plan when a feasible sequence exists; it is not a
 planning blocker by itself.
 
-For `specification_assessment`, do not equate a feasible plan with a ready specification. An unknown that can change
+For `specification_assessment`, create `specification_assessment.md` for either readiness result. Map each requested
+outcome and acceptance criterion to the proposed work, verified behavior and evidence, uncovered work, dependencies,
+and tests. For a completed-Spike Epic, review the Spike, its resulting Stories, and related assets in the Jira
+hierarchy. A missing or empty Spike write-up does not erase its Story outputs; record that provenance and assess the
+Stories directly. Name uncovered requirements explicitly, including cross-Story integration and negative cases when
+relevant. Link each material asset to its assessment consequence. Do not create `implementation_plan.md`; readiness
+means the assessed work is sufficiently specified to enter implementation planning or Story-level delivery. Record
+`Engineering outcome: solved` for a ready assessment and `partially_solved` for one needing input.
+
+In the Final Handoff, set `Implementation plan` exactly to
+`Not created; specification assessment produces specification_assessment.md`; register and link the assessment report.
+
+Do not equate a feasible plan with a ready specification. An unknown that can change
 scope, ownership, architecture, security or privacy controls, acceptance criteria, or validation strategy requires
 `awaiting_input`, `implementation_plan_action: omit`, and a Clarification Brief. The final `Workflow result` must be
 exactly one of `Ready for implementation`, `Ready with explicit follow-ups`, or `Not ready for implementation`.
@@ -291,13 +307,13 @@ When created, the plan must include:
 | Gate | Pass condition |
 | --- | --- |
 | Context recovered | Jira sources, conflicts, assumptions, and unknowns are recorded. |
-| Asset inventory passed | Jira attachments and every declared file/folder source are enumerated; every available asset is reviewed and dispositioned; material assets link into evidence and the plan. |
+| Asset inventory passed | Jira attachments and every declared file/folder source are enumerated; every available asset is reviewed and dispositioned; material assets link into evidence and the selected terminal artifact. |
 | Clarification framed | When needed, bounded discovery, feasible options, recommendation, and the smallest decision request are recorded. |
 | Planning context sufficient | Outcome, affected surface, and observable acceptance conditions are supported. |
-| Specification assessed | The exact readiness disposition is stated; material scope, architecture, security, acceptance, and validation unknowns prevent a ready disposition. |
+| Specification assessed | `specification_assessment.md` covers the target specification or Story set and exact readiness disposition; material scope, architecture, security, acceptance, and validation unknowns prevent a ready disposition. |
 | Impact understood | Relevant code, dependencies, contracts, tests, and operational implications are known or explicitly blocked. |
 | Design ready | Smallest feature slice and acceptance traceability are documented. |
-| Implementation ready | Shared semantic readiness threshold and planning fan-in passed; `implementation_plan.md` exists. |
+| Implementation ready | For `implementation_planning`, shared semantic readiness and planning fan-in passed; `implementation_plan.md` exists. Assessment readiness is not this gate. |
 | Approval ready | Explicit implementation approval and remediation re-entry are recorded. |
 | Validation ready | Review findings are resolved or accepted and validation results are preserved. |
 | Handoff ready | Release, rollback, monitoring, ownership, residual risk, and next action are explicit. |
@@ -309,7 +325,7 @@ The final handoff reports:
 1. shared outcome: feature objective, context sufficiency, verified scope, and next action. The next action must name
    the owner, location, and completion condition in plain language;
 2. parent/initiative and selected-sibling context, including conflicts and clarification questions;
-3. implementation-plan path/status, planned change, acceptance traceability, validation, rollout, and rollback;
+3. objective-specific artifact path/status, acceptance traceability, validation, rollout, and rollback;
 4. requested, activated, and executed profile, fan-in, and runtime-closure status; and
 5. remaining risks, blockers, owner, and follow-up work.
 
@@ -324,6 +340,7 @@ clarification, approval, environment, or worker gate.
 - [`../integrations/jira.md`](../integrations/jira.md)
 - [`../templates/work_record.md`](../templates/work_record.md)
 - [`../templates/implementation_plan.md`](../templates/implementation_plan.md)
+- [`../templates/specification_assessment.md`](../templates/specification_assessment.md)
 - [`../templates/asset_manifest.json`](../templates/asset_manifest.json)
 - [`../examples/feature_delivery.md`](../examples/feature_delivery.md)
 

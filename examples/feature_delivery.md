@@ -1,13 +1,14 @@
 ---
 title: Feature Delivery Example
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-09-23
 depends_on:
   - ../playbooks/feature_delivery.md
   - ../templates/feature_delivery_run_prompt.md
   - ../templates/implementation_plan.md
+  - ../templates/specification_assessment.md
   - ../templates/asset_manifest.json
   - ../contracts/workflow_execution.md
 ---
@@ -89,3 +90,30 @@ only if evidence changes the scope or design, or a genuine blocker requires a de
 
 Report the verified scope, implementation-plan status, delivered changes, worker ledger, validation results, release or
 rollback considerations, residual risks, owner, and next action.
+
+## Completed Spike Results and Epic Story Coverage
+
+Use `specification_assessment + specification_assessment` when the question is whether Stories produced by a completed
+Spike collectively cover their Epic. For example, an Epic has a completed Spike whose outputs are four implementation
+Stories. That relationship is a starting input, not proof that the Story set is complete. Do not execute another broad
+Spike or treat the completed Spike as the new review target.
+
+The short run-specific request is:
+
+```text
+Run Feature Delivery specification_assessment for <EPIC-ID>. Assess whether the Stories produced by the completed
+Spike cover the Epic's required behavior and are ready for implementation.
+```
+
+The plugin's canonical launcher supplies the objective pair, playbook path, repository, and other required fields. The
+playbook discovers the Jira hierarchy, attachments, history, linked sources, and repository evidence; the user need
+not copy them into the request. The completed Spike may have no standalone write-up: record that limitation, then
+review the Stories and their acceptance criteria directly rather than assuming `Done` means complete coverage.
+
+Deliver `asset_manifest.json`, `work_record.md`, and `specification_assessment.md`. The assessment maps each Epic
+requirement, edge case, and cross-Story dependency to a Story, evidence, status, gap, and owner. It identifies any
+missing or conflicting acceptance and validation conditions. If all material requirements are covered, use
+`Ready for implementation` or `Ready with explicit follow-ups`; otherwise use `Not ready for implementation` and a
+Clarification Brief. Both outcomes are useful results. Do not create `implementation_plan.md` on this route. A later
+Story-level or Epic-level implementation-planning run is separate. Only a newly isolated technical unknown warrants a
+new Spike.

@@ -368,6 +368,10 @@ def _initial_packet(
     packet["playbook_selection"]["Selected playbook"] = playbook
     if playbook == "technical_spike" and workflow_objective in TECHNICAL_SPIKE_PRIMARY_GOALS:
         packet["playbook_selection"]["Primary goal"] = TECHNICAL_SPIKE_PRIMARY_GOALS[workflow_objective]
+    if playbook == "feature_delivery":
+        packet["playbook_selection"]["Primary goal"] = (
+            "Specification assessment" if workflow_objective == "specification_assessment" else "Implementation planning"
+        )
     packet["identity"].update({
         "Run ID": f"{work_item}-{run_stamp}",
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
@@ -423,6 +427,11 @@ def _initial_packet(
             "Artifact": "Asset manifest", "Path": str(artifact_root / "asset_manifest.json"),
             "Status": "Required before planning fan-in", "Purpose": "Complete current-run asset inventory and review gate",
         })
+        if workflow_objective == "specification_assessment":
+            packet["durable_artifacts"].append({
+                "Artifact": "Specification assessment", "Path": str(artifact_root / "specification_assessment.md"),
+                "Status": "Expected before terminal finalization", "Purpose": "Story-set coverage and readiness judgment",
+            })
     return packet
 
 
@@ -1020,6 +1029,21 @@ def self_test() -> None:
         assert any(
             row["Artifact"] == "Asset manifest"
             for row in json.loads(Path(feature_defaults["finalization_packet"]).read_text())["durable_artifacts"]
+        )
+        feature_goal_source = execution / "feature-goal-inputs.json"
+        feature_goal_manifest = json.loads(input_source.read_text())
+        feature_goal_manifest["inputs"].append(_run_goal_row("specification_assessment"))
+        feature_goal_source.write_text(json.dumps(feature_goal_manifest))
+        feature_assessment = prepare_run(
+            execution, "ITEM-FEATURE-ASSESSMENT", "feature_delivery", None, False,
+            input_manifest=feature_goal_source, workflow_objective="specification_assessment",
+            requested_outcome="specification_assessment",
+        )
+        assessment_packet = json.loads(Path(feature_assessment["finalization_packet"]).read_text())
+        assert assessment_packet["playbook_selection"]["Primary goal"] == "Specification assessment"
+        assert any(
+            row["Artifact"] == "Specification assessment"
+            for row in assessment_packet["durable_artifacts"]
         )
         try:
             prepare_run(execution, "ITEM-FEATURE-NO-MANIFEST", "feature_delivery", None, False)

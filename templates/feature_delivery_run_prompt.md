@@ -1,13 +1,14 @@
 ---
 title: Feature Delivery Run Prompt
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-23
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/feature_delivery.md
   - ../templates/asset_manifest.json
+  - ../templates/specification_assessment.md
 ---
 
 # Feature Delivery Run Prompt
@@ -124,7 +125,7 @@ Asset gate:
 
 At handoff, use the contract's canonical human-readable template. Do not include Run Metrics or Worker Timing unless
 this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable
-implementation plan; otherwise use `partially_solved` for useful incomplete planning. Preserve distinct
+implementation plan. Preserve distinct
 `Workflow outcome` and `Engineering outcome` fields.
 
 For `specification_assessment`, choose exactly one `Workflow result`:
@@ -135,4 +136,7 @@ For `specification_assessment`, choose exactly one `Workflow result`:
 Map the first two to `ready_for_implementation`; map the last to `awaiting_input` with
 `implementation_plan_action: omit` and a Clarification Brief. A follow-up is non-blocking only when it cannot materially
 change scope, ownership, architecture, security or privacy controls, acceptance criteria, or validation strategy.
+Create `specification_assessment.md` for either result and do not create `implementation_plan.md`. Use Engineering
+outcome `solved` for a ready assessment or `partially_solved` when input is needed. The playbook owns the coverage and
+readiness criteria; the run prompt only needs its work item, objective pair, and genuinely run-specific context.
 ```

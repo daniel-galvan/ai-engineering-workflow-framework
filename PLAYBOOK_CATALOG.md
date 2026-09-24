@@ -1,9 +1,9 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-07
+last_updated: 2026-09-23
 ---
 
 # Playbook Architecture Catalog
@@ -73,7 +73,10 @@ exercised; reliability, control fidelity, and efficiency remain under validation
 
 Feature Delivery also supports a `specification_assessment` planning objective for judging an existing Spike,
 proposal, or specification. This route reuses the planning graph but separates specification readiness from the ability
-to draft future work.
+to draft future work. Its terminal artifact is `specification_assessment.md`, not an implementation plan. A common case
+is checking whether the Stories produced by a completed Spike collectively cover their Epic; see the worked
+[`Feature Delivery example`](examples/feature_delivery.md#completed-spike-results-and-epic-story-coverage).
+The new assessment-only output has local contract tests but has not yet passed a live plugin exercise.
 
 The distinguishing seam is Jira Context Recovery: the ticket, its immediate parent and ancestor hierarchy, selected
 related siblings, linked decisions, and repository evidence establish scope. Parent and sibling context informs the
@@ -87,9 +90,9 @@ flowchart TB
     C --> E["Feature design"]
     D --> E
     E --> F["Planning review: deep only"]
-    E --> G["Final Documenter and plan"]
+    E --> G["Final Documenter and objective-specific artifact"]
     F --> G
-    G --> H["Approved remediation"]
+    G --> H["Approved remediation: plan required"]
     H --> I["Implement → Code Review → Validate"]
 ```
 

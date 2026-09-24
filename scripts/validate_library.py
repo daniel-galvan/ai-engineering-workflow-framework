@@ -35,6 +35,11 @@ except ModuleNotFoundError:  # Imported as scripts.validate_library from the rep
         validate_asset_manifest,
     )
 
+try:
+    from specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
+except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
+    from scripts.specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
@@ -754,8 +759,6 @@ def feature_asset_record_errors(
         require_passed=identity.get("State") in {"ready_for_implementation", "completed"}
         and identity.get("Lifecycle") == "planning",
     )
-    if identity.get("State") == "awaiting_input" and manifest.get("status") != "awaiting_input":
-        errors.append("Feature Delivery awaiting_input requires asset_manifest status awaiting_input")
     if "# Asset Inventory and Review" not in text or ASSET_MANIFEST_FILENAME not in text:
         errors.append("Feature Delivery work record requires the Asset Inventory and Review section")
     durable_targets = {
@@ -774,13 +777,33 @@ def feature_asset_record_errors(
     }
     if manifest_path.resolve() not in handoff_targets:
         errors.append("Feature Delivery Final Handoff must link asset_manifest.json")
-    if identity.get("Lifecycle") == "planning" and identity.get("State") in {"ready_for_implementation", "completed"}:
+    selection = markdown_table(text, "# Playbook Selection")
+    assessment = bool(selection) and selection[0].get("Primary goal", "").strip().lower() == "specification assessment"
+    if assessment:
+        report = root / REPORT_NAME
+        if not report.is_file():
+            errors.append(f"Feature Delivery specification assessment requires {REPORT_NAME}")
+        else:
+            handoff_result = re.search(r"^Workflow result:\s*(.+)$", handoff, re.MULTILINE)
+            expected_result = handoff_result.group(1).strip() if handoff_result else ""
+            material_ids = tuple(
+                str(asset.get("asset_id", "")) for asset in manifest.get("assets", [])
+                if isinstance(asset, dict) and asset.get("relevance") == "material"
+            )
+            errors.extend(assessment_report_errors(report.read_text(), expected_result, material_ids))
+        if report.resolve() not in durable_targets:
+            errors.append(f"Feature Delivery work record must register {REPORT_NAME}")
+        if report.resolve() not in handoff_targets:
+            errors.append(f"Feature Delivery Final Handoff must link {REPORT_NAME}")
+        if (root / "implementation_plan.md").is_file():
+            errors.append("Feature Delivery specification assessment must not create implementation_plan.md")
+    elif identity.get("State") in {"ready_for_implementation", "completed"}:
         plan = root / "implementation_plan.md"
         if plan.is_file():
             errors.extend(asset_plan_errors(plan.read_text(), manifest))
         else:
             errors.append(f"{path}: Feature Delivery planning requires implementation_plan.md")
-    if identity.get("Lifecycle") == "planning" and identity.get("State") == "awaiting_input":
+    if not assessment and identity.get("State") == "awaiting_input":
         if (root / "implementation_plan.md").is_file():
             errors.append("Feature Delivery awaiting_input must not retain implementation_plan.md")
     return list(dict.fromkeys(f"{path}: {error}" for error in errors))
@@ -2519,6 +2542,15 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     )
     if disposition_error:
         fail(f"{path}: {disposition_error}")
+    if playbook_name == "feature_delivery" and identity["Lifecycle"] == "planning" and (
+        primary_goal.strip().lower() == "specification assessment"
+    ) and identity["State"] in {"ready_for_implementation", "awaiting_input"}:
+        expected_outcome = "solved" if identity["State"] == "ready_for_implementation" else "partially_solved"
+        if identity["Engineering outcome"] != expected_outcome:
+            fail(f"{path}: Feature Delivery specification assessment requires Engineering outcome {expected_outcome}")
+        plan_line = re.search(r"^- Implementation plan:\s*(.+)$", handoff, re.MULTILINE)
+        if not plan_line or plan_line.group(1).strip() != NO_PLAN_MESSAGE:
+            fail(f"{path}: Feature Delivery specification assessment Implementation plan must be {NO_PLAN_MESSAGE}")
     spike_disposition_error = technical_spike_disposition_error(
         playbook_name,
         identity["Lifecycle"],
@@ -2578,11 +2610,15 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         if not artifact_count:
             fail(f"{path}: Final Handoff must link at least one artifact")
     if playbook_name == "feature_delivery":
-        required_artifact = {
+        required_artifacts = [{
             "awaiting_input": "clarification_brief.md",
-            "ready_for_implementation": "implementation_plan.md",
-        }.get(identity["State"])
-        if required_artifact:
+            "ready_for_implementation": (
+                REPORT_NAME if primary_goal.strip().lower() == "specification assessment" else "implementation_plan.md"
+            ),
+        }.get(identity["State"])]
+        if primary_goal.strip().lower() == "specification assessment" and identity["State"] == "awaiting_input":
+            required_artifacts.append(REPORT_NAME)
+        for required_artifact in filter(None, required_artifacts):
             target = (path.parent / required_artifact).resolve()
             durable_targets = {
                 artifact
@@ -3166,7 +3202,7 @@ Keep the current boundary pending runtime confirmation (E-001).
 | Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.5.1 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.5.2 / pass |
 | Role-policy baseline ID | codex-role-policy-gpt6-luna-orchestrator-v20260922 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -3594,10 +3630,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace(
-                "templates/feature_delivery_run_prompt.md / 0.5.1 / pass",
+                "templates/feature_delivery_run_prompt.md / 0.5.2 / pass",
                 "templates/feature_delivery_run_prompt.md / framework revision 0123456789abcdef / pass",
             ),
-            "Prompt template revision must be 0.5.1",
+            "Prompt template revision must be 0.5.2",
         )
         assert_invalid(
             valid.replace(
