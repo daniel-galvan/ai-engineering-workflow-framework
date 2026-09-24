@@ -133,10 +133,13 @@ description: >-
    `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
    current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be
    classified as a related run. A provider-visible task can block startup only when it predates the current turn and is
-   independently active. When the prior
-   task is idle and no active handle or artifact writer remains, rerun once with `--archive-stale-run`; this preserves
-   every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run. If activity is present or cannot be
-   verified, stop with `run_already_active`. Do not tell the user to request continuation when they requested a new run.
+   independently active. When the prior task is idle, every visible child worker is terminal, and no artifact writer
+   remains, rerun once with `--archive-stale-run`. This preserves every stale artifact under `runs/stale-<timestamp>/`
+   and creates a fresh run.
+   An unavailable old release receipt keeps the old run blocked but does not by itself prove an active worker or bar a
+   separate read-only planning run. Confirm new-run capacity by activating its first required worker; if that fails,
+   stop with the exact runtime reason. If worker or writer activity is present or cannot be verified, stop with
+   `run_already_active`. Do not tell the user to request continuation when they requested a new run.
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
    Preparation also writes exact role envelopes to the direct-child `worker_activation_packets.json` bundle and records

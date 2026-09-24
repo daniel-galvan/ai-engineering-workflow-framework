@@ -1117,8 +1117,11 @@ Different read-only planning runs may inspect the same clean, immutable source r
 run artifact roots and record the shared repository and revision in each run. A run that can write source,
 lockfiles, tests, generated files, or external work-item state MUST NOT share a checkout with another active run; it
 requires a separate managed worktree and a distinct durable artifact root. A second run for the same work item MUST stop
-with `run_already_active` until the prior run's handles and artifact writers are released, or it must use an explicit
-continuation or recovery identity. The Coordinator records the isolation decision before worker activation.
+with `run_already_active` while a prior worker or artifact writer is active, unless it uses an explicit continuation or
+recovery identity. A fresh read-only planning run MAY archive a prior nonterminal artifact root when the provider task
+is idle, every visible child worker is terminal, and no artifact writer remains. Missing old release receipts do not
+make that prior run complete; the new run must confirm capacity by activating its own required worker. The Coordinator
+records this isolation decision before activation.
 
 Before recording `None` for an active related run, the Coordinator MUST check available provider tasks and sibling
 work-item artifact roots, then record the method and timestamp. When neither can be checked, record
@@ -1384,8 +1387,9 @@ artifact root.
 Never close a worker before collecting its terminal result envelope unless the provider has explicitly confirmed a
 terminal failure or that the worker is no longer running. A later run reuses durable artifacts, not live worker handles
 from the previous run. If the provider cannot expose release or active-handle status, record
-the unavailable-release receipt as defined above and keep the run `blocked` until the provider confirms that the new
-run has capacity; do not silently downgrade or claim that the run is closed. A force-closed active worker is a
+the unavailable-release receipt as defined above and keep that run `blocked`. A separate read-only planning run may
+start under Concurrent Run Isolation when old workers are terminal and its first worker activation confirms capacity;
+do not silently downgrade or claim that the earlier run was released. A force-closed active worker is a
 Coordinator interruption, not evidence of provider release or worker failure.
 
 ---
