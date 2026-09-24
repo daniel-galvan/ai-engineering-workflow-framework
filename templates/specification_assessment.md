@@ -39,7 +39,9 @@ inventory from an empty asset manifest; count Jira issues separately from source
 One row per distinct requested outcome, acceptance criterion, edge case, or integration requirement. Include negative
 cases and current controls where relevant. `Covered` means the proposed work has implementable behavior and
 observable acceptance or test criteria, not merely a similar title. Split a broad row when work items cover different
-behaviors. Cite exact source and evidence references.
+behaviors. Cite exact source and evidence references. Copy the reviewed coverage mapping from feature-design; verify
+the named Story owns the behavior. Do not credit classification, send-time resolution, UI, or lifecycle warnings to a
+different Story simply because all are under the same Epic.
 For each claimed gap, name the exact Story criterion it contradicts or fails to cover. Preserve explicit exclusions,
 such as a field intentionally derived rather than compared, instead of silently replacing them with a proposed rule.
 Identify the observable test and dependency for each material row; do not mistake unimplemented code for an absent
@@ -56,6 +58,8 @@ the source supports them; do not invent a new acceptance rule.
 Separate confirmed gaps from unsupported possibilities. For each material gap, explain its consequence and the
 smallest decision or Story change needed. If no gaps remain, say so with evidence. A narrow unresolved technical
 question may warrant a separate Technical Spike; do not rerun the completed Spike by default.
+Label interpretive ambiguity separately from an explicit contradiction. Compare the Epic with every relevant detailed
+Story rule before deciding whether an owner question changes acceptance or is a non-blocking clarification.
 
 ## Disposition and Next Action
 

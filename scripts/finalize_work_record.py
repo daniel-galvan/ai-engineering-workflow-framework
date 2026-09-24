@@ -318,16 +318,18 @@ def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[s
     return errors
 
 
-def _technical_spike_runtime_closure_errors(
+def _planning_runtime_closure_errors(
     packet: dict[str, object], closure: list[dict[str, object]],
 ) -> list[str]:
     identity = packet.get("identity", {})
     if not isinstance(identity, dict):
         return []
     playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
-    if playbook != "technical_spike" or str(identity.get("State", "")).strip().lower() != "completed":
+    state = str(identity.get("State", "")).strip().lower()
+    if not ((playbook == "technical_spike" and state == "completed") or
+            (playbook == "feature_delivery" and state in {"awaiting_input", "ready_for_implementation", "completed"})):
         return []
-    if _technical_spike_missing_workers(packet):
+    if playbook == "technical_spike" and _technical_spike_missing_workers(packet):
         return []
     completed_workers = {
         str(row.get("Worker", "")).strip().lower()
@@ -346,7 +348,7 @@ def _technical_spike_runtime_closure_errors(
     if len(released_handles) < len(completed_workers):
         workers = ", ".join(sorted(completed_workers))
         return [
-            "Technical Spike runtime closure is incomplete: released "
+            f"{playbook} runtime closure is incomplete: released "
             f"provider handles released={len(released_handles)}; completed workers={len(completed_workers)} "
             f"({workers}); include every completed worker handle in runtime_closure.json"
         ]
@@ -664,6 +666,9 @@ def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[
         return []
 
     errors: list[str] = []
+    title = str(packet.get("work_item", {}).get("Title", "")).strip()
+    if not title or title.lower().startswith("unknown"):
+        errors.append("Feature Delivery finalization requires the recovered work-item title")
     profiles = [str(identity.get(field, "")).strip().lower() for field in (
         "Requested profile", "Activated profile", "Executed profile",
     )]
@@ -2009,7 +2014,7 @@ def finalize(
         except ValueError as error:
             errors.append(str(error))
         if not pre_release:
-            errors.extend(_technical_spike_runtime_closure_errors(packet, closure["runtime_closure"]))
+            errors.extend(_planning_runtime_closure_errors(packet, closure["runtime_closure"]))
         try:
             _reconcile_runtime_state(packet, closure["runtime_closure"])
         except (KeyError, TypeError, ValueError) as error:
@@ -2581,6 +2586,9 @@ def self_test() -> None:
                 "source_id": "SRC-JIRA", "input_id": "IN-001", "kind": "jira_issue_attachments",
                 "locator": "Jira ITEM-1 attachments", "requiredness": "required", "discovery_status": "empty",
                 "discovery_method": "read Jira attachment inventory",
+                "remote_link_inventory": {
+                    "status": "empty", "method": "read Jira remote links for ITEM-1", "locators": [],
+                },
                 "limitation": "Synthetic fixture has no Jira attachments.",
                 "asset_ids": [], "evidence_refs": ["E-001"],
             }], "assets": [], "gate": {
@@ -2650,6 +2658,14 @@ def self_test() -> None:
         ))
         assert _feature_delivery_packet_contract_errors(assessment_feature) == []
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
+        false_release = [{
+            "Run or stage": "Feature Delivery assessment", "Receipt owner": "Coordinator",
+            "Completed worker handles": "None", "Runtime status": "Released",
+            "Remaining active handles": "None",
+            "Closure evidence or blocker": "Provider release confirmed by terminal results.",
+        }]
+        assert any("provider handles released=0" in error for error in
+                   _planning_runtime_closure_errors(assessment_feature, false_release))
         blocked_assessment = json.loads(json.dumps(assessment_feature))
         blocked_assessment["handoff"]["provenance"] = (
             f"Feature Delivery {feature_version}; framework {'a' * 40}"
@@ -3114,7 +3130,7 @@ Runtime behavior remains unverified.
         }]}, indent=2) + "\n")
         completed_spike_packet = json.loads(json.dumps(spike_packet))
         completed_spike_packet["identity"]["State"] = "completed"
-        incomplete_closure_errors = _technical_spike_runtime_closure_errors(
+        incomplete_closure_errors = _planning_runtime_closure_errors(
             completed_spike_packet,
             [{
                 "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",

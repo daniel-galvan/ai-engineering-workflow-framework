@@ -84,6 +84,10 @@ requirements.
 
 Inventory attachments on the supplied item and every inventoried issue. Review every available attachment's actual
 contents before treating its evidence as covered: render or visually inspect images and video; read logs and documents.
+Query remote links separately for each inventoried issue; empty `issuelinks` or attachment fields do not establish
+an empty remote-link collection. Record the retrieval method, status, and discovered URLs. Disposition each linked
+document or external record as material or supporting context. Preserve a retrieval limitation when links are
+unavailable.
 Record inaccessible, redacted, unsupported, or irrelevant assets explicitly. An unread file name or attachment count
 is not evidence. If a material issue or asset cannot be read within the run, preserve `partial` or `unavailable` and
 its effect on the answer; do not claim complete context or readiness.
@@ -101,7 +105,8 @@ empty result. If the connector cannot enumerate or retrieve the collection, reco
 change scope, acceptance, or the implementation boundary.
 
 The Feature Delivery `asset_manifest.json` is the review-level companion to the normalized Jira read. It must include
-the Jira attachment source even when the collection is empty, plus every explicitly supplied file, folder, or URL
+the Jira attachment source even when the collection is empty, that source's `remote_link_inventory`, a source and asset
+row for every discovered remote link, plus every explicitly supplied file, folder, or URL
 source. It is not valid to cite the issue description, an attachment count, or a filename as proof that an image or
 document was reviewed.
 

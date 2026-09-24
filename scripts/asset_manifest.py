@@ -245,6 +245,31 @@ def validate_asset_manifest(
                 errors.append(f"asset source {source_id} Jira locator must identify an issue key")
             if "attachment" not in method or not any(word in method for word in ("read", "retriev", "inventor")):
                 errors.append(f"asset source {source_id} must record an attachment retrieval/inventory method")
+            if require_jira_source:
+                remote = raw.get("remote_link_inventory")
+                if not isinstance(remote, dict):
+                    errors.append(f"asset source {source_id} requires a Jira remote link inventory")
+                else:
+                    remote_status = remote.get("status")
+                    remote_method = str(remote.get("method", "")).lower()
+                    remote_locators = remote.get("locators")
+                    if remote_status not in SOURCE_STATUSES:
+                        errors.append(f"asset source {source_id} remote link inventory has invalid status")
+                    if remote_status not in {"complete", "empty"} and source["limitation"].lower().rstrip(".") in {
+                        "none", "no limitation",
+                    }:
+                        errors.append(f"asset source {source_id} must record its remote link retrieval limitation")
+                    if "remote" not in remote_method or "link" not in remote_method or not any(
+                        word in remote_method for word in ("read", "retriev", "inventor")
+                    ):
+                        errors.append(f"asset source {source_id} must record a remote link retrieval method")
+                    if not isinstance(remote_locators, list) or any(
+                        not isinstance(locator, str) or not locator.startswith(("http://", "https://"))
+                        for locator in remote_locators
+                    ):
+                        errors.append(f"asset source {source_id} remote link locators must be URLs")
+                    elif remote_status in {"complete", "empty"} and bool(remote_locators) != (remote_status == "complete"):
+                        errors.append(f"asset source {source_id} remote link status disagrees with locators")
         sources.append(source)
 
     assets: list[dict[str, object]] = []
@@ -356,6 +381,15 @@ def validate_asset_manifest(
             errors.append("Feature Delivery requires exactly one Jira attachment source")
         elif declared_input_ids and jira_sources[0]["input_id"] not in jira_inputs:
             errors.append("Jira attachment source must point to the declared Jira work-item input")
+        if len(jira_sources) == 1:
+            remote = next((raw.get("remote_link_inventory") for raw in raw_sources
+                           if isinstance(raw, dict) and raw.get("source_id") == jira_sources[0]["source_id"]), None)
+            if isinstance(remote, dict) and isinstance(remote.get("locators"), list):
+                represented = {str(source["locator"]) for source in sources if source is not jira_sources[0]}
+                represented.update(str(asset["locator"]) for asset in assets)
+                for locator in remote["locators"]:
+                    if isinstance(locator, str) and locator not in represented:
+                        errors.append(f"Jira remote link is missing from asset sources: {locator}")
     for source in sources:
         for asset_id in source["asset_ids"]:
             if asset_id not in assets_by_id:
@@ -375,6 +409,12 @@ def validate_asset_manifest(
             errors.append(f"material asset {asset['asset_id']} is not linked from a claim")
 
     unresolved_sources = [source["source_id"] for source in sources if source["discovery_status"] not in {"complete", "empty"}]
+    if require_jira_source:
+        for raw in raw_sources:
+            if isinstance(raw, dict) and raw.get("kind") == "jira_issue_attachments":
+                remote = raw.get("remote_link_inventory")
+                if not isinstance(remote, dict) or remote.get("status") not in {"complete", "empty"}:
+                    unresolved_sources.append(str(raw.get("source_id", "unknown")))
     unresolved_assets = [
         asset["asset_id"] for asset in assets
         if asset["availability"] != "available" or asset["review_status"] not in {"consumed", "reviewed_not_relevant"}
@@ -476,6 +516,10 @@ def self_test() -> None:
                     "requiredness": "required",
                     "discovery_status": "empty",
                     "discovery_method": "read Jira attachment inventory",
+                    "remote_link_inventory": {
+                        "status": "empty", "method": "read Jira remote links for EXAMPLE-1",
+                        "locators": [],
+                    },
                     "limitation": "Synthetic fixture has no Jira attachments.",
                     "asset_ids": [],
                     "evidence_refs": ["E-JIRA-001"],
@@ -527,6 +571,26 @@ def self_test() -> None:
             manifest, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
             expected_evidence_ids={"E-JIRA-001", "E-FOLDER-001"}, require_jira_source=True, require_passed=True,
         ) == []
+        missing_remote = json.loads(json.dumps(manifest))
+        del missing_remote["sources"][0]["remote_link_inventory"]
+        assert any("remote link inventory" in error for error in validate_asset_manifest(
+            missing_remote, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
+            require_jira_source=True,
+        ))
+        limited_remote = json.loads(json.dumps(manifest))
+        limited_remote["sources"][0]["remote_link_inventory"]["status"] = "unavailable"
+        limited_remote["sources"][0]["limitation"] = "None"
+        assert any("remote link retrieval limitation" in error for error in validate_asset_manifest(
+            limited_remote, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
+            require_jira_source=True,
+        ))
+        unlisted_remote = json.loads(json.dumps(manifest))
+        unlisted_remote["sources"][0]["remote_link_inventory"]["status"] = "complete"
+        unlisted_remote["sources"][0]["remote_link_inventory"]["locators"] = ["https://example.test/plan"]
+        assert any("remote link is missing" in error for error in validate_asset_manifest(
+            unlisted_remote, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
+            require_jira_source=True,
+        ))
         assert asset_plan_errors("# Asset Baseline\nasset_manifest.json\nE-FOLDER-001\n", manifest) == []
         broken = json.loads(json.dumps(manifest))
         broken["sources"][1]["asset_ids"] = ["ASSET-001"]

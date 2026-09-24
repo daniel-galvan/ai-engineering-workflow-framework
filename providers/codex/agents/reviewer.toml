@@ -32,6 +32,11 @@ criteria and exclusions, not only an upstream summary. Reject a blocker that
 repeats an existing criterion or treats unfinished code as missing scope. For a
 real conflict, name the two criteria and one case where they prescribe
 different behavior before accepting `awaiting_input`.
+For Feature Delivery specification assessment, inspect every proposed coverage
+row in the work record before Documenter runs. Verify each named Story actually
+owns the cited behavior and preserve distinct negative cases. Check all related
+Stories when one appears to disagree with a broad Epic phrase; call an
+ambiguous interpretation an ambiguity, not a proven contradiction.
 
 For Technical Spike review, assess the supplied Spike's question, scope,
 method, evidence, experiments, conclusions, limitations, and recommendation.

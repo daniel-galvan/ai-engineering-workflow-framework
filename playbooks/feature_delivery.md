@@ -71,7 +71,10 @@ clarification-required run may complete discovery and hand off focused questions
 
 Every Feature Delivery run MUST create `asset_manifest.json` before downstream planning fan-in. The `feature-context`
 worker MUST inventory the complete Jira attachment collections of the supplied issue and its related-work inventory,
-plus every file or folder explicitly supplied in the run prompt or `run_inputs.json`. A folder inventory is recursive
+and separately query Jira remote links for each inventoried issue. Record the remote-link collection as `empty`,
+`complete`, or an explicit retrieval limitation in the Jira source's `remote_link_inventory`; every discovered link
+needs a supporting source and disposition even when non-material. Include every file or folder explicitly supplied in
+the run prompt or `run_inputs.json`. A folder inventory is recursive
 and includes hidden entries and symlinks; an empty filtered
 search is not an empty folder. Each source must record `complete`, `empty`, `unavailable`, `permission_denied`, or
 `partial`, or `conflict` explicitly.
@@ -170,6 +173,14 @@ after approval unless new evidence contradicts the approved plan or expands scop
 
 For `deep`, start `impact-analysis` and `repository-integration` in parallel after `feature-context`. Each consumes the
 context and asset-manifest artifacts and repeats upstream discovery only for a recorded discrepancy.
+For `specification_assessment`, bound repository analysis to facts that could change Story coverage or readiness; do
+not inventory implementation seams again after the two analysts have answered that question. Use the packet created by
+`prepare_run.py` as the finalization source, not a second work-record draft. Validate the manifest before design, then
+populate the packet once after review and launch Documenter promptly. Use the shared `--check-packet` and
+`--pre-release` sequence with the same Documenter handle; do not repeat unchanged validation. If provider release is
+unavailable, use the blocked-runtime snapshot path immediately. Terminal worker results and
+`validate_worker_runtime.py --transition close`
+are not release.
 
 ## Stages
 
@@ -257,10 +268,18 @@ Stories directly. Name uncovered requirements explicitly, including cross-Story 
 relevant. Link each material asset to its assessment consequence. Do not create `implementation_plan.md`; readiness
 means the assessed work is sufficiently specified to enter implementation planning or Story-level delivery. Record
 `Engineering outcome: solved` for a ready assessment and `partially_solved` for one needing input.
+Before `planning-review`, feature-design writes the proposed coverage rows into the work record with each Story's exact
+key and criterion. The Reviewer checks every row against the recovered source text, including whether the named Story
+actually owns the behavior. Documenter copies the reviewed mapping; it does not compress distinct requirements into
+one broad row or reassign Story ownership. Keep a short but complete table: no arbitrary minimum row count.
 Before calling a criterion missing or conflicting, compare the exact Story acceptance text, including exclusions and
 negative cases, with the Epic and repository evidence. A feature absent from the current code is expected future work,
 not by itself a specification gap. Cite the exact conflicting or omitted criteria and a concrete scenario whose
 behavior changes; keep implementation choices and unsupported possibilities as follow-ups, not readiness blockers.
+Distinguish explicit contradiction from an Epic phrase that admits several interpretations. A detailed Story
+criterion may refine a broad Epic goal; check related Stories before asking for a decision. If the interpretations
+still change acceptance materially, record the uncertainty and request the smallest owner decision rather than claiming
+a proven contradiction.
 
 In the Final Handoff, set `Implementation plan` exactly to
 `Not created; specification assessment produces specification_assessment.md`; register and link the assessment report.

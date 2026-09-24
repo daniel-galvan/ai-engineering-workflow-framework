@@ -11,6 +11,11 @@
       "requiredness": "required",
       "discovery_status": "complete or empty",
       "discovery_method": "Read the complete Jira attachment inventory",
+      "remote_link_inventory": {
+        "status": "complete or empty",
+        "method": "Read Jira remote links for the supplied issue and every inventoried issue",
+        "locators": []
+      },
       "limitation": "None, or the exact retrieval limitation",
       "asset_ids": [],
       "evidence_refs": ["E-###"]

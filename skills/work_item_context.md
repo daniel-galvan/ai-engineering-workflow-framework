@@ -32,8 +32,8 @@ last_updated: 2026-09-23
 * Unknowns requiring validation
 * A normalized `work_item_read` request/result pair conforming to the shared
   [Work-Item Read Contract](../contracts/workflow_execution.md#work-item-read-contract)
-* A complete current-run `asset_manifest.json` for Jira attachments and every explicitly supplied file, folder, or URL
-  source when used by Feature Delivery
+* A complete current-run `asset_manifest.json` for Jira attachments, remote links, and every explicitly supplied file,
+  folder, or URL source when used by Feature Delivery
 
 ## Source-Specific Recovery
 
@@ -44,8 +44,8 @@ integration owns source-specific retrieval, freshness, evidence states, and
 write rules. Preserve the normalized request/result pair in the context artifact
 before downstream workers consume it.
 For Jira, preserve the full related-work and asset coverage inventory in that same artifact. A complete primary issue
-read does not make an unqueried child or attachment collection empty. If a material related issue or asset cannot be
-read, state which conclusion is limited and classify the context as partial.
+read does not make an unqueried child, attachment, or remote-link collection empty. If material context cannot be read,
+state which conclusion is limited and classify the context as partial.
 
 ## Context Sufficiency
 
@@ -60,9 +60,9 @@ For `clarification_required`, preserve the recovered evidence and ask focused qu
 repository, contract, test, and related-work discovery when it can reduce the uncertainty; record feasible options,
 recommendation, and the smallest decision needed. Do not create an implementation plan or invent requirements.
 
-For Feature Delivery, context is not sufficient until attachment and supplied-asset inventory is complete. Review each
-available image or visual asset directly, classify every asset as material or non-material, and record the observation,
-disposition, and downstream worker that consumes it. Missing or inaccessible assets remain explicit unknowns; they are
+For Feature Delivery, context is not sufficient until attachment, remote-link, and supplied-asset inventory is complete.
+Review each available image or visual asset directly. Classify every asset as material or non-material. Record its
+observation, disposition, and downstream consumer. Missing or inaccessible assets remain explicit unknowns; they are
 not silently treated as empty.
 
 ## Completion Criteria

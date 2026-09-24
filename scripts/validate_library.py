@@ -2196,6 +2196,12 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         row.get("Field", ""): row.get("Value", "")
         for row in markdown_table(text, "# Work Item")
     }
+    if playbook_name == "feature_delivery" and identity["State"] in {
+        "ready_for_implementation", "awaiting_input", "completed",
+    }:
+        title = work_item.get("Title", "").strip()
+        if not title or title.lower().startswith("unknown"):
+            fail(f"{path}: Feature Delivery requires the recovered work-item title")
     if not RFC3339_TIMESTAMP.fullmatch(work_item.get("Last Updated", "")):
         fail(f"{path}: Work Item Last Updated must be an RFC 3339 timestamp")
     required_tables = {
@@ -2268,6 +2274,26 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         and NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip())
         for row in table_rows["# Worker Runtime Closure"]
     )
+    if codex_run and runtime_released and playbook_name == "feature_delivery":
+        completed_workers = {
+            row.get("Worker", "").strip().lower()
+            for row in table_rows["# Worker Result Summary"]
+            if row.get("Outcome", "").strip().lower() == "complete"
+        }
+        released_handles = {
+            handle.lower()
+            for row in table_rows["# Worker Runtime Closure"]
+            for handle in re.findall(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                row.get("Completed worker handles", ""), re.IGNORECASE,
+            )
+        }
+        if len(released_handles) < len(completed_workers):
+            fail(
+                f"{path}: Feature Delivery runtime closure has {len(released_handles)} provider handles "
+                f"for {len(completed_workers)} completed workers; use worker_runtime_release_unavailable "
+                "instead of Released when provider release cannot be confirmed"
+            )
     if runtime_released:
         reconciliation = finalization.get("Final reconciliation", "").strip().lower()
         stale = any(token in reconciliation for token in ("pending", "unknown", "in progress"))

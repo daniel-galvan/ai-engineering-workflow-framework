@@ -46,7 +46,10 @@ For Feature Delivery, the Jira read MUST include attachment history and return
 an explicit complete or empty attachment inventory. Do not treat a screenshot
 mention, filename, or attachment count as consumed visual evidence. Create the
 assigned `asset_manifest.json` before downstream planning: enumerate every Jira
-attachment and every declared file, folder, or URL source; recurse through
+attachment, separately query remote links for every inventoried issue, record
+the remote-link status and method, and disposition each linked source. Empty
+`issuelinks` does not mean remote links are empty. Include every declared file,
+folder, or URL source; recurse through
 folders including hidden entries and symlinks; review available images and
 screenshots visually or through rendered output; and record each asset's
 locator, availability, observation, review status, relevance, disposition, and
