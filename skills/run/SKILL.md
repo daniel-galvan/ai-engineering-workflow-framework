@@ -280,8 +280,9 @@ description: >-
    Run the same finalizer arguments below with `--check-packet` first. It checks
    the report, packet references, and closure shape without replacing the work
    record or consuming a pre-release attempt. Return any errors to the same
-   Documenter; if one correction still fails this check, stop with the exact
-   errors instead of spending the formal attempt on a known-invalid packet.
+   Documenter and repeat this non-consuming check, allowing at most three
+   correction rounds. If it still fails, stop with the exact errors instead
+   of spending the formal attempt on a known-invalid packet.
    Then run:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`

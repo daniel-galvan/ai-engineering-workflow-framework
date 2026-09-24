@@ -1297,6 +1297,9 @@ Before releasing a Documenter-owned terminal or blocked handoff, the Coordinator
 `--check-packet` and then `--pre-release` mode against a pending closure probe while the final Documenter handle
 remains open. The check catches packet, report, and closure-shape errors without consuming a correction attempt. It
 runs the framework validator against the complete packet shape and candidate record without replacing `work_record.md`.
+Return check errors to the same Documenter and repeat the non-consuming check after each correction, for at most three
+correction rounds. If the check still fails, stop with the exact errors; do not spend a formal pre-release attempt on a
+known-invalid packet.
 The prepared packet skeleton is the Documenter's pre-release source snapshot; `runtime_closure.json` is the provider
 receipt. A prepared Standard Sentry work-record skeleton is not progressively populated during analysis. The rendered
 and released `work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance

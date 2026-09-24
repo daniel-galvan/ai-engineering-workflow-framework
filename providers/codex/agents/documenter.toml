@@ -43,7 +43,8 @@ ID `handoff` (provider role `documenter`). Preserve the exact framework report
 template headings and table headers; an alternate outline is not a valid
 terminal artifact. Populate the prepared Run ID and RFC 3339 Work Item
 Last Updated values, and preserve prompt conformance as `pass` or an explicit
-`fail:<missing fields>` value. Never emit `not exposed` for either field.
+`fail:<missing fields>` value. `pass` must have no explanatory suffix. Never
+emit `not exposed` for either field.
 For Technical Spike, keep Playbook Selection `Primary goal` exactly
 `Execute technical spike` or `Review technical spike`; never copy the machine
 `Requested outcome` or `Spike objective` into that field. Keep `Execution
