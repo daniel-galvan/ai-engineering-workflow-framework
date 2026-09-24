@@ -234,9 +234,10 @@ malformed call rejected before activation is a coordination error.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
 post-closure poll.
 
-On Documenter-owned paths, keep the final Documenter live through consistency validation. Run the
-preflight-pinned packaged finalizer with `--pre-release` against a pending
-closure probe before releasing it. Send corrections to that same handle, collect
+On Documenter-owned paths, keep the final Documenter handle open through consistency validation. Build a pending
+closure probe with string-valued fields, never a premature Released claim. Run the
+preflight-pinned packaged finalizer with `--check-packet`, then `--pre-release`, against that probe before
+releasing it. Send corrections to that same handle, collect
 its revised terminal result, and repeat until the pre-release check passes. Use a received/expected correction directly;
 the Coordinator is the only role allowed to invoke the finalizer; the Documenter only returns or corrects its packet.
 If the correction limit is reached, release every active handle and replace the pending closure probe with the exact

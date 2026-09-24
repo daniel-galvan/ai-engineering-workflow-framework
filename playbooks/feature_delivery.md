@@ -257,6 +257,10 @@ Stories directly. Name uncovered requirements explicitly, including cross-Story 
 relevant. Link each material asset to its assessment consequence. Do not create `implementation_plan.md`; readiness
 means the assessed work is sufficiently specified to enter implementation planning or Story-level delivery. Record
 `Engineering outcome: solved` for a ready assessment and `partially_solved` for one needing input.
+Before calling a criterion missing or conflicting, compare the exact Story acceptance text, including exclusions and
+negative cases, with the Epic and repository evidence. A feature absent from the current code is expected future work,
+not by itself a specification gap. Cite the exact conflicting or omitted criteria and a concrete scenario whose
+behavior changes; keep implementation choices and unsupported possibilities as follow-ups, not readiness blockers.
 
 In the Final Handoff, set `Implementation plan` exactly to
 `Not created; specification assessment produces specification_assessment.md`; register and link the assessment report.

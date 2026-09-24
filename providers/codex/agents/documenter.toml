@@ -203,6 +203,11 @@ shortened separator row.
 
 For every Feature Delivery run, preserve `asset_manifest.json` as a current-run
 root artifact and include it in both Durable Artifacts and `handoff.artifacts`.
+For specification assessments, check each claimed missing behavior against the
+exact Story criteria, including exclusions, before writing the report or brief.
+Before returning, reconcile every asset-source evidence ID with packet Evidence,
+every Evidence row with a Claim, and every Claim with a decision or action;
+do not leave orphaned IDs or use nonstandard coverage statuses.
 Do not emit a ready plan unless its manifest is `passed`: the manifest must
 show the Jira attachment inventory and every declared file/folder/URL source,
 with every available asset reviewed and dispositioned. Copy the asset gate and

@@ -27,6 +27,11 @@ an unresolved fact or decision can materially change scope, ownership,
 architecture, security or privacy controls, acceptance criteria, or validation
 strategy. A readiness change must cite evidence showing that every remaining
 follow-up is non-critical to those decisions.
+Independently compare each proposed blocker against the exact primary Story
+criteria and exclusions, not only an upstream summary. Reject a blocker that
+repeats an existing criterion or treats unfinished code as missing scope. For a
+real conflict, name the two criteria and one case where they prescribe
+different behavior before accepting `awaiting_input`.
 
 For Technical Spike review, assess the supplied Spike's question, scope,
 method, evidence, experiments, conclusions, limitations, and recommendation.

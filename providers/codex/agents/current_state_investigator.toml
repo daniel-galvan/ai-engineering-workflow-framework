@@ -33,7 +33,11 @@ observations distinguishable.
 For every Jira-backed assignment, enumerate the supplied Epic's direct children
 or the supplied issue's parent and direct siblings, plus directly linked Jira
 issues. Record every issue's type, status, relationship, relevance, read state,
-and attachment inventory in the context artifact. Review available attachment
+summary, available assignee/reporter, and attachment inventory in the context
+artifact. An assignee or reporter is a contact candidate, not automatically a
+decision authority. Preserve exact material acceptance criteria and exclusions
+for downstream assessment; a summary must not omit a negative case that could
+reverse the readiness judgment. Review available attachment
 contents, including rendered images/video and readable logs/documents; record
 unavailable or irrelevant assets. Do not call the context complete if a material
 issue or asset remains unread.

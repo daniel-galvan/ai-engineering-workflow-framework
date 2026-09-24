@@ -270,6 +270,15 @@ description: >-
    `workers` with its corresponding `worker_results` row. If they differ, return
    the exact mismatch to the same Documenter and correct it before spending a
    pre-release correction attempt; the packaged finalizer repeats this check.
+   Keep the Documenter handle open after collecting its result. Build the
+   closure probe from `templates/runtime_closure.json` with string values:
+   `Runtime status: Pending`, `Remaining active handles: Unknown`, and provider
+   release pending. Never mark it Released before a provider close confirmation.
+   Run the same finalizer arguments below with `--check-packet` first. It checks
+   the report, packet references, and closure shape without replacing the work
+   record or consuming a pre-release attempt. Return any errors to the same
+   Documenter; if one correction still fails this check, stop with the exact
+   errors instead of spending the formal attempt on a known-invalid packet.
    Then run:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
@@ -328,6 +337,10 @@ description: >-
    receipt to `runtime_closure.json`, then run the pinned `finalize_work_record.py --blocked-runtime-snapshot` with the
    packet, closure, record, and Coordinator/framework identity arguments below. Require exit zero and
    `Technical Spike blocked work record: saved; runtime release unverified` before linking the blocked work record.
+   For Feature Delivery `specification_assessment` with a valid report and complete worker results, use the same
+   blocked-snapshot command when provider release cannot be proved. Require
+   `Feature Delivery assessment blocked work record: saved; runtime release unverified`. This records a blocked
+   workflow while preserving the assessment; it does not turn an unverified result into completion.
    Do not claim a completed workflow or substitute worker labels for release handles.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run

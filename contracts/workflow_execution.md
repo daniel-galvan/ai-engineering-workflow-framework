@@ -1291,9 +1291,10 @@ smaller record that omits any required terminal field fails finalization. Normal
 design, or plan artifact instead of duplicating it; record size is advisory and never a user-facing metric or gate.
 
 Before releasing a Documenter-owned terminal or blocked handoff, the Coordinator MUST run the packaged finalizer in
-`--pre-release` mode against a pending closure probe while the final Documenter handle is still active. It runs the
-framework validator against the complete packet shape and candidate record without replacing `work_record.md`. The
-prepared packet skeleton is the Documenter's pre-release source snapshot; `runtime_closure.json` is the provider
+`--check-packet` and then `--pre-release` mode against a pending closure probe while the final Documenter handle
+remains open. The check catches packet, report, and closure-shape errors without consuming a correction attempt. It
+runs the framework validator against the complete packet shape and candidate record without replacing `work_record.md`.
+The prepared packet skeleton is the Documenter's pre-release source snapshot; `runtime_closure.json` is the provider
 receipt. A prepared Standard Sentry work-record skeleton is not progressively populated during analysis. The rendered
 and released `work_record.md` is the authoritative terminal state. A nonzero result is a handoff conformance
 failure.
@@ -1307,11 +1308,12 @@ recording provider closure in `runtime_closure.json`, finalization passes only w
 first output line is exactly `Workflow-framework validation: passed`; the remaining output is the canonical handoff.
 For a completed Technical Spike, the finalizer also rejects a released closure receipt when it lists fewer unique
 provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
-If the provider does not expose release handles or receipts after the Technical Spike report is published and every
-worker result is complete, the Coordinator writes the blocked closure row defined under
+If the provider does not expose release handles or receipts after the Technical Spike report is published, or after a
+Feature Delivery specification assessment report is created, and every worker result is complete, the Coordinator
+writes the blocked closure row defined under
 [Worker Runtime Closure](#worker-runtime-closure) and invokes the packaged `--blocked-runtime-snapshot` mode. It
 validates and saves `work_record.md` with `State: blocked` and
-`Workflow outcome: blocked`, while preserving the published report and the original handoff packet for later
+`Workflow outcome: blocked`, while preserving the report and the original handoff packet for later
 finalization. This is a blocked record, never evidence that provider workers were released or the workflow completed.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the

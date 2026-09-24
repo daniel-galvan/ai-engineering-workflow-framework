@@ -37,14 +37,16 @@ def assessment_report_errors(
         [cell.strip() for cell in line.strip().strip("|").split("|")]
         for line in section.group(1).splitlines() if line.strip().startswith("|")
     ]
-    coverage = [row for row in rows[2:] if (
-        len(row) == 6 and all(row[index] for index in (0, 1, 2, 3))
-        and row[3] in {"Covered", "Partial", "Missing", "Conflicting"}
-    )]
+    coverage = rows[2:]
     if not coverage:
         errors.append(f"{REPORT_NAME} requires a populated requirement-to-Story coverage row")
+    for index, row in enumerate(coverage, start=1):
+        if len(row) != 7 or any(not cell for cell in row):
+            errors.append(f"{REPORT_NAME} coverage row {index} requires all seven columns")
+        elif row[3] not in {"Covered", "Partial", "Missing", "Conflicting"}:
+            errors.append(f"{REPORT_NAME} coverage row {index} has invalid Status: {row[3]}")
     if workflow_result in {"Ready for implementation", "Ready with explicit follow-ups"} and any(
-        row[3] != "Covered" for row in coverage
+        len(row) < 4 or row[3] != "Covered" for row in coverage
     ):
         errors.append(f"{REPORT_NAME} ready result requires covered requirements")
     return errors
@@ -53,12 +55,15 @@ def assessment_report_errors(
 def self_test() -> None:
     valid = "\n".join(REQUIRED_HEADINGS[:2]) + "\nWorkflow result: Ready for implementation\n" + (
         "\n".join(REQUIRED_HEADINGS[2:4]) + "\n"
-        "| Requirement / behavior | Story coverage | Evidence | Status | Gap or follow-up | Owner |\n"
-        "| --- | --- | --- | --- | --- | --- |\n"
-        "| Outcome A | ABC-2 | E-001 | Covered | None | Team |\n"
+        "| Requirement / behavior | Story coverage | Evidence | Status | Test / dependency | Gap or follow-up | Owner |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| Outcome A | ABC-2 | E-001 | Covered | Check A / ABC-1 | None | Team |\n"
     ) + "\n".join(REQUIRED_HEADINGS[4:]) + "\nasset_manifest.json\n"
     assert assessment_report_errors(valid, "Ready for implementation") == []
-    assert "coverage row" in " ".join(assessment_report_errors(valid.replace("Covered", ""), "Ready for implementation"))
+    assert "coverage row" in " ".join(assessment_report_errors(valid.replace("| Covered |", "| |"), "Ready for implementation"))
+    assert "invalid Status" in " ".join(assessment_report_errors(
+        valid.replace("| Covered |", "| Covered in intent |"), "Ready for implementation",
+    ))
     assert "ready result" in " ".join(assessment_report_errors(
         valid.replace("| Covered |", "| Missing |"), "Ready for implementation",
     ))

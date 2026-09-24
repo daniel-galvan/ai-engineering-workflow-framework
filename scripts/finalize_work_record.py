@@ -1863,14 +1863,19 @@ def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> N
     print("Technical Spike artifact validation: passed")
 
 
-def _prepare_spike_blocked_snapshot(
+def _prepare_blocked_runtime_snapshot(
     packet: dict[str, object], closure: dict[str, object], packet_path: Path,
     budget_status: str | None,
 ) -> None:
     identity = packet["identity"]
     playbook = Path(str(identity["Playbook / version"]).split(" / ", 1)[0]).stem
-    if playbook != "technical_spike" or identity["State"] != "handoff":
-        raise ValueError("blocked runtime snapshot requires a Technical Spike handoff packet")
+    assessment = (
+        playbook == "feature_delivery"
+        and str(packet["playbook_selection"]["Primary goal"]).strip().lower() == "specification assessment"
+        and identity["State"] in {"awaiting_input", "ready_for_implementation"}
+    )
+    if not ((playbook == "technical_spike" and identity["State"] == "handoff") or assessment):
+        raise ValueError("blocked runtime snapshot requires a Technical Spike or Feature Delivery assessment packet")
     rows = closure["runtime_closure"]
     if not rows or any(
         row["Receipt owner"] != "Coordinator"
@@ -1883,20 +1888,30 @@ def _prepare_spike_blocked_snapshot(
             "blocked runtime snapshot requires a Coordinator-owned receipt with Runtime status Blocked, "
             "worker_runtime_release_unavailable in Closure evidence or blocker, and nonzero or unknown active handles"
         )
-    errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
-    errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
+    if assessment:
+        errors = _feature_delivery_packet_contract_errors(packet)
+        errors.extend(_feature_delivery_asset_contract_errors(packet))
+    else:
+        errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
+        errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
     try:
         _validate_handoff(packet)
     except ValueError as error:
         errors.append(str(error))
     if errors:
         raise ValueError("\n".join(dict.fromkeys(errors)))
-    primary_goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
-    result = str(packet["handoff"]["workflow_result"]).strip()
-    identity.update({
-        "State": "blocked", "Workflow outcome": "blocked",
-        "Engineering outcome": TECHNICAL_SPIKE_DISPOSITIONS[primary_goal][result],
-    })
+    if assessment:
+        expected_results = FEATURE_ASSESSMENT_DISPOSITIONS[identity["State"]]
+        if str(packet["handoff"]["workflow_result"]).strip() not in expected_results:
+            raise ValueError("Feature Delivery assessment result does not match its readiness state")
+        identity.update({"State": "blocked", "Workflow outcome": "blocked"})
+    else:
+        primary_goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
+        result = str(packet["handoff"]["workflow_result"]).strip()
+        identity.update({
+            "State": "blocked", "Workflow outcome": "blocked",
+            "Engineering outcome": TECHNICAL_SPIKE_DISPOSITIONS[primary_goal][result],
+        })
     packet["finalization"].update({
         "Final reconciliation": "Blocked; provider runtime release unverified",
         "Finalization schema": "Passed for blocked work record",
@@ -1922,13 +1937,15 @@ def finalize(
     record_path: Path,
     *,
     pre_release: bool = False,
+    check_only: bool = False,
     blocked_runtime_snapshot: bool = False,
     coordinator_model_effort: str | None = None,
     framework_revision: str | None = None,
     framework_status: str | None = None,
 ) -> None:
     status_path, previous_status = _finalization_status(packet_path)
-    if pre_release and previous_status.get("status") == "failed" and int(
+    pre_release = pre_release or check_only
+    if pre_release and not check_only and previous_status.get("status") == "failed" and int(
         previous_status.get("attempt_count", 0)
     ) >= 2:
         raise ValueError(
@@ -1955,7 +1972,7 @@ def finalize(
             if pre_release:
                 _validate_pre_release_state(packet)
             if blocked_runtime_snapshot:
-                _prepare_spike_blocked_snapshot(packet, closure, packet_path, budget_status)
+                _prepare_blocked_runtime_snapshot(packet, closure, packet_path, budget_status)
             errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
             _normalize_packet(packet, closure, packet_path, budget_status)
             _sync_spike_report_budget(packet_path, packet, budget_status)
@@ -2014,21 +2031,23 @@ def finalize(
                 errors.append(result.stdout.strip() or result.stderr.strip() or "work_record_validation_failed")
         errors = list(dict.fromkeys(errors))
         if errors:
+            if check_only:
+                raise ValueError("packet_precheck_failed:" + "\n".join(errors))
             if pre_release:
                 status = _record_pre_release(packet_path, "failed", errors, previous_status)
                 prefix = "finalization_contract_failure:" if status["attempt_count"] >= 2 else ""
                 raise ValueError(prefix + "\n".join(errors) + f"\nreceipt={status_path}")
             terminal_status = _record_terminal_failure(packet_path, errors, previous_status)
             raise ValueError("\n".join(errors) + f"\nreceipt={terminal_status}")
-        if pre_release:
-            status_path.unlink(missing_ok=True)
-        else:
+        if not check_only:
             status_path.unlink(missing_ok=True)
         if not pre_release:
             temporary.replace(record_path)
         if result:
             if blocked_runtime_snapshot:
-                print("Technical Spike blocked work record: saved; runtime release unverified")
+                name = Path(str(packet['identity']['Playbook / version']).split(' / ', 1)[0]).stem
+                label = "Technical Spike" if name == "technical_spike" else "Feature Delivery assessment"
+                print(f"{label} blocked work record: saved; runtime release unverified")
             print(result.stdout, end="")
     finally:
         temporary.unlink(missing_ok=True)
@@ -2450,16 +2469,18 @@ def self_test() -> None:
             assert "packet.handoff.workflow_result must be a non-empty string" in str(error)
         else:
             raise AssertionError("finalization must reject an empty terminal handoff")
+        feature_version = _frontmatter_version(ROOT / "playbooks" / "feature_delivery.md")
+        feature_prompt_version = _frontmatter_version(ROOT / "templates" / "feature_delivery_run_prompt.md")
         assessment = json.loads(json.dumps(packet))
         assessment["playbook_selection"]["Primary goal"] = "Specification assessment"
         assessment["identity"].update({
-            "Playbook / version": "playbooks/feature_delivery.md / 0.5.1",
+            "Playbook / version": f"playbooks/feature_delivery.md / {feature_version}",
             "Lifecycle": "planning",
             "State": "awaiting_input",
         })
         assessment["handoff"]["provenance"] = (
             f"plugin Not applicable; framework revision {'a' * 40} (clean); "
-            "playbook feature_delivery 0.5.1."
+            f"playbook feature_delivery {feature_version}."
         )
         assessment["handoff"]["workflow_result"] = "Plan created"
         try:
@@ -2477,12 +2498,16 @@ def self_test() -> None:
             "Selected playbook": "Feature Delivery",
         })
         feature["identity"].update({
-            "Playbook / version": "playbooks/feature_delivery.md / 0.5.1",
+            "Playbook / version": f"playbooks/feature_delivery.md / {feature_version}",
+            "Prompt template / revision / conformance": (
+                f"templates/feature_delivery_run_prompt.md / {feature_prompt_version} / pass"
+            ),
             "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
             "Profile status": "executed", "Lifecycle": "planning",
             "State": "ready_for_implementation", "Workflow outcome": "completed",
             "Engineering outcome": "plan_only",
         })
+        feature["handoff"]["provenance"] = assessment["handoff"]["provenance"]
 
         def feature_ledger(worker: str, role: str, depends_on: str) -> dict[str, str]:
             return {
@@ -2586,12 +2611,15 @@ def self_test() -> None:
             "# Specification Assessment\n## Question and Result\nWorkflow result: Ready for implementation\n"
             "## Source and Asset Baseline\n"
             "asset_manifest.json\n## Coverage\n"
-            "| Requirement / behavior | Story coverage | Evidence | Status | Gap or follow-up | Owner |\n"
-            "| --- | --- | --- | --- | --- | --- |\n"
-            "| Outcome | ITEM-2 | E-001 | Covered | None | Team |\n"
+            "| Requirement / behavior | Story coverage | Evidence | Status | Test / dependency | Gap or follow-up | Owner |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| Outcome | ITEM-2 | E-001 | Covered | Check ITEM-2 / ITEM-1 | None | Team |\n"
             "## Gaps, Risks, and Decisions\n## Disposition and Next Action\n"
         )
-        assessment_feature["durable_artifacts"].append({"Artifact": "Specification assessment", "Path": str(report_path)})
+        assessment_feature["durable_artifacts"].append({
+            "Artifact": "Specification assessment", "Path": str(report_path),
+            "Status": "Complete", "Purpose": "Readiness coverage",
+        })
         assessment_feature["handoff"]["artifacts"].append(str(report_path))
         assert _feature_delivery_packet_contract_errors(assessment_feature) == []
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
@@ -2602,6 +2630,25 @@ def self_test() -> None:
         ))
         assert _feature_delivery_packet_contract_errors(assessment_feature) == []
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
+        blocked_assessment = json.loads(json.dumps(assessment_feature))
+        blocked_closure = {"runtime_closure": [{
+            "Run or stage": "Feature Delivery assessment", "Receipt owner": "Coordinator",
+            "Completed worker handles": "Unknown", "Runtime status": "Blocked",
+            "Remaining active handles": "Unknown",
+            "Closure evidence or blocker": "worker_runtime_release_unavailable: provider release not exposed",
+        }]}
+        _prepare_blocked_runtime_snapshot(blocked_assessment, blocked_closure, report_path, None)
+        assert blocked_assessment["identity"]["State"] == "blocked"
+        assert blocked_assessment["identity"]["Workflow outcome"] == "blocked"
+        assert blocked_assessment["identity"]["Engineering outcome"] == "partially_solved"
+        assert assessment_feature["identity"]["State"] == "awaiting_input"
+        assessment_packet = feature_root / "assessment_packet.json"
+        assessment_closure = feature_root / "runtime_closure.json"
+        assessment_record = feature_root / "assessment_work_record.md"
+        assessment_packet.write_text(json.dumps(assessment_feature))
+        assessment_closure.write_text(json.dumps(blocked_closure))
+        finalize(assessment_packet, assessment_closure, assessment_record, blocked_runtime_snapshot=True)
+        assert "State: blocked" in assessment_record.read_text()
         spike = json.loads(json.dumps(packet))
         spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
         spike["identity"].update({
@@ -3263,6 +3310,14 @@ Runtime behavior remains unverified.
         malformed_spike = json.loads(spike_packet_path.read_text())
         malformed_spike["workers"] = {}
         spike_packet_path.write_text(json.dumps(malformed_spike, indent=2) + "\n")
+        status_before_check = (spike_root / FINALIZATION_STATUS_FILENAME).read_text()
+        try:
+            finalize(spike_packet_path, spike_closure, spike_record, check_only=True)
+        except ValueError as error:
+            assert "packet_precheck_failed:packet_schema_invalid" in str(error)
+        else:
+            raise AssertionError("packet precheck must reject malformed shapes")
+        assert (spike_root / FINALIZATION_STATUS_FILENAME).read_text() == status_before_check
         try:
             finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
         except ValueError as error:
@@ -3582,6 +3637,7 @@ def main() -> int:
     parser.add_argument("--closure", type=Path)
     parser.add_argument("--record", type=Path)
     parser.add_argument("--pre-release", action="store_true")
+    parser.add_argument("--check-packet", action="store_true")
     parser.add_argument("--blocked-runtime-snapshot", action="store_true")
     parser.add_argument("--publish-technical-spike-report", type=Path)
     parser.add_argument("--analytical-failure")
@@ -3598,6 +3654,9 @@ def main() -> int:
         return 0
     if args.blocked_runtime_snapshot and (args.pre_release or args.publish_technical_spike_report or args.analytical_failure):
         parser.error("--blocked-runtime-snapshot cannot be combined with another finalization mode")
+    if args.check_packet and (args.pre_release or args.blocked_runtime_snapshot or args.publish_technical_spike_report
+                              or args.analytical_failure):
+        parser.error("--check-packet cannot be combined with another finalization mode")
     if args.publish_technical_spike_report:
         if not args.packet:
             parser.error("--publish-technical-spike-report requires --packet")
@@ -3633,6 +3692,7 @@ def main() -> int:
             finalize(
                 args.packet.resolve(), args.closure.resolve(), args.record.resolve(),
                 pre_release=args.pre_release,
+                check_only=args.check_packet,
                 blocked_runtime_snapshot=args.blocked_runtime_snapshot,
                 coordinator_model_effort=args.coordinator_model_effort,
                 framework_revision=args.framework_revision,

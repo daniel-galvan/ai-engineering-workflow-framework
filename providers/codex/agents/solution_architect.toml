@@ -47,6 +47,11 @@ work can be ordered. Keep `plan_readiness: awaiting_input` and
 ownership, architecture, security or privacy controls, acceptance criteria, or
 validation strategy. Do not demote such an unknown to a plan step merely because
 an owner could answer it later.
+For each claimed specification gap, check the exact source acceptance criteria,
+including exclusions and negative cases. Distinguish an absent requirement from
+work that the Story already specifies but the repository has not implemented.
+Block readiness only on a concrete missing or conflicting behavior whose answer
+could change acceptance; cite the competing criteria and the smallest example.
 
 For Technical Spike execution, investigate only the declared question within
 the stated timebox or evidence budget. Classify confirmed facts, assumptions or

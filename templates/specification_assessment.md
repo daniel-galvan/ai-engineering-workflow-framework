@@ -38,10 +38,14 @@ One row per distinct requested outcome, acceptance criterion, edge case, or inte
 cases and current controls where relevant. `Covered` means the proposed work has implementable behavior and
 observable acceptance or test criteria, not merely a similar title. Split a broad row when work items cover different
 behaviors. Cite exact source and evidence references.
+For each claimed gap, name the exact Story criterion it contradicts or fails to cover. Preserve explicit exclusions,
+such as a field intentionally derived rather than compared, instead of silently replacing them with a proposed rule.
+Identify the observable test and dependency for each material row; do not mistake unimplemented code for an absent
+Story requirement.
 
-| Requirement / behavior | Proposed work / Story | Evidence | Status | Gap or follow-up | Owner |
-| --- | --- | --- | --- | --- | --- |
-| | | | Covered / Partial / Missing / Conflicting | | |
+| Requirement / behavior | Proposed work / Story | Evidence | Status | Test / dependency | Gap or follow-up | Owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | Covered / Partial / Missing / Conflicting | | | |
 
 ## Gaps, Risks, and Decisions
 
