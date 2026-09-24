@@ -46,10 +46,21 @@ framework revision, and check framework clean status before loading memory, cach
 contracts, provider definitions, templates, or sibling artifacts. A stale plugin path or an unavailable, dirty, or
 mismatched framework stops the run with the corresponding preflight reason; the launcher MUST NOT search another cache
 version, silently substitute a checkout, activate workers, query external systems, or load the complete framework to
-explain the block. A blocked preflight writes one minimal canonical work record, records
-`preflight_elapsed_ms` and `worker_activation_attempts: 0`, and validates the record before handoff.
+explain the block. A blocked preflight reports `preflight_elapsed_ms` and `worker_activation_attempts: 0` without
+creating an artifact root or work record.
 The process exit status is authoritative: a completed preflight with exit status 0 is passed even when stdout is hidden
 by the host application. The launcher MUST NOT rerun a successful preflight solely to recover a missing display payload.
+
+Before initialization, a Jira-backed Feature Delivery launcher MUST probe the configured Atlassian resource lookup once
+after package preflight and prompt-completeness checks. An authentication failure such as `USER_NOT_LOGGED_IN` or a
+missing required operation stops the run before full framework loading, input-manifest creation, preparation, or worker
+activation. Emit the packaged `scripts/source_access_receipt.py` receipt with the source, attempted operation, safe
+provider code, and current-turn start. Exit status 2 with a JSON `status: blocked` receipt is a block, not a parser
+error. Report its fields and one access-restoration
+action. This pre-initialization stop creates no artifact root or work record and is not an assessment disposition.
+Successful connection proves only connector availability; the context worker still reads the specific item and assets.
+Other playbooks retain their own source-access rules; do not probe optional sources or retry a confirmed authentication
+failure through several operations.
 
 After preflight passes, at initialization the Coordinator MUST read the selected playbook, this contract, and the claims
 contract. Other frontmatter dependencies are maintenance or stage references, not an instruction to load the complete

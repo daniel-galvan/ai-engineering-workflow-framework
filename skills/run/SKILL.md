@@ -23,6 +23,8 @@ description: >-
    report the preflight reason and `preflight_elapsed_ms`. Treat a completed process with exit status 0 as a passed
    preflight even when the app hides stdout; do not rerun it solely because the JSON payload is not visible. Retry only
    after a timeout, nonzero exit, or an objectively malformed result whose status cannot be determined.
+   Capture the current-turn start from provider metadata when available; otherwise read the clock immediately after
+   this preflight. Use that timestamp only for elapsed-time reporting on an early source-access block.
 3. On a preflight block, stop this invocation immediately after capturing and reporting the exact preflight JSON. Do
    not create an artifact root or work record, load any playbook, template, validator, or cache file, run another
    framework command, query external systems, or activate workers. This preflight did not initialize a run, so
@@ -46,8 +48,10 @@ description: >-
    `spike_assessment` for review of an existing Spike, `implementation_plan` for implementation planning, and
    `specification_assessment` for readiness assessment. Compare it with the supplied playbook objective. If they differ,
    preserve both as authoritative inputs and stop with `run_goal_conflict`; do not silently prefer the later field.
-   Copy an explicit populated `Requested outcome:` field when supplied. If it is absent, record the selected playbook
-   default and provenance; an explicit override that contradicts the objective stops with `run_goal_conflict`.
+   Copy an explicit populated `Requested outcome:` field when supplied. An unambiguous named objective such as Feature
+   Delivery `specification_assessment` is also explicit; use that outcome and its matching objective even without
+   labeled fields. If no outcome is named, use the selected playbook default and provenance. A contradictory override
+   stops with `run_goal_conflict`.
    Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
@@ -62,6 +66,20 @@ description: >-
    result. If no trace is exposed, record context conformance as `context-unverified` and do not imply an
    independently audited pass. The Pilot Standard finalizer may continue with the worker's self-attested result when
    every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation.
+5a. For Jira-backed Feature Delivery, probe the configured Atlassian resource lookup once before loading the full
+   playbook, contracts, or template. If it returns an authentication failure such as `USER_NOT_LOGGED_IN`, or that
+   operation is unavailable, run (use `OPERATION_UNAVAILABLE` when no provider code exists):
+   ```bash
+   python3 <framework-root>/scripts/source_access_receipt.py --source Jira --work-item <key> \
+     --operation <attempted-operation> --provider-code <SAFE_ERROR_CODE> \
+     --started-at <current-turn-RFC3339-start>
+   ```
+   Exit status 2 with a JSON `status: blocked` receipt is the expected block; a parser error is not a receipt. Copy the
+   receipt and give one access-restoration action. Stop without
+   an input manifest, artifact root, work record, worker, or assessment. Do not substitute historical Jira data or call
+   the result `awaiting_input` or `Not ready for implementation`. A connected resource lookup does not prove access;
+   the context worker must still read the actual work item and assets. Never retry the same authentication failure
+   through other Jira operations in this run.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
@@ -97,27 +115,35 @@ description: >-
    issue and asset read states in the context artifact; return one correction
    for omissions. Unavailable or unreviewed material stays explicit and prevents
    a false claim of complete context or readiness.
-   When the prompt explicitly supplies a requested outcome, include `RUN-GOAL-001` using its exact value and canonical
-   provenance. When the prompt omits it, omit that row; preparation records the selected playbook default and
-   provenance. Preparation rejects an altered explicit row.
+   When the request explicitly names Feature Delivery `specification_assessment`, treat that as the compatible
+   `specification_assessment + specification_assessment` pair even without labeled prompt fields. Include the exact
+   `RUN-GOAL-001` row below when this or another requested outcome is explicit; change only the outcome value.
+   When the outcome is omitted, omit that row so preparation records the playbook default. Preparation rejects an
+   altered explicit row.
    ```json
    {"schema_version":1,"status":"explicit","precedence_rule":"<canonical precedence rule>","inputs":[
      {"Input ID":"IN-001","Input or artifact":"<short value>","Source or path":"<source or absolute path>",
-      "Authority":"<authority>","Classification":"<classification>","Expected use":"<use>","Status":"Registered"}
+      "Authority":"<authority>","Classification":"<classification>","Expected use":"<use>","Status":"Registered"},
+     {"Input ID":"RUN-GOAL-001","Input or artifact":"Requested outcome: specification_assessment",
+      "Source or path":"Current user request","Authority":"Explicit user outcome",
+      "Classification":"requested outcome","Expected use":"Validate playbook and objective selection",
+      "Status":"Registered"}
    ]}
    ```
    Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and an optional
    verified runtime-agent directory (`--runtime-agents <path>`). Pass `--requested-outcome` and
-   `--workflow-objective` only when the prompt explicitly supplied a complete compatible pair; when the prompt omits
-   both, omit both flags so preparation records the selected playbook defaults and provenance. For Technical Spike pass
-   the validated `--primary-question <question>`; pass `--success-criterion <criterion>` and `--timebox-minutes
+   `--workflow-objective` only when the request explicitly supplied a complete compatible pair, including the named
+   Feature Delivery assessment above. When the request omits both, omit both flags so preparation records the selected
+   playbook defaults and provenance. For Technical Spike pass the validated `--primary-question <question>`; pass
+   `--success-criterion <criterion>` and `--timebox-minutes
    <minutes>` only for run-specific overrides. Technical Spike permits `technical_answer + execute_spike` or
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
    `specification_assessment + specification_assessment`. Technical Spike is budget-gated: always pass the captured
    current-turn RFC 3339 start as `--started-at` and the resolved playbook/default or override as `--timebox-minutes`; a
    missing captured start stops before artifact creation or worker activation. Use `run_budget.json` as the terminal
-   budget source of truth. Use `--continuation` only
-   when the user explicitly says continue or resume. Validate the explicit manifest and provider bindings before this
+   budget source of truth. For non-Spike runs, omit both budget flags unless the request supplies a complete timebox
+   override; never pass `--started-at` alone. Use `--continuation` only when the user explicitly says continue or
+   resume. Validate the explicit manifest and provider bindings before this
    step mutates the artifact root. This one step then archives a prior terminal run, creates the artifact root and
    minimal work record, and writes `role_bindings.json`.
    For Technical Spike, assign the supplied work-item input and `work_item_read` to `spike-context`; a completed
