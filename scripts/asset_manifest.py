@@ -3,12 +3,18 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import tempfile
 from pathlib import Path
 from typing import Iterable
+
+try:
+    from run_input_manifest import load_manifest
+except ModuleNotFoundError:  # Imported as scripts.asset_manifest from the repository root.
+    from scripts.run_input_manifest import load_manifest
 
 
 SCHEMA_VERSION = 1
@@ -361,8 +367,8 @@ def validate_asset_manifest(
             if expected_locator.startswith(("/", "http://", "https://")):
                 actual_locator = str(matching[0]["locator"])
                 if matching[0]["kind"] in {"directory", "file"}:
-                    expected_locator = _absolute_locator(expected_locator)
-                    actual_locator = _absolute_locator(actual_locator)
+                    expected_locator = os.path.realpath(_absolute_locator(expected_locator))
+                    actual_locator = os.path.realpath(_absolute_locator(actual_locator))
                 if actual_locator != expected_locator:
                     errors.append(
                         f"asset source {matching[0]['source_id']} locator does not match declared input {input_id}"
@@ -474,7 +480,7 @@ def validate_asset_manifest(
     elif status == "awaiting_input" and not (unresolved_sources or unresolved_assets):
         errors.append("asset_manifest awaiting_input requires an unresolved source or asset")
     if require_passed and status != "passed":
-        errors.append("Feature Delivery ready_for_implementation requires asset_manifest status passed")
+        errors.append("Feature Delivery asset gate requires asset_manifest status passed")
     return list(dict.fromkeys(errors))
 
 
@@ -495,6 +501,22 @@ def asset_plan_errors(plan_text: str, manifest: dict[str, object]) -> list[str]:
         if isinstance(refs, list) and refs and not any(str(ref) in plan_text for ref in refs):
             errors.append(f"implementation_plan.md must retain evidence refs for material asset {asset_id}")
     return errors
+
+
+def asset_gate_errors(manifest_path: Path, inputs_path: Path, work_item: str) -> list[str]:
+    """Apply the finalizer's asset contract before activating downstream workers."""
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        inputs = {
+            str(row["Input ID"]): row
+            for row in load_manifest(inputs_path, explicit=False)["inputs"]
+        }
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return [f"asset gate input unavailable or invalid: {error}"]
+    return validate_asset_manifest(
+        manifest, work_item=work_item, expected_input_ids=inputs,
+        expected_inputs=inputs, require_jira_source=True, require_passed=True,
+    )
 
 
 def self_test() -> None:
@@ -616,8 +638,49 @@ def self_test() -> None:
                 missing_source, expected_input_ids=inputs, expected_inputs=inputs,
             )
         )
+        with tempfile.TemporaryDirectory(prefix="asset-gate-") as gate_dir:
+            gate_root = Path(gate_dir)
+            manifest_path = gate_root / ASSET_MANIFEST_FILENAME
+            inputs_path = gate_root / "run_inputs.json"
+            inputs_path.write_text(json.dumps({
+                "schema_version": 1, "status": "explicit", "inputs": [
+                    {"Input ID": key, **row, "Authority": "Synthetic test", "Status": "Registered"}
+                    for key, row in inputs.items()
+                ],
+            }))
+            manifest_path.write_text(json.dumps(manifest))
+            assert asset_gate_errors(manifest_path, inputs_path, "EXAMPLE-1") == []
+            incomplete = json.loads(json.dumps(manifest))
+            incomplete["status"] = "complete"
+            manifest_path.write_text(json.dumps(incomplete))
+            assert any("status must be passed" in error for error in asset_gate_errors(
+                manifest_path, inputs_path, "EXAMPLE-1",
+            ))
+            invalid = json.loads(json.dumps(manifest))
+            invalid["sources"][0]["remote_link_inventory"]["method"] = "Jira remote links queried"
+            invalid["assets"][0]["review_method"] = "provider read"
+            invalid["assets"][0]["relevance"] = "supporting"
+            manifest_path.write_text(json.dumps(invalid))
+            errors = asset_gate_errors(manifest_path, inputs_path, "EXAMPLE-1")
+            assert any("remote link retrieval method" in error for error in errors)
+            assert any("invalid review_method" in error for error in errors)
+            assert any("invalid relevance" in error for error in errors)
     print("asset_manifest self-test: passed")
 
 
 if __name__ == "__main__":
-    self_test()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--validate", type=Path, metavar="ASSET_MANIFEST")
+    parser.add_argument("--run-inputs", type=Path)
+    parser.add_argument("--work-item")
+    args = parser.parse_args()
+    if args.validate is None:
+        if args.run_inputs or args.work_item:
+            parser.error("--run-inputs and --work-item require --validate")
+        self_test()
+    else:
+        if not args.run_inputs or not args.work_item:
+            parser.error("--validate requires --run-inputs and --work-item")
+        errors = asset_gate_errors(args.validate, args.run_inputs, args.work_item)
+        print(json.dumps({"status": "blocked" if errors else "passed", "errors": errors}))
+        raise SystemExit(2 if errors else 0)

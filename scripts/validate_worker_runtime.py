@@ -86,6 +86,19 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                 errors.append("run_input_manifest_hash_mismatch")
         elif manifest_path:
             errors.append("run_input_manifest_unavailable")
+    bindings_path = path.parent / "role_bindings.json"
+    if expected_agent == "documenter" and bindings_path.is_file():
+        try:
+            bindings = json.loads(bindings_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            errors.append("role_bindings_invalid")
+        else:
+            if isinstance(bindings, dict) and bindings.get("playbook") == "feature_delivery":
+                try:
+                    from finalize_work_record import feature_delivery_pre_handoff_errors
+                except ModuleNotFoundError:  # Imported as scripts.validate_worker_runtime from the repository root.
+                    from scripts.finalize_work_record import feature_delivery_pre_handoff_errors
+                errors.extend(feature_delivery_pre_handoff_errors(path.parent / "finalization_packet.json"))
     return errors
 
 
@@ -182,6 +195,22 @@ def self_test() -> None:
         }}}) + "\n")
         packet_sha256 = hashlib.sha256(packet.read_bytes()).hexdigest()
         assert activation_packet_errors(packet, "test_worker", packet_sha256) == []
+        documenter_bundle = json.loads(packet.read_text())
+        documenter_bundle["packets"]["documenter"] = {
+            **documenter_bundle["packets"]["test_worker"], "agent": "documenter",
+        }
+        packet.write_text(json.dumps(documenter_bundle))
+        doc_sha256 = hashlib.sha256(packet.read_bytes()).hexdigest()
+        assert activation_packet_errors(packet, "documenter", doc_sha256) == []
+        (root / "role_bindings.json").write_text(json.dumps({"playbook": "feature_delivery"}))
+        assert "pre-handoff packet unavailable" in " ".join(
+            activation_packet_errors(packet, "documenter", doc_sha256)
+        )
+        (root / "role_bindings.json").write_text("{")
+        assert "role_bindings_invalid" in activation_packet_errors(packet, "documenter", doc_sha256)
+        (root / "role_bindings.json").unlink()
+        packet.write_text(json.dumps({"packets": {"test_worker": documenter_bundle["packets"]["test_worker"]}}))
+        packet_sha256 = hashlib.sha256(packet.read_bytes()).hexdigest()
         (root / "run_budget.json").write_text(json.dumps({
             "activation_deadline_at": "2000-01-01T00:00:00Z",
         }))

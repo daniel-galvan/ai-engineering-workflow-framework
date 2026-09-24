@@ -33,10 +33,12 @@ repeats an existing criterion or treats unfinished code as missing scope. For a
 real conflict, name the two criteria and one case where they prescribe
 different behavior before accepting `awaiting_input`.
 For Feature Delivery specification assessment, inspect every proposed coverage
-row in the work record before Documenter runs. Verify each named Story actually
+row in `feature_design.md` before Documenter runs. Verify each named Story actually
 owns the cited behavior and preserve distinct negative cases. Check all related
 Stories when one appears to disagree with a broad Epic phrase; call an
 ambiguous interpretation an ambiguity, not a proven contradiction.
+For state-dependent behavior, challenge the initial, changed, and resulting
+states, including a reversal or later upstream change when it alters eligibility.
 
 For Technical Spike review, assess the supplied Spike's question, scope,
 method, evidence, experiments, conclusions, limitations, and recommendation.

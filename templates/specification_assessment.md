@@ -1,6 +1,6 @@
 ---
 title: Feature Specification Assessment
-version: 0.1.0
+version: 0.1.1
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -42,6 +42,8 @@ observable acceptance or test criteria, not merely a similar title. Split a broa
 behaviors. Cite exact source and evidence references. Copy the reviewed coverage mapping from feature-design; verify
 the named Story owns the behavior. Do not credit classification, send-time resolution, UI, or lifecycle warnings to a
 different Story simply because all are under the same Epic.
+For state-dependent behavior, retain the meaningful before/change/after sequence, including a reversal or later
+upstream change when it can change eligibility. Separate materially different outcomes or open decisions.
 For each claimed gap, name the exact Story criterion it contradicts or fails to cover. Preserve explicit exclusions,
 such as a field intentionally derived rather than compared, instead of silently replacing them with a proposed rule.
 Identify the observable test and dependency for each material row; do not mistake unimplemented code for an absent

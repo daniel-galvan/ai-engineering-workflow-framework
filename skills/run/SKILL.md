@@ -161,9 +161,17 @@ description: >-
    Use the playbook's logical worker IDs exactly: final provider role `documenter` is recorded as `handoff`,
    `spike-investigation` uses `solution_architect`, and `spike-assessment` uses `reviewer`. The packaged finalizer
    validates those role bindings and validates `spike_report.md` before releasing the Documenter.
-   For Feature Delivery, do not activate `impact-analysis`, `repository-integration`, or `feature-design` until
-   `feature-context` has written and passed `asset_manifest.json`; a missing or unresolved source yields
-   `awaiting_input` and no implementation plan.
+   For Feature Delivery, after `feature-context` writes `asset_manifest.json` and before activating
+   `impact-analysis`, `repository-integration`, or `feature-design`, run
+   ```bash
+   python3 <framework-root>/scripts/asset_manifest.py \
+     --validate <artifact-root>/asset_manifest.json --run-inputs <artifact-root>/run_inputs.json \
+     --work-item <key>
+   ```
+   Exit 0 is the only passed asset gate; a worker's `passed` label or a manual spot-check is insufficient. On a
+   nonzero exit, return the exact errors to the same context worker for at most one correction and rerun the command.
+   If it still fails, stop downstream activation and report the errors. A genuinely unavailable required source yields
+   `awaiting_input` and no implementation plan; a malformed manifest is a contract failure, not an access gap.
    Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
    `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
    current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be
@@ -184,8 +192,11 @@ description: >-
    its path and hash in `role_bindings.json`. Before each spawn, run the manifest's `worker_runtime_guard` in activation
    mode with `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`.
    Use one guard invocation per mode; never combine activation arguments with `--transition`, `--provider-status`, or
-   `--trace`. Start the
-   worker message with the returned `activation_packet` envelope's literal
+   `--trace`.
+   For Feature Delivery specification assessment, the Documenter activation guard also checks that analytical
+   artifacts and a populated `feature_design.md` coverage table exist. Return pre-handoff errors to the owning worker
+   for one bounded correction before retrying; do not start Documenter with an unchecked coverage mapping.
+   Start the worker message with the returned `activation_packet` envelope's literal
    `Coordinator initialization: complete` prefix, include the complete envelope unchanged, then append only the typed
    assignment and current-run input manifest. When spawn metadata does not expose `agent_role` or `agent_path`, this
    exact envelope is the binding-delivery mechanism; missing metadata alone is not a reason to discard the worker.

@@ -52,10 +52,13 @@ including exclusions and negative cases. Distinguish an absent requirement from
 work that the Story already specifies but the repository has not implemented.
 Block readiness only on a concrete missing or conflicting behavior whose answer
 could change acceptance; cite the competing criteria and the smallest example.
-Write the proposed requirement-to-Story coverage rows into the work record
-before planning review. Use exact Story keys and criteria; do not credit one
-Story for another's send, UI, lifecycle, or validation behavior. Compare all
+Write a `## Coverage` table in `feature_design.md` before planning review.
+Use exact Story keys and criteria; do not credit one Story for another's send,
+UI, lifecycle, or validation behavior. Compare all
 related Stories before treating broad Epic wording as a proven contradiction.
+For state-dependent criteria, compare initial state, change, and resulting
+state; include a reversal or later upstream change when eligibility can change.
+Preserve material differences in distinct rows or an explicit owner decision.
 When reporting asset_gate counts, use the number of rows in asset_manifest.json
 sources and assets. Count non-material assets too; describe zero Jira attachments
 or zero material assets separately. Do not count Jira issues as manifest sources.

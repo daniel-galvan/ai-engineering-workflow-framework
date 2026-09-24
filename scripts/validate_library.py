@@ -3272,6 +3272,7 @@ Keep the current boundary pending runtime confirmation (E-001).
 # Work Item
 | Field | Value |
 | --- | --- |
+| Title | Example work item |
 | Last Updated | 2026-08-26T00:00:00Z |
 # Run Isolation and Finalization
 | Field | Value |
@@ -3737,7 +3738,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "| evidence-topology | Current-State Investigator / Sentry Evidence | gpt-5.6-luna / low | "
             "gpt-5.6-luna / low | Unknown |",
         )
-        assert_invalid(bound_worker, "configured model/effort received 'gpt-5.6-luna / low'; expected 'gpt-5.6-luna / high'")
+        assert_invalid(bound_worker, "configured model/effort received 'gpt-5.6-luna / low'; expected 'gpt-6-luna / high'")
         multiple = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |")
         multiple = multiple.replace(
             "| Role-policy baseline ID | codex-role-policy-gpt6-luna-orchestrator-v20260922 |",

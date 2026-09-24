@@ -21,20 +21,24 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
 try:
     from asset_manifest import (
         ASSET_MANIFEST_FILENAME,
+        asset_gate_errors,
         asset_plan_errors,
         validate_asset_manifest,
     )
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.asset_manifest import (
         ASSET_MANIFEST_FILENAME,
+        asset_gate_errors,
         asset_plan_errors,
         validate_asset_manifest,
     )
 
 try:
-    from specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
+    from specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
-    from scripts.specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
+    from scripts.specification_assessment import (
+        NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -779,6 +783,77 @@ def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[
                 ledger_rows[0].get("Outcome", "")
             ).strip().lower():
                 errors.append(f"Feature Delivery worker {worker} ledger/result outcomes must match")
+    return errors
+
+
+def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
+    """Reject incomplete assessment evidence before activating Documenter."""
+    try:
+        packet = json.loads(packet_path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        return [f"Feature Delivery pre-handoff packet unavailable or invalid: {error}"]
+    if not isinstance(packet, dict):
+        return ["Feature Delivery pre-handoff packet must be an object"]
+    identity = packet.get("identity", {})
+    selection = packet.get("playbook_selection", {})
+    if not isinstance(identity, dict) or not isinstance(selection, dict):
+        return ["Feature Delivery pre-handoff identity or selection invalid"]
+    if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
+            != "feature_delivery" or str(selection.get("Primary goal", "")).strip().lower()
+            != "specification assessment"):
+        return []
+    errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
+    if errors:
+        return errors
+    root = packet_path.parent.resolve()
+    if Path(str(packet["finalization"]["Durable artifact root"])).resolve() != root:
+        errors.append("Feature Delivery pre-handoff artifact root must match packet directory")
+        return errors
+    _, input_errors = _feature_expected_inputs(packet, root)
+    errors.extend(input_errors)
+    errors.extend(asset_gate_errors(
+        root / ASSET_MANIFEST_FILENAME, root / "run_inputs.json", str(packet["work_item"]["ID"]),
+    ))
+    profile = str(identity.get("Requested profile", "")).strip().lower()
+    artifacts = ["feature_context.md", "impact_analysis.md", "feature_design.md"]
+    if profile == "deep":
+        artifacts.extend(["repository_integration.md", "planning_review.md"])
+    for name in artifacts:
+        path = root / name
+        if not path.is_file():
+            errors.append(f"Feature Delivery pre-handoff requires {name}")
+        elif name == "feature_design.md":
+            try:
+                errors.extend(coverage_mapping_errors(path.read_text(), name))
+            except OSError as error:
+                errors.append(f"Feature Delivery pre-handoff cannot read {name}: {error}")
+    errors.extend(_feature_assessment_reference_errors(packet))
+    return list(dict.fromkeys(errors))
+
+
+def _feature_assessment_reference_errors(packet: dict[str, object]) -> list[str]:
+    identity = packet.get("identity", {})
+    selection = packet.get("playbook_selection", {})
+    if (not isinstance(identity, dict) or not isinstance(selection, dict)
+            or Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
+            != "feature_delivery" or str(selection.get("Primary goal", "")).strip().lower()
+            != "specification assessment"):
+        return []
+    errors = []
+    for row in packet.get("durable_artifacts", []):
+        if (isinstance(row, dict) and "coverage" in str(row.get("Artifact", "")).lower()
+                and Path(str(row.get("Path", ""))).name == "work_record.md"):
+            errors.append("Feature Delivery coverage mapping cannot point to work_record.md; use feature_design.md")
+    for row in packet.get("evidence", []):
+        if (isinstance(row, dict) and re.search(
+            r"work_record\.md\s+(?:specification\s+)?coverage", str(row.get("Source", "")), re.IGNORECASE,
+        )):
+            errors.append("Feature Delivery evidence cannot cite a coverage section in rendered work_record.md")
+    handoff = packet.get("handoff", {})
+    if isinstance(handoff, dict) and re.search(
+        r"\bno\b[^.]{0,120}\bfinalizer invocation\b", str(handoff.get("execution", "")), re.IGNORECASE,
+    ):
+        errors.append("Feature Delivery handoff cannot claim no finalizer invocation after finalization")
     return errors
 
 
@@ -2008,6 +2083,7 @@ def finalize(
         errors.extend(_technical_spike_packet_contract_errors(packet, pre_release=pre_release))
         errors.extend(_feature_delivery_packet_contract_errors(packet))
         errors.extend(_feature_delivery_asset_contract_errors(packet))
+        errors.extend(_feature_assessment_reference_errors(packet))
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
         try:
             _validate_handoff(packet)
@@ -2651,6 +2727,38 @@ def self_test() -> None:
         assessment_feature["handoff"]["artifacts"].append(str(report_path))
         assert _feature_delivery_packet_contract_errors(assessment_feature) == []
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
+        for name in ("feature_context.md", "impact_analysis.md"):
+            (feature_root / name).write_text(f"# {name}\n")
+        design_text = "## Coverage\n" + report_path.read_text().split("## Coverage\n", 1)[1].split(
+            "## Gaps", 1,
+        )[0]
+        (feature_root / "feature_design.md").write_text(design_text)
+        pre_handoff_path = feature_root / "finalization_packet.json"
+        pre_handoff_path.write_text(json.dumps(assessment_feature))
+        assert feature_delivery_pre_handoff_errors(pre_handoff_path) == []
+        prepared_handoff = json.loads(json.dumps(assessment_feature))
+        prepared_handoff["identity"]["Requested profile"] = ""
+        pre_handoff_path.write_text(json.dumps(prepared_handoff))
+        assert feature_delivery_pre_handoff_errors(pre_handoff_path) == []
+        pre_handoff_path.write_text(json.dumps(assessment_feature))
+        (feature_root / "feature_design.md").write_text("## Coverage\n")
+        assert "feature_design.md requires a populated" in " ".join(
+            feature_delivery_pre_handoff_errors(pre_handoff_path)
+        )
+        (feature_root / "feature_design.md").write_text(design_text)
+        deep_handoff = json.loads(json.dumps(assessment_feature))
+        deep_handoff["identity"]["Requested profile"] = "deep"
+        pre_handoff_path.write_text(json.dumps(deep_handoff))
+        assert "planning_review.md" in " ".join(feature_delivery_pre_handoff_errors(pre_handoff_path))
+        pre_handoff_path.write_text(json.dumps(assessment_feature))
+        false_reference = json.loads(json.dumps(assessment_feature))
+        false_reference["durable_artifacts"].append({
+            "Artifact": "Specification coverage mapping", "Path": str(feature_root / "work_record.md"),
+            "Status": "Complete", "Purpose": "Coverage",
+        })
+        false_reference["evidence"][0]["Source"] = "work_record.md Specification Coverage Mapping"
+        false_reference["handoff"]["execution"] = "No finalizer invocation."
+        assert len(_feature_assessment_reference_errors(false_reference)) == 3
         assessment_feature["identity"].update({"State": "awaiting_input", "Engineering outcome": "partially_solved"})
         assessment_feature["handoff"]["workflow_result"] = "Not ready for implementation"
         report_path.write_text(report_path.read_text().replace(

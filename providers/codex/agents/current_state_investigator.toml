@@ -44,6 +44,12 @@ contents, including rendered images/video and readable logs/documents; record
 unavailable or irrelevant assets. Do not call the context complete if a material
 issue or asset remains unread.
 
+For Jira-backed specification assessment, collect the Epic's direct children
+with a bounded field set, then read each material Story's full description once
+and carry its exact acceptance criteria into the first context artifact. Reuse
+those results for the hierarchy and summary; repeat a read only for a recorded
+missing field, truncation, or contradiction. Avoid broad `*all` searches.
+
 For Feature Delivery, the Jira read MUST include attachment history and return
 an explicit complete or empty attachment inventory. Do not treat a screenshot
 mention, filename, or attachment count as consumed visual evidence. Create the
@@ -58,6 +64,9 @@ locator, availability, observation, review status, relevance, disposition, and
 evidence references. If any source or asset cannot be retrieved or reviewed,
 record the exact limitation and return an awaiting-input result rather than
 claiming planning readiness.
+Use the asset-manifest template's exact enum values for `review_method` and
+`relevance`; record provider operation details in the source method or asset
+observation instead of inventing enum values.
 
 For a Technical Spike with a supplied work-item identifier, consume that input
 before repository analysis and list `work_item_read` in the worker's recorded

@@ -1,12 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: profile/lifecycle combinations exercised; assessment-only output contract-tested, not live-validated
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-09-24
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -171,11 +171,12 @@ after approval unless new evidence contradicts the approved plan or expands scop
 - `handoff` records all results, synchronization, model/effort, usage, credits, and next action in the durable work
   record.
 
-For `deep`, start `impact-analysis` and `repository-integration` in parallel after `feature-context`. Each consumes the
-context and asset-manifest artifacts and repeats upstream discovery only for a recorded discrepancy.
+For `deep`, start `impact-analysis` and `repository-integration` in parallel only after `feature-context` and the
+packaged `scripts/asset_manifest.py --validate` gate succeed. Each consumes the context and asset-manifest artifacts
+and repeats upstream discovery only for a recorded discrepancy.
 For `specification_assessment`, bound repository analysis to facts that could change Story coverage or readiness; do
 not inventory implementation seams again after the two analysts have answered that question. Use the packet created by
-`prepare_run.py` as the finalization source, not a second work-record draft. Validate the manifest before design, then
+`prepare_run.py` as the finalization source, not a second work-record draft. Keep the pre-fan-out manifest gate, then
 populate the packet once after review and launch Documenter promptly. Use the shared `--check-packet` and
 `--pre-release` sequence with the same Documenter handle; do not repeat unchanged validation. If provider release is
 unavailable, use the blocked-runtime snapshot path immediately. Terminal worker results and
@@ -268,10 +269,14 @@ Stories directly. Name uncovered requirements explicitly, including cross-Story 
 relevant. Link each material asset to its assessment consequence. Do not create `implementation_plan.md`; readiness
 means the assessed work is sufficiently specified to enter implementation planning or Story-level delivery. Record
 `Engineering outcome: solved` for a ready assessment and `partially_solved` for one needing input.
-Before `planning-review`, feature-design writes the proposed coverage rows into the work record with each Story's exact
+Before `planning-review`, feature-design writes a `## Coverage` table in `feature_design.md` with each Story's exact
 key and criterion. The Reviewer checks every row against the recovered source text, including whether the named Story
-actually owns the behavior. Documenter copies the reviewed mapping; it does not compress distinct requirements into
-one broad row or reassign Story ownership. Keep a short but complete table: no arbitrary minimum row count.
+actually owns the behavior. Documenter copies the reviewed mapping into `specification_assessment.md`; the rendered
+`work_record.md` is not the mapping source. Do not compress distinct requirements into one broad row or reassign Story
+ownership. Keep a short but complete table: no arbitrary minimum row count.
+For state-dependent behavior, assess the initial state, the triggering change, and the resulting state; include a
+reversal or later upstream change when it can change eligibility. Compare the Epic and Story rules at each step, and
+preserve a material difference as a separate coverage row or owner decision. Do not invent unsupported edge cases.
 Before calling a criterion missing or conflicting, compare the exact Story acceptance text, including exclusions and
 negative cases, with the Epic and repository evidence. A feature absent from the current code is expected future work,
 not by itself a specification gap. Cite the exact conflicting or omitted criteria and a concrete scenario whose
