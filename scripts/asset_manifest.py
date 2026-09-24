@@ -414,7 +414,9 @@ def validate_asset_manifest(
             if isinstance(raw, dict) and raw.get("kind") == "jira_issue_attachments":
                 remote = raw.get("remote_link_inventory")
                 if not isinstance(remote, dict) or remote.get("status") not in {"complete", "empty"}:
-                    unresolved_sources.append(str(raw.get("source_id", "unknown")))
+                    source_id = str(raw.get("source_id", "unknown"))
+                    if source_id not in unresolved_sources:
+                        unresolved_sources.append(source_id)
     unresolved_assets = [
         asset["asset_id"] for asset in assets
         if asset["availability"] != "available" or asset["review_status"] not in {"consumed", "reviewed_not_relevant"}
@@ -584,6 +586,17 @@ def self_test() -> None:
             limited_remote, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
             require_jira_source=True,
         ))
+        blocked = json.loads(json.dumps(manifest))
+        blocked["status"] = "awaiting_input"
+        blocked["sources"][0]["discovery_status"] = "unavailable"
+        blocked["sources"][0]["remote_link_inventory"]["status"] = "unavailable"
+        blocked["sources"][0]["limitation"] = "Jira issue and remote links could not be read."
+        blocked["gate"]["inventory_complete"] = False
+        blocked["gate"]["blocking_source_ids"] = ["SRC-JIRA"]
+        assert validate_asset_manifest(
+            blocked, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
+            require_jira_source=True,
+        ) == []
         unlisted_remote = json.loads(json.dumps(manifest))
         unlisted_remote["sources"][0]["remote_link_inventory"]["status"] = "complete"
         unlisted_remote["sources"][0]["remote_link_inventory"]["locators"] = ["https://example.test/plan"]

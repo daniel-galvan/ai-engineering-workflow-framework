@@ -47,7 +47,7 @@ def self_test() -> None:
     started = "2026-09-24T16:11:22Z"
     observed = datetime.fromisoformat("2026-09-24T16:11:52+00:00")
     receipt = blocked_receipt(
-        "Jira", "ECHO-2675", "getAccessibleAtlassianResources", "USER_NOT_LOGGED_IN", started,
+        "Jira", "ECHO-2675", "getJiraIssue", "USER_NOT_LOGGED_IN", started,
         observed_at=observed,
     )
     assert receipt["elapsed_ms"] == 30000

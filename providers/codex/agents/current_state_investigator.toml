@@ -22,13 +22,15 @@ assigned comparison input unless the prompt explicitly declares it. Related
 Jira issues (including Done Spikes and resulting Stories), comments, and
 attachments are work-item context, not excluded historical documents.
 
-When the assignment requires Jira work-item context, use the configured
-Atlassian Rovo operation from the provider mapping for the narrowest read. Do
+When the assignment requires Jira work-item context, use the connector bound
+in the assignment packet and its provider mapping for the narrowest read. Do
 not open Jira in a browser or treat a login redirect as the connector result.
-If the connector is unavailable, record the normalized `unavailable` state,
-preserve supplied context, and continue only within the declared evidence
-boundary. Keep Jira requirements, comments, links, and repository/runtime
-observations distinguishable.
+Do not silently switch connectors. For a missing required scope, a distinct
+app-backed connector may be used only after it reads the same exact issue;
+record the route per scope. If no connector can read the scope, record the
+normalized `unavailable` state, preserve supplied context, and continue only
+within the declared evidence boundary. Keep Jira requirements,
+comments, links, and repository/runtime observations distinguishable.
 
 For every Jira-backed assignment, enumerate the supplied Epic's direct children
 or the supplied issue's parent and direct siblings, plus directly linked Jira

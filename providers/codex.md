@@ -96,12 +96,24 @@ work-item, and scanner tools remain conditional. A worker MUST NOT search `ALL_T
 or report the capability unavailable merely because that name is absent. Report a capability unavailable only after
 its mapped concrete operation is absent or an attempted in-scope operation fails.
 
+For equivalent connected-source reads, try a configured direct MCP operation first, then an app-backed connector if
+the direct operation is absent or fails. A tool exposed through an MCP namespace can still be an app-backed route;
+select by the underlying connector, not the tool name alone. Use a browser only where the workflow allows it, never
+to bypass a connector authentication or permission failure. Record the operation and route used.
+
 ## Jira Work-Item Read Mapping
 
-When the Atlassian Rovo connector is configured and `work_item_read` is selected, use the following concrete Codex
-operations for the shared [Work-Item Read Contract](../contracts/workflow_execution.md#work-item-read-contract). This is
-a provider mapping, not a new framework capability; skills and playbooks consume the normalized result rather than the
-connector payload.
+For Jira-backed Feature Delivery, the Coordinator passes the connector and successful exact-key issue-read operation
+to `feature-context`. The worker MUST use that connector first for every Jira scope. Discover its read-only operations
+once and use the narrowest matching operation for each scope. If a required scope is absent, the worker may try one
+distinct app-backed route only after a successful exact-key issue read there; record the connector used per scope and
+any remaining unavailable scope. Do not silently switch to Rovo after a direct Atlassian MCP probe. The direct
+Atlassian route may expose `mcp__atlassian__getJiraIssue`; use its available sibling operations for child searches,
+remote links, history, and attachments, without assuming names or access. A resource lookup is not an issue read.
+
+When Rovo is the bound connector, use these Codex operations for the shared
+[Work-Item Read Contract](../contracts/workflow_execution.md#work-item-read-contract). Skills and playbooks consume
+the normalized result rather than the connector payload.
 
 | Shared scope | Codex operation | Boundary |
 | --- | --- | --- |
@@ -111,11 +123,11 @@ connector payload.
 | `history` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Request comments and complete attachment collections for the supplied and associated issues; retrieve actual contents of available assets through the configured connector. |
 | `write_metadata` | `mcp__codex_apps__atlassian_rovo_getvisiblejiraprojects`, `mcp__codex_apps__atlassian_rovo_getjiraprojectissuetypesmetadata`, `mcp__codex_apps__atlassian_rovo_getjiraissuetypemetawithfields`, and `mcp__codex_apps__atlassian_rovo_gettransitionsforjiraissue` | Read live project, issue-type, field, allowed-value, or transition metadata only; this scope never performs a write. |
 
-Use `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` for bounded identity resolution and direct-child
-enumeration even when the Epic key is known. Query by exact parent key (or the Jira instance's Epic-link field), bound
-the page size, and follow pagination until the collection is complete or record `partial`. Do not substitute an
-unbounded project/board scan or natural-language cross-product search. `cloudId` must come from
-configured provider context and must never be hardcoded or guessed.
+On Rovo, use `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` for bounded identity resolution and direct-child
+enumeration even when the Epic key is known. On other connectors, use the bound route's equivalent. Query by exact
+parent key (or the Jira instance's Epic-link field), bound the page size, and follow pagination until the collection
+is complete or record `partial`. Do not substitute an unbounded project/board scan or natural-language cross-product
+search. `cloudId` must come from configured provider context and must never be hardcoded or guessed.
 
 If the connector is unavailable, use authoritative supplied context when present; otherwise return the shared
 `unavailable` state. Preserve `not_found`, `empty`, `permission_denied`, `partial`, `stale`, and `conflict` rather than

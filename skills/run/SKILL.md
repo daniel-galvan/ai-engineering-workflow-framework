@@ -31,6 +31,8 @@ description: >-
    no terminal work record is required. Report the reason, `preflight_elapsed_ms`, active package root, and
    `worker_activation_attempts: 0`, then give one remediation and stop. This receipt is terminal: do not retry, repair,
    or continue in the same invocation.
+   A later question about why a run blocked is a request for explanation, not authorization to restart it or repeat
+   preflight. Start a new run only on an explicit new run request.
 3a. After a passing preflight and before reading any repository, Jira, playbook, contract, provider, or historical
    artifact, apply the prompt-completeness gate. For Technical Spike require a populated `Primary question`; resolve
    the timebox, success criterion, requested outcome, and spike objective from the selected playbook unless the prompt
@@ -66,9 +68,16 @@ description: >-
    result. If no trace is exposed, record context conformance as `context-unverified` and do not imply an
    independently audited pass. The Pilot Standard finalizer may continue with the worker's self-attested result when
    every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation.
-5a. For Jira-backed Feature Delivery, probe the configured Atlassian resource lookup once before loading the full
-   playbook, contracts, or template. If it returns an authentication failure such as `USER_NOT_LOGGED_IN`, or that
-   operation is unavailable, run (use `OPERATION_UNAVAILABLE` when no provider code exists):
+5a. For Jira-backed Feature Delivery, before loading the full playbook, contracts, or template, select an available
+   Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
+   Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route. A resource
+   or account lookup is not this probe. Bind the successful connector and issue-read operation in the fresh
+   `feature-context` worker packet; the worker MUST use that connector first for its Jira reads. A missing required
+   scope may use one distinct app-backed route only after that route reads the same exact issue; record the route per
+   scope. If the initial issue read returns an authentication failure such as `USER_NOT_LOGGED_IN`, or no issue-read
+   operation exists, try at most one *distinct* configured Jira connector. Never retry the same failed connector
+   through another operation. If neither route can read the issue,
+   run (use `OPERATION_UNAVAILABLE` when no provider code exists):
    ```bash
    python3 <framework-root>/scripts/source_access_receipt.py --source Jira --work-item <key> \
      --operation <attempted-operation> --provider-code <SAFE_ERROR_CODE> \
@@ -77,9 +86,9 @@ description: >-
    Exit status 2 with a JSON `status: blocked` receipt is the expected block; a parser error is not a receipt. Copy the
    receipt and give one access-restoration action. Stop without
    an input manifest, artifact root, work record, worker, or assessment. Do not substitute historical Jira data or call
-   the result `awaiting_input` or `Not ready for implementation`. A connected resource lookup does not prove access;
-   the context worker must still read the actual work item and assets. Never retry the same authentication failure
-   through other Jira operations in this run.
+   the result `awaiting_input` or `Not ready for implementation`. Preserve `not_found` and `permission_denied` as
+   item-specific outcomes, not connector-wide authentication failures. The context worker must still enumerate the
+   issue hierarchy, links, history, and assets; a successful item read proves none of those scopes.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
@@ -206,12 +215,11 @@ description: >-
    Join each provider-returned handle to its ordinary result envelope during fan-in. Do not return a worker result for
    correction merely because the worker could not self-report a handle it was never given. Keep the explicit Fix Design
    handle-delivery protocol because that durable Sentry artifact validates the supplied handle.
-8. Keep the prepared Standard Sentry `work_record.md` skeleton unchanged until deterministic finalization. On other
-   paths, populate the canonical template from supplied and discoverable context. When the prompt requires
-   current-run-only
-   evidence, do not read memory, historical `.thoughts` artifacts, or prior-run citations at any later stage. The
-   execution repository's `.codex/agents/`
-   runtime view is optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
+8. Keep the prepared `work_record.md` skeleton unchanged until deterministic finalization on every path. Populate
+   `finalization_packet.json` from supplied and discoverable context; only `finalize_work_record.py` writes the
+   terminal record. When the prompt requires current-run-only evidence, do not read memory, historical `.thoughts`
+   artifacts, or prior-run citations at any later stage. The execution repository's `.codex/agents/` runtime view is
+   optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
    binding; record the source and status, and never inherit unverified Coordinator settings. Active artifacts are direct
    children of the current `.thoughts/<WORK-ITEM-ID>/` root; do not search or reuse `runs/` archives unless the user
    explicitly requests continuation or recovery. Preserve template field

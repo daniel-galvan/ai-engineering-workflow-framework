@@ -40,6 +40,11 @@ second specification.
 | Implementation guidance | [Workflow Execution Guidance](workflow_execution_guidance.md) and linked operating/provider guides | Explains examples and provider flexibility without changing required outcomes. |
 | Normative checklist | [Pilot Conformance Checklist](#pilot-conformance-checklist) | Defines the minimum evidence required before a run may be called contract-compliant. |
 
+For equivalent source operations, a configured direct MCP connector MUST be tried before an app-backed connector.
+A browser is last resort only when the workflow permits it and no suitable connected operation is usable. Do not use
+a browser login to bypass a connector authentication or permission failure. Record the chosen route and any limitation;
+availability of an account/resource lookup does not prove access to a required item or collection.
+
 Before initialization, a plugin-backed launcher MUST make package and framework preflight its first framework tool call.
 It MUST derive the package root from the active installed skill, verify its catalog and manifest, compare any declared
 framework revision, and check framework clean status before loading memory, cache directories, the selected playbook,
@@ -51,16 +56,20 @@ creating an artifact root or work record.
 The process exit status is authoritative: a completed preflight with exit status 0 is passed even when stdout is hidden
 by the host application. The launcher MUST NOT rerun a successful preflight solely to recover a missing display payload.
 
-Before initialization, a Jira-backed Feature Delivery launcher MUST probe the configured Atlassian resource lookup once
-after package preflight and prompt-completeness checks. An authentication failure such as `USER_NOT_LOGGED_IN` or a
-missing required operation stops the run before full framework loading, input-manifest creation, preparation, or worker
-activation. Emit the packaged `scripts/source_access_receipt.py` receipt with the source, attempted operation, safe
-provider code, and current-turn start. Exit status 2 with a JSON `status: blocked` receipt is a block, not a parser
-error. Report its fields and one access-restoration
-action. This pre-initialization stop creates no artifact root or work record and is not an assessment disposition.
-Successful connection proves only connector availability; the context worker still reads the specific item and assets.
-Other playbooks retain their own source-access rules; do not probe optional sources or retry a confirmed authentication
-failure through several operations.
+Before initialization, a Jira-backed Feature Delivery launcher MUST read the exact supplied issue through an available
+Jira connector after package preflight and prompt-completeness checks. Try the direct Atlassian MCP connector first
+when available; Rovo is an app-backed alternative. Bind the successful connector and issue-read operation to the
+context worker; a resource lookup on one connector MUST NOT authorize reads through another. On authentication failure
+or an absent issue-read operation, try at most one distinct configured Jira connector, never another operation on the
+failed route. If neither route succeeds, stop before full framework loading, input-manifest creation, preparation, or
+worker activation. Emit the packaged `scripts/source_access_receipt.py` receipt with the source, attempted operation,
+safe provider code, and current-turn start. Exit status 2 with a JSON `status: blocked` receipt is a block, not a parser
+error. Report its fields and one access-restoration action. This pre-initialization stop creates no artifact root or
+work record and is not an assessment disposition. `not_found` and `permission_denied` are item-specific outcomes, not
+connector-wide authentication failures. A successful item read does not prove hierarchy, link, history, or asset access.
+For a required scope absent on the selected connector, the worker may use one distinct app-backed connector only after
+an exact-key read succeeds there; it MUST record the route for each scope. A failed route is not silently retried.
+Other playbooks retain their own source-access rules; do not probe optional sources.
 
 After preflight passes, at initialization the Coordinator MUST read the selected playbook, this contract, and the claims
 contract. Other frontmatter dependencies are maintenance or stage references, not an instruction to load the complete

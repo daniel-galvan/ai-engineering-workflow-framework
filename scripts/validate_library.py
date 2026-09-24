@@ -4266,6 +4266,8 @@ for phrase in (
         fail(f"sentry_repository_integrator.toml is missing planning-readiness rule: {phrase}")
 
 workflow_contract = WORKFLOW_CONTRACT.read_text()
+if "direct MCP connector MUST be tried before an app-backed connector" not in workflow_contract:
+    fail("contracts/workflow_execution.md is missing MCP-first source routing")
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
 for invariant_id in range(1, 42):
@@ -4545,6 +4547,9 @@ for phrase in (
     "--primary-question <question>",
     "--success-criterion <criterion>",
     "only for run-specific overrides",
+    "read the exact supplied issue key",
+    "worker MUST use that connector first",
+    "A later question about why a run blocked",
 ):
     if phrase not in run_skill:
         fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
@@ -4562,6 +4567,7 @@ for phrase in (
     "`send_message_to_thread`",
     "provider_tool_mapping",
     "literal framework tool ID",
+    "try a configured direct MCP operation first",
     "hashed role envelope",
     "worker_runtime_guard",
     "run_inputs.json",
@@ -4571,6 +4577,10 @@ for phrase in (
         fail(f"providers/codex.md is missing worker-isolation control: {phrase}")
 for phrase in (
     "## Jira Work-Item Read Mapping",
+    "worker MUST use that connector first",
+    "successful exact-key issue read there",
+    "mcp__atlassian__getJiraIssue",
+    "A resource lookup is not an issue read",
     "mcp__codex_apps__atlassian_rovo_getjiraissue",
     "mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql",
     "mcp__codex_apps__atlassian_rovo_getjiraissueremoteissuelinks",
@@ -4584,10 +4594,12 @@ for phrase in (
         fail(f"providers/codex.md is missing Jira provider mapping: {phrase}")
 current_state_agent = (CODEX_AGENT_DIR / "current_state_investigator.toml").read_text()
 for phrase in (
-    "Atlassian Rovo operation from the provider mapping",
+    "connector bound",
+    "Do not silently switch connectors",
+    "record the route per scope",
     "not open Jira in a browser",
     "normalized `unavailable` state",
-    "Jira requirements, comments, links, and repository/runtime",
+    "comments, links, and repository/runtime",
     "observations distinguishable",
 ):
     if phrase not in current_state_agent:
