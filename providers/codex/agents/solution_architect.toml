@@ -52,6 +52,9 @@ including exclusions and negative cases. Distinguish an absent requirement from
 work that the Story already specifies but the repository has not implemented.
 Block readiness only on a concrete missing or conflicting behavior whose answer
 could change acceptance; cite the competing criteria and the smallest example.
+When reporting asset_gate counts, use the number of rows in asset_manifest.json
+sources and assets. Count non-material assets too; describe zero Jira attachments
+or zero material assets separately. Do not count Jira issues as manifest sources.
 
 For Technical Spike execution, investigate only the declared question within
 the stated timebox or evidence budget. Classify confirmed facts, assumptions or

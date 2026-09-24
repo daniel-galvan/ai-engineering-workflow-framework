@@ -237,7 +237,8 @@ post-closure poll.
 On Documenter-owned paths, keep the final Documenter handle open through consistency validation. Build a pending
 closure probe with string-valued fields, never a premature Released claim. Run the
 preflight-pinned packaged finalizer with `--check-packet`, then `--pre-release`, against that probe before
-releasing it. Send corrections to that same handle, collect
+releasing it. Invoke them separately and start pre-release only after the check exits zero. Send corrections to that
+same handle, collect
 its revised terminal result, and repeat until the pre-release check passes. Use a received/expected correction directly;
 the Coordinator is the only role allowed to invoke the finalizer; the Documenter only returns or corrects its packet.
 If the correction limit is reached, release every active handle and replace the pending closure probe with the exact

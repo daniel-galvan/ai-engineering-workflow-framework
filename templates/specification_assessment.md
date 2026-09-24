@@ -31,6 +31,8 @@ Link the primary work item or specification, relevant child or linked work, repo
 State which sources were read, unavailable, or empty. For each material attachment, record its manifest asset ID,
 observation, evidence ID, and consequence for coverage or validation. Do not treat a ticket status or a missing Spike
 write-up as proof of technical completeness.
+State the manifest's source and asset row counts, including non-material assets. Distinguish an empty Jira attachment
+inventory from an empty asset manifest; count Jira issues separately from source rows.
 
 ## Coverage
 
@@ -42,6 +44,8 @@ For each claimed gap, name the exact Story criterion it contradicts or fails to 
 such as a field intentionally derived rather than compared, instead of silently replacing them with a proposed rule.
 Identify the observable test and dependency for each material row; do not mistake unimplemented code for an absent
 Story requirement.
+When a criterion applies to multiple save or batch routes, retain route-level negative-case and conflict tests where
+the source supports them; do not invent a new acceptance rule.
 
 | Requirement / behavior | Proposed work / Story | Evidence | Status | Test / dependency | Gap or follow-up | Owner |
 | --- | --- | --- | --- | --- | --- | --- |

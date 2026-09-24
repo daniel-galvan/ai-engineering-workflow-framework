@@ -2173,6 +2173,20 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         row.get("Field", ""): row.get("Value", "")
         for row in markdown_table(text, "# Run Isolation and Finalization")
     }
+    if (
+        codex_run and playbook_name == "feature_delivery" and selection
+        and selection[0].get("Primary goal", "").strip().lower() == "specification assessment"
+        and finalization.get("Active related run or work item", "").strip().lower().startswith("none")
+    ):
+        related_check = finalization.get("Related-run check", "")
+        timestamped = any(
+            RFC3339_TIMESTAMP.fullmatch(part.strip("()[];,")) for part in related_check.split()
+        )
+        if not timestamped or not all(term in related_check.lower() for term in ("provider", "sibling")):
+            fail(
+                f"{path}: Active related run None requires a timestamped provider-task and sibling-root check; "
+                "otherwise record Unknown; detection unavailable"
+            )
     for error in feature_asset_record_errors(text, path, identity, finalization):
         fail(error)
     repositories = markdown_table(text, "# Repository Evidence Eligibility")
@@ -2215,16 +2229,25 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             fail(
                 f"{path}: runtime closure Receipt owner received {receipt_owner!r}; expected 'Coordinator'"
             )
+        handles = [
+            value.strip().lower()
+            for value in re.split(r",|;|<br\s*/?>", row.get("Completed worker handles", ""))
+        ]
+        if codex_run and any(
+            handle not in {"none", "unknown", "unavailable"}
+            and not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", handle)
+            for handle in handles
+        ):
+            fail(
+                f"{path}: Completed worker handles received {row.get('Completed worker handles', '')!r}; "
+                "expected provider UUIDs or Unknown/Unavailable, never task paths or labels"
+            )
         if row.get("Runtime status", "").strip().lower() == "released":
             if not NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip()):
                 fail(f"{path}: released runtime closure must have no active handles")
             closure_evidence = row.get("Closure evidence or blocker", "").strip().lower()
             if "provider" not in closure_evidence or not any(word in closure_evidence for word in ("release", "close")):
                 fail(f"{path}: released runtime closure requires provider release evidence")
-            handles = [
-                value.strip().lower()
-                for value in re.split(r",|;|<br\s*/?>", row.get("Completed worker handles", ""))
-            ]
             if codex_run and any(
                 handle != "none"
                 and not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", handle)
@@ -3581,6 +3604,20 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         assert_invalid(
             valid.replace("| Released | None |", "| Released | None observed but not checked |"),
             "released runtime closure must have no active handles",
+        )
+        assert_invalid(
+            valid.replace(
+                "01a04174-7f58-7a12-b91d-9d171c43f012 | Released",
+                "/root/feature_context | Blocked",
+            ),
+            "never task paths or labels",
+        )
+        assert_invalid(
+            valid.replace("| Review comments | Improve controls |", "| Review comments | Specification assessment |")
+            .replace("| Related-run check | No related run reused |",
+                     "| Active related run or work item | None reported by preparation |\n"
+                     "| Related-run check | No scan performed |"),
+            "Active related run None requires a timestamped provider-task and sibling-root check",
         )
 
         assert_invalid(

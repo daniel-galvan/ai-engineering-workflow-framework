@@ -140,6 +140,9 @@ description: >-
    separate read-only planning run. Confirm new-run capacity by activating its first required worker; if that fails,
    stop with the exact runtime reason. If worker or writer activity is present or cannot be verified, stop with
    `run_already_active`. Do not tell the user to request continuation when they requested a new run.
+   Before recording `Active related run or work item: None`, check provider-visible tasks and sibling artifact roots.
+   Record the method, RFC 3339 time, and result in `Related-run check`; if either view is unavailable, record
+   `Unknown; detection unavailable`, not an unsupported `None`.
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
    Preparation also writes exact role envelopes to the direct-child `worker_activation_packets.json` bundle and records
@@ -283,6 +286,8 @@ description: >-
    Documenter and repeat this non-consuming check, allowing at most three
    correction rounds. If it still fails, stop with the exact errors instead
    of spending the formal attempt on a known-invalid packet.
+   Run `--check-packet` and `--pre-release` as separate invocations. Start the latter only after the former exits zero;
+   never batch commands so a failed check can still consume a formal pre-release attempt.
    Then run:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
@@ -327,6 +332,8 @@ description: >-
    was activated, and require `repository-integration` plus `planning-review`
    for deep. Preserve logical IDs and all execution-ledger/result fields; do
    not let the Documenter replace analytical rows with only `handoff`.
+   In a specification assessment, Story coverage alone establishes `understood`, not `designed`; use `designed` only
+   when an evidence-backed implementation design or plan actually exists.
    Build the Documenter packet from immutable run facts before activation, including real provider handles and all
    required repository, worker, synchronization, and artifact rows. Persist the first terminal Fix Design envelope
    immediately; do not reactivate a completed worker solely to copy its returned JSON. When multiple workers are active,
@@ -337,6 +344,8 @@ description: >-
    provider handle or release status is available, keep the run blocked and write the Coordinator-owned closure row with
    `Runtime status: Blocked`, `worker_runtime_release_unavailable` in `Closure evidence or blocker`, and nonzero or
    unknown remaining active handles.
+   In `Completed worker handles`, use `Unknown` or `Unavailable` when exact provider handles were not returned; put task
+   paths and names only in the worker ledger.
    For a Technical Spike with a published report and complete worker results, write that Coordinator-owned unavailable
    receipt to `runtime_closure.json`, then run the pinned `finalize_work_record.py --blocked-runtime-snapshot` with the
    packet, closure, record, and Coordinator/framework identity arguments below. Require exit zero and

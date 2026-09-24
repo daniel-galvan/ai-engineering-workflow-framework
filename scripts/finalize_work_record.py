@@ -590,6 +590,23 @@ def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[s
         require_jira_source=True,
         require_passed=state in {"ready_for_implementation", "completed"},
     ))
+    design_path = root / "feature_design_result.json"
+    if design_path.is_file():
+        try:
+            design = json.loads(design_path.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append(f"Feature Delivery cannot read {design_path.name}: {error}")
+        else:
+            asset_gate = design.get("asset_gate", {}) if isinstance(design, dict) else {}
+            if isinstance(asset_gate, dict):
+                for field, manifest_field in (("asset_count", "assets"), ("source_count", "sources")):
+                    rows = manifest.get(manifest_field)
+                    if field in asset_gate and isinstance(rows, list) and asset_gate[field] != len(rows):
+                        errors.append(
+                            f"Feature Delivery {design_path.name} asset_gate.{field} "
+                            f"must equal asset_manifest.json {manifest_field} count "
+                            f"({len(rows)})"
+                        )
     durable_paths = {
         _feature_asset_artifact_path(row.get("Path"), root)
         for row in packet.get("durable_artifacts", [])
@@ -1160,7 +1177,9 @@ def _normalize_packet(
                 )
 
 
-def _validate_handoff(packet: dict[str, object], *, publishing: bool = False) -> None:
+def _validate_handoff(
+    packet: dict[str, object], *, publishing: bool = False, check_provenance: bool = True,
+) -> None:
     handoff = packet.get("handoff", {})
     if not isinstance(handoff, dict):
         raise ValueError("packet.handoff must be an object")
@@ -1172,9 +1191,9 @@ def _validate_handoff(packet: dict[str, object], *, publishing: bool = False) ->
         provenance = str(handoff["provenance"]).lower()
         framework_revision = str(identity.get("Framework commit / status", "")).split(" / ", 1)[0].lower()
         playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)[0]
-        if framework_revision and framework_revision not in provenance:
+        if check_provenance and framework_revision and framework_revision not in provenance:
             raise ValueError("packet.handoff.provenance must contain the framework revision")
-        if playbook and Path(playbook).stem.lower() not in provenance:
+        if check_provenance and playbook and Path(playbook).stem.lower() not in provenance:
             raise ValueError("packet.handoff.provenance must contain the playbook name")
         selection = packet.get("playbook_selection", {})
         primary_goal = str(selection.get("Primary goal", "")).strip().lower() if isinstance(selection, dict) else ""
@@ -1895,7 +1914,8 @@ def _prepare_blocked_runtime_snapshot(
         errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
     try:
-        _validate_handoff(packet)
+        # Provenance is canonicalized below; validate its content after normalization.
+        _validate_handoff(packet, check_provenance=False)
     except ValueError as error:
         errors.append(str(error))
     if errors:
@@ -2631,6 +2651,9 @@ def self_test() -> None:
         assert _feature_delivery_packet_contract_errors(assessment_feature) == []
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
         blocked_assessment = json.loads(json.dumps(assessment_feature))
+        blocked_assessment["handoff"]["provenance"] = (
+            f"Feature Delivery {feature_version}; framework {'a' * 40}"
+        )
         blocked_closure = {"runtime_closure": [{
             "Run or stage": "Feature Delivery assessment", "Receipt owner": "Coordinator",
             "Completed worker handles": "Unknown", "Runtime status": "Blocked",
@@ -2642,6 +2665,9 @@ def self_test() -> None:
         assert blocked_assessment["identity"]["Workflow outcome"] == "blocked"
         assert blocked_assessment["identity"]["Engineering outcome"] == "partially_solved"
         assert assessment_feature["identity"]["State"] == "awaiting_input"
+        assessment_feature["handoff"]["provenance"] = (
+            f"Feature Delivery {feature_version}; framework {'a' * 40}"
+        )
         assessment_packet = feature_root / "assessment_packet.json"
         assessment_closure = feature_root / "runtime_closure.json"
         assessment_record = feature_root / "assessment_work_record.md"
@@ -2649,6 +2675,18 @@ def self_test() -> None:
         assessment_closure.write_text(json.dumps(blocked_closure))
         finalize(assessment_packet, assessment_closure, assessment_record, blocked_runtime_snapshot=True)
         assert "State: blocked" in assessment_record.read_text()
+        assert "playbook feature_delivery" in assessment_record.read_text()
+        design_path = feature_root / "feature_design_result.json"
+        design_path.write_text(json.dumps({"asset_gate": {"asset_count": 1, "source_count": 1}}))
+        assert "asset_gate.asset_count must equal asset_manifest.json assets count (0)" in (
+            "\n".join(_feature_delivery_asset_contract_errors(assessment_feature))
+        )
+        design_path.write_text(json.dumps({"asset_gate": {"asset_count": 0, "source_count": 2}}))
+        assert "asset_gate.source_count must equal asset_manifest.json sources count (1)" in (
+            "\n".join(_feature_delivery_asset_contract_errors(assessment_feature))
+        )
+        design_path.write_text(json.dumps({"asset_gate": {"asset_count": 0, "source_count": 1}}))
+        assert _feature_delivery_asset_contract_errors(assessment_feature) == []
         spike = json.loads(json.dumps(packet))
         spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
         spike["identity"].update({

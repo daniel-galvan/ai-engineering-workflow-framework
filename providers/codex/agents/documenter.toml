@@ -80,6 +80,9 @@ provider-observed model/effort, Outcome, and Confidence; populate every result
 field, including contribution, evidence refs, blockers, actual model/effort,
 and usage/credits. Do not delete analytical rows, replace them with only the
 `handoff` row, or combine a logical ID with its provider role using `/`.
+For an assessment, count sources and assets from asset_manifest.json. A reviewed
+non-material linked document is still an asset; say "zero Jira attachments" or
+"zero material assets" when that is what the manifest shows, not "zero assets".
 Never invoke `finalize_work_record.py` in pre-release or terminal mode. The
 Technical Spike report-publisher mode below is the only Documenter exception.
 Return the packet to the Coordinator, who owns every pre-release and terminal
