@@ -170,7 +170,12 @@ description: >-
    ```
    Exit 0 is the only passed asset gate; a worker's `passed` label or a manual spot-check is insufficient. On a
    nonzero exit, return the exact errors to the same context worker for at most one correction and rerun the command.
-   If it still fails, stop downstream activation and report the errors. A genuinely unavailable required source yields
+   This first gate accepts reviewed `material` assets before feature design exists, with
+   `all_material_assets_linked: false`; do not reclassify them as `non_material` to clear the gate. After design, the
+   terminal validator still requires design/review and claim links for every material asset. If the gate still fails,
+   rerun the command once with `--record-failure` to preserve `asset_gate_failure.json`, stop downstream activation,
+   and report its errors and receipt path. The receipt does not certify worker release or make `work_record.md`
+   terminal; reconcile runtime handles before a new run. A genuinely unavailable required source yields
    `awaiting_input` and no implementation plan; a malformed manifest is a contract failure, not an access gap.
    Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
    `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the

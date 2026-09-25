@@ -275,9 +275,11 @@ asset MUST be consumed by feature design or planning review, linked to a claim, 
 An unavailable, permission-denied, redacted, conflicting, or unreviewed asset is an explicit unresolved input. It may
 produce `awaiting_input`, but it MUST NOT be converted to an empty or non-material result by inference.
 
-The asset gate passes only when the manifest status is `passed`, all sources are complete or explicitly empty, every
-available asset is reviewed and dispositioned, every material asset is linked into the evidence/claim chain, and the
-manifest records `reviewed_before_plan: true`. A ready Feature Delivery plan and terminal work record MUST register and
+The pre-fanout asset gate passes when the manifest status is `passed`, all sources are complete or explicitly empty,
+every available asset is reviewed and dispositioned, and `reviewed_before_plan: true`. Material assets retain their
+`material` classification and evidence references even when `all_material_assets_linked: false` before design. The
+terminal validator additionally requires every material asset to reach design or planning review, link into a claim,
+and appear in the selected terminal artifact. A ready Feature Delivery plan and terminal work record MUST register and
 link `asset_manifest.json`; the work record MUST preserve the source inventory and asset review table.
 
 ## Input Delivery and Consumption Gate

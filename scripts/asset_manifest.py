@@ -8,6 +8,7 @@ import json
 import os
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -182,6 +183,7 @@ def validate_asset_manifest(
     material_claim_evidence_ids: Iterable[str] | None = None,
     require_jira_source: bool = False,
     require_passed: bool = False,
+    require_material_linkage: bool = True,
 ) -> list[str]:
     """Return contract errors; the caller decides whether they are fatal for its lifecycle."""
     errors: list[str] = []
@@ -243,8 +245,10 @@ def validate_asset_manifest(
             errors.append(f"asset source {source_id} must record its retrieval limitation")
         if source["kind"] in {"directory", "file"} and not Path(source["locator"]).is_absolute():
             errors.append(f"asset source {source_id} filesystem locator must be absolute")
-        if source["kind"] == "url" and not source["locator"].lower().startswith(("http://", "https://")):
-            errors.append(f"asset source {source_id} URL locator must use http or https")
+        if source["kind"] == "url" and not source["locator"].lower().startswith((
+            "http://", "https://", "codex://threads/",
+        )):
+            errors.append(f"asset source {source_id} URL locator must use http, https, or codex://threads/")
         if source["kind"] == "jira_issue_attachments":
             method = source["discovery_method"].lower()
             if not JIRA_KEY.search(source["locator"]):
@@ -265,8 +269,9 @@ def validate_asset_manifest(
                         "none", "no limitation",
                     }:
                         errors.append(f"asset source {source_id} must record its remote link retrieval limitation")
-                    if "remote" not in remote_method or "link" not in remote_method or not any(
-                        word in remote_method for word in ("read", "retriev", "inventor")
+                    if "remote" not in remote_method or "link" not in remote_method or not (
+                        any(word in remote_method for word in ("read", "retriev", "inventor"))
+                        or "getjiraissueremoteissuelinks" in remote_method
                     ):
                         errors.append(f"asset source {source_id} must record a remote link retrieval method")
                     if not isinstance(remote_locators, list) or any(
@@ -335,7 +340,7 @@ def validate_asset_manifest(
         if asset["relevance"] == "material":
             if asset["review_status"] != "consumed":
                 errors.append(f"material asset {asset_id} must be consumed")
-            if not set(asset["used_by"]) & {"feature-design", "planning-review"}:
+            if require_material_linkage and not set(asset["used_by"]) & {"feature-design", "planning-review"}:
                 errors.append(f"material asset {asset_id} must reach feature-design or planning-review")
             if not asset["evidence_refs"]:
                 errors.append(f"material asset {asset_id} requires evidence_refs")
@@ -364,7 +369,7 @@ def validate_asset_manifest(
         matching = [source for source in sources if source["input_id"] == input_id]
         if isinstance(row, dict) and matching:
             expected_locator = str(row.get("path") or row.get("Source or path") or "").strip()
-            if expected_locator.startswith(("/", "http://", "https://")):
+            if expected_locator.startswith(("/", "http://", "https://", "codex://threads/")):
                 actual_locator = str(matching[0]["locator"])
                 if matching[0]["kind"] in {"directory", "file"}:
                     expected_locator = os.path.realpath(_absolute_locator(expected_locator))
@@ -411,7 +416,7 @@ def validate_asset_manifest(
             missing = sorted(set(asset["evidence_refs"]) - expected_evidence)
             if missing:
                 errors.append(f"asset {asset['asset_id']} references missing evidence: " + ", ".join(missing))
-        if asset["relevance"] == "material" and not set(asset["evidence_refs"]) & claim_evidence:
+        if require_material_linkage and asset["relevance"] == "material" and not set(asset["evidence_refs"]) & claim_evidence:
             errors.append(f"material asset {asset['asset_id']} is not linked from a claim")
 
     unresolved_sources = [source["source_id"] for source in sources if source["discovery_status"] not in {"complete", "empty"}]
@@ -473,8 +478,10 @@ def validate_asset_manifest(
             errors.append(f"asset_manifest gate {field} does not match the inventory")
 
     if status == "passed":
-        if unresolved_sources or unresolved_assets or not inventory_complete or not review_complete or not material_linked:
-            errors.append("asset_manifest passed requires complete inventory, review, and material linkage")
+        if (unresolved_sources or unresolved_assets or not inventory_complete or not review_complete
+                or (require_material_linkage and not material_linked)):
+            errors.append("asset_manifest passed requires complete inventory and review"
+                          + (" and material linkage" if require_material_linkage else ""))
         if gate.get("reviewed_before_plan") is not True:
             errors.append("asset_manifest passed requires reviewed_before_plan=true")
     elif status == "awaiting_input" and not (unresolved_sources or unresolved_assets):
@@ -504,7 +511,7 @@ def asset_plan_errors(plan_text: str, manifest: dict[str, object]) -> list[str]:
 
 
 def asset_gate_errors(manifest_path: Path, inputs_path: Path, work_item: str) -> list[str]:
-    """Apply the finalizer's asset contract before activating downstream workers."""
+    """Validate inventory and review before activating downstream workers."""
     try:
         manifest = json.loads(manifest_path.read_text())
         inputs = {
@@ -516,7 +523,22 @@ def asset_gate_errors(manifest_path: Path, inputs_path: Path, work_item: str) ->
     return validate_asset_manifest(
         manifest, work_item=work_item, expected_input_ids=inputs,
         expected_inputs=inputs, require_jira_source=True, require_passed=True,
+        require_material_linkage=False,
     )
+
+
+def record_asset_gate_failure(manifest_path: Path, work_item: str, errors: list[str]) -> Path:
+    """Preserve the failed pre-fanout check without claiming the work record is terminal."""
+    receipt = manifest_path.parent / "asset_gate_failure.json"
+    receipt.write_text(json.dumps({
+        "schema_version": 1,
+        "status": "blocked",
+        "phase": "asset_inventory",
+        "work_item": work_item,
+        "checked_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "errors": errors,
+    }, indent=2) + "\n")
+    return receipt
 
 
 def self_test() -> None:
@@ -595,6 +617,58 @@ def self_test() -> None:
             manifest, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
             expected_evidence_ids={"E-JIRA-001", "E-FOLDER-001"}, require_jira_source=True, require_passed=True,
         ) == []
+        metadata_only = json.loads(json.dumps(manifest))
+        metadata_only["assets"][0]["review_method"] = "metadata_read"
+        assert any("requires visual_inspection or rendered_read" in error
+                   for error in validate_asset_manifest(metadata_only))
+        material = json.loads(json.dumps(manifest))
+        material["assets"][1].update({
+            "relevance": "material", "review_status": "consumed", "used_by": ["feature-context"],
+        })
+        material["gate"]["all_material_assets_linked"] = False
+        assert validate_asset_manifest(
+            material, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
+            require_jira_source=True, require_passed=True, require_material_linkage=False,
+        ) == []
+        assert any("not linked from a claim" in error for error in validate_asset_manifest(
+            material, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
+            require_jira_source=True, require_passed=True,
+        ))
+        assert any("must reach feature-design" in error for error in validate_asset_manifest(
+            material, material_claim_evidence_ids={"E-FOLDER-001"},
+        ))
+        material["assets"][1]["used_by"].append("feature-design")
+        material["gate"]["all_material_assets_linked"] = True
+        assert validate_asset_manifest(
+            material, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
+            material_claim_evidence_ids={"E-FOLDER-001"}, require_jira_source=True, require_passed=True,
+        ) == []
+        remote_method = json.loads(json.dumps(manifest))
+        remote_method["sources"][0]["remote_link_inventory"]["method"] = "getJiraIssueRemoteIssueLinks"
+        assert validate_asset_manifest(remote_method, require_jira_source=True) == []
+        codex_url = "codex://threads/00000000-0000-4000-8000-000000000001"
+        thread = json.loads(json.dumps(manifest))
+        thread["sources"].append({
+            "source_id": "SRC-THREAD", "input_id": "IN-003", "kind": "url", "locator": codex_url,
+            "requiredness": "supporting", "discovery_status": "complete",
+            "discovery_method": "Read the supplied Codex task", "limitation": "None",
+            "asset_ids": ["ASSET-003"], "evidence_refs": ["E-THREAD-001"],
+        })
+        thread["assets"].append(dict(manifest["assets"][1], **{
+            "asset_id": "ASSET-003", "source_id": "SRC-THREAD", "locator": codex_url,
+        }))
+        thread_inputs = dict(inputs, **{"IN-003": {
+            "Input or artifact": "Supplied Codex task", "Source or path": codex_url, "Asset source": True,
+        }})
+        assert validate_asset_manifest(
+            thread, work_item="EXAMPLE-1", expected_input_ids=thread_inputs, expected_inputs=thread_inputs,
+            require_jira_source=True, require_passed=True,
+        ) == []
+        thread["sources"][-1]["locator"] = "codex://threads/another-task"
+        assert any("locator does not match" in error for error in validate_asset_manifest(
+            thread, work_item="EXAMPLE-1", expected_input_ids=thread_inputs, expected_inputs=thread_inputs,
+            require_jira_source=True, require_passed=True,
+        ))
         missing_remote = json.loads(json.dumps(manifest))
         del missing_remote["sources"][0]["remote_link_inventory"]
         assert any("remote link inventory" in error for error in validate_asset_manifest(
@@ -650,6 +724,8 @@ def self_test() -> None:
             }))
             manifest_path.write_text(json.dumps(manifest))
             assert asset_gate_errors(manifest_path, inputs_path, "EXAMPLE-1") == []
+            manifest_path.write_text(json.dumps(material))
+            assert asset_gate_errors(manifest_path, inputs_path, "EXAMPLE-1") == []
             incomplete = json.loads(json.dumps(manifest))
             incomplete["status"] = "complete"
             manifest_path.write_text(json.dumps(incomplete))
@@ -665,6 +741,8 @@ def self_test() -> None:
             assert any("remote link retrieval method" in error for error in errors)
             assert any("invalid review_method" in error for error in errors)
             assert any("invalid relevance" in error for error in errors)
+            receipt = record_asset_gate_failure(manifest_path, "EXAMPLE-1", errors)
+            assert json.loads(receipt.read_text())["errors"] == errors
     print("asset_manifest self-test: passed")
 
 
@@ -673,14 +751,17 @@ if __name__ == "__main__":
     parser.add_argument("--validate", type=Path, metavar="ASSET_MANIFEST")
     parser.add_argument("--run-inputs", type=Path)
     parser.add_argument("--work-item")
+    parser.add_argument("--record-failure", action="store_true")
     args = parser.parse_args()
     if args.validate is None:
-        if args.run_inputs or args.work_item:
-            parser.error("--run-inputs and --work-item require --validate")
+        if args.run_inputs or args.work_item or args.record_failure:
+            parser.error("--run-inputs, --work-item, and --record-failure require --validate")
         self_test()
     else:
         if not args.run_inputs or not args.work_item:
             parser.error("--validate requires --run-inputs and --work-item")
         errors = asset_gate_errors(args.validate, args.run_inputs, args.work_item)
-        print(json.dumps({"status": "blocked" if errors else "passed", "errors": errors}))
+        receipt = record_asset_gate_failure(args.validate, args.work_item, errors) if errors and args.record_failure else None
+        print(json.dumps({"status": "blocked" if errors else "passed", "errors": errors,
+                          "receipt": str(receipt) if receipt else None}))
         raise SystemExit(2 if errors else 0)

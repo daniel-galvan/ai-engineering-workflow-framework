@@ -46,7 +46,7 @@
       "review_status": "consumed",
       "relevance": "material",
       "observation": "<what the asset shows>",
-      "used_by": ["feature-context", "feature-design"],
+      "used_by": ["feature-context"],
       "evidence_refs": ["E-###"],
       "disposition": "<how it changed scope, acceptance, validation, or why it does not>"
     }
@@ -55,7 +55,7 @@
     "inventory_complete": true,
     "all_assets_accounted_for": true,
     "all_available_assets_reviewed": true,
-    "all_material_assets_linked": true,
+    "all_material_assets_linked": false,
     "reviewed_before_plan": true,
     "unresolved_asset_ids": [],
     "blocking_source_ids": []

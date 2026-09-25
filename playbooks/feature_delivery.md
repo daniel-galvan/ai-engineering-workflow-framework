@@ -89,6 +89,12 @@ reach `feature-design` (or `planning-review` in `deep`), influence the evidence/
 selected terminal artifact. A Jira description mentioning screenshots does not prove that attachments were retrieved
 or reviewed.
 
+The pre-fanout command checks source inventory and asset review, not future design or claim links. A reviewed material
+asset may pass this first gate with `all_material_assets_linked: false`; keep its relevance `material` and its evidence
+references. After design and planning review, update `used_by` and the gate from actual consumption. Terminal
+finalization then requires the material asset's design/review link and a claim backed by its evidence. Never relabel a
+material asset `non_material` merely to pass the early gate.
+
 If the Jira attachment inventory or a declared supporting source cannot be retrieved, the run records the limitation in
 the manifest and returns `awaiting_input`; it MUST NOT create an implementation plan. `ready_for_implementation` is
 permitted only when the manifest status is `passed` and every asset gate is true.
@@ -349,7 +355,8 @@ When created, the plan must include:
 | Gate | Pass condition |
 | --- | --- |
 | Context recovered | Jira sources, conflicts, assumptions, and unknowns are recorded. |
-| Asset inventory passed | Jira attachments and every declared file/folder source are enumerated; every available asset is reviewed and dispositioned; material assets link into evidence and the selected terminal artifact. |
+| Asset inventory passed | Jira attachments and every declared asset source are enumerated; every available asset is reviewed and dispositioned before downstream workers start. |
+| Material linkage confirmed | Before terminal handoff, every material asset reaches design or planning review, links to a claim, and appears in the selected terminal artifact. |
 | Clarification framed | When needed, bounded discovery, feasible options, recommendation, and the smallest decision request are recorded. |
 | Planning context sufficient | Outcome, affected surface, and observable acceptance conditions are supported. |
 | Specification assessed | `specification_assessment.md` covers the target specification or Story set and exact readiness disposition; material scope, architecture, security, acceptance, and validation unknowns prevent a ready disposition. |
