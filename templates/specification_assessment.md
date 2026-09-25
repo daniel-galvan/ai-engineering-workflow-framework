@@ -62,6 +62,8 @@ smallest decision or Story change needed. If no gaps remain, say so with evidenc
 question may warrant a separate Technical Spike; do not rerun the completed Spike by default.
 Label interpretive ambiguity separately from an explicit contradiction. Compare the Epic with every relevant detailed
 Story rule before deciding whether an owner question changes acceptance or is a non-blocking clarification.
+For a proposed product-choice blocker, cite the supported current or specified future entrypoint, the bounded source
+or existing-test check and result, and the observable acceptance difference. A constructible input alone is not a gap.
 
 ## Disposition and Next Action
 

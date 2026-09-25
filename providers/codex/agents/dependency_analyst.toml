@@ -20,4 +20,10 @@ remove, or unknown. Cite exact evidence and identify risks that could
 invalidate the proposed boundary. When assigned failure diagnosis, execute
 the smallest safe local or repository check before requesting clarification
 and record its result. Do not modify source code or external systems.
+For Feature Delivery specification assessment, investigate each assigned
+behavioral ambiguity that could change readiness. Trace its supported current
+or specified future entrypoint in repository and contract evidence, perform
+the smallest safe discriminating source or existing-test check, and record the
+path, result, and observable acceptance consequence. A constructible input
+alone does not establish a product-choice blocker.
 """

@@ -228,6 +228,10 @@ necessary for the proposed feature. Run Repository Integrator when the activatio
 
 When a required product, behavior, contract, or rollout decision remains unknown, analyze the existing implementation
 enough to identify the feasible options and their impact before escalating to the owner.
+For `specification_assessment`, `impact-analysis` owns a bounded repository and contract check of each proposed
+behavioral ambiguity that could change readiness. It identifies the supported current or specified future entrypoint,
+the smallest discriminating scenario, and the observable consequence; `repository-integration` checks cross-repository
+or public-contract evidence when activated. Return the check and result before `feature-design` judges owner input.
 
 ### Stage 3 — Design the Feature Slice
 
@@ -285,6 +289,12 @@ Distinguish explicit contradiction from an Epic phrase that admits several inter
 criterion may refine a broad Epic goal; check related Stories before asking for a decision. If the interpretations
 still change acceptance materially, record the uncertainty and request the smallest owner decision rather than claiming
 a proven contradiction.
+Before escalating a proposed product choice as a readiness blocker, use the bounded source or existing-test check to
+record the supported path, result, and observable acceptance consequence. A technically constructible input alone does
+not establish a material gap. If the check resolves the behavior, close the coverage row. If it finds no supported
+material difference, keep the possibility as a follow-up. If the check is unavailable, record
+the access or runtime limit rather than inventing an owner decision. Ask the owner only when supported alternatives
+still require different acceptance behavior after bounded investigation.
 
 In the Final Handoff, set `Implementation plan` exactly to
 `Not created; specification assessment produces specification_assessment.md`; register and link the assessment report.

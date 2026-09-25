@@ -52,6 +52,12 @@ including exclusions and negative cases. Distinguish an absent requirement from
 work that the Story already specifies but the repository has not implemented.
 Block readiness only on a concrete missing or conflicting behavior whose answer
 could change acceptance; cite the competing criteria and the smallest example.
+Before calling that example a product choice, use the impact-analysis check
+to identify its supported current or specified future entrypoint, result, and
+observable acceptance consequence. Request a bounded check from the owning
+analysis worker if the evidence is missing. A constructible input alone is not
+a gap; resolve what the evidence answers, and escalate only supported
+alternatives that still require different acceptance behavior.
 Write a `## Coverage` table in `feature_design.md` before planning review.
 Use exact Story keys and criteria; do not credit one Story for another's send,
 UI, lifecycle, or validation behavior. Compare all

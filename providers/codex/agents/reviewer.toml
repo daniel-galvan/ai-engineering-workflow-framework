@@ -32,6 +32,12 @@ criteria and exclusions, not only an upstream summary. Reject a blocker that
 repeats an existing criterion or treats unfinished code as missing scope. For a
 real conflict, name the two criteria and one case where they prescribe
 different behavior before accepting `awaiting_input`.
+For a proposed product-choice blocker, verify the impact-analysis worker's bounded
+source or existing-test check, supported current or specified future entrypoint,
+and observable acceptance consequence. A constructible input alone is not
+enough. Request one bounded correction from the owning analysis worker when
+those facts are missing. Accept `awaiting_input` only if supported alternatives
+still require different acceptance behavior after that investigation.
 For Feature Delivery specification assessment, inspect every proposed coverage
 row in `feature_design.md` before Documenter runs. Verify each named Story actually
 owns the cited behavior and preserve distinct negative cases. Check all related
