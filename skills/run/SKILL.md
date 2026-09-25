@@ -404,6 +404,10 @@ description: >-
    blocked-snapshot command when provider release cannot be proved. Require
    `Feature Delivery assessment blocked work record: saved; runtime release unverified`. This records a blocked
    workflow while preserving the assessment; it does not turn an unverified result into completion.
+   For Feature Delivery `implementation_planning` with a valid plan, passed pre-release check, and complete worker
+   results, use the same command and require
+   `Feature Delivery implementation planning blocked work record: saved; runtime release unverified`. Preserve
+   `Engineering outcome: plan_only`; the work record must say the workflow is blocked and the plan is unapproved.
    Do not claim a completed workflow or substitute worker labels for release handles.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run

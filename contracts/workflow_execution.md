@@ -1337,12 +1337,14 @@ first output line is exactly `Workflow-framework validation: passed`; the remain
 For a completed Technical Spike, the finalizer also rejects a released closure receipt when it lists fewer unique
 provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
 If the provider does not expose release handles or receipts after the Technical Spike report is published, or after a
-Feature Delivery specification assessment report is created, and every worker result is complete, the Coordinator
-writes the blocked closure row defined under
+Feature Delivery assessment report or implementation plan is created, and every worker result is complete, the
+Coordinator writes the blocked closure row defined under
 [Worker Runtime Closure](#worker-runtime-closure) and invokes the packaged `--blocked-runtime-snapshot` mode. It
 validates and saves `work_record.md` with `State: blocked` and
-`Workflow outcome: blocked`, while preserving the report and the original handoff packet for later
+`Workflow outcome: blocked`, while preserving the report or plan and the original handoff packet for later
 finalization. This is a blocked record, never evidence that provider workers were released or the workflow completed.
+For Feature Delivery implementation planning, preserve `Engineering outcome: plan_only` when the plan itself passed
+pre-release validation; it remains unapproved and the workflow is not complete.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. The terminal `Engineering state` MUST use one value from the canonical enum; a

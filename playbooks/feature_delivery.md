@@ -94,6 +94,9 @@ asset may pass this first gate with `all_material_assets_linked: false`; keep it
 references. After design and planning review, update `used_by` and the gate from actual consumption. Terminal
 finalization then requires the material asset's design/review link and a claim backed by its evidence. Never relabel a
 material asset `non_material` merely to pass the early gate.
+For an implementation plan, give each material asset its own Asset Baseline row with evidence, observation, and an
+implementation or explicit non-impact consequence. Planning Review verifies those rows against the source assets;
+matching IDs alone is not proof of use.
 
 If the Jira attachment inventory or a declared supporting source cannot be retrieved, the run records the limitation in
 the manifest and returns `awaiting_input`; it MUST NOT create an implementation plan. `ready_for_implementation` is
@@ -188,6 +191,8 @@ populate the packet once after review and launch Documenter promptly. Use the sh
 unavailable, use the blocked-runtime snapshot path immediately. Terminal worker results and
 `validate_worker_runtime.py --transition close`
 are not release.
+The same blocked-runtime snapshot path applies to an implementation plan whose pre-release check passed but whose
+provider release cannot be verified. It preserves the plan and records a blocked workflow, not completed delivery.
 
 ## Stages
 

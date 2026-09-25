@@ -169,8 +169,20 @@ def _expected_asset_input_ids(expected_inputs: object) -> set[str]:
     return {
         str(input_id)
         for input_id, row in expected_inputs.items()
-        if isinstance(row, dict) and row.get("Asset source") is True
+        if isinstance(row, dict) and (row.get("Asset source") is True or _supplied_asset_reference(row))
     }
+
+
+def _supplied_asset_reference(row: dict[str, object]) -> bool:
+    """Do not let a directly supplied artifact bypass inventory by omitting its marker."""
+    if str(row.get("Classification", "")).strip().lower() in {"work item", "repository"}:
+        return False
+    locator = str(row.get("Source or path", "")).strip()
+    direct = locator.startswith(("/", "https://", "http://", "codex://threads/"))
+    return direct and (
+        locator.startswith("codex://threads/")
+        or str(row.get("Authority", "")).strip().lower().startswith("user-supplied")
+    )
 
 
 def validate_asset_manifest(
@@ -360,6 +372,10 @@ def validate_asset_manifest(
     if expected_inputs is not None:
         for input_id in sorted(set(source_input_ids) - set(expected_rows)):
             errors.append(f"asset source input {input_id} is not declared in run_inputs.json")
+    for input_id in sorted(asset_inputs):
+        row = expected_rows.get(input_id)
+        if isinstance(row, dict) and _supplied_asset_reference(row) and row.get("Asset source") is not True:
+            errors.append(f"input {input_id} requires Asset source: true for supplied artifact")
     for input_id in sorted(asset_inputs - set(source_input_ids)):
         errors.append(f"declared asset source input {input_id} is missing from asset_manifest sources")
     for input_id in sorted(asset_inputs):
@@ -492,21 +508,40 @@ def validate_asset_manifest(
 
 
 def asset_plan_errors(plan_text: str, manifest: dict[str, object]) -> list[str]:
-    """Ensure a ready plan names the asset gate and every material asset."""
+    """Require an individually traceable consequence for each material asset."""
     errors: list[str] = []
-    if "# Asset Baseline" not in plan_text:
+    match = re.search(r"(?ms)^#{1,6} Asset Baseline\s*\n(.*?)(?=^#{1,6} |\Z)", plan_text)
+    if match is None:
         errors.append("implementation_plan.md requires an Asset Baseline section")
-    if ASSET_MANIFEST_FILENAME not in plan_text:
+    section = match.group(1) if match else ""
+    if ASSET_MANIFEST_FILENAME not in section:
         errors.append("implementation_plan.md Asset Baseline must link asset_manifest.json")
-    for asset in manifest.get("assets", []):
-        if not isinstance(asset, dict) or asset.get("relevance") != "material":
+    material = [asset for asset in manifest.get("assets", [])
+                if isinstance(asset, dict) and asset.get("relevance") == "material"]
+    rows: list[dict[str, str]] = []
+    headers: list[str] = []
+    for line in section.splitlines():
+        if not line.startswith("|") or not line.endswith("|"):
             continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if cells == ["Asset ID", "Evidence refs", "Observation", "Planning consequence"]:
+            headers = cells
+        elif headers and len(cells) == len(headers) and not all(set(cell) <= {"-", ":", " "} for cell in cells):
+            rows.append(dict(zip(headers, cells)))
+    for asset in material:
         asset_id = str(asset.get("asset_id", ""))
-        if asset_id and asset_id not in plan_text:
-            errors.append(f"implementation_plan.md must account for material asset {asset_id}")
+        matching = [row for row in rows if row["Asset ID"] == asset_id]
+        if len(matching) != 1:
+            errors.append(f"material asset {asset_id} requires its own Asset Baseline row")
+            continue
+        row = matching[0]
         refs = asset.get("evidence_refs", [])
-        if isinstance(refs, list) and refs and not any(str(ref) in plan_text for ref in refs):
-            errors.append(f"implementation_plan.md must retain evidence refs for material asset {asset_id}")
+        if isinstance(refs, list) and refs and not any(
+            str(ref) in row["Evidence refs"].replace(",", " ").split() for ref in refs
+        ):
+            errors.append(f"material asset {asset_id} requires its evidence ref in its Asset Baseline row")
+        if not row["Observation"] or not row["Planning consequence"]:
+            errors.append(f"material asset {asset_id} requires an observation and planning consequence")
     return errors
 
 
@@ -660,6 +695,17 @@ def self_test() -> None:
         thread_inputs = dict(inputs, **{"IN-003": {
             "Input or artifact": "Supplied Codex task", "Source or path": codex_url, "Asset source": True,
         }})
+        unmarked_thread_inputs = dict(inputs, **{"IN-003": {
+            "Input or artifact": "Supplied Codex task", "Source or path": codex_url,
+            "Authority": "User-supplied supporting context", "Classification": "session context",
+        }})
+        assert _supplied_asset_reference({
+            "Source or path": "/tmp/assessment folder", "Authority": "User-supplied supporting evidence",
+        })
+        assert any("IN-003 requires Asset source: true" in error for error in validate_asset_manifest(
+            manifest, work_item="EXAMPLE-1", expected_input_ids=unmarked_thread_inputs,
+            expected_inputs=unmarked_thread_inputs, require_jira_source=True, require_passed=True,
+        ))
         assert validate_asset_manifest(
             thread, work_item="EXAMPLE-1", expected_input_ids=thread_inputs, expected_inputs=thread_inputs,
             require_jira_source=True, require_passed=True,
@@ -701,6 +747,23 @@ def self_test() -> None:
             require_jira_source=True,
         ))
         assert asset_plan_errors("# Asset Baseline\nasset_manifest.json\nE-FOLDER-001\n", manifest) == []
+        assert any("material asset ASSET-002 requires its own Asset Baseline row" in error for error in
+                   asset_plan_errors("# Asset Baseline\nasset_manifest.json\nASSET-002 E-FOLDER-001\n", material))
+        assert asset_plan_errors(
+            "# Asset Baseline\nasset_manifest.json\n"
+            "| Asset ID | Evidence refs | Observation | Planning consequence |\n"
+            "| --- | --- | --- | --- |\n"
+            "| ASSET-002 | E-FOLDER-001 | Prior note describes the behavior. | Test the behavior. |\n",
+            material,
+        ) == []
+        assert asset_plan_errors(
+            "## Asset Baseline\nasset_manifest.json\n"
+            "| Asset ID | Evidence refs | Observation | Planning consequence |\n"
+            "| --- | --- | --- | --- |\n"
+            "| ASSET-002 | E-FOLDER-001 | Prior note describes the behavior. | Test the behavior. |\n"
+            "# Next section\n",
+            material,
+        ) == []
         broken = json.loads(json.dumps(manifest))
         broken["sources"][1]["asset_ids"] = ["ASSET-001"]
         assert any("omitted directory entries" in error for error in validate_asset_manifest(broken))

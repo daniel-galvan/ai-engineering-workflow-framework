@@ -76,9 +76,13 @@ in-scope changes, and explicit exclusions.
 
 Link the current-run [`asset_manifest.json`](asset_manifest.json). State that the Jira attachment inventory and every
 declared file, folder, or URL source were enumerated, and preserve the manifest's gate status. For each material asset,
-record the evidence reference, the observed requirement or behavior, and the resulting acceptance, source, test,
-validation, rollout, or explicit non-impact consequence. A ready plan is invalid when an available asset is unreviewed,
+add one row to the table below with its evidence reference, observed requirement or behavior, and resulting acceptance,
+source, test, validation, rollout, or explicit non-impact consequence. The reviewer must verify the consequence against
+the actual asset, not only its manifest label. A ready plan is invalid when an available asset is unreviewed,
 when a visual asset was only inspected by metadata, or when a material asset is absent from this section.
+
+| Asset ID | Evidence refs | Observation | Planning consequence |
+| --- | --- | --- | --- |
 
 # 2. Root Cause and Behavior Contract
 

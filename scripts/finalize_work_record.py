@@ -1985,8 +1985,14 @@ def _prepare_blocked_runtime_snapshot(
         and str(packet["playbook_selection"]["Primary goal"]).strip().lower() == "specification assessment"
         and identity["State"] in {"awaiting_input", "ready_for_implementation"}
     )
-    if not ((playbook == "technical_spike" and identity["State"] == "handoff") or assessment):
-        raise ValueError("blocked runtime snapshot requires a Technical Spike or Feature Delivery assessment packet")
+    planning = (
+        playbook == "feature_delivery"
+        and str(packet["playbook_selection"]["Primary goal"]).strip().lower() == "implementation planning"
+        and identity["State"] == "ready_for_implementation"
+        and identity["Engineering outcome"] == "plan_only"
+    )
+    if not ((playbook == "technical_spike" and identity["State"] == "handoff") or assessment or planning):
+        raise ValueError("blocked runtime snapshot requires a Technical Spike or Feature Delivery planning packet")
     rows = closure["runtime_closure"]
     if not rows or any(
         row["Receipt owner"] != "Coordinator"
@@ -1999,7 +2005,7 @@ def _prepare_blocked_runtime_snapshot(
             "blocked runtime snapshot requires a Coordinator-owned receipt with Runtime status Blocked, "
             "worker_runtime_release_unavailable in Closure evidence or blocker, and nonzero or unknown active handles"
         )
-    if assessment:
+    if assessment or planning:
         errors = _feature_delivery_packet_contract_errors(packet)
         errors.extend(_feature_delivery_asset_contract_errors(packet))
     else:
@@ -2012,10 +2018,11 @@ def _prepare_blocked_runtime_snapshot(
         errors.append(str(error))
     if errors:
         raise ValueError("\n".join(dict.fromkeys(errors)))
-    if assessment:
-        expected_results = FEATURE_ASSESSMENT_DISPOSITIONS[identity["State"]]
-        if str(packet["handoff"]["workflow_result"]).strip() not in expected_results:
-            raise ValueError("Feature Delivery assessment result does not match its readiness state")
+    if assessment or planning:
+        if assessment:
+            expected_results = FEATURE_ASSESSMENT_DISPOSITIONS[identity["State"]]
+            if str(packet["handoff"]["workflow_result"]).strip() not in expected_results:
+                raise ValueError("Feature Delivery assessment result does not match its readiness state")
         identity.update({"State": "blocked", "Workflow outcome": "blocked"})
     else:
         primary_goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
@@ -2159,7 +2166,10 @@ def finalize(
         if result:
             if blocked_runtime_snapshot:
                 name = Path(str(packet['identity']['Playbook / version']).split(' / ', 1)[0]).stem
-                label = "Technical Spike" if name == "technical_spike" else "Feature Delivery assessment"
+                goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
+                label = ("Technical Spike" if name == "technical_spike" else
+                         "Feature Delivery assessment" if goal == "specification assessment" else
+                         "Feature Delivery implementation planning")
                 print(f"{label} blocked work record: saved; runtime release unverified")
             print(result.stdout, end="")
     finally:
@@ -2810,6 +2820,14 @@ def self_test() -> None:
         assert blocked_assessment["identity"]["State"] == "blocked"
         assert blocked_assessment["identity"]["Workflow outcome"] == "blocked"
         assert blocked_assessment["identity"]["Engineering outcome"] == "partially_solved"
+        blocked_planning = json.loads(json.dumps(feature))
+        blocked_planning["handoff"]["workflow_result"] = "Implementation plan ready; no implementation performed."
+        (feature_root / "implementation_plan.md").write_text("# Asset Baseline\n\nasset_manifest.json\n")
+        _prepare_blocked_runtime_snapshot(blocked_planning, blocked_closure, report_path, None)
+        assert blocked_planning["identity"]["State"] == "blocked"
+        assert blocked_planning["identity"]["Workflow outcome"] == "blocked"
+        assert blocked_planning["identity"]["Engineering outcome"] == "plan_only"
+        (feature_root / "implementation_plan.md").unlink()
         assert assessment_feature["identity"]["State"] == "awaiting_input"
         assessment_feature["handoff"]["provenance"] = (
             f"Feature Delivery {feature_version}; framework {'a' * 40}"
@@ -2833,6 +2851,27 @@ def self_test() -> None:
         )
         design_path.write_text(json.dumps({"asset_gate": {"asset_count": 0, "source_count": 1}}))
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
+        planning_plan = feature_root / "implementation_plan.md"
+        planning_plan.write_text("# Asset Baseline\n\nasset_manifest.json\n")
+        planning_feature = json.loads(json.dumps(feature))
+        planning_feature["handoff"].update({
+            "workflow_result": "Implementation plan ready; no implementation performed.",
+            "implementation_plan": str(planning_plan),
+            "execution": "standard planning; workers complete; no source changes; runtime pending",
+        })
+        planning_feature["durable_artifacts"].append({
+            "Artifact": "Implementation plan", "Path": str(planning_plan),
+            "Status": "Ready for review", "Purpose": "Unapproved plan",
+        })
+        planning_feature["handoff"]["artifacts"].append(str(planning_plan))
+        planning_packet = feature_root / "planning_packet.json"
+        planning_record = feature_root / "planning_work_record.md"
+        planning_packet.write_text(json.dumps(planning_feature))
+        finalize(planning_packet, assessment_closure, planning_record, blocked_runtime_snapshot=True)
+        assert "| State | blocked |" in planning_record.read_text()
+        assert "| Workflow outcome | blocked |" in planning_record.read_text()
+        assert "| Engineering outcome | plan_only |" in planning_record.read_text()
+        assert planning_plan.is_file()
         spike = json.loads(json.dumps(packet))
         spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
         spike["identity"].update({

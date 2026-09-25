@@ -102,7 +102,8 @@ Optional supporting artifacts (each file or folder is an asset source and must b
 - <NONE-OR-ABSOLUTE-PATHS>
 
 For every listed artifact, add a corresponding current-run input row with `Asset source: true`; do not hide an asset
-source in free-form context.
+source in free-form context. A supplied `codex://threads/` reference is a URL asset source even when used only as
+prior-decision context.
 
 Additional supplied context (preserve and classify):
 - <NONE-OR-DESCRIPTION-OR-REFERENCE>
