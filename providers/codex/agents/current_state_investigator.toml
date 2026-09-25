@@ -43,6 +43,10 @@ reverse the readiness judgment. Review available attachment
 contents, including rendered images/video and readable logs/documents; record
 unavailable or irrelevant assets. Do not call the context complete if a material
 issue or asset remains unread.
+Treat the issue's current description field as the acceptance source. Keep
+changelog `fromString`/`toString` and removed or struck text as history; never
+present a historical criterion as current without confirming it in the current
+description. Record the issue's update timestamp with the current criteria.
 
 For Jira-backed specification assessment, collect the Epic's direct children
 with a bounded field set, then read each material Story's full description once

@@ -149,7 +149,7 @@ Activate one final Documenter after analytical fan-in.
 | `impact-analysis` | `dependency_analyst` | `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write` | Required; after `feature-context` |
 | `repository-integration` | `repository_integrator` | `destination_integration`, `architecture_mapping`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `build_run`, `test_run`, `artifact_write` | Required for `deep`; conditional for `standard`; after `feature-context` |
 | `feature-design` | `solution_architect` | `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `impact-analysis` and any required integration analysis |
-| `planning-review` | `reviewer` | `architecture_mapping`, `operational_readiness` | `repository_read`, `diff_review`, `artifact_write` | Deep only; after `feature-design` |
+| `planning-review` | `reviewer` | `architecture_mapping`, `operational_readiness` | `work_item_read`, `repository_read`, `diff_review`, `artifact_write` | Deep only; after `feature-design` |
 | `implement` | `implementer` | `build_and_test` | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write` | Remediation only; approval plus completed planning fan-in |
 | `review` | `reviewer` | `architecture_mapping`, `build_and_test`, `operational_readiness` | `repository_read`, `diff_review`, `test_run`, `artifact_write` | After `implement` |
 | `validate` | `tester` | `build_and_test`, `operational_readiness` | `build_run`, `test_run`, `runtime_observe`, `artifact_write` | After `review` |
@@ -285,8 +285,10 @@ relevant. Link each material asset to its assessment consequence. Do not create 
 means the assessed work is sufficiently specified to enter implementation planning or Story-level delivery. Record
 `Engineering outcome: solved` for a ready assessment and `partially_solved` for one needing input.
 Before `planning-review`, feature-design writes a `## Coverage` table in `feature_design.md` with each Story's exact
-key and criterion. The Reviewer checks every row against the recovered source text, including whether the named Story
-actually owns the behavior. Documenter copies the reviewed mapping into `specification_assessment.md`; the rendered
+key and criterion. In `deep`, the Reviewer independently re-reads the current Epic and material Story descriptions,
+checks every material row against those fields and update timestamps, and separates current criteria from changelog or
+removed text; an upstream summary alone is insufficient. Record any mismatch and correct the design before readiness.
+Documenter copies the reviewed mapping into `specification_assessment.md`; the rendered
 `work_record.md` is not the mapping source. Do not compress distinct requirements into one broad row or reassign Story
 ownership. Keep a short but complete table: no arbitrary minimum row count. Put unsupported or non-blocking optional
 scenarios in Gaps, Risks, and Decisions, not in the required Coverage mapping. A ready result requires every Coverage

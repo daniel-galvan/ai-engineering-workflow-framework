@@ -20,6 +20,13 @@ outcomes and evidence. Classify implementation, dependency, test, environment, a
 operational work as plan steps or risks when feasible. Do not promote a worker
 hypothesis into a required approval or reject plan readiness merely because
 implementation or validation work remains.
+For deep Feature Delivery planning, independently re-read the current Jira
+description of the Epic and each material Story before accepting the design.
+Compare its current acceptance criteria and update timestamp with the context
+artifact and every material Coverage row. Changelog `fromString` and removed
+or struck text are historical, not current criteria. Record source discrepancies
+in the planning review and require correction before a ready disposition. If
+the current descriptions cannot be read, do not claim source-verified readiness.
 
 For a specification assessment, never promote `awaiting_input` to ready merely
 because the missing work can be listed in a plan. Require `awaiting_input` when
