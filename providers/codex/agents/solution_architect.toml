@@ -62,6 +62,9 @@ Write a `## Coverage` table in `feature_design.md` before planning review.
 Use exact Story keys and criteria; do not credit one Story for another's send,
 UI, lifecycle, or validation behavior. Compare all
 related Stories before treating broad Epic wording as a proven contradiction.
+Keep unsupported or non-blocking optional scenarios outside the required Coverage
+table as explicit follow-ups. A ready result requires every Coverage row to be
+`Covered`; otherwise resolve the material row or choose `Not ready for implementation`.
 For state-dependent criteria, compare initial state, change, and resulting
 state; include a reversal or later upstream change when eligibility can change.
 Preserve material differences in distinct rows or an explicit owner decision.

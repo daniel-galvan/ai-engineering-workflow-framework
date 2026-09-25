@@ -15,6 +15,7 @@ depends_on:
 Create `.thoughts/<WORK-ITEM-ID>/specification_assessment.md` for a Feature Delivery
 `specification_assessment` run. This is a coverage and readiness judgment, not an implementation plan or approval.
 Write for a reader who has not followed the investigation. Explain technical terms in plain language.
+Use these headings as structure; replace all instructional prose and placeholders with findings.
 
 ## Question and Result
 
@@ -50,6 +51,8 @@ Identify the observable test and dependency for each material row; do not mistak
 Story requirement.
 When a criterion applies to multiple save or batch routes, retain route-level negative-case and conflict tests where
 the source supports them; do not invent a new acceptance rule.
+Keep unsupported or non-blocking optional scenarios outside Coverage as labeled follow-ups. For a ready result, every
+row of the reviewed feature-design Coverage mapping must be `Covered`; copy it without changing row status.
 
 | Requirement / behavior | Proposed work / Story | Evidence | Status | Test / dependency | Gap or follow-up | Owner |
 | --- | --- | --- | --- | --- | --- | --- |

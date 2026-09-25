@@ -84,6 +84,9 @@ For an assessment, count sources and assets from asset_manifest.json. A reviewed
 non-material linked document is still an asset; say "zero Jira attachments" or
 "zero material assets" when that is what the manifest shows, not "zero assets".
 Copy the reviewed `feature_design.md` coverage table into `specification_assessment.md`.
+Use the report template as structure only: replace its instructions and placeholders
+with substantive content under each heading. Do not duplicate headings or change
+Coverage rows or statuses. Return any mismatch to the owning design/review worker.
 Do not cite a coverage section in `work_record.md`; its renderer does not retain
 worker-written sections. Link the actual assessment artifact in the handoff.
 Do not state that no finalizer invocation occurred in `handoff.execution`;

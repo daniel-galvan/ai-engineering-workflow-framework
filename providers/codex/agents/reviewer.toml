@@ -43,6 +43,10 @@ row in `feature_design.md` before Documenter runs. Verify each named Story actua
 owns the cited behavior and preserve distinct negative cases. Check all related
 Stories when one appears to disagree with a broad Epic phrase; call an
 ambiguous interpretation an ambiguity, not a proven contradiction.
+Reject a ready result if a reviewed Coverage row is `Partial`, `Missing`, or
+`Conflicting`. Keep unsupported or non-blocking optional scenarios as follow-ups
+outside Coverage. If a row changes, require the owning design worker to update
+the mapping before accepting it; Documenter cannot change reviewed statuses.
 For state-dependent behavior, challenge the initial, changed, and resulting
 states, including a reversal or later upstream change when it alters eligibility.
 

@@ -15,6 +15,15 @@ REQUIRED_HEADINGS = (
     "## Gaps, Risks, and Decisions",
     "## Disposition and Next Action",
 )
+READY_RESULTS = {"Ready for implementation", "Ready with explicit follow-ups"}
+TEMPLATE_INSTRUCTION_MARKERS = (
+    "Create `.thoughts/<WORK-ITEM-ID>/specification_assessment.md`",
+    "State what work was assessed",
+    "Link the primary work item or specification",
+    "One row per distinct requested outcome",
+    "Separate confirmed gaps from unsupported possibilities",
+    "State why the coverage table supports the exact result",
+)
 
 
 def _coverage_rows(text: str) -> list[list[str]]:
@@ -43,13 +52,33 @@ def coverage_mapping_errors(text: str, artifact: str) -> list[str]:
     return errors
 
 
+def coverage_readiness_errors(text: str, workflow_result: str, artifact: str) -> list[str]:
+    if workflow_result in READY_RESULTS and any(row[3] != "Covered" for row in _coverage_rows(text) if len(row) > 3):
+        return [f"{artifact} ready result requires covered requirements"]
+    return []
+
+
 def assessment_report_errors(
     text: str, workflow_result: str, material_asset_ids: tuple[str, ...] = (),
+    reviewed_coverage_text: str | None = None,
 ) -> list[str]:
-    errors = [
-        f"{REPORT_NAME} requires {heading}" for heading in REQUIRED_HEADINGS
-        if not re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE)
-    ]
+    errors = []
+    for heading in REQUIRED_HEADINGS:
+        count = len(re.findall(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE))
+        if not count:
+            errors.append(f"{REPORT_NAME} requires {heading}")
+        elif count > 1:
+            errors.append(f"{REPORT_NAME} has duplicate heading {heading}")
+    if any(marker in text for marker in TEMPLATE_INSTRUCTION_MARKERS):
+        errors.append(f"{REPORT_NAME} contains template instructions")
+    for heading in REQUIRED_HEADINGS[1:]:
+        if heading == "## Coverage":
+            continue
+        section = re.search(rf"^{re.escape(heading)}\s*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+        if section and not any(
+            line.strip() and not line.startswith("Workflow result:") for line in section.group(1).splitlines()
+        ):
+            errors.append(f"{REPORT_NAME} requires content under {heading}")
     if "asset_manifest.json" not in text:
         errors.append(f"{REPORT_NAME} must link asset_manifest.json")
     for asset_id in material_asset_ids:
@@ -60,20 +89,22 @@ def assessment_report_errors(
         errors.append(f"{REPORT_NAME} Workflow result must match the Final Handoff")
     coverage = _coverage_rows(text)
     errors.extend(coverage_mapping_errors(text, REPORT_NAME))
-    if workflow_result in {"Ready for implementation", "Ready with explicit follow-ups"} and any(
-        len(row) < 4 or row[3] != "Covered" for row in coverage
-    ):
-        errors.append(f"{REPORT_NAME} ready result requires covered requirements")
+    errors.extend(coverage_readiness_errors(text, workflow_result, REPORT_NAME))
+    if reviewed_coverage_text is not None and coverage != _coverage_rows(reviewed_coverage_text):
+        errors.append(f"{REPORT_NAME} must match reviewed coverage in feature_design.md")
     return errors
 
 
 def self_test() -> None:
-    valid = "\n".join(REQUIRED_HEADINGS[:2]) + "\nWorkflow result: Ready for implementation\n" + (
-        "\n".join(REQUIRED_HEADINGS[2:4]) + "\n"
+    valid = (
+        "# Specification Assessment\n## Question and Result\nAssessed ITEM-1 against its Stories.\n"
+        "Workflow result: Ready for implementation\n## Source and Asset Baseline\n"
+        "ITEM-1 and asset_manifest.json reviewed.\n## Coverage\n"
         "| Requirement / behavior | Story coverage | Evidence | Status | Test / dependency | Gap or follow-up | Owner |\n"
         "| --- | --- | --- | --- | --- | --- | --- |\n"
         "| Outcome A | ABC-2 | E-001 | Covered | Check A / ABC-1 | None | Team |\n"
-    ) + "\n".join(REQUIRED_HEADINGS[4:]) + "\nasset_manifest.json\n"
+        "## Gaps, Risks, and Decisions\nNo gaps.\n## Disposition and Next Action\nProceed to planning.\n"
+    )
     assert assessment_report_errors(valid, "Ready for implementation") == []
     assert "coverage row" in " ".join(assessment_report_errors(valid.replace("| Covered |", "| |"), "Ready for implementation"))
     assert "invalid Status" in " ".join(assessment_report_errors(
@@ -99,6 +130,22 @@ def self_test() -> None:
     ))
     assert "requires a populated" in " ".join(coverage_mapping_errors(
         valid.replace("| --- |", "| invalid |"), "feature_design.md",
+    ))
+    assert "template instructions" in " ".join(assessment_report_errors(
+        valid.replace("## Question and Result", "## Question and Result\nState what work was assessed"),
+        "Ready for implementation",
+    ))
+    assert "duplicate heading" in " ".join(assessment_report_errors(
+        valid + "\n## Gaps, Risks, and Decisions\n", "Ready for implementation",
+    ))
+    assert "reviewed coverage" in " ".join(assessment_report_errors(
+        valid, "Ready for implementation", reviewed_coverage_text=valid.replace("| Covered |", "| Partial |"),
+    ))
+    assert "requires content under ## Question and Result" in " ".join(assessment_report_errors(
+        valid.replace("Assessed ITEM-1 against its Stories.\n", ""), "Ready for implementation",
+    ))
+    assert "feature_design.md ready result" in " ".join(coverage_readiness_errors(
+        valid.replace("| Covered |", "| Partial |"), "Ready for implementation", "feature_design.md",
     ))
 
 

@@ -781,6 +781,10 @@ def feature_asset_record_errors(
     assessment = bool(selection) and selection[0].get("Primary goal", "").strip().lower() == "specification assessment"
     if assessment:
         report = root / REPORT_NAME
+        design = root / "feature_design.md"
+        design_text = design.read_text() if design.is_file() else None
+        if design_text is None:
+            errors.append("Feature Delivery specification assessment requires reviewed feature_design.md")
         if not report.is_file():
             errors.append(f"Feature Delivery specification assessment requires {REPORT_NAME}")
         else:
@@ -790,7 +794,9 @@ def feature_asset_record_errors(
                 str(asset.get("asset_id", "")) for asset in manifest.get("assets", [])
                 if isinstance(asset, dict) and asset.get("relevance") == "material"
             )
-            errors.extend(assessment_report_errors(report.read_text(), expected_result, material_ids))
+            errors.extend(assessment_report_errors(
+                report.read_text(), expected_result, material_ids, reviewed_coverage_text=design_text,
+            ))
         if report.resolve() not in durable_targets:
             errors.append(f"Feature Delivery work record must register {REPORT_NAME}")
         if report.resolve() not in handoff_targets:

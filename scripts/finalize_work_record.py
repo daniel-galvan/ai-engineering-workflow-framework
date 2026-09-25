@@ -34,10 +34,12 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
     )
 
 try:
-    from specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors
+    from specification_assessment import (
+        NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors, coverage_readiness_errors,
+    )
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.specification_assessment import (
-        NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors,
+        NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors, coverage_readiness_errors,
     )
 
 
@@ -633,6 +635,10 @@ def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[s
     )
     if assessment:
         report_path = root / REPORT_NAME
+        design_path = root / "feature_design.md"
+        design_text = design_path.read_text() if design_path.is_file() else None
+        if design_text is None:
+            errors.append("Feature Delivery specification assessment requires reviewed feature_design.md")
         if not report_path.is_file():
             errors.append(f"Feature Delivery specification assessment requires {REPORT_NAME}")
         else:
@@ -641,7 +647,9 @@ def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[s
                 str(asset.get("asset_id", "")) for asset in manifest.get("assets", [])
                 if isinstance(asset, dict) and asset.get("relevance") == "material"
             )
-            errors.extend(assessment_report_errors(report_path.read_text(), result, material_ids))
+            errors.extend(assessment_report_errors(
+                report_path.read_text(), result, material_ids, reviewed_coverage_text=design_text,
+            ))
         if report_path.resolve() not in durable_paths:
             errors.append(f"Feature Delivery finalization must register {REPORT_NAME}")
         if report_path.resolve() not in handoff_paths:
@@ -824,7 +832,11 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
             errors.append(f"Feature Delivery pre-handoff requires {name}")
         elif name == "feature_design.md":
             try:
-                errors.extend(coverage_mapping_errors(path.read_text(), name))
+                design_text = path.read_text()
+                errors.extend(coverage_mapping_errors(design_text, name))
+                handoff = packet.get("handoff", {})
+                result = str(handoff.get("workflow_result", "")) if isinstance(handoff, dict) else ""
+                errors.extend(coverage_readiness_errors(design_text, result, name))
             except OSError as error:
                 errors.append(f"Feature Delivery pre-handoff cannot read {name}: {error}")
     errors.extend(_feature_assessment_reference_errors(packet))
@@ -2712,14 +2724,19 @@ def self_test() -> None:
         )
         (feature_root / "implementation_plan.md").unlink()
         report_path.write_text(
-            "# Specification Assessment\n## Question and Result\nWorkflow result: Ready for implementation\n"
-            "## Source and Asset Baseline\n"
-            "asset_manifest.json\n## Coverage\n"
+            "# Specification Assessment\n## Question and Result\nAssessed ITEM-1 against its Stories.\n"
+            "Workflow result: Ready for implementation\n## Source and Asset Baseline\n"
+            "ITEM-1 and asset_manifest.json reviewed.\n## Coverage\n"
             "| Requirement / behavior | Story coverage | Evidence | Status | Test / dependency | Gap or follow-up | Owner |\n"
             "| --- | --- | --- | --- | --- | --- | --- |\n"
             "| Outcome | ITEM-2 | E-001 | Covered | Check ITEM-2 / ITEM-1 | None | Team |\n"
-            "## Gaps, Risks, and Decisions\n## Disposition and Next Action\n"
+            "## Gaps, Risks, and Decisions\nNo gaps.\n"
+            "## Disposition and Next Action\nProceed to planning.\n"
         )
+        design_text = "## Coverage\n" + report_path.read_text().split("## Coverage\n", 1)[1].split(
+            "## Gaps", 1,
+        )[0]
+        (feature_root / "feature_design.md").write_text(design_text)
         assessment_feature["durable_artifacts"].append({
             "Artifact": "Specification assessment", "Path": str(report_path),
             "Status": "Complete", "Purpose": "Readiness coverage",
@@ -2727,15 +2744,20 @@ def self_test() -> None:
         assessment_feature["handoff"]["artifacts"].append(str(report_path))
         assert _feature_delivery_packet_contract_errors(assessment_feature) == []
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
+        changed_report = report_path.read_text().replace("| Covered |", "| Partial |")
+        report_path.write_text(changed_report)
+        assert "must match reviewed coverage" in " ".join(_feature_delivery_asset_contract_errors(assessment_feature))
+        report_path.write_text(changed_report.replace("| Partial |", "| Covered |"))
         for name in ("feature_context.md", "impact_analysis.md"):
             (feature_root / name).write_text(f"# {name}\n")
-        design_text = "## Coverage\n" + report_path.read_text().split("## Coverage\n", 1)[1].split(
-            "## Gaps", 1,
-        )[0]
-        (feature_root / "feature_design.md").write_text(design_text)
         pre_handoff_path = feature_root / "finalization_packet.json"
         pre_handoff_path.write_text(json.dumps(assessment_feature))
         assert feature_delivery_pre_handoff_errors(pre_handoff_path) == []
+        (feature_root / "feature_design.md").write_text(design_text.replace("| Covered |", "| Partial |"))
+        assert "feature_design.md ready result requires covered requirements" in " ".join(
+            feature_delivery_pre_handoff_errors(pre_handoff_path)
+        )
+        (feature_root / "feature_design.md").write_text(design_text)
         prepared_handoff = json.loads(json.dumps(assessment_feature))
         prepared_handoff["identity"]["Requested profile"] = ""
         pre_handoff_path.write_text(json.dumps(prepared_handoff))

@@ -277,7 +277,11 @@ Before `planning-review`, feature-design writes a `## Coverage` table in `featur
 key and criterion. The Reviewer checks every row against the recovered source text, including whether the named Story
 actually owns the behavior. Documenter copies the reviewed mapping into `specification_assessment.md`; the rendered
 `work_record.md` is not the mapping source. Do not compress distinct requirements into one broad row or reassign Story
-ownership. Keep a short but complete table: no arbitrary minimum row count.
+ownership. Keep a short but complete table: no arbitrary minimum row count. Put unsupported or non-blocking optional
+scenarios in Gaps, Risks, and Decisions, not in the required Coverage mapping. A ready result requires every Coverage
+row in the reviewed design to be `Covered`. Resolve a material `Partial`, `Missing`, or `Conflicting` row before
+handoff, or report `Not ready for implementation`. If review changes the mapping, update and re-review the design before
+Documenter runs. Documenter must not relabel a row to make the report pass validation.
 For state-dependent behavior, assess the initial state, the triggering change, and the resulting state; include a
 reversal or later upstream change when it can change eligibility. Compare the Epic and Story rules at each step, and
 preserve a material difference as a separate coverage row or owner decision. Do not invent unsupported edge cases.
