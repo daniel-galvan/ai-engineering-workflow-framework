@@ -1,13 +1,13 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 provider: codex
 provider_independent_profiles: true
-baseline_id: codex-role-policy-gpt6-luna-orchestrator-v20260922
+baseline_id: codex-role-policy-gpt61-sol-luna-orchestrator-v20261001
 owner: Engineering
-last_updated: 2026-09-22
+last_updated: 2026-10-01
 ---
 
 # Codex Model and Effort Policy
@@ -17,11 +17,10 @@ Remediation, Vulnerability Investigation, and Sentry Issue Remediation. It is ad
 normal run input. The role policy below is an initial hypothesis: an experimental baseline to validate against real
 runs, not a claim of optimal model selection.
 
-The experimental baseline is `codex-role-policy-gpt6-luna-orchestrator-v20260922` and is shared across Technical Spike,
-Feature Delivery, Sentry, TechOps Issue Remediation, and Vulnerability Investigation. Profiles select which roles run;
-they do not change
-a role's model or reasoning effort. Record the baseline ID plus requested and resolved values in the work record, and
-revise it only from comparable evaluation evidence.
+The experimental baseline is `codex-role-policy-gpt61-sol-luna-orchestrator-v20261001` and is shared across Technical
+Spike, Feature Delivery, Sentry, TechOps Issue Remediation, and Vulnerability Investigation. Profiles select which roles
+run; they do not change a role's model or reasoning effort. Record the baseline ID plus requested and resolved values in
+the work record, and revise it only from comparable evaluation evidence.
 
 Codex policy labels map to configuration values as follows:
 
@@ -34,24 +33,53 @@ Codex policy labels map to configuration values as follows:
 | Max | `max` |
 | Ultra | `ultra` (Codex App/runtime-specific; not portable) |
 
-This GPT-6 pilot uses `gpt-6-sol` for demanding design and review work, and `gpt-6-luna` for coordination and
-repeatable,
-high-volume roles. Both IDs are available in the current Codex runtime. GPT-6 Sol and Luna support `none`, `low`,
-`medium`, `high`,
-`xhigh`, and `max`; Astra supports `low`, `medium`, `high`, `xhigh`, and `max`, but Astra is not in this runtime's
-available model set and is not pinned here. Preserve each role's current effort where the target model supports it.
-`Ultra` remains Codex App/runtime-specific and must be verified in the target runtime before use. See the
-[official GPT-6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
-and [GPT-6 prompting guidance](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra).
+This pilot uses `gpt-6.1-sol` for design and review work, and `gpt-6-luna` for coordination and focused, high-volume
+roles. Both IDs are advertised by the current Codex host. Exact model/effort resolution remains required for each run.
+Astra is outside this baseline; adopting it requires a separate policy revision and runtime verification.
 
-OpenAI reports lower estimated task cost for GPT-6 Astra in evaluations despite its higher per-token price. That is not
-a general promise that every GPT-6 model or workload costs less. Keep this role mapping experimental until comparable
-runs confirm quality, elapsed time, and human effort.
+GPT-6.1 Sol supports `low`, `medium` (default), `high`, `xhigh`, and `max`. It does not support `none` or `minimal`.
+GPT-6 Luna also supports `none`. The Sol roles retain explicit `low` effort; migration alone does not justify changing
+effort. `Ultra` remains Codex App/runtime-specific and must be verified in the target runtime before use.
 
-GPT-6 follows long instructions more closely and can be more sensitive to conflicting skill and `AGENTS.md` guidance.
-Keep instruction precedence explicit, state when the workflow should proceed autonomously or delegate, and calibrate
-testing to the change's risk instead of repeating broad checks by default. Review the loaded instruction set when
-results differ from the prior baseline.
+## GPT-6.1 Sol evidence and compatibility
+
+Official sources checked on 2026-10-01. GPT-6.1 Sol was released on September 29, 2026.
+
+| Standard API pricing per 1M tokens, up to 272K input | GPT-6 Sol | GPT-6.1 Sol |
+| --- | --- | --- |
+| Input | $2.00 | $2.00 |
+| Cached input | $0.20 | $0.10 |
+| Cache writes | $2.50 | $2.50 |
+| Output | $10.00 | $10.00 |
+
+Cached input is 50% cheaper; the other standard rates are unchanged. Savings depend on cache hits and token consumption.
+These API prices do not establish Codex credit savings. Record only provider-reported usage when exposed.
+
+OpenAI positions GPT-6.1 Sol as delivering near-Astra performance for complex coding, computer use, and professional
+work. The reviewed guidance does not quantify a head-to-head quality or latency gain over GPT-6 Sol on our workflows.
+Treat that improvement as a pilot hypothesis, not a measured result. Context capacity remains 1,050,000 tokens with
+128,000 maximum output tokens.
+
+For direct API use, GPT-6.1 Sol requires the Responses API for tool calling; Chat Completions supports requests without
+tools. It supports US and EU data residency, with Fast mode unavailable for EU residency. Responses API multi-agent
+support is in beta; this does not change the framework's Codex worker graph or automatically enable a different
+delegation runtime.
+
+OpenAI also fixed GPT-6 Sol and Luna image encoding on September 25, improving visual tasks in API and Codex. When
+comparing runs that use images, record the run dates and consider reevaluating results affected by that bug.
+
+Preserve the prior effort and output contracts for the Sol upgrade. Compare architecture and review runs against the
+prior baseline using the same tasks, evidence, and effort; record quality, elapsed time, human effort, and exposed
+usage. Do not infer a quality gain from model selection alone.
+
+OpenAI's family prompting advice is based on behavior observed with Astra. Evaluate it with the selected model before
+claiming the same behavior for Sol: make instruction precedence, authorized persistence, delegation, and proportionate
+verification explicit.
+
+Sources: [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
+[GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol),
+[model and migration guidance](https://developers.openai.com/api/docs/guides/latest-model), and
+[API changelog](https://developers.openai.com/api/docs/changelog).
 
 ## Experimental Role Baseline
 
@@ -61,16 +89,15 @@ results differ from the prior baseline.
 | Current-State Investigator | `gpt-6-luna` | High | `high` |
 | Dependency Analyst | `gpt-6-luna` | High | `high` |
 | Repository Integrator | `gpt-6-luna` | High | `high` |
-| Solution Architect | `gpt-6-sol` | Light | `low` |
-| Reviewer | `gpt-6-sol` | Light | `low` |
+| Solution Architect | `gpt-6.1-sol` | Light | `low` |
+| Reviewer | `gpt-6.1-sol` | Light | `low` |
 | Implementer | `gpt-6-luna` | Extra High | `xhigh` |
 | Tester | `gpt-6-luna` | Extra High | `xhigh` |
 | Documenter | `gpt-6-luna` | Light | `low` |
 
-This baseline assigns Luna with Extra High effort to coordination and repeatable investigation, implementation,
-and testing,
-while Sol handles design and review and Luna documents at Light effort. Keep the baseline only when
-comparable runs show that it maintains or improves quality, elapsed-time, and human-effort metrics.
+This baseline assigns Luna with Extra High effort to coordination, implementation, and testing; High effort to
+investigation and integration; and Light effort to documentation. GPT-6.1 Sol handles design and review at Light effort.
+Keep the baseline only when comparable runs show that it maintains or improves quality, elapsed time, and human effort.
 
 ## Agent selection
 
