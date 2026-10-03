@@ -1,21 +1,23 @@
 ---
 title: Feature Delivery Playbook
-version: 0.5.4
+version: 0.5.5
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
-validation_summary: profile/lifecycle combinations exercised; assessment-only output contract-tested, not live-validated
+validation_summary: profiles/lifecycles exercised; assessment and review evidence contract-tested, not live-validated
 owner: Engineering
-last_updated: 2026-09-24
+last_updated: 2026-10-02
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
+  - ../contracts/code_review.md
   - ../integrations/jira.md
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
   - ../skills/work_item_context.md
   - ../templates/work_record.md
   - ../templates/implementation_plan.md
+  - ../templates/code_review.md
   - ../templates/specification_assessment.md
   - ../templates/asset_manifest.json
   - ../templates/feature_delivery_run_prompt.md
@@ -250,6 +252,13 @@ Design the smallest change that satisfies verified acceptance criteria. Keep fac
 unresolved decisions separate. Map every acceptance criterion to a planned code, test, configuration, documentation, or
 explicitly deferred action.
 
+Apply [requirement applicability](../contracts/code_review.md#requirement-applicability) before promoting an inferred
+safety or policy rule into required work. `impact-analysis` checks its actual trigger, existing negative tests and
+payload/consumer contracts; `feature-design` records the check and result in Behavior Applicability. A conditional
+approval or enabled setting is not proof that every mutation requires the same lifecycle. For each new state change,
+trace initiation, submission/payload, completion and recovery; atomic persistence alone is insufficient. Independent
+planning review challenges these assumptions, not only conformance with upstream conclusions.
+
 For a clarification-required run, design does not create an implementation plan. It frames one or more supported
 solutions, recommends one when evidence permits, and identifies the smallest decision that would make planning ready.
 
@@ -338,10 +347,19 @@ handoff report or a new approval gate. A completed slice is `in_progress`, not a
 when new evidence invalidates scope, acceptance criteria, or the selected design; otherwise stop only for a genuine
 blocker.
 
+The Reviewer applies the [Evidence-Driven Code Review Contract](../contracts/code_review.md) and writes `code_review.md`
+from [the shared template](../templates/code_review.md). Establish the exact committed and worktree candidate, trace
+every material changed behavior through actual callers and consumers, and challenge tests against unchanged contracts.
+Before recording `accepted`, run `scripts/review_evidence.py --review <run-root>/code_review.md --require-accepted` from
+the framework package. Missing lifecycle or counterexample evidence is not an accepted review. Finalization rechecks
+the report for completed remediation. Preserve the existing read-only Reviewer and delegated Implementer separation.
+
 ### Stage 6 — Stabilize and Handoff
 
 Record validation, rollout or release steps, rollback, monitoring, ownership, residual risks, and next action. Release
 completed worker handles only after their terminal envelopes and artifacts are preserved.
+Reconcile active plans, decisions, tests, and review bundles after fixes; retain superseded artifacts as historical.
+Register and link the final `code_review.md`. Distinguish source acceptance from validation and release readiness.
 
 ## Implementation Plan Requirements
 
@@ -355,7 +373,9 @@ When created, the plan must include:
 6. risks, compatibility, rollback, monitoring, and release evidence; and
 7. completion criteria and unresolved assumptions; and
 8. the asset baseline: `asset_manifest.json`, source inventory status, review method/status, material-asset
-   observations, and acceptance/validation consequences.
+   observations, and acceptance/validation consequences; and
+9. Behavior Applicability: authority/condition, actual applicability evidence, counterexample check/result, disposition,
+   and planned action or exclusion for every material behavior. Run `scripts/review_evidence.py --plan <plan-path>`.
 
 ## Gates
 

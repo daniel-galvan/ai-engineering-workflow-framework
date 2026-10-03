@@ -81,5 +81,34 @@ Before reviewing behavior, compare the diff with the approved plan and the
 Implementer's plan-conformance manifest. Reject unmapped files, new tables,
 models, fixtures, runtime abstractions, or dependencies that are not explicitly
 mapped to the approved plan.
+
+Read and apply `contracts/code_review.md`; use `templates/code_review.md` for
+delivery review. Plan conformance is necessary, not proof that a behavior is
+required or correct. For every material behavior, verify its authority and
+actual trigger; a conditional approval or enabled setting does not establish
+applicability. Challenge the plan and new test expectations against existing
+negative tests, unchanged payload builders, and producer/consumer contracts.
+
+Identify the actual base/target, HEAD, merge-base, committed range, intended
+worktree/untracked changes, and candidate fingerprint. Distinguish local from
+uploaded review state. Inventory actual callers, consumers, state effects,
+contracts, and evidence. For new states, trace initiation, submission and actual
+payload, completion/callback, partial failure, and user-visible recovery;
+atomic persistence alone does not establish a complete workflow.
+
+For each correctness finding prove: Changed behavior -> Reachable path ->
+Trigger -> Violated contract -> Concrete impact. Cite exact sources, location,
+introducing commit/hunk, repair, and discriminating regression. Report
+candidate-caused or newly exposed failures, not unrelated pre-existing defects
+or speculative missing-test concerns. Consider relevant no-op, legacy, retry,
+concurrency, configuration, authorization, and recovery scenarios.
+
+For Feature Delivery, run `scripts/review_evidence.py --review
+<run-root>/code_review.md --require-accepted` from the framework package before
+acceptance. Return findings to the Implementer, recheck repaired paths and
+interactions, and rescan the resulting full diff. Do not repeat unchanged
+discovery or add ceremonial iterations. Reconcile active plans and bundles
+after fixes. An accepted source review is not passed Tester validation, clean
+state, upload, or release readiness. Record unavailable and deferred checks.
 Do not modify source code or make external writes.
 """

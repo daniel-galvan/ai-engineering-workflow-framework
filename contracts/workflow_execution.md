@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.10
+version: 0.5.11
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-02
 ---
 
 # Workflow Execution Contract
@@ -964,6 +964,11 @@ For every material source, configuration, or dependency change, Code Review MUST
 
 The Reviewer MUST record which dimensions were checked and any paths that could not be verified. A review that only
 confirms the happy path is incomplete and MUST NOT be reported as an accepted strict review.
+
+Apply the [Evidence-Driven Code Review Contract](code_review.md). Required change inventory, real caller/consumer
+tracing, complete state lifecycles, counterexample checks, and finding causality make the dimensions above auditable.
+An approved plan or green test is not authority for an unsupported policy extension. Reconcile active artifacts after
+remediation and distinguish source acceptance, executed validation, local candidate, and uploaded/released state.
 
 `changes_required` findings within approved scope return to the Implementer in the same remediation run. The Implementer
 fixes them, records the result, and the Reviewer rechecks the affected diff before validation begins. No new user

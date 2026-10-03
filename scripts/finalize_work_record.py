@@ -42,6 +42,11 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
         NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors, coverage_readiness_errors,
     )
 
+try:
+    from review_evidence import PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors
+except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
+    from scripts.review_evidence import PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors
+
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
@@ -662,6 +667,7 @@ def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[s
             errors.append(f"Feature Delivery {state} requires implementation_plan.md")
         else:
             errors.extend(asset_plan_errors(plan_path.read_text(), manifest))
+            errors.extend(applicability_errors(plan_path.read_text()))
     return list(dict.fromkeys(errors))
 
 
@@ -670,7 +676,21 @@ def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[
     if not isinstance(identity, dict):
         return []
     playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
-    if playbook != "feature_delivery" or str(identity.get("Lifecycle", "")).strip().lower() != "planning":
+    if playbook != "feature_delivery":
+        return []
+    if str(identity.get("Lifecycle", "")).strip().lower() == "remediation":
+        root_value = packet.get("finalization", {}).get("Durable artifact root", "")
+        root = Path(str(root_value)).resolve()
+        registered = {
+            target for row in packet.get("durable_artifacts", [])
+            if isinstance(row, dict) and (target := _feature_asset_artifact_path(row.get("Path"), root)) is not None
+        }
+        linked = {
+            target for value in packet.get("handoff", {}).get("artifacts", [])
+            if (target := _feature_asset_artifact_path(value, root)) is not None
+        }
+        return completed_review_errors(identity, root, registered_paths=registered, handoff_paths=linked)
+    if str(identity.get("Lifecycle", "")).strip().lower() != "planning":
         return []
 
     state = str(identity.get("State", "")).strip().lower()
@@ -2696,7 +2716,7 @@ def self_test() -> None:
             },
         }))
         (feature_root / "implementation_plan.md").write_text(
-            "# Asset Baseline\n\nasset_manifest.json\n"
+            "# Asset Baseline\n\nasset_manifest.json\n" + PLAN_FIXTURE
         )
         feature["durable_artifacts"].append({
             "Artifact": "Asset manifest", "Path": str(feature_root / ASSET_MANIFEST_FILENAME),
@@ -2705,6 +2725,23 @@ def self_test() -> None:
         feature["handoff"]["artifacts"].append(str(feature_root / ASSET_MANIFEST_FILENAME))
         assert _feature_delivery_packet_contract_errors(feature) == []
         assert _feature_delivery_asset_contract_errors(feature) == []
+        plan_path = feature_root / "implementation_plan.md"
+        plan_path.write_text("# Asset Baseline\nasset_manifest.json\n")
+        assert any("Behavior Applicability" in error for error in _feature_delivery_asset_contract_errors(feature))
+        plan_path.write_text("# Asset Baseline\nasset_manifest.json\n" + PLAN_FIXTURE)
+        delivery = json.loads(json.dumps(feature))
+        delivery["identity"].update({"Lifecycle": "remediation", "State": "completed"})
+        assert any("code_review.md" in error for error in _feature_delivery_packet_contract_errors(delivery))
+        review_path = feature_root / "code_review.md"
+        review_path.write_text(REVIEW_FIXTURE.replace("| verified |", "| defect |"))
+        assert any("defect" in error for error in _feature_delivery_packet_contract_errors(delivery))
+        review_path.write_text(REVIEW_FIXTURE)
+        assert any("register code_review.md" in error for error in _feature_delivery_packet_contract_errors(delivery))
+        delivery["durable_artifacts"].append({
+            "Artifact": "Code review", "Path": str(review_path), "Status": "Accepted", "Purpose": "Review evidence",
+        })
+        delivery["handoff"]["artifacts"].append(str(review_path))
+        assert _feature_delivery_packet_contract_errors(delivery) == []
         missing_asset_feature = json.loads(json.dumps(feature))
         missing_asset_feature["finalization"]["Durable artifact root"] = str(feature_root / "missing")
         assert any(
@@ -2822,7 +2859,7 @@ def self_test() -> None:
         assert blocked_assessment["identity"]["Engineering outcome"] == "partially_solved"
         blocked_planning = json.loads(json.dumps(feature))
         blocked_planning["handoff"]["workflow_result"] = "Implementation plan ready; no implementation performed."
-        (feature_root / "implementation_plan.md").write_text("# Asset Baseline\n\nasset_manifest.json\n")
+        (feature_root / "implementation_plan.md").write_text("# Asset Baseline\n\nasset_manifest.json\n" + PLAN_FIXTURE)
         _prepare_blocked_runtime_snapshot(blocked_planning, blocked_closure, report_path, None)
         assert blocked_planning["identity"]["State"] == "blocked"
         assert blocked_planning["identity"]["Workflow outcome"] == "blocked"
@@ -2852,7 +2889,7 @@ def self_test() -> None:
         design_path.write_text(json.dumps({"asset_gate": {"asset_count": 0, "source_count": 1}}))
         assert _feature_delivery_asset_contract_errors(assessment_feature) == []
         planning_plan = feature_root / "implementation_plan.md"
-        planning_plan.write_text("# Asset Baseline\n\nasset_manifest.json\n")
+        planning_plan.write_text("# Asset Baseline\n\nasset_manifest.json\n" + PLAN_FIXTURE)
         planning_feature = json.loads(json.dumps(feature))
         planning_feature["handoff"].update({
             "workflow_result": "Implementation plan ready; no implementation performed.",

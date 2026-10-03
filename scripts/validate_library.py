@@ -40,6 +40,11 @@ try:
 except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
     from scripts.specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
 
+try:
+    from review_evidence import applicability_errors, completed_review_errors, self_test as review_evidence_self_test
+except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
+    from scripts.review_evidence import applicability_errors, completed_review_errors, self_test as review_evidence_self_test
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
@@ -807,6 +812,7 @@ def feature_asset_record_errors(
         plan = root / "implementation_plan.md"
         if plan.is_file():
             errors.extend(asset_plan_errors(plan.read_text(), manifest))
+            errors.extend(applicability_errors(plan.read_text()))
         else:
             errors.append(f"{path}: Feature Delivery planning requires implementation_plan.md")
     if not assessment and identity.get("State") == "awaiting_input":
@@ -2195,6 +2201,18 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             )
     for error in feature_asset_record_errors(text, path, identity, finalization):
         fail(error)
+    review_root = Path(finalization.get("Durable artifact root") or path.parent).resolve()
+    registered_review_paths = {
+        target for row in markdown_table(text, "# Durable Artifacts")
+        if (target := _artifact_path(row.get("Path", ""), path)) is not None
+    }
+    linked_review_paths = {
+        target for line in fenced_section(text, "# Final Handoff").splitlines()
+        if line.startswith("- ") and (target := _artifact_path(line[2:], path)) is not None
+    }
+    for error in completed_review_errors(identity, review_root, registered_paths=registered_review_paths,
+                                         handoff_paths=linked_review_paths):
+        fail(f"{path}: {error}")
     repositories = markdown_table(text, "# Repository Evidence Eligibility")
     if not repositories or any(not row.get("Full revision") for row in repositories):
         fail(f"{path}: every relevant repository must record its full revision")
@@ -2748,6 +2766,7 @@ def validate_work_record(path: Path, require_terminal: bool = False) -> str:
 
 def self_test_reasoning_records() -> None:
     asset_manifest_self_test()
+    review_evidence_self_test()
     assert table_cells(r"| Field | message \| link_title \| link_summary |") == [
         "Field", "message | link_title | link_summary"
     ]
@@ -3954,6 +3973,11 @@ for agent_name, phrases in {
         "delegated Reviewer inspected the current",
         "accepted delivery review",
         "plan-conformance manifest",
+        "contracts/code_review.md",
+        "unchanged payload builders",
+        "atomic persistence alone",
+        "Trigger -> Violated contract -> Concrete impact",
+        "scripts/review_evidence.py",
     ),
     "tester": (
         "delegated Reviewer returns `accepted`",
@@ -4188,6 +4212,19 @@ for phrase in (
 for phrase in ("# Asset Baseline", "asset_manifest.json", "material asset"):
     if phrase not in (ROOT / "templates" / "implementation_plan.md").read_text():
         fail(f"templates/implementation_plan.md is missing asset-gate control: {phrase}")
+for relative, phrases in {
+    "contracts/code_review.md": (
+        "## Requirement applicability", "## Review boundary and identity", "## Behavior review",
+        "## Finding validity", "## Validation and disposition", "unchanged payload builders",
+    ),
+    "templates/code_review.md": ("## Behavior Review", "## Reconciliation and Next Action"),
+    "templates/implementation_plan.md": ("# Behavior Applicability", "Counterexample check / result"),
+    "playbooks/feature_delivery.md": ("scripts/review_evidence.py", "contracts/code_review.md"),
+}.items():
+    content = (ROOT / relative).read_text()
+    for phrase in phrases:
+        if phrase not in content:
+            fail(f"{relative} is missing evidence-driven review control: {phrase}")
 for phrase in ("Asset source: true", "asset_manifest.json", "awaiting_input"):
     if phrase not in RUN_SKILL.read_text():
         fail(f"skills/run/SKILL.md is missing asset-gate control: {phrase}")

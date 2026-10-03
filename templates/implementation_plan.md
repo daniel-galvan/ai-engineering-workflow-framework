@@ -1,6 +1,6 @@
 ---
 title: Engineering Implementation Plan
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -88,6 +88,23 @@ when a visual asset was only inspected by metadata, or when a material asset is 
 
 Record the confirmed cause or best-supported hypothesis, evidence references, current behavior, expected behavior,
 residual uncertainty, and confidence. Preserve the evidence, claim, and decision IDs that support the plan.
+
+# Behavior Applicability
+
+For Feature Delivery, record every material behavior using the
+[applicability contract](../contracts/code_review.md#requirement-applicability). Separate outcomes, mechanisms, and
+inferred policy extensions. Preserve the exact condition of conditional approval. Cite actual source
+comparisons or existing-test results that could contradict the proposal, including unchanged payloads and consumers.
+Required/conditional work needs applicability evidence; unverified policy extensions cannot enter a ready plan as
+required work. Use `deferred` or `excluded` with an explicit non-impact consequence when appropriate.
+
+| Behavior | Authority / condition | Applicability evidence | Counterexample check / result | Disposition | Planned action / exclusion |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
+
+For a new state transition, include the initiating path, supported submission/payload, completion/callback, partial
+failure and recovery contract in the behavior evidence or linked design. Feasible future work may be planned; source
+comparison does not require implementing or executing future tests during planning.
 
 # Interface Contract
 

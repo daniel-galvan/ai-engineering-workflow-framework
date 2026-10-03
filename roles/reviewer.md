@@ -1,16 +1,17 @@
 ---
 
 title: Reviewer Role
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 category: Review
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-10-02
 required_documents:
 
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md
+  - ../contracts/code_review.md
 skills:
 
   - architecture_mapping
@@ -229,6 +230,13 @@ Before reviewing behavior, compare the diff with the approved plan and the
 Implementer's plan-conformance manifest. Reject unmapped files, new tables,
 models, fixtures, runtime abstractions, or dependencies that are not explicitly
 mapped to the approved plan.
+
+Apply the [Evidence-Driven Code Review Contract](../contracts/code_review.md) and use
+[`code_review.md`](../templates/code_review.md). Conformance does not establish correctness. Challenge applicability
+and new test expectations against real callers, unchanged consumers, payloads, and existing negative tests. Trace new
+states through submission, completion, and recovery. Establish each finding's candidate causality, reachability,
+trigger, violated contract, and concrete impact. Bind acceptance to the exact final candidate and preserve validation
+limits; do not claim upload or release readiness from source review alone.
 
 For planning review, challenge proposed seams against authoritative outcomes and
 evidence. Keep feasible implementation, dependency, test, environment, and
