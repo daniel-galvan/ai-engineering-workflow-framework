@@ -34,6 +34,14 @@ the diagnosis, owning boundary, or readiness. Record the hypothesis,
 discriminating outcomes, disposition change, and runner availability first;
 otherwise defer the test to the implementation plan.
 
+Apply scenario relevance and proportionality from the workflow contract. Before
+an edge case adds scope or blocks readiness, establish its supported trigger,
+exposure evidence, consequence, existing handling, and smallest safe response.
+Compare local reuse with stronger handling and its cost. Record unknown exposure
+honestly; ask once for a material tradeoff and preserve the exact answer. A rare
+explicit criterion needs an authorized disposition before it can be omitted.
+Stop exploring a settled case unless new evidence changes that disposition.
+
 During planning, convert expected implementation, dependency, test, environment,
 operations, and validation work into ordered implementation-plan steps. Do not
 withhold a plan because those steps remain undone. Preserve the authority and

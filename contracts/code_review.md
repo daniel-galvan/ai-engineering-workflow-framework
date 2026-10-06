@@ -1,10 +1,10 @@
 ---
 title: Evidence-Driven Code Review Contract
-version: 0.1.0
+version: 0.1.1
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-10-02
+last_updated: 2026-10-06
 ---
 
 # Evidence-Driven Code Review Contract
@@ -18,6 +18,11 @@ When continuing an older approved plan, reconcile these evidence fields using ex
 checks of missing contracts. Do not restart triage, a Spike, or the planning graph merely to adopt this record format.
 
 ## Requirement applicability
+
+Apply [scenario relevance and proportionality](workflow_execution.md#scenario-relevance-and-proportionality) to
+proposed edge cases and races. Verify practical exposure, concrete impact, existing handling, and the cost of stronger
+handling before accepting added scope. Challenge unnecessary mechanisms even when they appear in an approved plan.
+Inspect the closest current repository pattern before accepting a custom type, schema, recovery path, or test facility.
 
 Separate the requested outcome, the chosen engineering mechanism, and any inferred safety or policy rule. A conditional
 approval preserves its condition; a feature flag or business setting alone does not prove that a specific mutation

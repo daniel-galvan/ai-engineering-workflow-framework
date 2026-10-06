@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.11
+version: 0.5.12
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-10-02
+last_updated: 2026-10-06
 ---
 
 # Workflow Execution Contract
@@ -757,6 +757,50 @@ work record, with alternatives summarized in `Alternatives Considered`: the deci
 more feasible options, tradeoffs and validation impact, recommendation, and the smallest question and owner needed to
 proceed.
 
+## Scenario Relevance and Proportionality
+
+Apply this rule during investigation, Spike execution or assessment, specification assessment, planning, implementation,
+and review. Inventory and consume required sources completely; use their implications to answer the requested outcome.
+Discovering an adjacent problem does not automatically add it to the current delivery.
+Requests for deep, exhaustive, or adversarial work increase evidence rigor within that outcome and scope. They do not
+turn every technically possible failure into required hardening.
+
+Before an edge case or race condition changes readiness, scope, or design, the owning worker MUST establish:
+
+- its exact requirement or approved decision, supported entrypoint, actors, and triggering sequence;
+- evidence of exposure from code, tests, documentation, incident data, or supplied user context;
+- the concrete consequence, existing handling or recovery, and whether the proposed change causes or worsens it; and
+- the smallest safe response and its cost in changed components, state, migrations, contracts, and operations.
+
+Code can establish reachability, but does not establish frequency. Record exposure as observed, reported, inferred, or
+unknown; do not invent percentages or describe an unmeasured case as common or impossible. Consider normal use and
+supported negative cases first. Rare exposure does not excuse a credible security, privacy, data-loss, or serious
+correctness failure; frequency and consequence are separate judgments.
+
+Classify each consequential scenario in the existing risk, applicability, or decision record as required current work,
+an accepted limitation, follow-up, or an unresolved material decision. Reuse those records; no separate scenario
+artifact or scoring system is required. Optional scenarios stay outside required assessment Coverage. An explicit
+acceptance criterion remains required until an authorized decision changes it, even if its trigger appears rare.
+
+Use the smallest source comparison or focused test that can change the disposition. If the remaining question is an
+acceptable product tradeoff, ask its owner once with the trigger, practical consequence, simple existing behavior, and
+extra work needed for stronger handling. State the uncertain exposure. An unavailable measurement is not authority to
+require a larger design. Preserve the question as unresolved when its answer is material to the requested outcome.
+
+Compare the existing implementation or local pattern with the stronger alternative before recommending new versioning,
+locking, retry infrastructure, tables, dependencies, or cross-repository changes. Explain which verified requirement
+the simpler option cannot satisfy. Existing approval of a plan does not exempt its mechanism from this check. A
+mechanism's own prerequisites are not independent evidence that the mechanism is needed.
+
+Once a bounded check establishes the disposition, stop that investigation. Reopen it only for new relevant evidence,
+a changed requirement, or failed validation. A simple follow-up question uses established evidence; it does not restart
+triage or broad validation. Additional checks must name the decision their result could change.
+
+Approval to simplify an implementation does not by itself remove an acceptance criterion. Approval to accept a
+specific tradeoff does not authorize every technical mechanism or repository needed by a stronger guarantee. Preserve
+the exact approval and condition, identify affected criteria, and carry that decision into downstream assignments and
+active artifacts. Reconcile conflicting source wording explicitly; do not repeatedly ask an already answered question.
+
 ## Planning Readiness and Implementation Work
 
 Planning creates an approval-gated implementation plan; it does not complete implementation, validation, deployment,
@@ -918,6 +962,12 @@ reuse target, the intended change, and the validation that will prove it. Every 
 abstraction, or dependency MUST be mapped to an explicit plan step. A change that is not mapped, contradicts an
 explicit plan boundary, or replaces the approved design to avoid repairing the named implementation MUST stop before
 editing with `replanning_required`.
+
+Before selecting a new mechanism, inspect the closest current implementation in the owning component and identify the
+helper, type, persistence convention, error path, or test facility to reuse. Record its path and why it fits in the
+existing source plan or conformance manifest. Explain a necessary deviation through the verified contract or observed
+limitation; do not copy a pattern whose semantics differ. Optional tooling or diagnostic improvements belong in
+follow-up work unless they are necessary to validate or deliver the approved change.
 
 The Reviewer MUST compare the current diff with this manifest and the approved plan before reviewing behavior. A
 missing manifest, unmapped change, forbidden replacement, hard-coded runtime fixture, or unresolved dependency that the

@@ -78,6 +78,12 @@ an incomplete planning gate. Before requesting clarification, ensure the
 responsible workers performed bounded safe checks and recorded feasible options,
 recommendation, `checks_performed`, and `checks_remaining`.
 
+Include the requested outcome, current Story boundary, and the contract's
+scenario relevance and proportionality rule in analytical and delivery packets.
+Preserve settled scenario dispositions and exact owner decisions downstream.
+Before assigning another check, require the owning worker to name the decision
+its result could change; do not restart settled triage for a simple follow-up.
+
 Resolve each provider agent definition before activation. When the spawn API
 otherwise inherits Coordinator settings, pass the definition's exact `model`
 and `model_reasoning_effort` explicitly. Do not adapt or escalate those values

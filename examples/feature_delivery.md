@@ -1,9 +1,9 @@
 ---
 title: Feature Delivery Example
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-06
 depends_on:
   - ../playbooks/feature_delivery.md
   - ../templates/feature_delivery_run_prompt.md
@@ -117,3 +117,26 @@ missing or conflicting acceptance and validation conditions. If all material req
 Clarification Brief. Both outcomes are useful results. Do not create `implementation_plan.md` on this route. A later
 Story-level or Epic-level implementation-planning run is separate. Only a newly isolated technical unknown warrants a
 new Spike.
+
+## Rare Case with a Simpler Existing Behavior
+
+An Epic requests that scheduled exports use current source data, while customized exports preserve their saved data.
+A Story also requests a conflict when an administrator changes the source during another administrator's save.
+Existing code already compares the requested data with the source and persists a classification.
+
+Source inspection proves the race can occur, but does not establish its frequency. Supplied owner context says this is
+normally a single-administrator workflow. Record that as reported exposure, not a measured percentage. Compare the
+existing classification and recovery with adding revision tracking, new migrations, and conflict handling. Ask the
+owner which observable behavior is required in that race, and explain the extra work needed for stronger handling.
+
+| Evidence or decision | Disposition and effect |
+| --- | --- |
+| Current-source and customized-export requirements are explicit | Keep both in required Coverage and validate the normal flows first. |
+| Concurrent-edit conflict is an explicit Story criterion | Retain it as required until the owner confirms a change; rarity alone cannot remove it. |
+| Owner accepts existing classification for that race and explicitly removes conflict handling | Record the exact accepted limitation and reconcile affected criteria; no revision-tracking work is required for this case. |
+| Source inspection shows the new export path can publish private data | Address the safety failure even with rare exposure; document the supported trigger and smallest safe repair. |
+| A separate existing recovery weakness does not affect the requested export behavior | Record a follow-up and its non-impact rationale; preserve the current Story boundary. |
+
+For implementation planning, cite the existing comparator, persistence enum, and colocated tests to reuse. The Reviewer
+checks the simplest design against the required behavior and accepted limitation. Once those checks pass, proceed to
+handoff; a new hypothetical timing sequence alone does not justify reopening the decision.

@@ -1,6 +1,6 @@
 ---
 title: Engineering Implementation Plan
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -123,6 +123,12 @@ contract from the Fix Design result. Use `Not applicable` only when `interface_c
 
 Keep the change minimal. Record import, dependency, configuration, schema, contract, or rollout implications when
 applicable. Every material action must retain its originating claim and decision references.
+Name the closest current repository pattern and reuse point for a new type, persistence change, error path, or test
+facility; explain any necessary deviation. Apply
+[scenario relevance and proportionality](../contracts/workflow_execution.md#scenario-relevance-and-proportionality)
+before adding a stronger mechanism for an edge case. Retain the trigger, exposure, consequence, simpler option, cost,
+and disposition in Behavior Applicability or Risk and Operations. Keep review units aligned with Story behavior and
+dependencies; a storage-only prerequisite does not establish that the Story's requested behavior is delivered.
 
 # 4. Test and Validation Plan
 

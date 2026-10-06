@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.14
+version: 0.5.15
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -9,7 +9,7 @@ default_timebox_minutes: 35
 default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
 validation_summary: Jira related-work and attachment coverage gate added; live rerun pending
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-06
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -142,6 +142,12 @@ document unless the prompt explicitly declares it as comparison/supporting input
 excluded context. This restriction does not exclude related Jira issues, their comments, or their attachments.
 
 ### Stage 2 — Investigate or Assess
+
+Apply
+[scenario relevance and proportionality](../contracts/workflow_execution.md#scenario-relevance-and-proportionality).
+Investigate a rare case when it can change the primary answer or a material safety conclusion. Record its supported
+trigger, exposure evidence, consequence, existing handling, and disposition in the report's existing risk or decision
+sections. Stop exploring it when the disposition is supported; preserve other useful observations as follow-up.
 
 For `execute_spike`, run the smallest checks or disposable experiments that can distinguish the credible answers.
 Choose the highest observable or public seam that can falsify the hypothesis. Record the seam, hypothesis, command or

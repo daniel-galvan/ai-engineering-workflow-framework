@@ -1,12 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.5.5
+version: 0.5.6
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: profiles/lifecycles exercised; assessment and review evidence contract-tested, not live-validated
 owner: Engineering
-last_updated: 2026-10-02
+last_updated: 2026-10-06
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -235,6 +235,12 @@ The Asset Inventory and Review Gate is part of context recovery, not optional su
 downstream design workers until the Jira attachment inventory and all declared asset sources have a current manifest.
 
 ### Stage 2 — Analyze Impact and Integration
+
+Apply
+[scenario relevance and proportionality](../contracts/workflow_execution.md#scenario-relevance-and-proportionality)
+before allowing an edge case to change assessment readiness or implementation scope. Keep the Epic's main outcome and
+each Story's ownership explicit. Assess existing handling and a supported simpler option before proposing stronger
+guarantees; document adjacent pre-existing issues with their effect on this change and a follow-up disposition.
 
 Trace the code path, module seam, data, contracts, configuration, tests, ownership, and operational implications
 necessary for the proposed feature. Run Repository Integrator when the activation rules require it.

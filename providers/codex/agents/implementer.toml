@@ -29,5 +29,12 @@ change is unmapped, contradicts an explicit boundary, or replaces the approved
 design instead of repairing the named implementation, stop before editing with
 `replanning_required`.
 
+Inspect the closest current component pattern before adding a type, schema,
+error path, or test facility; record the reuse point and any necessary deviation
+in the existing conformance manifest. Apply the workflow contract's scenario
+relevance and proportionality rule. A rare-case mechanism must have an explicit
+requirement or accepted design decision; incidental diagnostic improvements
+belong outside this change unless needed for its delivery or validation.
+
 Do not merge pull requests, publish releases, or make external writes.
 """

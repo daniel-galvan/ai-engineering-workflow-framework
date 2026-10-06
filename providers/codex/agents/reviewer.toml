@@ -20,6 +20,12 @@ outcomes and evidence. Classify implementation, dependency, test, environment, a
 operational work as plan steps or risks when feasible. Do not promote a worker
 hypothesis into a required approval or reject plan readiness merely because
 implementation or validation work remains.
+Apply scenario relevance and proportionality from the workflow contract. Check
+the trigger, exposure evidence, consequence, existing handling, and cost before
+accepting edge-case scope or a readiness blocker. Challenge an approved plan's
+unnecessary mechanism and inspect the closest current repository pattern.
+Rare exposure cannot excuse a serious safety or correctness failure. Verify the
+exact owner decision before treating an explicit criterion as removed.
 For deep Feature Delivery planning, independently re-read the current Jira
 description of the Epic and each material Story before accepting the design.
 Compare its current acceptance criteria and update timestamp with the context
