@@ -1,12 +1,12 @@
 ---
 
 title: Failure Diagnosis
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 category: Analysis
 provider_independent: true
 owner: Engineering
-last_updated: 2026-07-28
+last_updated: 2026-10-07
 ---
 
 # Failure Diagnosis
@@ -39,6 +39,15 @@ reason and remaining uncertainty documented. Before requesting clarification, co
 artifacts, record the strongest supported hypothesis or explain why none is possible, and execute the smallest safe
 falsification check. A proposed check is not enough. The recommended fix addresses the confirmed cause rather than
 only the reported symptom.
+
+## Report and Current-Code Reconciliation
+
+When report behavior, copy, or a named API differs from current source, perform a focused history check of the affected
+symbol (`git log`, `git blame`, or `git show`) and inspect the directly associated fix/work item. The assigned diagnosis
+worker owns this check; do not send the user to a separate investigation. Record the original reported failure, the
+current behavior, and the remaining acceptance gap as distinct claims. Prior fixes do not override current requirements
+or prohibit modifying their code. Update the diagnosis and plan within the same run. Missing deployment mapping remains
+rollout uncertainty unless it changes the target, scope, or safety decision; history alone creates no approval gate.
 
 ## Safety
 

@@ -338,7 +338,8 @@ def _planning_runtime_closure_errors(
     playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
     state = str(identity.get("State", "")).strip().lower()
     if not ((playbook == "technical_spike" and state == "completed") or
-            (playbook == "feature_delivery" and state in {"awaiting_input", "ready_for_implementation", "completed"})):
+            (playbook in {"feature_delivery", "techops_issue_remediation"}
+             and state in {"awaiting_input", "ready_for_implementation", "completed"})):
         return []
     if playbook == "technical_spike" and _technical_spike_missing_workers(packet):
         return []
@@ -347,14 +348,15 @@ def _planning_runtime_closure_errors(
         for row in packet.get("worker_results", [])
         if isinstance(row, dict) and str(row.get("Outcome", "")).strip().lower() == "complete"
     }
-    if not completed_workers or not _runtime_released(closure):
+    if not completed_workers or not _runtime_closed(closure):
         return []
     # ponytail: closure has no worker-to-handle mapping; count is the minimum gate until that schema exists.
     released_handles = {
-        handle.lower()
+        handle.strip().lower()
         for row in closure
         if isinstance(row, dict)
-        for handle in UUID_PATTERN.findall(str(row.get("Completed worker handles", "")))
+        for handle in re.split(r",|;|<br\s*/?>", str(row.get("Completed worker handles", "")))
+        if handle.strip().lower() not in {"", "none", "unknown", "unavailable"}
     }
     if len(released_handles) < len(completed_workers):
         workers = ", ".join(sorted(completed_workers))
@@ -1247,7 +1249,7 @@ def _normalize_packet(
         if not isinstance(row, dict):
             continue
         handles = UUID_PATTERN.findall(str(row.get("Completed worker handles", "")))
-        if handles:
+        if handles and str(row.get("Runtime status", "")).strip().lower() == "released":
             row["Completed worker handles"] = ", ".join(dict.fromkeys(handles))
             evidence = str(row.get("Closure evidence or blocker", ""))
             if str(row.get("Runtime status", "")).strip().lower() == "released" and any(
@@ -1469,11 +1471,17 @@ def _artifact_link(item: object, artifact_root: object) -> str:
         target = target[:-1]
         if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", target):
             return value
-        return f"{label}]({_relative_artifact_path(target, artifact_root)})"
+        target = target.strip("<>")
+        path = Path(target)
+        if not path.is_absolute():
+            path = Path(str(artifact_root)) / path
+        destination = str(path.resolve())
+        return f"{label}](<{destination}>)" if " " in destination else f"{label}]({destination})"
     path = Path(value)
     if not path.is_absolute():
         path = Path(str(artifact_root)) / path
-    return f"[{path.name}]({_relative_artifact_path(path, artifact_root)})"
+    destination = str(path.resolve())
+    return f"[{path.name}](<{destination}>)" if " " in destination else f"[{path.name}]({destination})"
 
 
 def _relative_artifact_path(value: object, artifact_root: object) -> str:
@@ -1586,9 +1594,9 @@ def _section(title: str, body: str) -> str:
     return f"# {title}\n\n{body}\n"
 
 
-def _runtime_released(rows: list[dict[str, object]]) -> bool:
+def _runtime_closed(rows: list[dict[str, object]]) -> bool:
     return bool(rows) and all(
-        str(row.get("Runtime status", "")).strip().lower() == "released"
+        str(row.get("Runtime status", "")).strip().lower() in {"released", "terminal"}
         and NO_ACTIVE_HANDLES.fullmatch(str(row.get("Remaining active handles", "")).strip())
         for row in rows
     )
@@ -1596,22 +1604,48 @@ def _runtime_released(rows: list[dict[str, object]]) -> bool:
 
 def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, object]]) -> None:
     packet["runtime_closure"] = closure
-    if not _runtime_released(closure):
-        return
     finalization = packet.get("finalization")
+    closed = _runtime_closed(closure)
+    blocked_snapshot = (
+        str(packet.get("identity", {}).get("State", "")).lower() == "blocked"
+        and bool(closure)
+        and all(str(row.get("Runtime status", "")).lower() == "blocked" for row in closure)
+    )
+    if blocked_snapshot:
+        if isinstance(finalization, dict):
+            finalization["Finalization schema"] = "Passed for blocked work record"
+        for row in packet.get("durable_artifacts", []):
+            name = Path(str(row.get("Path", ""))).name
+            if name == "work_record.md":
+                row["Status"] = "Blocked snapshot"
+            elif name == "runtime_closure.json":
+                row["Status"] = "Unverified"
+    if not closed:
+        return
+    runtime_status = "Released" if all(
+        str(row.get("Runtime status", "")).lower() == "released" for row in closure
+    ) else "Terminal"
     if isinstance(finalization, dict):
         reconciliation = str(finalization.get("Final reconciliation", "")).lower()
         stale = any(token in reconciliation for token in ("pending", "unknown", "in progress"))
         stale = stale or ("active" in reconciliation and "no active" not in reconciliation)
         if stale and "failed" not in reconciliation:
-            finalization["Final reconciliation"] = "Passed; runtime closure released with no active handles"
+            finalization["Final reconciliation"] = (
+                "Passed; runtime closure released with no active handles" if runtime_status == "Released"
+                else "Passed; runtime closure terminal with no active turns"
+            )
         finalization["Finalization schema"] = "Passed"
+    if runtime_status == "Terminal" and isinstance(finalization, dict):
+        finalization["Final reconciliation"] = re.sub(
+            r"runtime(?: closure)? released", "runtime closure terminal",
+            str(finalization.get("Final reconciliation", "")), flags=re.IGNORECASE,
+        )
     for row in packet.get("durable_artifacts", []):
         if not isinstance(row, dict):
             continue
         artifact_name = re.sub(r"[_-]+", " ", str(row.get("Artifact", "")).lower())
         if "runtime closure" in artifact_name:
-            row["Status"] = "Released"
+            row["Status"] = runtime_status
     for row in packet.get("worker_results", []):
         if not isinstance(row, dict):
             continue
@@ -1625,7 +1659,12 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
         stale = any(token in barrier for token in ("pending", "unknown", "in progress"))
         stale = stale or ("active" in barrier and "no active" not in barrier)
         if stale and "failed" not in barrier:
-            row["Barrier status"] = "Passed; runtime closure released"
+            row["Barrier status"] = f"Passed; runtime closure {runtime_status.lower()}"
+        elif runtime_status == "Terminal":
+            row["Barrier status"] = re.sub(
+                r"runtime closure released", "runtime closure terminal", str(row.get("Barrier status", "")),
+                flags=re.IGNORECASE,
+            )
     handoff = packet.get("handoff")
     if isinstance(handoff, dict):
         execution = str(handoff.get("execution", ""))
@@ -1667,6 +1706,8 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             execution,
             flags=re.IGNORECASE,
         )
+        if runtime_status == "Terminal":
+            execution = re.sub(r"runtime(?: closure)? released", "runtime terminal", execution, flags=re.IGNORECASE)
         handoff["execution"] = execution
         next_action = handoff.get("next_action")
         if isinstance(next_action, dict):
@@ -1697,9 +1738,13 @@ def render(packet: dict[str, object]) -> str:
         f"- {_artifact_link(item, packet['finalization']['Durable artifact root'])}\n"
         for item in handoff["artifacts"]
     )
-    runtime = "released" if _runtime_released(packet["runtime_closure"]) else "not released"
+    runtime = "not released"
+    if _runtime_closed(packet["runtime_closure"]):
+        runtime = "released" if all(
+            str(row.get("Runtime status", "")).lower() == "released" for row in packet["runtime_closure"]
+        ) else "terminal"
     execution = str(handoff["execution"]).rstrip(" .;")
-    if not re.search(r"\bruntime\s+released\b", execution, flags=re.IGNORECASE):
+    if not re.search(rf"\bruntime\s+{runtime}\b", execution, flags=re.IGNORECASE):
         execution = f"{execution}; runtime {runtime}"
     handoff_text = f"""```text
 Workflow result: {handoff['workflow_result']}
@@ -2011,8 +2056,24 @@ def _prepare_blocked_runtime_snapshot(
         and identity["State"] == "ready_for_implementation"
         and identity["Engineering outcome"] == "plan_only"
     )
-    if not ((playbook == "technical_spike" and identity["State"] == "handoff") or assessment or planning):
-        raise ValueError("blocked runtime snapshot requires a Technical Spike or Feature Delivery planning packet")
+    techops_workers = {"issue-evidence", "failure-path", "fix-design", "handoff"}
+    if identity.get("Executed profile") == "deep":
+        techops_workers.update({"repository-integration", "planning-review"})
+    techops_completed = {
+        row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"
+    }
+    techops_planning = (
+        playbook == "techops_issue_remediation"
+        and identity.get("Lifecycle") == "planning"
+        and identity["State"] == "ready_for_implementation"
+        and identity["Engineering outcome"] == "plan_only"
+        and techops_workers <= techops_completed
+        and all(row.get("Outcome") in {"complete", "not_applicable"} for row in packet.get("worker_results", []))
+        and (packet_path.parent / "implementation_plan.md").is_file()
+    )
+    if not ((playbook == "technical_spike" and identity["State"] == "handoff")
+            or assessment or planning or techops_planning):
+        raise ValueError("blocked runtime snapshot requires a supported planning packet")
     rows = closure["runtime_closure"]
     if not rows or any(
         row["Receipt owner"] != "Coordinator"
@@ -2028,6 +2089,8 @@ def _prepare_blocked_runtime_snapshot(
     if assessment or planning:
         errors = _feature_delivery_packet_contract_errors(packet)
         errors.extend(_feature_delivery_asset_contract_errors(packet))
+    elif techops_planning:
+        errors = []  # Shared shape, handoff, and work-record validators apply below.
     else:
         errors = _technical_spike_packet_contract_errors(packet, pre_release=True)
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
@@ -2038,7 +2101,7 @@ def _prepare_blocked_runtime_snapshot(
         errors.append(str(error))
     if errors:
         raise ValueError("\n".join(dict.fromkeys(errors)))
-    if assessment or planning:
+    if assessment or planning or techops_planning:
         if assessment:
             expected_results = FEATURE_ASSESSMENT_DISPOSITIONS[identity["State"]]
             if str(packet["handoff"]["workflow_result"]).strip() not in expected_results:
@@ -2403,7 +2466,7 @@ def prepare_analytical_failure(
     if closure_path.is_file():
         existing_closure = json.loads(closure_path.read_text())
         rows = _material_rows(existing_closure.get("runtime_closure"), "Run or stage")
-        if rows and _runtime_released(rows):
+        if rows and _runtime_closed(rows):
             closure = existing_closure
     packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     closure_path.write_text(json.dumps(closure, indent=2) + "\n")
@@ -2559,6 +2622,21 @@ def self_test() -> None:
     assert "finalizer pending" not in execution_packet["handoff"]["execution"].lower()
     assert "finalization validation passed" in execution_packet["handoff"]["execution"].lower()
 
+    terminal_packet = json.loads(json.dumps(execution_packet))
+    terminal_packet["runtime_closure"][0].update({
+        "Completed worker handles": "/root/issue_evidence",
+        "Runtime status": "Terminal",
+        "Closure evidence or blocker": (
+            "provider status snapshot 2026-10-07T22:42:58Z: /root/issue_evidence=completed"
+        ),
+    })
+    _normalize_packet(terminal_packet, {"runtime_closure": terminal_packet["runtime_closure"]})
+    assert terminal_packet["runtime_closure"][0]["Completed worker handles"] == "/root/issue_evidence"
+    _reconcile_runtime_state(terminal_packet, terminal_packet["runtime_closure"])
+    assert "runtime released" not in terminal_packet["handoff"]["execution"].lower()
+    assert "runtime terminal" in terminal_packet["handoff"]["execution"].lower()
+    assert terminal_packet["durable_artifacts"][1]["Status"] == "Terminal"
+
     with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
         root = Path(directory)
         packet["finalization"]["Durable artifact root"] = str(root)
@@ -2572,7 +2650,7 @@ def self_test() -> None:
         rendered = record.read_text()
         assert "{'explanation':" not in rendered
         assert "confidence: high" in rendered
-        assert "[work_record.md](./work_record.md)" in rendered
+        assert f"[work_record.md]({record.resolve()})" in rendered
         assert "| Work record | ./work_record.md |" in rendered
         assert "Final reconciliation | Passed; runtime closure released with no active handles |" in rendered
         assert "Finalization schema | Passed |" in rendered
@@ -2587,7 +2665,7 @@ def self_test() -> None:
         broken_record.write_text(
             rendered
             .replace("Workflow result: Worker runtime unavailable", "Workflow result:")
-            .replace("- [work_record.md](./work_record.md)\n\nExecution:", "Execution:")
+            .replace(f"- [work_record.md]({record.resolve()})\n\nExecution:", "Execution:")
         )
         rejected = subprocess.run(
             [sys.executable, str(VALIDATOR), str(broken_record)],
@@ -2909,6 +2987,25 @@ def self_test() -> None:
         assert "| Workflow outcome | blocked |" in planning_record.read_text()
         assert "| Engineering outcome | plan_only |" in planning_record.read_text()
         assert planning_plan.is_file()
+        assert "| Finalization schema | Passed for blocked work record |" in planning_record.read_text()
+        assert "| Unverified | Provider receipt |" in planning_record.read_text()
+        techops = json.loads(json.dumps(planning_feature))
+        techops["identity"]["Playbook / version"] = "playbooks/techops_issue_remediation.md / 0.5.2"
+        techops["worker_results"] = [
+            dict(techops["worker_results"][0], Worker=worker, Outcome="complete")
+            for worker in ("issue-evidence", "failure-path", "fix-design", "handoff")
+        ]
+        _prepare_blocked_runtime_snapshot(techops, blocked_closure, planning_record, None)
+        assert techops["identity"]["Workflow outcome"] == "blocked"
+        assert techops["identity"]["Engineering outcome"] == "plan_only"
+        incomplete_techops = json.loads(json.dumps(planning_feature))
+        incomplete_techops["identity"]["Playbook / version"] = techops["identity"]["Playbook / version"]
+        try:
+            _prepare_blocked_runtime_snapshot(incomplete_techops, blocked_closure, planning_record, None)
+        except ValueError as error:
+            assert "supported planning packet" in str(error)
+        else:
+            raise AssertionError("TechOps blocked snapshot accepted incomplete workers")
         spike = json.loads(json.dumps(packet))
         spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
         spike["identity"].update({
@@ -3534,7 +3631,7 @@ Runtime behavior remains unverified.
         context_binding = spike_manifest["bindings"]["current_state_investigator"]
         assert f"{context_binding['model']} / {context_binding['effort']}" in spike_rendered
         assert "| Role-policy baseline ID | corrupted |" not in spike_rendered
-        assert "[spike_report.md](./spike_report.md)" in spike_rendered
+        assert f"[spike_report.md]({spike_report.resolve()})" in spike_rendered
         incomplete_terminal = json.loads(spike_packet_path.read_text())
         incomplete_terminal["identity"].update({
             "State": "completed", "Workflow outcome": "completed", "Engineering outcome": "partially_solved",

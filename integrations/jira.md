@@ -1,10 +1,10 @@
 ---
 title: Jira Integration
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 provider: mcp
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-07
 ---
 
 # Jira Integration
@@ -76,15 +76,24 @@ The canonical offline fixture shape is
 
 For every Jira-backed playbook, the context read MUST include the Jira `hierarchy`, `selected_links`, and `history`
 scopes. Inventory every direct child and directly linked issue regardless of type or status, including Done Spikes and
-the Stories they produced. Read each inventoried issue's summary, description, acceptance criteria, comments, and
-relevant history before classifying its relevance; record why an issue is non-material. A Done status or absence of a
+the Stories they produced. For a bounded TechOps bug, the complete roster may be summary-only discovery: record each
+unopened sibling as `not selected; summary-only`, with a selection reason, never as proven non-material. Fully read the
+target, its relevant parent context, directly referenced issues, and candidates sharing the failure path, API, prior
+fix,
+or rollout dependency, including descriptions, criteria, comments, and relevant history. Inventory attachments and
+remote links for those selected issues. The Coordinator records why deferred siblings cannot change the bounded
+conclusion; expand discovery when evidence challenges that judgment. This permits bounded readiness without claiming
+all sibling content was reviewed. Other Jira-backed playbooks retain the full per-issue retrieval gate below.
+For those playbooks, read each inventoried issue's summary, description, acceptance criteria, comments, and relevant
+history before classifying its relevance; record why an issue is non-material. A Done status or absence of a
 report attachment is not evidence that a Spike produced no output: check related issues, issue history, and the
 resulting delivery breakdown. Do not treat those issues as inherited
 requirements.
 
-Inventory attachments on the supplied item and every inventoried issue. Review every available attachment's actual
-contents before treating its evidence as covered: render or visually inspect images and video; read logs and documents.
-Query remote links separately for each inventoried issue; empty `issuelinks` or attachment fields do not establish
+Inventory attachments on the supplied item and every issue selected under the applicable retrieval gate. Review every
+available attachment's actual contents before treating its evidence as covered: render or visually inspect images and
+video; read logs and documents.
+Query remote links separately for each selected issue; empty `issuelinks` or attachment fields do not establish
 an empty remote-link collection. Record the retrieval method, status, and discovered URLs. Disposition each linked
 document or external record as material or supporting context. Preserve a retrieval limitation when links are
 unavailable.

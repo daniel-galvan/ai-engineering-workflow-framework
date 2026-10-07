@@ -98,8 +98,12 @@ Use each named provider agent definition from `role_bindings.json` before activa
 fail policy conformance on any observed mismatch. If a definition cannot be
 resolved or the provider cannot apply it, stop with
 `provider_configuration_unavailable`; do not activate an inherited-default worker.
-Before spawning, run the manifest's `worker_runtime_guard` against the selected envelope in the direct-child
-`worker_activation_packets.json` hashed bundle. Begin the worker message with `Coordinator initialization: complete`,
+Before each spawn, run the manifest's `worker_runtime_guard` against that worker's envelope in the direct-child
+`worker_activation_packets.json` hashed bundle and require an allowed result immediately before the spawn call. Do not
+batch guards after dispatching workers. A late guard does not satisfy the activation barrier: stop further dispatch,
+record `activation_sequence_nonconformant`, set `profile_status: blocked` and `Workflow outcome: blocked`, and reconcile
+workers already started while preserving any established engineering result. Begin the worker message with
+`Coordinator initialization: complete`,
 include that complete role envelope unchanged, then append only the typed assignment and current-run input manifest.
 When the in-task spawn API does not expose `agent_role` or `agent_path`, the exact envelope is the binding-delivery
 mechanism; missing fields alone do not invalidate the worker. Observed metadata must still match when present.
@@ -216,6 +220,20 @@ continuation, add only new inputs and do not retroactively alter earlier assignm
 one Documenter handle through finalization; if the runtime cannot update that worker, activate only one final Documenter
 after fan-in. Count every successful activation, including any final Documenter. Treat a
 malformed call rejected before activation as a coordination error.
+Every close/release instruction below uses the applicable provider route. When no close operation exists,
+collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
+For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
+use `Runtime status: Released` only after all run workers are released and no active handles remain.
+For Codex collaboration runtimes without a close operation, use `Runtime status: Terminal` after a fresh provider status
+snapshot, taken after the last correction/follow-up, shows every activated run worker completed or idle and none running
+or pending. Preserve each exact identifier returned by spawn (UUID or canonical `/root/...` task name), including the
+Documenter, and record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in the closure evidence.
+`Remaining active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.
+A result message or historical completion event alone is insufficient; later follow-ups invalidate the old snapshot.
+A task name is valid only when returned by the provider and accepted by its status operation, never an invented role label.
+If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
+`worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
+unsupported close receipt; name the missing provider status/release capability and its adapter owner.
 Do not wait or request status after a handle is released. If it happens, count it as both a coordination error and a
 post-closure poll.
 

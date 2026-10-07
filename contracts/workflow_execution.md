@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.12
+version: 0.5.13
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-10-06
+last_updated: 2026-10-07
 ---
 
 # Workflow Execution Contract
@@ -740,6 +740,12 @@ Record `activated_profile` when the selected worker graph starts. Record `execut
 required workers returned terminal envelopes and whose fan-in passed; use `None` when no profile completed. A run with
 an activated graph but incomplete fan-in is `profile_status: blocked`, not `not_executed`.
 
+Before each worker spawn, the Orchestrator MUST run that worker's activation guard and observe an allowed result. The
+guard and spawn are an ordered pair: a guard run after dispatch does not satisfy the activation barrier. If a worker
+starts first, record `activation_sequence_nonconformant`, stop further dispatch, set `profile_status: blocked` and
+`Workflow outcome: blocked`, and reconcile the already-started worker without claiming that its activation was
+validated. Preserve a ready plan as `Engineering outcome: plan_only`; runtime closure remains an independent status.
+
 ## Clarification Framing
 
 An incomplete requirement or unresolved decision is not automatically a blocker. Confirmed user decisions are not
@@ -1051,10 +1057,22 @@ operations; it MUST NOT manually reproduce or edit the handle. A `not_found` res
 original spawn result, durable artifacts, and provider status before replacement. Record every spawn
 attempt, handle discrepancy, replacement, and duplicated result.
 
-The handle is the exact provider value returned by the spawn primitive. Worker IDs, agent paths, task names, and
-canonical artifact paths are labels only and MUST NOT be substituted for a provider handle. If the provider exposes no
-handle or release-status value, keep the run blocked and write the Coordinator-owned closure row defined under
-[Worker Runtime Closure](#worker-runtime-closure). Do not claim runtime closure.
+Every close/release instruction below uses the applicable provider route. When no close operation exists,
+collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
+For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
+use `Runtime status: Released` only after all run workers are released and no active handles remain.
+For Codex collaboration runtimes without a close operation, use `Runtime status: Terminal` after a fresh provider status
+snapshot, taken after the last correction/follow-up, shows every activated run worker completed or idle and none running
+or pending. Preserve each exact identifier returned by spawn (UUID or canonical `/root/...` task name), including the
+Documenter, and record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in the closure
+evidence.
+`Remaining active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.
+A result message or historical completion event alone is insufficient; later follow-ups invalidate the old snapshot.
+A task name is valid only when returned by the provider and accepted by its status operation, never an invented role
+label.
+If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
+`worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
+unsupported close receipt; name the missing provider status/release capability and its adapter owner.
 
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
@@ -1386,20 +1404,22 @@ same Documenter. If the corrected packet fails, the second receipt sets `correct
 shutdown deadline, and returns `finalization_contract_failure`. Never invoke a third pre-release attempt; the finalizer
 rejects it before validation. Pin the
 preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
-`plugin_revision_mismatch` instead of discovering another installed package. After releasing the final Documenter and
-recording provider closure in `runtime_closure.json`, finalization passes only when the finalizer exits zero and its
+`plugin_revision_mismatch` instead of discovering another installed package. After confirming the final Documenter
+released or terminal and recording provider closure in `runtime_closure.json`, finalization passes only when the
+finalizer exits zero and its
 first output line is exactly `Workflow-framework validation: passed`; the remaining output is the canonical handoff.
 For a completed Technical Spike, the finalizer also rejects a released closure receipt when it lists fewer unique
 provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
-If the provider does not expose release handles or receipts after the Technical Spike report is published, or after a
-Feature Delivery assessment report or implementation plan is created, and every worker result is complete, the
-Coordinator writes the blocked closure row defined under
+If neither released nor terminal runtime closure can be verified after the Technical Spike report is published, or
+after a
+Feature Delivery assessment report or implementation plan is created, or a TechOps planning plan is ready, and every
+worker result is complete, the Coordinator writes the blocked closure row defined under
 [Worker Runtime Closure](#worker-runtime-closure) and invokes the packaged `--blocked-runtime-snapshot` mode. It
 validates and saves `work_record.md` with `State: blocked` and
 `Workflow outcome: blocked`, while preserving the report or plan and the original handoff packet for later
 finalization. This is a blocked record, never evidence that provider workers were released or the workflow completed.
-For Feature Delivery implementation planning, preserve `Engineering outcome: plan_only` when the plan itself passed
-pre-release validation; it remains unapproved and the workflow is not complete.
+For Feature Delivery implementation planning and TechOps planning, preserve `Engineering outcome: plan_only` when the
+plan itself passed pre-release validation; it remains unapproved and the workflow is not complete.
 
 The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
 reconciled record as distinct fields. The terminal `Engineering state` MUST use one value from the canonical enum; a
@@ -1441,25 +1461,23 @@ passes or a documented terminal outcome explains why the remaining worker was no
 
 ## Worker Runtime Closure
 
-Fan-in and runtime closure are separate barriers. A terminal result envelope proves that the worker returned a result;
-it does not prove that the provider released the worker handle or its capacity.
+Fan-in and runtime closure are separate barriers. A result envelope establishes the returned result, not the absence
+of active worker turns or released capacity. Runtime closure accepts two provider-observed states:
 
-After result envelopes and artifacts are persisted, the Orchestrator must:
+- `Released`: exact provider handles, explicit release confirmations, and no active handles.
+- `Terminal`: a runtime without a close operation reports every run worker completed or idle in a fresh status snapshot
+  after final corrections, with exact provider-returned identifiers and no active worker turns. Handles may remain
+  reusable and capacity release is not asserted.
 
-1. mark each completed worker terminal;
-2. close or release every completed provider handle, including continuous handoff or documentation workers from the
-   finished run;
-3. verify that no required worker from that run remains active; and
-4. record each exact provider handle and its provider release confirmation before marking the run complete or starting
-   a new lifecycle run.
+Use the provider adapter's supported route. A UUID in `subAgentActivity` identifies a worker, but its completion event
+alone does not prove release. A subsequent follow-up reopens the worker's activity and requires a new snapshot.
+Persist artifacts and result envelopes before closure, include every activated worker and final Documenter, and record
+`Receipt owner: Coordinator`. Do not interrupt running workers to manufacture a terminal snapshot. No active-turn count
+may be inferred from a result message or a stale snapshot.
 
-Role names, terminal envelopes, and statements such as “all workers released” are not closure evidence. A row marked
-`Released` must contain the provider-returned handles, no remaining active handles, and the provider close/release
-confirmation.
-
-For an unavailable-release receipt, `Runtime status` MUST be `Blocked`, `Closure evidence or blocker` MUST include the
-exact marker `worker_runtime_release_unavailable`, and `Remaining active handles` MUST be nonzero or explicitly unknown.
-The marker describes the blocker; it is not a runtime-status value.
+If neither route can be verified, `Runtime status` MUST be `Blocked`, `Closure evidence or blocker` MUST include
+`worker_runtime_release_unavailable`, and `Remaining active handles` MUST be nonzero or unknown. Keep the engineering
+result separate. Report the unavailable capability and adapter owner rather than an unsupported command for the user.
 
 Before starting another lifecycle or remediation run, apply the [Concurrent Run Isolation](#concurrent-run-isolation)
 gate. A clean read-only planning run may remain concurrent; any run with a writer
@@ -1468,7 +1486,7 @@ artifact root.
 
 Never close a worker before collecting its terminal result envelope unless the provider has explicitly confirmed a
 terminal failure or that the worker is no longer running. A later run reuses durable artifacts, not live worker handles
-from the previous run. If the provider cannot expose release or active-handle status, record
+from the previous run. If the provider cannot confirm release or a fresh terminal status snapshot, record
 the unavailable-release receipt as defined above and keep that run `blocked`. A separate read-only planning run may
 start under Concurrent Run Isolation when old workers are terminal and its first worker activation confirms capacity;
 do not silently downgrade or claim that the earlier run was released. A force-closed active worker is a

@@ -398,11 +398,12 @@ def _released_closure(path: Path, handles: list[str]) -> dict[str, object]:
         rows = closure.get("runtime_closure", [])
         completed = " ".join(str(row.get("Completed worker handles", "")) for row in rows if isinstance(row, dict))
         if rows and all(handle in completed for handle in handles) and all(
-            str(row.get("Runtime status", "")).lower() == "released"
+            str(row.get("Runtime status", "")).lower() in {"released", "terminal"}
             and str(row.get("Remaining active handles", "")).lower() in {"none", "0"}
             for row in rows if isinstance(row, dict)
         ):
             return closure
+        raise ValueError("existing runtime closure does not confirm every worker released or terminal")
     joined = "; ".join(handles)
     return {"runtime_closure": [{
         "Run or stage": "Standard Sentry planning",
@@ -1056,6 +1057,24 @@ def self_test() -> None:
     v36_fixture = json.loads(V36_FIXTURE.read_text())
     v37_v38_fixture = json.loads(V37_V38_FIXTURE.read_text())
     with tempfile.TemporaryDirectory(prefix="workflow-sentry-finalize-") as directory:
+        receipt = Path(directory) / "closure.json"
+        terminal = {"runtime_closure": [{
+            "Completed worker handles": "/root/evidence_topology", "Runtime status": "Terminal",
+            "Remaining active handles": "0",
+            "Closure evidence or blocker": (
+                "provider status snapshot 2026-10-07T22:42:58Z: /root/evidence_topology=completed"
+            ),
+        }]}
+        receipt.write_text(json.dumps(terminal))
+        assert _released_closure(receipt, ["/root/evidence_topology"]) == terminal
+        terminal["runtime_closure"][0]["Runtime status"] = "Blocked"
+        receipt.write_text(json.dumps(terminal))
+        try:
+            _released_closure(receipt, ["/root/evidence_topology"])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid supplied receipt was replaced with fabricated release proof")
         execution_repository = Path(directory) / "repo"
         execution_repository.mkdir()
         subprocess.run(["git", "init", "-q", str(execution_repository)], check=True)

@@ -41,9 +41,13 @@ except ModuleNotFoundError:  # Imported as scripts.validate_library from the rep
     from scripts.specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
 
 try:
-    from review_evidence import applicability_errors, completed_review_errors, self_test as review_evidence_self_test
+    from review_evidence import (
+        REVIEW_FIXTURE, applicability_errors, completed_review_errors, self_test as review_evidence_self_test,
+    )
 except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
-    from scripts.review_evidence import applicability_errors, completed_review_errors, self_test as review_evidence_self_test
+    from scripts.review_evidence import (
+        REVIEW_FIXTURE, applicability_errors, completed_review_errors, self_test as review_evidence_self_test,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -636,6 +640,7 @@ def _artifact_path(value: str, record_path: Path) -> Path | None:
         return None
     if value.startswith("[") and "](" in value and value.endswith(")"):
         value = value.split("](", 1)[1][:-1]
+    value = value.strip("<>")
     candidate = Path(value)
     return candidate.resolve() if candidate.is_absolute() else (record_path.parent / candidate).resolve()
 
@@ -2263,7 +2268,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             value.strip().lower()
             for value in re.split(r",|;|<br\s*/?>", row.get("Completed worker handles", ""))
         ]
-        if codex_run and any(
+        terminal_runtime = row.get("Runtime status", "").strip().lower() == "terminal"
+        if codex_run and not terminal_runtime and any(
             handle not in {"none", "unknown", "unavailable"}
             and not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", handle)
             for handle in handles
@@ -2272,6 +2278,23 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 f"{path}: Completed worker handles received {row.get('Completed worker handles', '')!r}; "
                 "expected provider UUIDs or Unknown/Unavailable, never task paths or labels"
             )
+        if terminal_runtime:
+            evidence = row.get("Closure evidence or blocker", "").strip().lower()
+            if not codex_run or not NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip()):
+                fail(f"{path}: Terminal closure requires Codex provider status and zero active turns")
+            snapshot = re.search(r"provider status snapshot (\S+):", evidence)
+            if not snapshot or not RFC3339_TIMESTAMP.fullmatch(snapshot.group(1).upper()):
+                fail(f"{path}: Terminal closure requires a timestamped provider status snapshot")
+            if re.search(r"=(?:running|pending_init|pending|in_progress|not_found)(?=[;,.\s]|$)", evidence):
+                fail(f"{path}: Terminal closure snapshot contains non-terminal workers")
+            for handle in handles:
+                identifier = re.fullmatch(
+                    r"(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|/root/[a-z0-9_]+(?:/[a-z0-9_]+)*)",
+                    handle,
+                )
+                status = re.search(re.escape(handle) + r"=(?:completed|idle)(?=[;,.\s]|$)", evidence)
+                if not identifier or not status:
+                    fail(f"{path}: Terminal closure lacks exact provider terminal status for {handle!r}")
         if row.get("Runtime status", "").strip().lower() == "released":
             if not NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip()):
                 fail(f"{path}: released runtime closure must have no active handles")
@@ -2298,27 +2321,30 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
         and NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip())
         for row in table_rows["# Worker Runtime Closure"]
     )
-    if codex_run and runtime_released and playbook_name == "feature_delivery":
+    runtime_terminal = bool(table_rows["# Worker Runtime Closure"]) and all(
+        row.get("Runtime status", "").strip().lower() in {"released", "terminal"}
+        and NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip())
+        for row in table_rows["# Worker Runtime Closure"]
+    )
+    if codex_run and runtime_terminal and (playbook_name == "feature_delivery" or not runtime_released):
         completed_workers = {
             row.get("Worker", "").strip().lower()
             for row in table_rows["# Worker Result Summary"]
             if row.get("Outcome", "").strip().lower() == "complete"
         }
         released_handles = {
-            handle.lower()
+            handle.strip().lower()
             for row in table_rows["# Worker Runtime Closure"]
-            for handle in re.findall(
-                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-                row.get("Completed worker handles", ""), re.IGNORECASE,
-            )
+            for handle in re.split(r",|;|<br\s*/?>", row.get("Completed worker handles", ""))
+            if handle.strip().lower() not in {"", "none", "unknown", "unavailable"}
         }
         if len(released_handles) < len(completed_workers):
             fail(
-                f"{path}: Feature Delivery runtime closure has {len(released_handles)} provider handles "
+                f"{path}: runtime closure has {len(released_handles)} provider handles "
                 f"for {len(completed_workers)} completed workers; use worker_runtime_release_unavailable "
                 "instead of Released when provider release cannot be confirmed"
             )
-    if runtime_released:
+    if runtime_terminal:
         reconciliation = finalization.get("Final reconciliation", "").strip().lower()
         stale = any(token in reconciliation for token in ("pending", "unknown", "in progress"))
         stale = stale or ("active" in reconciliation and "no active" not in reconciliation)
@@ -2334,12 +2360,25 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 fail(f"{path}: released runtime closure cannot retain pending synchronization barrier")
         for row in markdown_table(text, "# Durable Artifacts"):
             artifact_name = re.sub(r"[_-]+", " ", row.get("Artifact", "").strip().lower())
-            if "runtime closure" in artifact_name and row.get("Status", "").strip().lower() != "released":
+            if "runtime closure" in artifact_name and row.get("Status", "").strip().lower() != (
+                "released" if runtime_released else "terminal"
+            ):
                 fail(f"{path}: released runtime closure requires the runtime-closure artifact status Released")
         for row in table_rows["# Worker Result Summary"]:
             blockers = row.get("Uncertainties / blockers", "").strip().lower()
             if re.search(r"runtime closure pending", blockers):
                 fail(f"{path}: released runtime closure cannot retain pending worker-result closure text")
+    if not _ALLOW_UNRELEASED and identity["State"] == "blocked":
+        if finalization.get("Finalization schema", "").strip().lower() not in {
+            "passed", "passed for blocked work record",
+        }:
+            fail(f"{path}: published blocked record requires passed finalization schema")
+        for row in markdown_table(text, "# Durable Artifacts"):
+            name = Path(row.get("Path", "")).name
+            if name in {"work_record.md", "runtime_closure.json"} and re.search(
+                r"pending|expected|prepared skeleton", row.get("Status", ""), re.IGNORECASE,
+            ):
+                fail(f"{path}: published blocked record retains stale artifact status for {name}")
     if playbook_name == "technical_spike":
         for row in table_rows["# Worker Result Summary"]:
             match = RANGE_REFERENCE.search(row.get("Evidence / claim refs", ""))
@@ -2350,8 +2389,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 )
     if identity["Workflow outcome"] == "completed" and not _ALLOW_UNRELEASED:
         for row in table_rows["# Worker Runtime Closure"]:
-            if row.get("Runtime status", "").strip().lower() != "released":
-                fail(f"{path}: completed workflow requires released runtime closure")
+            if row.get("Runtime status", "").strip().lower() not in {"released", "terminal"}:
+                fail(f"{path}: completed workflow requires released or terminal runtime closure")
             if not NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip()):
                 fail(f"{path}: completed workflow requires zero active handles")
     worker_rows = table_rows["# Worker Execution Ledger"]
@@ -2638,7 +2677,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     runtime_value = "released" if all(
         row.get("Runtime status", "").strip().lower() == "released"
         for row in table_rows["# Worker Runtime Closure"]
-    ) else "not released"
+    ) else "terminal" if runtime_terminal else "not released"
     execution = re.search(r"^Execution:\s*(.*?)\nProvenance:", handoff, re.MULTILINE | re.DOTALL)
     execution_text = " ".join(execution.group(1).lower().split()) if execution else ""
     if not execution or f"runtime {runtime_value}" not in execution_text:
@@ -3616,6 +3655,12 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
                 },
             },
         }))
+        (path.parent / "code_review.md").write_text(REVIEW_FIXTURE)
+        valid = valid.replace(
+            "| runtime_closure.json | runtime_closure.json | Released | Provider receipt |",
+            "| runtime_closure.json | runtime_closure.json | Released | Provider receipt |\n"
+            "| code_review.md | code_review.md | Accepted | Review evidence |",
+        ).replace("- work_record.md\n", "- work_record.md\n- code_review.md\n")
         path.write_text(valid)
         assert validate_work_record(path, require_terminal=True).startswith("Workflow result:")
 
@@ -3650,6 +3695,21 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         def assert_invalid(record: str, expected: str) -> None:
             output = validation_output(record)
             assert expected in output, output
+
+        terminal = valid.replace(
+            "01a04174-7f58-7a12-b91d-9d171c43f012 | Released | None | "
+            "provider release confirmation for 01a04174-7f58-7a12-b91d-9d171c43f012",
+            "/root/feature_context | Terminal | None | provider status snapshot "
+            "2026-10-07T22:42:58Z: /root/feature_context=completed",
+        ).replace("runtime closure released", "runtime closure terminal").replace(
+            "runtime released", "runtime terminal",
+        ).replace("| Released | Provider receipt |", "| Terminal | Provider receipt |")
+        path.write_text(terminal)
+        validate_work_record(path, require_terminal=True)
+        assert_invalid(terminal.replace("=completed", "=running"), "snapshot contains non-terminal workers")
+        assert_invalid(terminal.replace("=completed", "=stopped"), "lacks exact provider terminal status")
+        assert_invalid(terminal.replace("2026-10-07T22:42:58Z", "Unknown"), "timestamped provider status snapshot")
+        assert_invalid(terminal.replace("| Terminal | None |", "| Terminal | Unknown |"), "zero active turns")
 
         path.write_text(valid.replace("| Released | None |", "| Released | None observed after close request |"))
         validate_work_record(path, require_terminal=True)
@@ -3756,7 +3816,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace("| Released | None |", "| Unknown | Unknown |"),
-            "completed workflow requires released runtime closure",
+            "completed workflow requires released or terminal runtime closure",
         )
         bound_worker = valid.replace(
             "| Coordinator | Orchestrator | active session | active session | Unknown |",
@@ -4230,7 +4290,7 @@ for phrase in ("Asset source: true", "asset_manifest.json", "awaiting_input"):
         fail(f"skills/run/SKILL.md is missing asset-gate control: {phrase}")
 for path, phrase in (
     (ROOT / "integrations" / "jira.md", "complete direct-child inventory"),
-    (ROOT / "integrations" / "jira.md", "Inventory attachments on the supplied item and every inventoried issue"),
+    (ROOT / "integrations" / "jira.md", "Inventory attachments on the supplied item and every issue selected under the applicable retrieval gate"),
     (ROOT / "providers" / "codex.md", "enumeration even when the Epic key is known"),
     (ROOT / "playbooks" / "technical_spike.md", "A Done child Spike and Stories"),
     (CODEX_AGENT_DIR / "orchestrator.toml", "For every Jira-backed run"),

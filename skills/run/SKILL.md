@@ -66,7 +66,9 @@ description: >-
    `python3 <framework-root>/scripts/validate_worker_runtime.py --trace <current-run-trace.json>`.
    Treat `forbidden_context_reference:*` or `context_conformance_failed` as contamination and do not fan in that
    result. If no trace is exposed, record context conformance as `context-unverified` and do not imply an
-   independently audited pass. The Pilot Standard finalizer may continue with the worker's self-attested result when
+   independently audited pass. For every run, persist the audit result or `context-unverified` in each worker result's
+   `Uncertainties / blockers` field before fan-in; self-attestation is not an audited pass. The Pilot Standard finalizer
+   may continue with the worker's self-attested result when
    every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation.
 5a. For Jira-backed Feature Delivery, before loading the full playbook, contracts, or template, select an available
    Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
@@ -194,8 +196,12 @@ description: >-
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
    Preparation also writes exact role envelopes to the direct-child `worker_activation_packets.json` bundle and records
-   its path and hash in `role_bindings.json`. Before each spawn, run the manifest's `worker_runtime_guard` in activation
-   mode with `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`.
+   its path and hash in `role_bindings.json`. For each worker, run the manifest's `worker_runtime_guard` in activation
+   mode with `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`
+   and require an allowed result immediately before that worker's spawn call. Do not batch guards after dispatching
+   workers. A guard run after its worker started does not satisfy the activation barrier: stop further dispatch, record
+   `activation_sequence_nonconformant`, set `profile_status: blocked` and `Workflow outcome: blocked`, and reconcile
+   already-started workers without claiming the check passed. Preserve a ready plan as `Engineering outcome: plan_only`.
    Use one guard invocation per mode; never combine activation arguments with `--transition`, `--provider-status`, or
    `--trace`.
    For Feature Delivery specification assessment, the Documenter activation guard also checks that analytical
@@ -390,12 +396,25 @@ description: >-
    use one provider-supported multi-handle or event-driven wait with bounded backoff. Before closing a completed
    analytical worker, verify its assigned artifact still exists under the active artifact root; keep the handle open
    through pre-release when the provider may reclaim worker-owned artifact state on close.
-   A provider task path or name is not a closure handle; use only the exact value returned by the spawn primitive. If no
-   provider handle or release status is available, keep the run blocked and write the Coordinator-owned closure row with
-   `Runtime status: Blocked`, `worker_runtime_release_unavailable` in `Closure evidence or blocker`, and nonzero or
-   unknown remaining active handles.
-   In `Completed worker handles`, use `Unknown` or `Unavailable` when exact provider handles were not returned; put task
-   paths and names only in the worker ledger.
+   Every close/release instruction below uses the applicable provider route. When no close operation exists,
+   collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
+   For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
+   use `Runtime status: Released` only after all run workers are released and no active handles remain.
+   For Codex collaboration runtimes without a close operation, use `Runtime status: Terminal` after a fresh provider
+   status
+   snapshot, taken after the last correction/follow-up, shows every activated run worker completed or idle and none
+   running
+   or pending. Preserve each exact identifier returned by spawn (UUID or canonical `/root/...` task name), including the
+   Documenter, and record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in the closure
+   evidence.
+   `Remaining active handles: 0` means no active worker turns; it does not assert capacity release or handle
+   destruction.
+   A result message or historical completion event alone is insufficient; later follow-ups invalidate the old snapshot.
+   A task name is valid only when returned by the provider and accepted by its status operation, never an invented role
+   label.
+   If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
+   `worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
+   unsupported close receipt; name the missing provider status/release capability and its adapter owner.
    For a Technical Spike with a published report and complete worker results, write that Coordinator-owned unavailable
    receipt to `runtime_closure.json`, then run the pinned `finalize_work_record.py --blocked-runtime-snapshot` with the
    packet, closure, record, and Coordinator/framework identity arguments below. Require exit zero and
@@ -408,7 +427,10 @@ description: >-
    results, use the same command and require
    `Feature Delivery implementation planning blocked work record: saved; runtime release unverified`. Preserve
    `Engineering outcome: plan_only`; the work record must say the workflow is blocked and the plan is unapproved.
-   Do not claim a completed workflow or substitute worker labels for release handles.
+   For TechOps planning with a ready unapproved plan and complete worker results, use the same blocked-snapshot command
+   when neither runtime closure route can be verified. Preserve `Engineering outcome: plan_only`; the renderer owns
+   publication statuses even when the workflow remains blocked.
+   Do not claim a completed workflow when neither runtime closure route is verified.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`

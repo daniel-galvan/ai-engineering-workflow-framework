@@ -96,6 +96,12 @@ provider-equivalent fresh-context option. Start every activation packet with
 `Coordinator initialization: complete`. Explicitly prohibit the worker from
 running the launcher skill, `run_preflight.py`, or `prepare_run.py`; those are
 Coordinator-only initialization actions.
+For each worker, run its activation guard and observe an allowed result
+immediately before the spawn call. Do not batch guards after dispatch. A late
+guard does not satisfy the activation barrier: stop further dispatch, record
+`activation_sequence_nonconformant`, and preserve the workflow as blocked while
+reconciling workers already started. Keep the engineering outcome separate from
+that workflow result.
 
 Before preparation, apply the prompt-completeness gate. For Technical Spike,
 require a populated primary question before reading repositories or creating a
@@ -228,11 +234,20 @@ provider status before starting a replacement. Record coordinator-observed activ
 time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
 continuation, add only new inputs; never retroactively assign them to earlier workers. On Documenter-owned paths, use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
-The provider-returned handle is the only value valid for wait, follow-up, and close; agent paths, worker IDs, task names,
-and canonical artifact paths are labels only. If no provider handle or release status is exposed, write the
-Coordinator-owned closure row with `Runtime status: Blocked`, `worker_runtime_release_unavailable` in
-`Closure evidence or blocker`, and nonzero or unknown remaining active handles. Keep the run blocked and never
-substitute a label.
+Every close/release instruction below uses the applicable provider route. When no close operation exists,
+collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
+For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
+use `Runtime status: Released` only after all run workers are released and no active handles remain.
+For Codex collaboration runtimes without a close operation, use `Runtime status: Terminal` after a fresh provider status
+snapshot, taken after the last correction/follow-up, shows every activated run worker completed or idle and none running
+or pending. Preserve each exact identifier returned by spawn (UUID or canonical `/root/...` task name), including the
+Documenter, and record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in the closure evidence.
+`Remaining active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.
+A result message or historical completion event alone is insufficient; later follow-ups invalidate the old snapshot.
+A task name is valid only when returned by the provider and accepted by its status operation, never an invented role label.
+If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
+`worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
+unsupported close receipt; name the missing provider status/release capability and its adapter owner.
 Join the stored handle to each ordinary worker result during fan-in; do not ask a worker to invent or repeat a handle it
 was not given. Follow a playbook-specific handle-delivery protocol only when its durable artifact contract requires it.
 Count every successful provider activation, including that Documenter. A

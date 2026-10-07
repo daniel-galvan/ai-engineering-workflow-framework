@@ -1,11 +1,11 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-09-04
+last_updated: 2026-10-07
 ---
 
 # Codex Provider Adapter
@@ -53,11 +53,22 @@ in the worker message before the typed assignment. This is the binding-delivery 
 not expose `agent_role` or `agent_path`; observed metadata must match when present. Run the same guard before interrupt,
 close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
 
-Persist the exact provider-returned handle from each spawn. An agent path, worker ID, task name, or canonical artifact
-path is a label, not a release handle. If the runtime exposes no provider handle or release status, write the
-Coordinator-owned closure row with `Runtime status: Blocked`, `worker_runtime_release_unavailable` in
-`Closure evidence or blocker`, and nonzero or unknown remaining active handles. Keep the run blocked and never
-substitute a label.
+Every close/release instruction below uses the applicable provider route. When no close operation exists,
+collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
+For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
+use `Runtime status: Released` only after all run workers are released and no active handles remain.
+For Codex collaboration runtimes without a close operation, use `Runtime status: Terminal` after a fresh provider status
+snapshot, taken after the last correction/follow-up, shows every activated run worker completed or idle and none running
+or pending. Preserve each exact identifier returned by spawn (UUID or canonical `/root/...` task name), including the
+Documenter, and record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in the closure
+evidence.
+`Remaining active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.
+A result message or historical completion event alone is insufficient; later follow-ups invalidate the old snapshot.
+A task name is valid only when returned by the provider and accepted by its status operation, never an invented role
+label.
+If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
+`worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
+unsupported close receipt; name the missing provider status/release capability and its adapter owner.
 
 Before worker activation, `prepare_run.py` also copies and hashes the current-run input manifest as `run_inputs.json`.
 Supplied context, decisions, and named artifacts remain authoritative; live runtime evidence is additive unless the user

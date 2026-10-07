@@ -1,12 +1,12 @@
 ---
 title: TechOps Issue Remediation Playbook
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-10-07
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -156,6 +156,11 @@ code path, treat it as the actionable diagnosis for the code being fixed. Do
 not make deployed-revision mapping the next user action or a planning blocker;
 record it as rollout verification unless it changes the target code, scope, or
 safety decision.
+
+When report behavior or success copy differs from the current checkout, the Failure Path worker performs the focused
+history reconciliation in `failure_diagnosis`. Compare prior fixes with the current acceptance criteria; a prior fix
+may be modified when necessary. Keep the original reported cause and the current acceptance gap separate. The run owns
+any resulting diagnosis/plan correction; do not create a separate user task or approval gate for this investigation.
 
 ### Stage 3 — Reconcile Ownership and Design the Fix
 
