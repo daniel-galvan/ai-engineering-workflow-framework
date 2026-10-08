@@ -4,7 +4,7 @@
   "library_release_status": "No aggregate library release is assigned; Git revisions identify snapshots.",
   "plugin_package": {
     "name": "ai-engineering-workflows",
-    "version": "0.1.9+codex.20261008211234"
+    "version": "0.1.9+codex.20261008221549"
   },
   "framework": {
     "path": "frameworks/investigation.md",

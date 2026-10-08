@@ -189,10 +189,11 @@ playbooks/       scenario workflows
 providers/       platform adapters and agent definitions
 roles/           reusable responsibilities
 scripts/         package preflight, run preparation, and deterministic framework validation
+  validation/    domain modules for library, contract, playbook, provider, and finalization checks
 skills/          provider-neutral capabilities and the explicit Codex launcher
 strategies/      coordination approaches
 templates/       canonical prompts and durable work artifacts
-tests/           redacted regression fixtures
+tests/           synthetic/redacted regression fixtures and unit tests
 ```
 
 The Codex plugin is a thin package over this repository; it does not duplicate framework behavior. See the

@@ -89,6 +89,14 @@ The optional path performs terminal work-record identity and referential-integri
 The validator checks document semantic versions, Markdown prose width and table structure, TOML syntax, playbook
 maturity, template consistency, provider-adapter coverage, and Codex policy/TOML alignment.
 
+`scripts/validate_library.py` is the CLI; `scripts/validation/library.py` coordinates library checks in their
+established fail-fast order. Rules live in `scripts/validation/`, grouped into front matter, Markdown, contracts,
+playbooks, roles, provider policy, templates, work records, and finalization. Shared constants and reference helpers
+live in `common.py` and `references.py`; the existing regression self-tests live in `self_tests.py`.
+Imports do not run validation.
+Add focused tests under `tests/` when changing rules; preserve CLI failure messages, check order, and finalization
+output. Both `python3 scripts/validate_library.py` and `python3 -m scripts.validate_library` support the same arguments.
+
 ## Version policy
 
 Versioned documents evolve independently. Increment a document's semantic version when its contract or required

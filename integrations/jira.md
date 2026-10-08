@@ -102,6 +102,8 @@ shapes or provider-specific operation names:
 
 The canonical offline fixture shape is
 [`tests/fixtures/jira_adapter_contract.json`](../tests/fixtures/jira_adapter_contract.json).
+It is tracked in this repository, bundled with the plugin, and validated by `python3 scripts/validate_library.py`;
+it is not generated or downloaded during a run. It contains synthetic issue data, not live Jira evidence.
 
 ## Attachment and Asset Inventory
 
