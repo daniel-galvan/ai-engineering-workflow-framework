@@ -1,16 +1,22 @@
 ---
 
 title: Sentry Integration
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 provider: mcp
 owner: Engineering
-last_updated: 2026-07-28
+last_updated: 2026-10-08
 ---
 
 # Sentry Integration
 
 Sentry supplies production failure evidence to the Sentry Issue Remediation Playbook through MCP.
+
+## Acquisition Ownership
+
+For the Sentry Issue Remediation playbook, the Coordinator MUST NOT load the `sentry` skill or invoke a Sentry MCP/app
+before Evidence Topology activation. Evidence Topology owns raw Sentry access and initial repository topology; supplied
+Sentry context remains an opaque current-run input until that worker consumes it.
 
 ## Read operations
 

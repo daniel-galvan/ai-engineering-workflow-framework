@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.16
+version: 0.5.17
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -37,56 +37,40 @@ second specification.
 | Classification | Location | Purpose |
 | --- | --- | --- |
 | Normative core | Invariants, contract tables, lifecycle gates, state machine, artifact rules, extension rules, and conformance checklist | Defines required behavior and conformance. |
-| Implementation guidance | [Workflow Execution Guidance](workflow_execution_guidance.md) and linked operating/provider guides | Explains examples and provider flexibility without changing required outcomes. |
+| Provider execution rules | Selected [provider adapter](../providers/README.md) | Defines concrete operations and runtime evidence that satisfy the shared semantics. |
+| Source-system rules | Applicable [integration](../integrations/README.md) | Defines source identity, retrieval, freshness, privacy, and write boundaries. |
+| Implementation guidance | [Workflow Execution Guidance](workflow_execution_guidance.md) and the operating guide | Explains examples and provider flexibility without changing required outcomes. |
 | Normative checklist | [Pilot Conformance Checklist](#pilot-conformance-checklist) | Defines the minimum evidence required before a run may be called contract-compliant. |
 
-For equivalent source operations, a configured direct MCP connector MUST be tried before an app-backed connector.
-A browser is last resort only when the workflow permits it and no suitable connected operation is usable. Do not use
-a browser login to bypass a connector authentication or permission failure. Record the chosen route and any limitation;
-availability of an account/resource lookup does not prove access to a required item or collection.
+## Initialization and Layer Boundaries
 
-Before initialization, a plugin-backed launcher MUST make package and framework preflight its first framework tool call.
-It MUST derive the package root from the active installed skill, verify its catalog and manifest, compare any declared
-framework revision, and check framework clean status before loading memory, cache directories, the selected playbook,
-contracts, provider definitions, templates, or sibling artifacts. A stale plugin path or an unavailable, dirty, or
-mismatched framework stops the run with the corresponding preflight reason; the launcher MUST NOT search another cache
-version, silently substitute a checkout, activate workers, query external systems, or load the complete framework to
-explain the block. A blocked preflight reports `preflight_elapsed_ms` and `worker_activation_attempts: 0` without
-creating an artifact root or work record.
-The process exit status is authoritative: a completed preflight with exit status 0 is passed even when stdout is hidden
-by the host application. The launcher MUST NOT rerun a successful preflight solely to recover a missing display payload.
+This contract defines shared workflow semantics. The selected [provider adapter](../providers/README.md) owns concrete
+launcher checks, runtime operations, connector routing, and observation mappings. The applicable
+[source integration](../integrations/README.md) owns source identity, retrieval scope, freshness, privacy, and writes.
+Adapters and integrations MUST preserve the invariants and normalized contracts below; they cannot waive workflow gates.
 
-Before initialization, a Jira-backed Feature Delivery launcher MUST read the exact supplied issue through an available
-Jira connector after package preflight and prompt-completeness checks. Try the direct Atlassian MCP connector first
-when available; Rovo is an app-backed alternative. Bind the successful connector and issue-read operation to the
-context worker; a resource lookup on one connector MUST NOT authorize reads through another. On authentication failure
-or an absent issue-read operation, try at most one distinct configured Jira connector, never another operation on the
-failed route. If neither route succeeds, stop before full framework loading, input-manifest creation, preparation, or
-worker activation. Emit the packaged `scripts/source_access_receipt.py` receipt with the source, attempted operation,
-safe provider code, and current-turn start. Exit status 2 with a JSON `status: blocked` receipt is a block, not a parser
-error. Report its fields and one access-restoration action. This pre-initialization stop creates no artifact root or
-work record and is not an assessment disposition. `not_found` and `permission_denied` are item-specific outcomes, not
-connector-wide authentication failures. A successful item read does not prove hierarchy, link, history, or asset access.
-For a required scope absent on the selected connector, the worker may use one distinct app-backed connector only after
-an exact-key read succeeds there; it MUST record the route for each scope. A failed route is not silently retried.
-Other playbooks retain their own source-access rules; do not probe optional sources.
+Before initialization, verify the declared execution framework and required runtime capabilities through the selected
+adapter. Apply the selected playbook's required source-access gate through its integration. Stop with the recorded
+limitation if either prerequisite fails; do not silently substitute a different framework, source, or execution graph.
+For external reads, record the selected route, operation, and limitation. A resource lookup does not establish access
+to a required item or collection, and an authentication or permission failure MUST NOT be bypassed.
 
-After preflight passes, at initialization the Coordinator MUST read the selected playbook, this contract, and the claims
-contract. Other frontmatter dependencies are maintenance or stage references, not an instruction to load the complete
-framework into the run context. Load a role, skill, strategy, integration, template, or example only when the active
+After adapter preflight passes, at initialization the Coordinator MUST read the selected playbook, this contract,
+the claims contract, and the applicable provider adapter and source integration rules. Other frontmatter dependencies
+are maintenance or stage references, not an instruction to load the complete framework into the run context.
+Load a role, skill, strategy, integration, template, or example only when the active
 worker or stage needs it. Templates and examples MUST NOT override the selected playbook or contracts.
 
-The Coordinator alone performs package preflight and run preparation. It MUST activate delegated workers with fresh
-provider context (`fork_context: false` or the provider-equivalent option), and every activation packet MUST begin with
-`Coordinator initialization: complete`. Delegated workers MUST NOT invoke the launcher, package preflight, or run
+The Coordinator alone performs execution preflight and run preparation. It MUST activate delegated workers with fresh
+provider context, and every activation packet MUST begin with `Coordinator initialization: complete`.
+Delegated workers MUST NOT invoke the launcher, execution preflight, or run
 preparation.
 
-Delegated workers MUST run inside the current user task through the provider's subagent primitive, such as Codex
-`spawn_agent`. Provider operations that create or fork user-owned tasks,
-including Codex `create_thread`, `fork_thread`, and `send_message_to_thread`, MUST NOT be used as worker activation or
+Delegated workers MUST run inside the current user task through the selected adapter's worker primitive.
+Operations that create, fork, or control separate user-owned tasks MUST NOT be used as worker activation or
 communication mechanisms. Before run preparation, the Coordinator MUST verify that an in-task worker/subagent runtime
-is available. If it is unavailable, stop with `worker_runtime_unavailable`; do not create sidebar tasks and do not
-substitute Coordinator analysis for the required graph.
+is available. If it is unavailable, stop with `worker_runtime_unavailable`; do not create separate user-owned tasks
+and do not substitute Coordinator analysis for the required graph.
 
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
@@ -461,18 +445,11 @@ read-only preparation scope and is valid only for an explicitly approved
 external action. Source-specific integrations define how their provider maps
 onto this contract; they do not change the shared worker or workflow states.
 
-For a Jira-backed run, request `item`, `hierarchy`, `selected_links`, and `history` together. A supplied Epic requires
-its complete direct-child collection; a supplied Story, Task, Bug, or Spike requires its parent and that parent's
-direct-child collection, plus direct Jira links in either case. Inventory every associated issue regardless of type or
-status. The normalized result and context artifact must record each issue's key, relationship, type, status, relevance,
-read state, and attachment-inventory state; each attachment must identify its owning issue and actual review result.
-The context worker may mark an item irrelevant with a reason, but may not silently omit it. Empty collections require
-a successful query; a failed, truncated, or unpaged collection is `partial` or `unavailable`, never `empty`.
-Before downstream analysis or fan-in, the Coordinator reconciles this coverage against the context artifact and sends
-one correction to the owning context worker for missing rows. If coverage remains incomplete, keep the result partial
-and name the affected conclusion; no completed or ready result may imply that all related work/assets were reviewed.
-Prior Jira issues are context evidence, not automatically current-run requirements or permission to reuse an unrelated
-historical report.
+Apply the selected source integration's retrieval and coverage policy. For Jira, use the
+[Jira read path](../integrations/jira.md#read-path) and [context recovery
+order](../integrations/jira.md#context-recovery-order).
+The normalized result MUST preserve incomplete scope and limitations; neither source-specific retrieval nor connector
+routing changes the shared worker or workflow states.
 
 ## Worker Handoff
 
@@ -530,7 +507,7 @@ Each run records:
 | `playbook_version` | Version from the selected playbook's front matter.                              |
 | `framework_commit` | Full framework Git commit and clean or dirty status.                             |
 | `plugin_package` | Installed plugin name/version, or `Not applicable` for manual runs.              |
-| `provider_runtime_view` | Optional execution-repository `.codex/agents/` path, or `Not provided`.      |
+| `provider_runtime_view` | Optional provider runtime configuration path, or `Not provided`.      |
 | `provider_configuration` | Resolved provider-definition source and status; must not be inherited or guessed. |
 | `prompt_template_revision` | Canonical prompt template path, version, and conformance result.          |
 | `role_policy_baseline` | Provider role-policy baseline ID or `Not applicable`.                         |
@@ -685,7 +662,7 @@ adapters apply the provider role policy without changing lifecycle gates or the 
 For a versioned evaluation, initialization MUST compare the populated run prompt with the selected canonical template.
 Record `prompt_conformance`, the template revision, and any missing or altered required fields. A missing framework
 revision, execution repository, resolved provider configuration, profile, lifecycle, or authoritative-input section
-stops the run with `run_prompt_nonconformant`; an absent execution-repository `.codex/agents/` runtime view alone does
+stops the run with `run_prompt_nonconformant`; an absent optional provider runtime view alone does
 not. Claiming the expected revision does not make a structurally incomplete prompt conformant.
 
 Before preparation, the Orchestrator MUST resolve the requested outcome and objective from the selected playbook or
@@ -722,9 +699,9 @@ The Orchestrator must not silently downgrade a profile to a smaller worker graph
 the run is `not_executed` or `blocked`; it is not a successful execution of the requested profile.
 
 Before each AI-worker activation, resolve the provider agent definition and bind its configured model and reasoning
-effort. The execution-repository `.codex/agents/` directory is an optional runtime view; when it is absent, use the
-bundled framework/plugin provider definition or the selected work-graph binding and record that source and status. When
-the spawn API inherits the Coordinator by default, pass those exact values explicitly; this is configuration binding,
+effort. Resolve the definition through the selected adapter and record its source and status; an absent optional
+runtime view does not make the canonical provider definition unavailable. When the activation operation inherits the
+Coordinator by default, pass those exact values explicitly; this is configuration binding,
 not adaptive escalation. If provider telemetry exposes the applied model and effort, record the returned values. If the
 runtime does not expose applied telemetry, record an explicit `Not exposed; ...` marker alongside the exact launch
 binding; this is not a substitution. If the runtime rejects or reports a mismatch, record the mismatch and do not
@@ -1096,30 +1073,12 @@ operations; it MUST NOT manually reproduce or edit the handle. A `not_found` res
 original spawn result, durable artifacts, and provider status before replacement. Record every spawn
 attempt, handle discrepancy, replacement, and duplicated result.
 
-Every close/release instruction below uses the applicable provider route. When no close operation exists,
-collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
-For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
-use `Runtime status: Released` only after all run workers are released and no active handles remain.
-For Codex collaboration runtimes without a close operation, collect fresh status reads after pre-release and the last
-correction/follow-up. Use `Runtime status: Terminal` only when these reads account for every activated worker, including
-Documenter. The snapshot may combine live inventory and targeted reads; one inventory call need not retain every
-completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its provider-observed
-thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess an ID. A targeted read
-must show no active or pending thread and a completed latest turn started at or after the last dispatch. Missing
-inventory entries, historical completion events and worker self-attestation alone do not establish terminal status. If
-no supported targeted read can verify a worker, retain the blocked receipt.
-
-Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
-`Provider status`, `Last dispatch at`, `Observed at`, and `Status source` (`list_agents`, `read_thread`, or
-`wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn started at`, `Latest turn status`, and `Thread
-status`. Use the normalized completed or idle status only from the provider response; `read_thread` with `notLoaded` may
-qualify only with a completed latest turn and no newer dispatch. Preserve the raw response in current-run evidence. Do
-not dispatch follow-ups during collection; a later follow-up invalidates that worker's observation and requires another
-read. Record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in closure evidence. `Remaining
-active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.
-If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
-`worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
-unsupported close receipt; name the missing provider status/release capability and its adapter owner.
+Use the selected adapter's supported status and release operations to satisfy
+[Worker Runtime Closure](#worker-runtime-closure). A terminal snapshot MUST account for every activated worker,
+including the final Documenter, after its last correction or follow-up. A missing inventory entry, historical completion
+event, or worker self-attestation alone does not establish terminal status. Preserve exact provider identities and fresh
+observations; any later dispatch invalidates the affected observation. If neither release nor terminal status is
+verifiable, retain the Coordinator-owned blocked receipt and name the missing capability and adapter owner.
 
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
@@ -1283,9 +1242,8 @@ After activating a technical worker, the Coordinator MUST NOT perform that worke
 or evidence investigation. It may perform minimal initialization and verify the returned artifact, and may repeat a
 technical check only when a named discrepancy is recorded and returned to the owning worker.
 
-For the Sentry Issue Remediation playbook, the Coordinator MUST NOT load the `sentry` skill or invoke a Sentry MCP/app
-before Evidence Topology activation. Evidence Topology owns raw Sentry access and initial repository topology; supplied
-Sentry context remains an opaque current-run input until that worker consumes it.
+The selected playbook and source integration define which worker owns raw source acquisition. The Coordinator MUST
+respect that boundary; supplied source context remains a current-run input for the assigned worker to consume.
 
 The final workflow handoff contains the shared outcome summary below. Detailed worker results remain in the work record;
 do not reproduce the worker ledger in the user-facing answer.
@@ -1464,12 +1422,11 @@ failure.
 The first failure writes `finalization_failure.json`, permits one correction, and returns the aggregated errors to the
 same Documenter. If the corrected packet fails, the second receipt sets `correction_allowed` to false, records a
 shutdown deadline, and returns `finalization_contract_failure`. Never invoke a third pre-release attempt; the finalizer
-rejects it before validation. Pin the
-preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
-`plugin_revision_mismatch` instead of discovering another installed package. After confirming the final Documenter
-released or terminal and recording provider closure in `runtime_closure.json`, finalization passes only when the
-finalizer exits zero and its
-first output line is exactly `Workflow-framework validation: passed`; the remaining output is the canonical handoff.
+rejects it before validation. Pin the declared framework identity for the entire run; if it becomes unavailable or
+changes, stop with the selected adapter's identity-mismatch reason instead of substituting another framework.
+After confirming the final Documenter released or terminal and recording provider closure in `runtime_closure.json`,
+finalization passes only when the finalizer exits zero and its first output line is exactly
+`Workflow-framework validation: passed`; the remaining output is the canonical handoff.
 For a completed Technical Spike, the finalizer also rejects a released closure receipt when it lists fewer unique
 provider handles than completed worker results; the Coordinator must add every completed worker handle before retrying.
 If neither released nor terminal runtime closure can be verified after the Technical Spike report is published, or

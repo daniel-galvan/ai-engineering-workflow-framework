@@ -4415,8 +4415,15 @@ for phrase in (
         fail(f"sentry_repository_integrator.toml is missing planning-readiness rule: {phrase}")
 
 workflow_contract = WORKFLOW_CONTRACT.read_text()
-if "direct MCP connector MUST be tried before an app-backed connector" not in workflow_contract:
-    fail("contracts/workflow_execution.md is missing MCP-first source routing")
+for provider_detail in ("MCP", "Atlassian", "Rovo", "Codex", "browser", "spawn_agent", "create_thread", "fork_thread",
+                        "send_message_to_thread", "fork_context", ".codex/agents", "list_agents", "read_thread",
+                        "wait_threads", "source_access_receipt.py", "plugin-backed launcher"):
+    if provider_detail in workflow_contract:
+        fail(f"contracts/workflow_execution.md contains provider/integration implementation detail: {provider_detail}")
+for phrase in ("## Initialization and Layer Boundaries", "selected adapter's worker primitive",
+               "source integration's retrieval and coverage policy"):
+    if phrase not in workflow_contract:
+        fail(f"contracts/workflow_execution.md is missing layer boundary: {phrase}")
 if "## Normative Language" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing normative language")
 for invariant_id in range(1, 42):
@@ -4495,8 +4502,8 @@ for phrase in (
         fail(f"contracts/claims.md is missing referential-integrity control: {phrase}")
 if "Claims, Evidence, Decisions, and Actions Contract" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing the claims contract reference")
-if "Coordinator MUST NOT load the `sentry` skill or invoke a Sentry MCP/app" not in workflow_contract:
-    fail("contracts/workflow_execution.md is missing the Coordinator Sentry-access boundary")
+if "Coordinator MUST NOT load the `sentry` skill or invoke a Sentry MCP/app" not in (ROOT / "integrations/sentry.md").read_text():
+    fail("integrations/sentry.md is missing the Coordinator Sentry-access boundary")
 if "| `confidence`       | Yes" not in workflow_contract:
     fail("contracts/workflow_execution.md is missing required worker confidence")
 if "# Workflow State Machine" not in workflow_contract:
@@ -4705,6 +4712,15 @@ for phrase in (
 if "--framework-root" in run_skill:
     fail("skills/run/SKILL.md must not pass a separately constructed framework root")
 codex_adapter = CODEX_ADAPTER.read_text()
+for phrase in ("## Launcher and Package Preflight", "## Worker Activation", "## Runtime Closure", "## Source Routing",
+               "first framework tool call", "direct Atlassian MCP connector first", "source_access_receipt.py",
+               "plugin_revision_mismatch", "list_agents", "read_thread", "wait_threads"):
+    if phrase not in codex_adapter:
+        fail(f"providers/codex.md is missing provider execution rule: {phrase}")
+for phrase in ("## Feature Delivery Source-Access Gate", "For a Jira-backed run, request `item`",
+               "Inventory every associated issue", "at most one", "not connector-wide authentication failures"):
+    if phrase not in jira_text:
+        fail(f"integrations/jira.md is missing source policy: {phrase}")
 for phrase in (
     "fork_context: false",
     "Coordinator initialization: complete",
@@ -5412,7 +5428,7 @@ for phrase in (
     "provider_configuration_unavailable",
     "Never semantically normalize",
     "Workflow-framework validation: passed",
-    "fork_context: false",
+    "fresh\nprovider context",
     "Coordinator initialization: complete",
     "blocking_unknowns",
     "plan feasibility and specification readiness are separate decisions",

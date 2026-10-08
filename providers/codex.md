@@ -1,17 +1,48 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.5.4
+version: 0.5.5
 status: Pilot
 owner: Engineering
 provider: codex
-last_updated: 2026-10-07
+last_updated: 2026-10-08
 ---
 
 # Codex Provider Adapter
 
+Concrete launcher, worker activation, runtime closure, and connector operations are defined here. Shared workflow
+semantics remain in the [execution contract](../contracts/workflow_execution.md); Jira source policy remains in
+[the Jira integration](../integrations/jira.md).
+
 The complete operating guide is [`../OPERATING_GUIDE.md`](../OPERATING_GUIDE.md). For local clone, execution-repository,
 symlink, and prompt setup, see [`../SETUP.md`](../SETUP.md).
+
+## Launcher and Package Preflight
+
+Before initialization, a plugin-backed launcher MUST make package and framework preflight its first framework tool call.
+It MUST derive the package root from the active installed skill, verify its catalog and manifest, compare any declared
+framework revision, and check framework clean status before loading memory, cache directories, the selected playbook,
+contracts, provider definitions, templates, or sibling artifacts. A stale plugin path or an unavailable, dirty, or
+mismatched framework stops the run with the corresponding preflight reason; the launcher MUST NOT search another cache
+version, silently substitute a checkout, activate workers, query external systems, or load the complete framework to
+explain the block. A blocked preflight reports `preflight_elapsed_ms` and `worker_activation_attempts: 0` without
+creating an artifact root or work record.
+The process exit status is authoritative: a completed preflight with exit status 0 is passed even when stdout is hidden
+by the host application. The launcher MUST NOT rerun a successful preflight solely to recover a missing display payload.
+
+Pin the preflight-resolved packaged framework root for the entire run; if it disappears or changes, stop with
+`plugin_revision_mismatch` instead of discovering another installed package.
+
+For Jira-backed Feature Delivery, run the [Jira source-access
+gate](../integrations/jira.md#feature-delivery-source-access-gate)
+after package preflight and prompt-completeness checks, before full framework loading, input-manifest creation,
+preparation, or worker activation. Try the direct Atlassian MCP connector first when available; Rovo is an app-backed
+alternative. Bind the successful connector and exact-key issue-read operation to `feature-context`.
+If the permitted source routes fail, emit the packaged `scripts/source_access_receipt.py` receipt with the source,
+attempted operation, safe provider code, and current-turn start. Exit status 2 with a JSON `status: blocked` receipt is
+a block, not a parser error. Report its fields and one access-restoration action. Create no artifact root or work
+record; this pre-initialization block is not an assessment disposition. Do not probe optional sources for other
+playbooks.
 
 ## Agent Definitions
 
@@ -41,6 +72,8 @@ The default Codex execution records this explicitly as `Coordinator execution: a
 Coordinator worker spawned`. The role binding remains available for providers that do create a coordinator child, but a
 TOML definition alone never creates a task.
 
+## Worker Activation
+
 The Coordinator alone performs plugin preflight and run preparation. Activate every delegated worker with
 `fork_context: false` or the provider-equivalent fresh-context option. Its typed activation packet MUST begin with
 `Coordinator initialization: complete` and MUST prohibit rerunning the launcher skill, `run_preflight.py`, or
@@ -52,6 +85,8 @@ inherit the Coordinator transcript or initialize the run again.
 in the worker message before the typed assignment. This is the binding-delivery fallback when the in-task runtime does
 not expose `agent_role` or `agent_path`; observed metadata must match when present. Run the same guard before interrupt,
 close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
+
+## Runtime Closure
 
 Every close/release instruction below uses the applicable provider route. When no close operation exists,
 collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
@@ -114,6 +149,8 @@ runtime inspection use `exec_command`; artifact and approved repository writes u
 work-item, and scanner tools remain conditional. A worker MUST NOT search `ALL_TOOLS` for a literal framework tool ID
 or report the capability unavailable merely because that name is absent. Report a capability unavailable only after
 its mapped concrete operation is absent or an attempted in-scope operation fails.
+
+## Source Routing
 
 For equivalent connected-source reads, try a configured direct MCP operation first, then an app-backed connector if
 the direct operation is absent or fails. A tool exposed through an MCP namespace can still be an app-backed route;

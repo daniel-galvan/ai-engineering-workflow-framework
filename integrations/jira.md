@@ -1,10 +1,10 @@
 ---
 title: Jira Integration
-version: 0.5.4
+version: 0.5.5
 status: Pilot
-provider: mcp
+provider_independent: true
 owner: Engineering
-last_updated: 2026-10-07
+last_updated: 2026-10-08
 ---
 
 # Jira Integration
@@ -33,6 +33,25 @@ retrieval policy.
   during a run. Preserve those states instead of presenting them as complete
   context.
 
+## Feature Delivery Source-Access Gate
+
+Before initializing a Jira-backed Feature Delivery run, read the exact supplied issue through an available configured
+connector after the selected adapter's launch-readiness checks. Concrete connector preference, operations, launcher
+sequencing, and blocked-receipt rendering belong to the provider adapter; for Codex, see its
+[launcher rules](../providers/codex.md#launcher-and-package-preflight) and
+[Jira read mapping](../providers/codex.md#jira-work-item-read-mapping).
+
+Bind the successful connector and issue-read operation to the context worker. A resource lookup on one connector MUST
+NOT authorize reads through another. On authentication failure or an absent issue-read operation, try at most one
+distinct configured Jira connector, never another operation on the failed route. If neither route succeeds, stop before
+initialization, preparation, input-manifest creation, or worker activation. Record the attempted source and operation,
+safe failure code, and one access-restoration action. Create no artifact root or work record; this is not an assessment
+disposition. `not_found` and `permission_denied` are item-specific outcomes, not connector-wide authentication failures.
+A successful item read does not prove hierarchy, link, history, or asset access. For a required scope absent on the
+selected connector, the worker may use one distinct alternative connector only after an exact-key read succeeds there;
+it MUST record the route for each scope. A failed route is not silently retried. Other playbooks retain their own
+source-access rules; do not probe optional sources.
+
 ## Read path
 
 Select the smallest read operation that answers the question:
@@ -53,6 +72,19 @@ query is still required when the supplied item is an Epic or its parent has othe
 children: the Epic issue response alone does not prove the child collection is
 empty. Page through the complete direct-child collection; do not scan an entire
 project, board, or initiative. Do not recursively traverse unrelated links.
+
+For a Jira-backed run, request `item`, `hierarchy`, `selected_links`, and `history` together. A supplied Epic requires
+its complete direct-child collection; a supplied Story, Task, Bug, or Spike requires its parent and that parent's
+direct-child collection, plus direct Jira links in either case. Inventory every associated issue regardless of type or
+status. The normalized result and context artifact must record each issue's key, relationship, type, status, relevance,
+read state, and attachment-inventory state; each attachment must identify its owning issue and actual review result.
+The context worker may mark an item irrelevant with a reason, but may not silently omit it. Empty collections require
+a successful query; a failed, truncated, or unpaged collection is `partial` or `unavailable`, never `empty`.
+Before downstream analysis or fan-in, the Coordinator reconciles this coverage against the context artifact and sends
+one correction to the owning context worker for missing rows. If coverage remains incomplete, keep the result partial
+and name the affected conclusion; no completed or ready result may imply that all related work/assets were reviewed.
+Prior Jira issues are context evidence, not automatically current-run requirements or permission to reuse an unrelated
+historical report.
 
 ## Adapter Contract
 
