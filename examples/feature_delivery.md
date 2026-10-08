@@ -1,9 +1,9 @@
 ---
 title: Feature Delivery Example
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-06
+last_updated: 2026-10-07
 depends_on:
   - ../playbooks/feature_delivery.md
   - ../templates/feature_delivery_run_prompt.md
@@ -140,3 +140,27 @@ owner which observable behavior is required in that race, and explain the extra 
 For implementation planning, cite the existing comparator, persistence enum, and colocated tests to reuse. The Reviewer
 checks the simplest design against the required behavior and accepted limitation. Once those checks pass, proceed to
 handoff; a new hypothetical timing sequence alone does not justify reopening the decision.
+
+## Continuation with an Accepted Compatibility Rule
+
+A previous Story established that an unfamiliar stored export mode uses saved content. Its accepted decision, decoder,
+and unit test agree. A later Story changes source resolution, but a derived plan incorrectly says unfamiliar stored
+modes must fail. The current requirements do not change the compatibility decision.
+
+The receiving session verifies those sources, corrects the derived wording, and reports: "This preserves the accepted
+compatibility rule and existing test. No new product decision is needed for this part." It does not ask "keep or change
+the rule?", invent a user-interface reproduction, or require a new end-to-end test solely for that unchanged conversion.
+This does not waive validation of the new source-resolution behavior or the overall implementation approval gate.
+
+| Continuation evidence | Expected disposition |
+| --- | --- |
+| Accepted decision, current decoder, and existing unit test agree | Preserve accepted behavior; correct the derived plan; no new product approval for this rule. |
+| Current requirement explicitly replaces the old compatibility rule | Record the conflict and affected behavior; obtain a decision if the applicable authority remains unresolved. |
+| Code implements a fallback, but no accepted decision supports it | Do not infer product approval from code alone; resolve material uncertainty through bounded checks. |
+| A new supported path makes the old fallback expose private data | Reopen the safety conclusion and find the smallest safe repair; prior acceptance does not dismiss new evidence. |
+| The rule is settled, but implementation approval is pending | Keep source changes paused for overall approval, not another compatibility question. |
+| A hypothetical same-clock collision suggests stronger version tracking | Check the actual consumer and observable failure first; add stronger handling only for a verified requirement. |
+
+Review only changed requirements, repository state, and affected decisions against the saved baseline. Additional checks
+must identify which unresolved decision they can change. The expected result is a narrow continuation review, not a new
+planning investigation.

@@ -1,9 +1,9 @@
 ---
 title: Portable Implementation Handoff Contract
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-10-07
 depends_on:
   - ./workflow_execution.md
 ---
@@ -34,6 +34,16 @@ One implementation approval covers every in-scope handoff step. The receiving se
 each implementation slice. It MUST stop for a new decision only when new evidence changes approved scope or design, an
 unapproved external or irreversible action is required, or a genuine environment, permission, review, or validation
 blocker prevents progress.
+
+Apply decision continuity from the workflow contract when preparing or receiving a handoff. Distinguish preserved
+accepted behavior from proposed changes, documentation corrections, and unresolved material conflicts in the existing
+decision summary. Include the accepted decision and relevant code or test evidence, not just a decision label.
+Correct contradictory derived wording without asking the owner to approve unchanged accepted behavior again. A material
+conflict with current requirements still requires resolution; existing code alone is not product approval.
+
+Review current requirements, repository state, and changes since the reviewed baseline. Reuse completed research and
+check only affected decisions and evidence unless a specific change justifies broader investigation. Preserving a
+baseline decision does not authorize implementation: the handoff's overall approval gate remains unchanged.
 
 The handoff can be executed without a framework checkout. If provider-specific agents or runtime delegation are
 unavailable, the session MUST record actual model, effort, worker execution, review independence, and validation

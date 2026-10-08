@@ -81,6 +81,13 @@ recommendation, `checks_performed`, and `checks_remaining`.
 Include the requested outcome, current Story boundary, and the contract's
 scenario relevance and proportionality rule in analytical and delivery packets.
 Preserve settled scenario dispositions and exact owner decisions downstream.
+On continuation, separate preserved accepted behavior, proposed changes,
+documentation corrections, and unresolved material conflicts before asking for
+approval. Correct conflicting derived wording without reopening an unchanged
+accepted decision. Verify current requirements and baseline changes; reuse
+completed research. Overall implementation approval still applies. For stronger
+edge-case handling, require the observable failure and why local patterns cannot
+satisfy the affected requirement.
 Before assigning another check, require the owning worker to name the decision
 its result could change; do not restart settled triage for a simple follow-up.
 

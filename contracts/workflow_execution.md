@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.14
+version: 0.5.15
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -808,6 +808,27 @@ Approval to simplify an implementation does not by itself remove an acceptance c
 specific tradeoff does not authorize every technical mechanism or repository needed by a stronger guarantee. Preserve
 the exact approval and condition, identify affected criteria, and carry that decision into downstream assignments and
 active artifacts. Reconcile conflicting source wording explicitly; do not repeatedly ask an already answered question.
+
+### Decision Continuity in Continuation Reviews
+
+Before requesting approval, distinguish preserved accepted behavior, proposed behavior changes, documentation
+corrections, and unresolved material conflicts in the existing decision record. Cite the applicable accepted decision
+and current code or test evidence. Existing code alone does not establish product approval.
+
+Preserving accepted behavior is not a new product decision. A contradictory sentence in a derived plan or handoff
+does not by itself reopen that decision: correct it against the applicable accepted decision and current requirements,
+and carry the correction downstream. Ask only when changed requirements, new relevant evidence, or failed validation
+leave a material conflict that bounded checks cannot resolve. Explain the recommendation and actual behavior change
+in plain language before asking. This rule does not grant missing implementation or external-action approval.
+
+For a continuation, read the execution instructions and relevant saved decisions, verify current requirements and
+repository state, and check what changed since the reviewed baseline. Inspect affected code and tests as needed; reuse
+completed research rather than restarting the full investigation. Record the reason for each additional check and the
+decision its result could change. Stop rereading settled evidence once the named question is resolved.
+
+Before proposing a stronger edge-case guarantee, show the observable failure, affected requirement, existing handling,
+and why the simplest existing pattern is insufficient. A hypothetical trigger or stronger mechanism alone is not
+evidence of a missing required guarantee. Preserve explicit criteria and credible safety failures under the rules above.
 
 ## Planning Readiness and Implementation Work
 

@@ -1,6 +1,6 @@
 ---
 title: Portable Implementation Handoff
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
 last_updated: <DATE-OF-CREATION>
@@ -85,6 +85,16 @@ changes and report the exact mismatch. Do not infer that a different checkout or
 
 Summarize the evidence that supports the implementation decision. Include source, revision, confidence, uncertainty, and
 the decision or approval that authorizes each material action.
+
+Distinguish preserved accepted behavior, proposed changes, documentation corrections, and unresolved material conflicts
+in this summary. Include the applicable accepted decision and current code or test evidence. Existing code alone is
+not product approval. Correct conflicting derived wording; do not request new approval for unchanged accepted behavior.
+Ask only about a material conflict left by changed requirements, new evidence, or failed validation. Overall
+implementation approval is still required before source changes.
+
+On continuation, verify current requirements and repository state against this baseline, then inspect affected code
+and tests. Reuse completed research. Each additional check must name the decision it could change; do not restart the
+full investigation or repeatedly reread settled evidence without a specific reason.
 
 | ID | Evidence or claim | Confidence / status | Decision or action supported |
 | --- | --- | --- | --- |
