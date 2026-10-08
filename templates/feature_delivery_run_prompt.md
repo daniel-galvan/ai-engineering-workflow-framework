@@ -35,6 +35,9 @@ Use `implementation_plan + implementation_planning` to design a feature. Use
 `specification_assessment + specification_assessment` to judge an existing Spike, proposal, or specification. For
 `specification_assessment`, record Playbook Selection `Primary goal` exactly as `Specification assessment`; do not
 infer readiness from the ability to list future work.
+For an approved remediation re-entry, use `Lifecycle: remediation`, `Requested outcome: feature_delivery`, and
+`Planning objective: feature_implementation`. Prepare with `--continuation --remediation-reentry --approval-reference`
+and preserve the prior lifecycle history. A later follow-up within that remediation uses only `--continuation`.
 
 Execution repository (required; durable artifact root):
 <ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>

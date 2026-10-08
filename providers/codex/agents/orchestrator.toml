@@ -241,6 +241,13 @@ provider status before starting a replacement. Record coordinator-observed activ
 time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
 continuation, add only new inputs; never retroactively assign them to earlier workers. On Documenter-owned paths, use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
+For Feature Delivery remediation re-entry, use prepare_run.py --continuation --remediation-reentry with an explicit
+approval reference and input manifest. Preserve the prior lifecycle history and profile; use the new current packet.
+Before Documenter activation, populate delivery terminal results, review/validation reports, fan-in, runtime_audits,
+and current input/asset provenance. When Documenter requests missing Coordinator-owned values, supply them and resume
+that same handle in this run. An unavailable validation environment still requires an accurate partial/blocked handoff.
+Run the packaged check-packet and pre-release sequence before fresh native Terminal observations; never fabricate
+release receipts. Keep CURRENT.md and plan progress aligned with actual delivery results without reopening decisions.
 Every close/release instruction below uses the applicable provider route. When no close operation exists,
 collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
 For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;

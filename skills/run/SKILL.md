@@ -48,7 +48,9 @@ description: >-
    Extract one requested outcome before preparation. When omitted, use the selected playbook's configured default. Use
    `technical_answer` for bounded investigation,
    `spike_assessment` for review of an existing Spike, `implementation_plan` for implementation planning, and
-   `specification_assessment` for readiness assessment. Compare it with the supplied playbook objective. If they differ,
+   `specification_assessment` for readiness assessment, and `feature_delivery + feature_implementation` for an approved
+   Feature Delivery remediation re-entry. Resolve the goal from the approved lifecycle before preparation; a planning
+   default must not carry into delivery. Compare it with the supplied playbook objective. If they differ,
    preserve both as authoritative inputs and stop with `run_goal_conflict`; do not silently prefer the later field.
    Copy an explicit populated `Requested outcome:` field when supplied. An unambiguous named objective such as Feature
    Delivery `specification_assessment` is also explicit; use that outcome and its matching objective even without
@@ -152,7 +154,14 @@ description: >-
    `--success-criterion <criterion>` and `--timebox-minutes
    <minutes>` only for run-specific overrides. Technical Spike permits `technical_answer + execute_spike` or
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
-   `specification_assessment + specification_assessment`. Technical Spike is budget-gated: always pass the captured
+   `specification_assessment + specification_assessment`, or `feature_delivery + feature_implementation` for approved
+   remediation. For Feature Delivery planning-to-remediation re-entry, pass `--continuation --remediation-reentry`
+   and `--approval-reference <explicit approval reference>` with the current input manifest. Prior runtime closure
+   must be reconciled first. The helper preserves prior artifacts and accepted decisions, starts a new remediation
+   identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
+   sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.
+   Preparation does not grant approval or replace the Delivery Activation Barrier.
+   Technical Spike is budget-gated: always pass the captured
    current-turn RFC 3339 start as `--started-at` and the resolved playbook/default or override as `--timebox-minutes`; a
    missing captured start stops before artifact creation or worker activation. Use `run_budget.json` as the terminal
    budget source of truth. For non-Spike runs, omit both budget flags unless the request supplies a complete timebox

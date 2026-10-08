@@ -95,6 +95,12 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         else:
             if isinstance(bindings, dict) and bindings.get("playbook") == "feature_delivery":
                 try:
+                    current = json.loads((path.parent / "finalization_packet.json").read_text())
+                    if bindings.get("lifecycle") and current.get("identity", {}).get("Lifecycle") != bindings["lifecycle"]:
+                        errors.append("feature_delivery_packet_lifecycle_mismatch")
+                except (OSError, ValueError, TypeError, AttributeError):
+                    errors.append("feature_delivery_packet_invalid")
+                try:
                     from finalize_work_record import feature_delivery_pre_handoff_errors
                 except ModuleNotFoundError:  # Imported as scripts.validate_worker_runtime from the repository root.
                     from scripts.finalize_work_record import feature_delivery_pre_handoff_errors

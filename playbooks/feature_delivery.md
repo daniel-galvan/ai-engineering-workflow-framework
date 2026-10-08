@@ -130,6 +130,18 @@ worker-runtime closure.
 - A planning follow-up may clarify or extend evidence but cannot implement.
 - A remediation re-entry requires explicit approval, the existing work record and implementation plan, required worker
   activation, fan-in, and closure of the prior run's worker handles.
+  Prepare it with `prepare_run.py --continuation --remediation-reentry --approval-reference <approval-reference>`
+  and the explicit input manifest. The helper preserves prior artifacts under `runs/<prior-run-id>`, retains the
+  approved plan and accepted decisions, and starts a new remediation identity with profile status `requested`.
+  It requires prior runtime closure; reconcile those actual handles first when proof is missing. Never fabricate it.
+  Use objective `feature_implementation` and outcome `feature_delivery` for this lifecycle (the re-entry defaults).
+  Later remediation follow-ups use `--continuation` without repeating `--remediation-reentry`.
+  Re-entry preparation does not replace the Delivery Activation Barrier or grant external-action approval.
+  Keep `CURRENT.md`, plan progress, and packet state aligned as delivery proceeds; preserve historical decisions.
+  Local file inputs are copied to content-addressed `input_snapshots` before worker activation. Inventory the prepared
+  `path`, retaining the original source locator as provenance; workers update output documents, not those snapshots.
+  Reconcile every new declared asset source in `asset_manifest.json` before handoff. Never refresh an old input hash
+  merely to accept changed output bytes. Legacy unsnapshotted inputs that drifted require their actual approved version.
 - An interrupted run uses the canonical prompt with `Interrupted profile recovery`: preserve completed artifacts,
   activate only missing required workers, and complete fan-in. A wait timeout or `running` status is not worker
   unavailability: keep the worker active and do not close it or start a replacement. For a worker confirmed stopped or
@@ -195,6 +207,25 @@ unavailable, use the blocked-runtime snapshot path immediately. Terminal worker 
 are not release.
 The same blocked-runtime snapshot path applies to an implementation plan whose pre-release check passed but whose
 provider release cannot be verified. It preserves the plan and records a blocked workflow, not completed delivery.
+
+For remediation, the Coordinator must populate current lifecycle/outcomes, the `implement`, `review`, and `validate`
+ledger/result rows, concrete evidence references, and a passed delivery fan-in before activating `handoff`.
+Provide accepted `code_review.md` and `validation_report.md`; a terminal Tester result may report unverified tests,
+but must not turn them into passed validation. A blocked code-review result is retained on a blocked handoff.
+Save `runtime_audits` using the shared terminal-observation fields plus `Worker` and `Trace path`. Audit each retrieved
+trace with the runtime guard and record its completed `fan_in` event and `last_dispatch_at`. If retrieval fails,
+record `Trace retrieval: unavailable: <attempted route and concrete failure>` and `context-unverified` in that worker's
+result; do not label it audited. Use exact provider handles and current thread mappings.
+Unverified context prevents a completed delivery workflow; retain a blocked result until the trace can be verified.
+The Documenter activation guard checks these Coordinator-owned inputs and current input/asset reconciliation.
+If Documenter reports missing typed values, the Coordinator supplies them and resumes the same Documenter in this run;
+do not ask the user to repair bookkeeping or launch a separate task. Return analytical errors to their owning worker.
+After Documenter finishes, save its result and runtime audit, run `--check-packet` and then `--pre-release`, and only
+then collect fresh Terminal observations after every worker's last dispatch. The terminal finalizer requires the
+passed pre-release receipt for this exact packet and observations no older than that check. For explicit release
+runtimes, retain genuine release evidence. If release is unavailable, `--blocked-runtime-snapshot` also supports
+remediation and preserves the engineering outcome. Missing MySQL/runtime validation is an engineering limitation;
+it does not excuse stopping before a truthful partial or blocked current handoff. Follow existing correction limits.
 
 ## Stages
 

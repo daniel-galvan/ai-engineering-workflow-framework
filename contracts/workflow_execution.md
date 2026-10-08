@@ -694,6 +694,9 @@ an explicit compatible pair, then pass both resolved values to `prepare_run.py` 
 creation with `run_goal_conflict`.
 The Orchestrator MUST NOT discard an explicit user outcome, silently prefer a conflicting workflow field, or ask a
 worker to resolve the contradiction. `implementation_plan` requires Feature Delivery `implementation_planning`;
+approved Feature Delivery remediation uses `feature_delivery + feature_implementation`. Its explicit re-entry
+preparation preserves the prior lifecycle history and starts a new current remediation identity; later follow-ups
+retain that identity and goal. Planning defaults must not override this delivery goal.
 Technical Spike accepts only `technical_answer + execute_spike` or `spike_assessment + review_spike`.
 When supplied, the explicit populated `Requested outcome:` field MUST be copied verbatim into the input manifest as
 `RUN-GOAL-001`. When omitted, preparation records the selected playbook default with playbook provenance. An altered

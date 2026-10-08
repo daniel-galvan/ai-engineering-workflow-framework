@@ -84,6 +84,7 @@ WORKFLOW_OUTCOMES = {
     "feature_delivery": {
         "implementation_planning": "implementation_plan",
         "specification_assessment": "specification_assessment",
+        "feature_implementation": "feature_delivery",
     },
 }
 PLAYBOOK_DEFAULT_GOALS = {
@@ -244,6 +245,9 @@ def _validate_run_goal(
             return
         raise ValueError("run_goal_provenance_missing:RUN-GOAL-001")
     expected = _run_goal_row(requested_outcome)
+    if allow_default_provenance and declarations[0].get("Source or path") == "Selected playbook defaults":
+        expected = _run_goal_row(requested_outcome, "Selected playbook defaults",
+                                 str(PLAYBOOK_DEFAULT_GOALS[playbook]["authority"]))
     if any(declarations[0].get(field) != value for field, value in expected.items()):
         raise ValueError("run_goal_provenance_conflict:RUN-GOAL-001")
 
@@ -376,7 +380,8 @@ def _initial_packet(
         packet["playbook_selection"]["Primary goal"] = TECHNICAL_SPIKE_PRIMARY_GOALS[workflow_objective]
     if playbook == "feature_delivery":
         packet["playbook_selection"]["Primary goal"] = (
-            "Specification assessment" if workflow_objective == "specification_assessment" else "Implementation planning"
+            "Specification assessment" if workflow_objective == "specification_assessment" else
+            "Feature implementation" if workflow_objective == "feature_implementation" else "Implementation planning"
         )
     packet["identity"].update({
         "Run ID": f"{work_item}-{run_stamp}",
@@ -392,6 +397,7 @@ def _initial_packet(
         "Provider / model configuration": "Codex / Worker Execution Ledger",
         "Run input manifest": input_manifest["path"],
         "Run input manifest hash": input_manifest["sha256"],
+        "Framework commit / status": f"{_git(ROOT, 'rev-parse', 'HEAD')} / {('Dirty' if _git(ROOT, 'status', '--porcelain') else 'Clean')}",
         "Coordinator execution": "active parent session; no dedicated Coordinator worker spawned",
     })
     packet["finalization"]["Durable artifact root"] = str(artifact_root)
@@ -502,6 +508,31 @@ def _write_activation_packets(
     return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
+def _snapshot_input_files(
+    artifact_root: Path, manifest: dict[str, object], *, persist: bool = True,
+) -> dict[str, object]:
+    """Keep input bytes separate from documents that workers may update as outputs."""
+    rows = []
+    for original in manifest["inputs"]:
+        row = dict(original)
+        source = Path(str(row.get("path", "")))
+        if row.get("path") and source.is_file():
+            data = source.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            if row.get("sha256") != digest:
+                raise ValueError(f"run_input_manifest_hash_mismatch:{row['Input ID']}")
+            target = artifact_root / "input_snapshots" / digest / source.name
+            if target.exists() and target.read_bytes() != data:
+                raise ValueError(f"input_snapshot_conflict:{row['Input ID']}")
+            if persist and not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            row.setdefault("Original source path", str(source))
+            row["path"] = str(target)
+        rows.append(row)
+    return {**manifest, "inputs": rows}
+
+
 def _prepare_run_inputs(
     artifact_root: Path,
     work_item: str,
@@ -515,14 +546,55 @@ def _prepare_run_inputs(
     if continuation and destination.is_file():
         current = load_manifest(destination, explicit=False)
         if supplied_path:
-            current = merge_manifests(current, load_manifest(supplied_path, explicit=True))
+            supplied = validated_supplied or load_manifest(supplied_path, explicit=True)
+            if playbook == "feature_delivery":
+                supplied = _snapshot_input_files(artifact_root, supplied)
+            current = merge_manifests(current, supplied)
             write_manifest(destination, current)
         return load_manifest(destination, explicit=False), destination
     if supplied_path:
         source = validated_supplied or load_manifest(supplied_path, explicit=True)
     else:
         source = default_manifest(work_item, playbook, execution_repository.resolve())
+    if playbook == "feature_delivery":
+        source = _snapshot_input_files(artifact_root, source)
     return write_manifest(destination, source), destination
+
+
+def _reentry_source(artifact_root: Path, approval_reference: str | None) -> dict[str, object]:
+    """Check re-entry prerequisites before modifying any current-run artifact."""
+    if (not approval_reference or approval_reference.strip().lower() in {"none", "unknown", "not provided"}
+            or (approval_reference.strip().startswith("<") and approval_reference.strip().endswith(">"))):
+        raise ValueError("approval_reference_required")
+    if not (artifact_root / "implementation_plan.md").is_file():
+        raise ValueError("remediation_approved_plan_unavailable")
+    try:
+        prior = json.loads((artifact_root / "finalization_packet.json").read_text())
+        closure = json.loads((artifact_root / "runtime_closure.json").read_text())
+        try:
+            from finalize_work_record import _runtime_closed, _planning_runtime_closure_errors
+            from validate_worker_runtime import terminal_observation_errors
+        except ModuleNotFoundError:
+            from scripts.finalize_work_record import _runtime_closed, _planning_runtime_closure_errors
+            from scripts.validate_worker_runtime import terminal_observation_errors
+        if Path(str(prior["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem != "feature_delivery":
+            raise ValueError("remediation_reentry_playbook_mismatch")
+        if prior["identity"]["Lifecycle"] != "planning":
+            raise ValueError("remediation_reentry_requires_planning_run")
+        if prior["identity"]["Requested profile"] not in {"standard", "deep"}:
+            raise ValueError("remediation_prior_profile_invalid")
+        rows = closure["runtime_closure"]
+        if (not _runtime_closed(rows) or _planning_runtime_closure_errors(prior, rows)
+                or any(row.get("Receipt owner") != "Coordinator" or not row.get("Closure evidence or blocker")
+                       for row in rows)):
+            raise ValueError("prior_worker_runtime_closure_required")
+        handles = [handle.strip() for row in rows if row["Runtime status"].lower() == "terminal"
+                   for handle in re.split(r",|;", row["Completed worker handles"])]
+        if handles and terminal_observation_errors(closure.get("terminal_observations"), handles):
+            raise ValueError("prior_worker_runtime_closure_required")
+        return prior
+    except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:
+        raise ValueError(f"remediation_reentry_artifact_invalid:{error}") from error
 
 
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:
@@ -590,6 +662,8 @@ def prepare_run(
     timebox_minutes: int | None = None,
     primary_question: str | None = None,
     success_criterion: str | None = None,
+    remediation_reentry: bool = False,
+    approval_reference: str | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
@@ -598,6 +672,10 @@ def prepare_run(
         raise ValueError("execution_repository_unavailable")
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
+    if remediation_reentry and (not continuation or playbook != "feature_delivery"):
+        raise ValueError("remediation_reentry_requires_feature_delivery_continuation")
+    if approval_reference and not remediation_reentry:
+        raise ValueError("approval_reference_requires_remediation_reentry")
     goal_defaults_used = playbook in PLAYBOOK_DEFAULT_GOALS and (
         workflow_objective is None and requested_outcome is None
     )
@@ -605,6 +683,18 @@ def prepare_run(
         defaults = PLAYBOOK_DEFAULT_GOALS[playbook]
         workflow_objective = str(defaults["workflow_objective"])
         requested_outcome = str(defaults["requested_outcome"])
+        if remediation_reentry:
+            workflow_objective, requested_outcome = "feature_implementation", "feature_delivery"
+        elif continuation and playbook == "feature_delivery":
+            existing = execution_repository.resolve() / ".thoughts" / work_item / "finalization_packet.json"
+            if existing.is_file() and json.loads(existing.read_text()).get("identity", {}).get("Lifecycle") == "remediation":
+                workflow_objective, requested_outcome = "feature_implementation", "feature_delivery"
+    if playbook == "feature_delivery" and workflow_objective == "feature_implementation" and not remediation_reentry:
+        existing = execution_repository.resolve() / ".thoughts" / work_item / "finalization_packet.json"
+        if not continuation or not existing.is_file() or json.loads(existing.read_text())["identity"]["Lifecycle"] != "remediation":
+            raise ValueError("feature_implementation_requires_remediation_reentry")
+    if remediation_reentry and (workflow_objective, requested_outcome) != ("feature_implementation", "feature_delivery"):
+        raise ValueError("run_goal_conflict:remediation_requires_feature_implementation_and_feature_delivery")
     if playbook == "technical_spike":
         defaults = _playbook_defaults(playbook)
         resolved_timebox_minutes = (
@@ -632,14 +722,34 @@ def prepare_run(
     if playbook == "feature_delivery" and input_manifest is None:
         raise ValueError("run_input_manifest_required")
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
+    prior = _reentry_source(artifact_root, approval_reference) if remediation_reentry else None
+    if prior and goal_defaults_used:
+        validated_supplied["inputs"] = [row for row in validated_supplied["inputs"] if row["Input ID"] not in {"RUN-GOAL-001", "RUN-GOAL-002"}]
     _validate_run_goal(
         playbook, workflow_objective, requested_outcome, validated_supplied,
         allow_default_provenance=goal_defaults_used,
     )
     resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
     manifest = resolve_bindings(playbook, resolved_runtime_agents)
+    if continuation and not (artifact_root / "work_record.md").is_file():
+        raise ValueError("continuation_record_unavailable")
+    if playbook == "feature_delivery":
+        preview = _snapshot_input_files(artifact_root, validated_supplied, persist=False)
+        if continuation and not prior:
+            preview = merge_manifests(load_manifest(artifact_root / RUN_INPUTS_FILENAME, explicit=False), preview)
+        _with_run_goal(preview, workflow_objective, requested_outcome,
+                       "Selected playbook defaults" if goal_defaults_used else "Current user request",
+                       str(PLAYBOOK_DEFAULT_GOALS[playbook]["authority"]) if goal_defaults_used else "Explicit user outcome")
     artifact_root.mkdir(parents=True, exist_ok=True)
     archived = None if continuation else _archive_existing_run(artifact_root, archive_stale_run)
+    if prior:
+        archived_path = artifact_root / "runs" / re.sub(r"[^A-Za-z0-9._-]", "_", prior["identity"]["Run ID"])
+        if archived_path.exists():
+            raise ValueError("prior_run_archive_exists")
+        shutil.copytree(artifact_root, archived_path, ignore=shutil.ignore_patterns("runs"))
+        archived = str(archived_path)
+        for name in ("pre_release_check.json", "finalization_failure.json", "runtime_closure.json", "run_budget.json"):
+            (artifact_root / name).unlink(missing_ok=True)
     record = artifact_root / "work_record.md"
     if continuation:
         if not record.is_file():
@@ -648,7 +758,7 @@ def prepare_run(
         template = "sentry_work_record.md" if playbook == "sentry_issue_remediation" else "work_record.md"
         shutil.copyfile(ROOT / "templates" / template, record)
     run_inputs, run_inputs_path = _prepare_run_inputs(
-        artifact_root, work_item, playbook, resolved_execution_repository, input_manifest, continuation,
+        artifact_root, work_item, playbook, resolved_execution_repository, input_manifest, continuation and not prior,
         validated_supplied,
     )
     if workflow_objective:
@@ -669,6 +779,8 @@ def prepare_run(
     manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
     manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
     manifest["run_input_manifest"]["precedence_rule"] = run_inputs["precedence_rule"]
+    if playbook == "feature_delivery":
+        manifest["lifecycle"] = "remediation" if workflow_objective == "feature_implementation" else "planning"
     if budget:
         budget_path = artifact_root / RUN_BUDGET_FILENAME
         budget_path.write_text(json.dumps(budget, indent=2, sort_keys=True) + "\n")
@@ -742,25 +854,58 @@ def prepare_run(
     manifest_path = artifact_root / "role_bindings.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     packet_path = artifact_root / "finalization_packet.json"
-    if not continuation and not packet_path.exists():
+    if prior or (not continuation and not packet_path.exists()):
         packet = _initial_packet(
             artifact_root, work_item, playbook, workflow_objective, repository_row,
             resolved_runtime_agents, manifest, manifest_path,
         )
+        if prior:
+            for field in ("work_item", "decisions", "claims", "evidence"):
+                packet[field] = prior[field]
+            packet["work_item"]["Last Updated"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            packet["identity"].update({
+                "Requested profile": prior["identity"]["Requested profile"],
+                "Activated profile": "None", "Executed profile": "None", "Profile status": "requested",
+                "Lifecycle": "remediation", "State": "in_progress", "Workflow outcome": "in_progress",
+                "Engineering state": "unknown", "Engineering outcome": "unknown",
+            })
+            for field in ("workers", "worker_results", "synchronization"):
+                packet[field] = []
+            packet["runtime_audits"] = []
+            packet["reentry"] = {"Prior run ID": prior["identity"]["Run ID"],
+                                 "Prior artifacts": archived, "Approval reference": approval_reference,
+                                 "Approved plan": str(artifact_root / "implementation_plan.md")}
+            packet["durable_artifacts"].append({
+                "Artifact": "Approved implementation plan", "Path": str(artifact_root / "implementation_plan.md"),
+                "Status": "Approved", "Purpose": "Preserved plan; delivery activation barrier still required",
+            })
+            text = (ROOT / "templates" / "work_record.md").read_text()
+            for field, value in packet["identity"].items():
+                text = re.sub(rf"(?m)^\|\s*{re.escape(field)}\s*\|[^\n]*$",
+                              lambda match, field=field, value=value: f"| {field} | {value} |", text)
+            text += (f"\n## Remediation Re-entry\n\nPrior run: {prior['identity']['Run ID']}\n\n"
+                     f"Preserved history: {archived}\n\nApproval: {approval_reference}\n\n"
+                     "Approved plan retained. Delivery activation and evidence are pending.\n")
+            record.write_text(text)
+            current_path = artifact_root / "CURRENT.md"
+            if current_path.exists():
+                current_path.write_text(
+                    f"# Current Run\n\nRun: {packet['identity']['Run ID']}\n\nLifecycle: remediation\n\n"
+                    "State: in_progress; delivery activation pending.\n\n"
+                    "Use finalization_packet.json and work_record.md for current evidence.\n\n"
+                    f"Prior state preserved in {archived}.\n"
+                )
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     elif continuation and packet_path.is_file():
         packet = json.loads(packet_path.read_text())
         packet["run_input_manifest"] = manifest["run_input_manifest"]
-        existing_inputs = packet.get("inputs")
-        existing_ids = {
-            str(row.get("Input ID", "")) for row in existing_inputs
-            if isinstance(row, dict)
-        } if isinstance(existing_inputs, list) else set()
-        packet["inputs"] = list(existing_inputs) if isinstance(existing_inputs, list) else []
-        packet["inputs"].extend(
-            row for row in run_inputs["inputs"] if str(row["Input ID"]) not in existing_ids
-        )
-        packet["identity"]["Run input manifest"] = manifest["run_input_manifest"]["path"]
+        packet["inputs"] = list(run_inputs["inputs"])
+        refreshed = _initial_packet(artifact_root, work_item, playbook, workflow_objective,
+                                    repository_row, resolved_runtime_agents, manifest, manifest_path)
+        for field in ("Run input manifest", "Run input manifest hash", "Framework commit / status",
+                      "Playbook / version", "Plugin package / version", "Role-policy baseline ID",
+                      "Role binding manifest", "Provider/runtime configuration", "Provider configuration source/status"):
+            packet["identity"][field] = refreshed["identity"][field]
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     return {
         "status": "prepared",
@@ -1171,6 +1316,9 @@ def main() -> int:
     parser.add_argument("--playbook")
     parser.add_argument("--runtime-agents", type=Path)
     parser.add_argument("--continuation", action="store_true")
+    parser.add_argument("--remediation-reentry", action="store_true",
+                        help="Start a new Feature Delivery remediation lifecycle, preserving planning history")
+    parser.add_argument("--approval-reference", help="Explicit implementation approval for remediation re-entry")
     parser.add_argument("--archive-stale-run", action="store_true")
     parser.add_argument("--workflow-objective")
     parser.add_argument("--requested-outcome")
@@ -1205,6 +1353,8 @@ def main() -> int:
             args.timebox_minutes,
             args.primary_question,
             args.success_criterion,
+            args.remediation_reentry,
+            args.approval_reference,
         )
     except ValueError as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
