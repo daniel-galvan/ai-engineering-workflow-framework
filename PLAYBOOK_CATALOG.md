@@ -1,15 +1,33 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-08
 ---
 
 # Playbook Architecture Catalog
 
 This catalog preserves the architecture, use cases, evidence sources, worker graphs, and current exercise state of the
 workflow playbooks. It is a design reference; the playbook files remain the execution source of truth.
+
+## Current Exercise State
+
+The table below is generated from playbook front matter. Update exercise claims in the playbook when new evidence
+changes them, then run `python3 scripts/playbook_catalog.py --write`. The library validator rejects stale generated
+content. Architecture and selection guidance below remain authored; the catalog's update date records edits to this
+document, not certification against every dependency revision. Use the
+[framework manifest](framework_manifest.json) for the current contract, integration, and provider-policy versions.
+
+<!-- BEGIN GENERATED PLAYBOOK STATUS -->
+| Playbook | Version | Updated | Status | Maturity | Exercise scope | Validation summary |
+| --- | --- | --- | --- | --- | --- | --- |
+| [Feature Delivery](playbooks/feature_delivery.md) | 0.5.7 | 2026-10-08 | Pilot | exercising | standard + planning; deep + planning; standard + remediation; deep + remediation | prior exercise scope retained; tiered Jira retrieval not live-validated |
+| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | 0.5.2 | 2026-09-22 | Pilot | exercising | standard + planning; deep + planning; standard + remediation; deep + remediation | all combinations exercised; mixed reliability; not delivery-validated |
+| [Technical Spike](playbooks/technical_spike.md) | 0.5.16 | 2026-10-08 | Pilot | exercising | standard + planning; deep + planning | tiered Jira retrieval contract-tested; live rerun pending |
+| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | 0.5.4 | 2026-10-08 | Pilot | exercising | standard + planning; deep + planning; standard + remediation; deep + remediation | prior exercise scope retained; tiered Jira retrieval not live-validated |
+| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | 0.5.2 | 2026-10-08 | Pilot | exercising | standard + planning; deep + planning; standard + remediation; deep + remediation | prior exercise scope retained; tiered Jira retrieval not live-validated |
+<!-- END GENERATED PLAYBOOK STATUS -->
 
 ## Shared Architecture
 
@@ -37,9 +55,7 @@ Coordinator performs initialization directly; one final Documenter runs after an
 
 ## Technical Spike
 
-**Use for:** answering one bounded technical question or assessing an existing Spike report. **State:** Exercising; one
-deep review exposed routing, budget, finalization, and handoff failures. Corrective controls are regression-covered; a
-live rerun remains pending.
+**Use for:** answering one bounded technical question or assessing an existing Spike report.
 
 The distinguishing seam is the learning artifact. A Technical Spike has a question, timebox or evidence budget,
 discriminating checks, explicit uncertainty, and one disposition. It produces `spike_report.md`, not an implementation
@@ -68,15 +84,13 @@ stable, the budget is exhausted, or indispensable evidence is unavailable.
 
 ## Feature Delivery
 
-**Use for:** planned Jira features and improvements. **State:** Exercising; all profile/lifecycle combinations
-exercised; reliability, control fidelity, and efficiency remain under validation.
+**Use for:** planned Jira features and improvements.
 
 Feature Delivery also supports a `specification_assessment` planning objective for judging an existing Spike,
 proposal, or specification. This route reuses the planning graph but separates specification readiness from the ability
 to draft future work. Its terminal artifact is `specification_assessment.md`, not an implementation plan. A common case
 is checking whether the Stories produced by a completed Spike collectively cover their Epic; see the worked
 [`Feature Delivery example`](examples/feature_delivery.md#completed-spike-results-and-epic-story-coverage).
-The new assessment-only output has local contract tests but has not yet passed a live plugin exercise.
 
 The distinguishing seam is Jira Context Recovery: the ticket, its immediate parent and ancestor hierarchy, selected
 related siblings, linked decisions, and repository evidence establish scope. Parent and sibling context informs the
@@ -104,8 +118,7 @@ does not invent a plan.
 ## TechOps Issue Remediation
 
 **Use for:** support- and operations-reported Jira issues, including Zendesk or Help Desk reports with attachments,
-logs, payloads, screenshots, or recordings. **State:** Exercising; all profile/lifecycle combinations exercised;
-reliability, control fidelity, and efficiency remain under validation.
+logs, payloads, screenshots, or recordings.
 
 ```mermaid
 flowchart TB
@@ -127,8 +140,7 @@ repository integration and independent planning review.
 
 ## Sentry Issue Remediation
 
-**Use for:** a Sentry issue that needs evidence-led diagnosis and a minimal fix. **State:** Exercising; all
-profile/lifecycle combinations exercised; reliability, control fidelity, and efficiency remain under validation.
+**Use for:** a Sentry issue that needs evidence-led diagnosis and a minimal fix.
 
 ```mermaid
 flowchart TB
@@ -150,9 +162,7 @@ asking the owner to choose.
 
 ## Vulnerability Investigation
 
-**Use for:** scanner findings, advisories, CVEs, secrets, or supply-chain risk. **State:** Exercising; recent bounded
-Standard planning and remediation runs work well after substantial improvements. More Deep planning and remediation
-scenarios are required before broader reliability or delivery-validation claims.
+**Use for:** scanner findings, advisories, CVEs, secrets, or supply-chain risk.
 
 ```mermaid
 flowchart TB

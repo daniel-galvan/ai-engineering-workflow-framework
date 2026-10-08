@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.17
+version: 0.5.18
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -419,7 +419,7 @@ Each result preserves:
 | --- | --- | --- |
 | `state` | Yes | One of the shared retrieval states below. |
 | `work_item` | Conditional | Normalized work item when the requested source data is available. |
-| `assets` | Conditional | Attachment or reference-asset inventory when `history` is requested; preserve an explicit empty or unavailable result. |
+| `assets` | Conditional | Selected attachment/reference-asset inventory. History results retain an explicit list; if assets were not requested, record that limitation instead of implying an empty collection. |
 | `related_context` | Yes | Inventoried related records with stable identifiers, relationship types, and explicit read/disposition states. |
 | `evidence` | Yes | Source locations, observed values, authority, status, redaction, and limitations. |
 | `source_updated_at` / `source_version` | Conditional | Source freshness metadata when supplied by the provider. |

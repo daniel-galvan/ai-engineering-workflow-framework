@@ -1,12 +1,12 @@
 ---
 title: TechOps Issue Remediation Playbook
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
-validation_summary: all combinations exercised; mixed reliability; not delivery-validated
+validation_summary: prior exercise scope retained; tiered Jira retrieval not live-validated
 owner: Engineering
-last_updated: 2026-10-07
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -45,6 +45,12 @@ Required inputs:
 
 Optional evidence includes attachments, screenshots, recordings, transcripts, JSON, logs, traces, exports, prior
 incidents, dashboards, runbooks, pull requests, and related resolved tickets.
+
+The evidence question is what reported behavior diverges from the current implementation. Read the exact issue and
+report-bearing comments; recover parent/hierarchy only for unresolved scope or dependencies, links for a named prior
+fix or shared failure path, and changelog for status/delivery conflicts. Select attachments or remote links when the
+report references them or they can resolve the diagnosis. A self-contained bug does not require a sibling roster.
+Record each expansion reason and stop when the report, failure boundary, and material constraints are established.
 
 `issue-evidence` owns evidence normalization. Record each artifact's source, timestamp when available, redaction status,
 and limitations. Treat an attachment as evidence, not proof of current code or runtime behavior.

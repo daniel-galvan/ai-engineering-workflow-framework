@@ -16,6 +16,16 @@ from io import StringIO
 from pathlib import Path
 
 try:
+    from playbook_catalog import catalog_errors
+except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
+    from scripts.playbook_catalog import catalog_errors
+
+try:
+    from framework_manifest import manifest_errors
+except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
+    from scripts.framework_manifest import manifest_errors
+
+try:
     from run_input_manifest import load_manifest
 except ModuleNotFoundError:  # Imported as scripts.validate_library from the repository root.
     from scripts.run_input_manifest import load_manifest
@@ -2882,6 +2892,21 @@ def self_test_reasoning_records() -> None:
     }
     assert jira_adapter_contract_errors(valid_jira_fixture) == []
     assert work_item_read_contract_errors(valid_jira_fixture) == []
+    bounded_jira = json.loads(json.dumps(valid_jira_fixture))
+    bounded_jira["request"]["scope"] = ["item"]
+    bounded_jira["request"].pop("selection_reason")
+    bounded_jira["result"].pop("assets")
+    bounded_jira["result"]["limitations"] = ["Hierarchy, links, history, and assets not requested; bounded issue scope."]
+    assert jira_adapter_contract_errors(bounded_jira) == []
+    selected_history = json.loads(json.dumps(valid_jira_fixture))
+    selected_history["request"].pop("selection_reason")
+    assert any("selection_reason" in error for error in jira_adapter_contract_errors(selected_history))
+    selected_history["request"]["scope"] = ["item", "history"]
+    selected_history["request"]["selection_reason"] = "Report-bearing comments resolve the diagnosis."
+    selected_history["result"]["limitations"] = ["Attachment inventory not requested; assets list does not prove empty."]
+    assert jira_adapter_contract_errors(selected_history) == []
+    selected_history["result"].pop("assets")
+    assert any("explicit assets list" in error for error in jira_adapter_contract_errors(selected_history))
     for state in sorted(WORK_ITEM_READ_RESULT_STATES - {"complete"}):
         state_fixture = json.loads(json.dumps(valid_jira_fixture))
         state_fixture["result"]["state"] = state
@@ -3892,6 +3917,11 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
                 raise AssertionError("legacy compact work records must fail terminal validation")
 
 
+for error in manifest_errors(ROOT):
+    fail(error)
+for error in catalog_errors(ROOT):
+    fail(error)
+
 for path in ROOT.rglob("*.md"):
     lines = path.read_text().splitlines()
     index = 0
@@ -4335,9 +4365,9 @@ for phrase in ("Asset source: true", "asset_manifest.json", "awaiting_input"):
         fail(f"skills/run/SKILL.md is missing asset-gate control: {phrase}")
 for path, phrase in (
     (ROOT / "integrations" / "jira.md", "complete direct-child inventory"),
-    (ROOT / "integrations" / "jira.md", "Inventory attachments on the supplied item and every issue selected under the applicable retrieval gate"),
-    (ROOT / "providers" / "codex.md", "enumeration even when the Epic key is known"),
-    (ROOT / "playbooks" / "technical_spike.md", "A Done child Spike and Stories"),
+    (ROOT / "integrations" / "jira.md", "playbook requires an asset inventory"),
+    (ROOT / "providers" / "codex.md", "enumeration when collection coverage is required"),
+    (ROOT / "playbooks" / "technical_spike.md", "A Done child Spike"),
     (CODEX_AGENT_DIR / "orchestrator.toml", "For every Jira-backed run"),
 ):
     if phrase not in path.read_text():
@@ -4717,8 +4747,8 @@ for phrase in ("## Launcher and Package Preflight", "## Worker Activation", "## 
                "plugin_revision_mismatch", "list_agents", "read_thread", "wait_threads"):
     if phrase not in codex_adapter:
         fail(f"providers/codex.md is missing provider execution rule: {phrase}")
-for phrase in ("## Feature Delivery Source-Access Gate", "For a Jira-backed run, request `item`",
-               "Inventory every associated issue", "at most one", "not connector-wide authentication failures"):
+for phrase in ("## Feature Delivery Source-Access Gate", "Start with `item`",
+               "Inventory every member of that collection", "at most one", "not connector-wide authentication failures"):
     if phrase not in jira_text:
         fail(f"integrations/jira.md is missing source policy: {phrase}")
 for phrase in (

@@ -1,15 +1,15 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.15
+version: 0.5.16
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
 exercise_scope: standard + planning; deep + planning
 default_timebox_minutes: 35
 default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
-validation_summary: Jira related-work and attachment coverage gate added; live rerun pending
+validation_summary: tiered Jira retrieval contract-tested; live rerun pending
 owner: Engineering
-last_updated: 2026-10-06
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -115,11 +115,13 @@ ownership, or incompatible-alternatives decision that bounded discovery cannot r
 Recover the Jira item and only the hierarchy, links, documents, or repository context needed to interpret the question.
 Apply the [Jira Integration](../integrations/jira.md) when Jira is supplied. Separate verified facts, assumptions,
 conflicts, and unknowns. An Epic or related feature provides context, not automatic Spike scope.
-Before repository investigation, `spike-context` must enumerate the Epic's direct children (or the supplied issue's
-parent and direct siblings), directly linked Jira issues, and each issue's attachment collection. Record the issue key,
-type, status, relationship, relevance, and read/asset status in `spike_context.md`. A Done child Spike and Stories it
-produced are Jira work-item evidence, even when the Spike has no report attachment. Unread relevant issues or assets
-make context partial; preserve the limitation and do not claim a complete answer from the Epic alone.
+Before repository investigation, `spike-context` reads the exact supplied issue. Add parent/hierarchy or linked issues
+only to resolve the bounded question's scope, dependencies, or comparison; add comments/history for an unresolved
+claim or conflict, and assets when supplied or referenced material is needed. Record the question, selection reason,
+and stop condition in `spike_context.md`. If the question concerns an Epic's resulting work, request complete
+collection coverage and record issue identity, relationship, relevance, and read/asset status. A Done child Spike and
+Stories it produced are work-item evidence when selected, even without a report attachment. Missing indispensable
+material makes context partial; unselected optional scopes do not require enumeration.
 When a work-item identifier is supplied, `spike-context` must consume that input through `work_item_read` before
 repository analysis. If the capability is unavailable, record the normalized unavailable result and preserve the
 supplied identifier; do not silently omit the work-item read.

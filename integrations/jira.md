@@ -1,6 +1,6 @@
 ---
 title: Jira Integration
-version: 0.5.5
+version: 0.5.6
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -54,37 +54,36 @@ source-access rules; do not probe optional sources.
 
 ## Read path
 
-Select the smallest read operation that answers the question:
+Start with `item`: read the exact issue's summary, current description, acceptance criteria, status, type, and
+explicit constraints. The selected playbook states what evidence its question requires. Add a scope only for that
+requirement or a recorded unresolved question; do not request `hierarchy`, `selected_links`, and `history` by default.
 
-| Need | Minimum Jira evidence |
-| --- | --- |
-| Task scope | The issue's summary, description, acceptance criteria, status, type, and explicitly stated constraints |
-| Immediate outcome | The directly linked parent work item and its relevant scope |
-| Broader objective | Ancestor Stories, Epics, Initiatives, or equivalent hierarchy only when needed |
-| Related work | Complete direct-child inventory for an Epic; for a Story, Task, Bug, or Spike, its parent and that parent's direct-child inventory; directly linked issues. Record type, status, relationship, and relevance for every issue. |
-| Dependency or precedent | Read related issue content, pull requests, or documents with a recorded selection reason |
-| Current writable shape | Live project, issue-type, field, allowed-value, and transition metadata immediately before a write |
-| Related history | Comments, attachments, change history, or linked delivery records relevant to the question |
-| Visual or reference assets | Complete attachment inventory, including an explicit empty/unavailable result and stable locators for every attachment. |
+| Tier | Escalation trigger | Minimum Jira evidence |
+| --- | --- | --- |
+| Required | Jira is the work-item source | Exact issue by key or URL; current scope, criteria, status, type, and constraints |
+| Parent / hierarchy | Scope is thin, inherited context is referenced, or the question concerns cross-issue coverage | Relevant parent/ancestors; direct-child inventory only when the question requires collection coverage |
+| Linked issues | A reference, dependency, precedent, or conflicting requirement could change the answer | Selected issue or document with a recorded selection reason |
+| History | Current fields cannot resolve a reported symptom, prior decision, or status/delivery conflict | Relevant comments or change history for selected issues |
+| Attachments / remote links | Supplied or referenced assets, unresolved evidence, or a playbook asset gate requires them | Attachment/remote-link inventory and selected contents for in-scope issues |
+| Write metadata | An explicitly approved external write is being prepared | Live project, issue-type, field, allowed-value, and transition metadata |
 
-Use a direct issue read when a stable key or URL is available. A bounded child
-query is still required when the supplied item is an Epic or its parent has other
-children: the Epic issue response alone does not prove the child collection is
-empty. Page through the complete direct-child collection; do not scan an entire
-project, board, or initiative. Do not recursively traverse unrelated links.
+Record the question, selected scopes and issues, and stop condition in the normalized request's `selection_reason` and
+context artifact. Reuse the successful exact-issue read; expand only the missing fields or collections. When the
+question is answered, stop retrieval. Record unselected scopes as `not requested` in selection notes or limitations,
+not as a result state, `empty`, or `unavailable`;
+`complete` applies to the requested scope and does not imply all related work or assets were reviewed.
 
-For a Jira-backed run, request `item`, `hierarchy`, `selected_links`, and `history` together. A supplied Epic requires
-its complete direct-child collection; a supplied Story, Task, Bug, or Spike requires its parent and that parent's
-direct-child collection, plus direct Jira links in either case. Inventory every associated issue regardless of type or
-status. The normalized result and context artifact must record each issue's key, relationship, type, status, relevance,
-read state, and attachment-inventory state; each attachment must identify its owning issue and actual review result.
-The context worker may mark an item irrelevant with a reason, but may not silently omit it. Empty collections require
-a successful query; a failed, truncated, or unpaged collection is `partial` or `unavailable`, never `empty`.
-Before downstream analysis or fan-in, the Coordinator reconciles this coverage against the context artifact and sends
-one correction to the owning context worker for missing rows. If coverage remains incomplete, keep the result partial
-and name the affected conclusion; no completed or ready result may imply that all related work/assets were reviewed.
-Prior Jira issues are context evidence, not automatically current-run requirements or permission to reuse an unrelated
-historical report.
+When collection coverage is required, page through the complete direct-child inventory for the supplied Epic or
+selected parent, or the selected link/attachment collection. Inventory every member of that collection regardless of
+type or status. A bounded summary roster may precede per-issue expansion: mark unopened records
+`not selected; summary-only` with a reason, not as proven non-material. Fully read issues whose requirements,
+dependencies, prior fixes, or assets could change the answer. A Done status alone does not establish relevance or
+absence of output. Do not scan an entire project or recursively traverse unrelated links.
+
+Empty collections require a successful query; failed, truncated, or unpaged collections are `partial` or `unavailable`.
+Before downstream analysis or fan-in, reconcile coverage for the selected scopes in the context artifact and return
+one correction to the owning worker for omissions. Missing indispensable evidence limits readiness; an unselected
+optional scope does not block a bounded conclusion. Prior issues remain context, not inherited current-run requirements.
 
 ## Adapter Contract
 
@@ -96,9 +95,9 @@ shapes or provider-specific operation names:
 | Shared scope | Jira-specific read |
 | --- | --- |
 | `item` | Direct issue read by exact key or URL. |
-| `hierarchy` | Parent/ancestors and a complete direct-child inventory of the supplied Epic or immediate parent. |
-| `selected_links` | Directly linked issues and selected pull requests or documents. |
-| `history` | Comments, complete attachment inventory, and relevant change history or delivery records for each in-scope issue. |
+| `hierarchy` | Selected parent/ancestors; complete direct-child inventory only when collection coverage is required. |
+| `selected_links` | Selected linked issues, pull requests, documents, or remote links relevant to the question. |
+| `history` | Selected comments, change history, delivery records, or attachment inventory for in-scope issues; record which reads are required. |
 | `write_metadata` | Live project, issue-type, field, allowed-value, and transition metadata before an approved write. |
 
 The canonical offline fixture shape is
@@ -106,40 +105,19 @@ The canonical offline fixture shape is
 
 ## Attachment and Asset Inventory
 
-For every Jira-backed playbook, the context read MUST include the Jira `hierarchy`, `selected_links`, and `history`
-scopes. Inventory every direct child and directly linked issue regardless of type or status, including Done Spikes and
-the Stories they produced. For a bounded TechOps bug, the complete roster may be summary-only discovery: record each
-unopened sibling as `not selected; summary-only`, with a selection reason, never as proven non-material. Fully read the
-target, its relevant parent context, directly referenced issues, and candidates sharing the failure path, API, prior
-fix,
-or rollout dependency, including descriptions, criteria, comments, and relevant history. Select from the summary roster
-before per-issue expansion; do not attempt attachment reads for every deferred sibling. When a selected status conflicts
-with comments or delivery evidence, retrieve its relevant change history and reconcile the conflict or record the
-concrete retrieval failure. Inventory attachments and
-remote links for those selected issues. The Coordinator records why deferred siblings cannot change the bounded
-conclusion; expand discovery when evidence challenges that judgment. This permits bounded readiness without claiming
-all sibling content was reviewed. Other Jira-backed playbooks retain the full per-issue retrieval gate below.
-For those playbooks, read each inventoried issue's summary, description, acceptance criteria, comments, and relevant
-history before classifying its relevance; record why an issue is non-material. A Done status or absence of a
-report attachment is not evidence that a Spike produced no output: check related issues, issue history, and the
-resulting delivery breakdown. Do not treat those issues as inherited
-requirements.
+Inventory attachments on the supplied item and every issue selected under the applicable retrieval gate when the
+playbook requires an asset inventory or an asset could answer the question. Inventory remote links separately when
+selected; empty `issuelinks` or attachment fields do not prove an empty remote-link collection. Preserve owner issue,
+source locator, retrieval method, availability, redaction, and review/disposition state for every discovered asset.
+Review material assets' actual contents before using them as evidence: render or visually inspect images and video;
+read logs and documents. Other discovered assets may remain `not selected` with a reason unless the playbook requires
+complete review. An unread filename or count is not consumed evidence.
 
-Inventory attachments on the supplied item and every issue selected under the applicable retrieval gate. Review every
-available attachment's actual contents before treating its evidence as covered: render or visually inspect images and
-video; read logs and documents.
-Query remote links separately for each selected issue; empty `issuelinks` or attachment fields do not establish
-an empty remote-link collection. Record the retrieval method, status, and discovered URLs. Disposition each linked
-document or external record as material or supporting context. Preserve a retrieval limitation when links are
-unavailable.
-Record inaccessible, redacted, unsupported, or irrelevant assets explicitly. An unread file name or attachment count
-is not evidence. If a material issue or asset cannot be read within the run, preserve `partial` or `unavailable` and
-its effect on the answer; do not claim complete context or readiness.
-
-The normalized result must include the related-issue inventory with each issue's key, relationship, type, status,
-read/disposition state, and source locator; the attachment inventory must identify its owner issue. Reconcile both
-inventories in the context artifact before downstream analysis or fan-in. An empty child/link/attachment collection
-requires a successful collection read; an omitted field is not an empty result.
+For a selected collection, preserve inaccessible, redacted, unsupported, or irrelevant assets explicitly. A missing
+material asset remains `partial` or `unavailable` with its effect on the answer; never describe it as reviewed.
+Reconcile selected issue and asset inventories before downstream analysis or fan-in. An omitted collection is not an
+empty result. If `history` was selected for comments or changelog alone, preserve the normalized `assets` list and
+state that attachment inventory was `not requested`; an empty list then makes no claim that Jira has no attachments.
 
 For Feature Delivery, `feature-context` additionally produces the plan-level `asset_manifest.json` gate.
 The normalized result must preserve each attachment's stable name/locator, type, availability, redaction state, and
@@ -150,8 +128,8 @@ change scope, acceptance, or the implementation boundary.
 
 The Feature Delivery `asset_manifest.json` is the review-level companion to the normalized Jira read. It must include
 the Jira attachment source even when the collection is empty, that source's `remote_link_inventory`, a source and asset
-row for every discovered remote link, plus every explicitly supplied file, folder, or URL
-source. It is not valid to cite the issue description, an attachment count, or a filename as proof that an image or
+row for every remote link discovered within the selected issue scope, plus every explicitly supplied file, folder, or
+URL source. It is not valid to cite the issue description, an attachment count, or a filename as proof that an image or
 document was reviewed.
 
 ## Context recovery order
@@ -246,12 +224,11 @@ effect must remain visible in the work record.
 
 ## Playbook use
 
-- Technical Spike uses this integration for the Spike ticket, bounded hierarchy context, and linked research material.
-- Feature Delivery uses this integration for issue, hierarchy, and complete attachment inventory recovery. Its asset
+- Technical Spike starts with its exact ticket and expands only to evidence needed for the bounded question or review.
+- Feature Delivery declares its related-work and asset needs in the playbook. Its asset
   review gate is not passed until the attachment collection and all declared supporting asset sources are explicitly
   accounted for.
-- TechOps Issue Remediation uses it for issue reports, comments, attachments,
-  links, and related operational work.
+- TechOps Issue Remediation requires the issue and report-bearing comments; other scopes answer named diagnosis gaps.
 - Vulnerability Investigation may use it for `VULN-*` work-item context and
   related tickets; scanner or advisory evidence remains usable when Jira is not
   configured or is only an optional supporting source.

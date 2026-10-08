@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "library_release": null,
+  "library_release_status": "No aggregate library release is assigned; Git revisions identify snapshots.",
+  "plugin_package": {
+    "name": "ai-engineering-workflows",
+    "version": "0.1.9+codex.20261008211234"
+  },
+  "framework": {
+    "path": "frameworks/investigation.md",
+    "version": "0.5.1"
+  },
+  "execution_contract": {
+    "path": "contracts/workflow_execution.md",
+    "version": "0.5.18"
+  },
+  "playbooks": {
+    "feature_delivery": {
+      "path": "playbooks/feature_delivery.md",
+      "version": "0.5.7"
+    },
+    "sentry_issue_remediation": {
+      "path": "playbooks/sentry_issue_remediation.md",
+      "version": "0.5.2"
+    },
+    "technical_spike": {
+      "path": "playbooks/technical_spike.md",
+      "version": "0.5.16"
+    },
+    "techops_issue_remediation": {
+      "path": "playbooks/techops_issue_remediation.md",
+      "version": "0.5.4"
+    },
+    "vulnerability_investigation": {
+      "path": "playbooks/vulnerability_investigation.md",
+      "version": "0.5.2"
+    }
+  },
+  "provider_policies": {
+    "providers/codex/model_effort_policy.md": {
+      "version": "0.5.4",
+      "baseline_id": "codex-role-policy-gpt61-sol-luna-orchestrator-v20261001"
+    }
+  },
+  "compatibility": {
+    "document_versions": "independent",
+    "cross_revision_compatibility": "not_declared",
+    "rules": [
+      "CONTRIBUTING.md",
+      "contracts/workflow_execution.md",
+      "providers/README.md"
+    ]
+  },
+  "documents": {
+    "CONTRIBUTING.md": "0.5.3",
+    "OPERATING_GUIDE.md": "0.5.2",
+    "PLAYBOOK_CATALOG.md": "0.5.3",
+    "SETUP.md": "0.5.1",
+    "contracts/claims.md": "0.5.1",
+    "contracts/code_review.md": "0.1.1",
+    "contracts/portable_implementation_handoff.md": "0.5.2",
+    "contracts/workflow_execution.md": "0.5.18",
+    "contracts/workflow_execution_guidance.md": "0.5.1",
+    "contracts/workflow_vocabulary.md": "0.5.1",
+    "examples/feature_delivery.md": "0.5.4",
+    "examples/sentry_issue_remediation.md": "0.5.1",
+    "examples/technical_spike.md": "0.5.2",
+    "examples/techops_issue_remediation.md": "0.5.1",
+    "examples/vulnerability_investigation.md": "0.5.1",
+    "frameworks/experimental/workflow_evaluation.md": "0.5.1",
+    "frameworks/investigation.md": "0.5.1",
+    "integrations/jira.md": "0.5.6",
+    "integrations/sentry.md": "0.5.2",
+    "playbooks/feature_delivery.md": "0.5.7",
+    "playbooks/sentry_issue_remediation.md": "0.5.2",
+    "playbooks/technical_spike.md": "0.5.16",
+    "playbooks/techops_issue_remediation.md": "0.5.4",
+    "playbooks/vulnerability_investigation.md": "0.5.2",
+    "providers/claude.md": "0.5.1",
+    "providers/codex/model_effort_policy.md": "0.5.4",
+    "providers/codex.md": "0.5.6",
+    "providers/cursor.md": "0.5.1",
+    "providers/generic.md": "0.5.1",
+    "roles/current_state_investigator.md": "0.5.2",
+    "roles/dependency_analyst.md": "0.5.1",
+    "roles/documenter.md": "0.5.5",
+    "roles/implementer.md": "0.5.1",
+    "roles/orchestrator.md": "0.5.1",
+    "roles/repository_integrator.md": "0.5.1",
+    "roles/reviewer.md": "0.5.2",
+    "roles/solution_architect.md": "0.5.1",
+    "roles/tester.md": "0.5.1",
+    "skills/architecture_mapping.md": "0.5.1",
+    "skills/build_and_test.md": "0.5.1",
+    "skills/dependency_mapping.md": "0.5.1",
+    "skills/destination_integration.md": "0.5.1",
+    "skills/failure_diagnosis.md": "0.5.3",
+    "skills/operational_readiness.md": "0.5.1",
+    "skills/repository_exploration.md": "0.5.1",
+    "skills/work_item_context.md": "0.5.3",
+    "skills/work_record_maintenance.md": "0.5.2",
+    "skills/workflow_planning.md": "0.5.1",
+    "strategies/collaborative.md": "0.5.1",
+    "templates/code_review.md": "0.1.0",
+    "templates/evaluation_work_record_addendum.md": "0.5.1",
+    "templates/feature_delivery_run_prompt.md": "0.5.2",
+    "templates/implementation_handoff.md": "0.5.2",
+    "templates/implementation_plan.md": "0.5.3",
+    "templates/sentry_issue_run_prompt.md": "0.5.1",
+    "templates/sentry_work_record.md": "0.5.3",
+    "templates/specification_assessment.md": "0.1.1",
+    "templates/spike_report.md": "0.5.8",
+    "templates/technical_spike_run_prompt.md": "0.5.7",
+    "templates/techops_issue_run_prompt.md": "0.5.1",
+    "templates/validation_report.md": "0.1.0",
+    "templates/vulnerability_issue_run_prompt.md": "0.5.1",
+    "templates/work_record.md": "0.5.4"
+  }
+}

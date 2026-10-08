@@ -125,12 +125,13 @@ description: >-
    For Feature Delivery, add `Asset source: true` to the input row for each explicitly supplied file, folder, or URL
    that must be inventoried; the asset gate reconciles those markers against `asset_manifest.json`.
    Jira-related children, linked issues, and attachments are discovered evidence,
-   not extra prompt fields the user must enumerate. For every Jira-backed run,
-   require the context worker to recover and record their complete direct
-   inventory under the shared Jira Integration before downstream work. Reconcile
-   issue and asset read states in the context artifact; return one correction
-   for omissions. Unavailable or unreviewed material stays explicit and prevents
-   a false claim of complete context or readiness.
+   not extra prompt fields the user must enumerate. Apply the selected playbook's
+   evidence question and the Jira Integration's tiered retrieval policy. Require
+   complete coverage only for selected collections and playbook-required gates;
+   unselected scopes are not empty collections. Reconcile selected issue and
+   asset read states before downstream work; return one correction for omissions.
+   Unavailable or unreviewed material stays explicit and prevents a false claim
+   of complete context or readiness.
    When the request explicitly names Feature Delivery `specification_assessment`, treat that as the compatible
    `specification_assessment + specification_assessment` pair even without labeled prompt fields. Include the exact
    `RUN-GOAL-001` row below when this or another requested outcome is explicit; change only the outcome value.

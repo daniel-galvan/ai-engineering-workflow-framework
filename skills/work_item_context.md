@@ -1,12 +1,12 @@
 ---
 
 title: Work-Item Context
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 category: Context
 provider_independent: true
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-08
 ---
 
 # Work-Item Context
@@ -27,8 +27,8 @@ last_updated: 2026-09-23
 * Constraints and non-goals
 * Related work and prior context
 * Context-source map and conflicts
-* A related-work coverage inventory with every associated Jira issue's key, type, status, relationship, relevance,
-  read state, and attachment-inventory state; each attachment's owner and review result
+* A coverage inventory for selected related-work and asset scopes, with issue identity, relationship, relevance,
+  read state, and selected attachments' owner and review result; unselected scopes remain explicit
 * Unknowns requiring validation
 * A normalized `work_item_read` request/result pair conforming to the shared
   [Work-Item Read Contract](../contracts/workflow_execution.md#work-item-read-contract)
@@ -43,9 +43,11 @@ This skill owns normalized context outputs and context sufficiency; the
 integration owns source-specific retrieval, freshness, evidence states, and
 write rules. Preserve the normalized request/result pair in the context artifact
 before downstream workers consume it.
-For Jira, preserve the full related-work and asset coverage inventory in that same artifact. A complete primary issue
-read does not make an unqueried child, attachment, or remote-link collection empty. If material context cannot be read,
-state which conclusion is limited and classify the context as partial.
+For Jira, record the playbook's evidence question, selected scopes, selection reasons, and stop condition. Start with
+the exact issue; expand according to the integration only when the question or a playbook gate requires it. Preserve
+coverage for selected scopes in the context artifact. A complete primary issue read does not make an unqueried child,
+attachment, or remote-link collection empty. If material context cannot be read, state which conclusion is limited
+and classify the context as partial; an unselected optional scope does not prevent bounded context sufficiency.
 
 ## Context Sufficiency
 

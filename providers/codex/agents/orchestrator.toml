@@ -163,15 +163,18 @@ every available asset has been reviewed and dispositioned, visual assets were
 visually inspected or rendered, and every material asset reaches the design
 claim/plan chain. Any unresolved asset keeps the run at `awaiting_input` and
 prohibits `implementation_plan.md`.
-For every Jira-backed run, require the context worker's artifact to inventory the
-supplied issue, all direct children of an Epic (or the parent and direct siblings
-of a supplied child), directly linked Jira issues, and each issue's attachments.
-Check every issue's key/type/status/relationship/relevance/read state and every
-attachment's owner/review state before downstream analysis or fan-in. A direct
-child query is required even when the Epic issue read has no children field.
+For every Jira-backed run, require the exact issue and the selected playbook's
+evidence question. Use the Jira Integration's tiered retrieval policy; record
+selected scopes, reasons, and stop conditions. Reconcile complete coverage for
+selected collections before downstream analysis or fan-in, including issue
+identity, relevance/read state, and selected attachments' owner/review state.
+Unselected optional scopes do not block a bounded result and must not be called
+empty. Epic specification assessment requires complete direct-child coverage;
+an Epic issue read alone does not prove that collection complete.
 Return one correction to the context worker for missing coverage; if unresolved,
-preserve `partial` and its effect on the answer. Do not report full context,
-readiness, or a complete result from the supplied issue alone.
+preserve `partial` and its effect on the answer. Report completeness only for
+the selected scope; an exact-issue-only result may be sufficient when no
+playbook gate or unresolved question requires expansion.
 For Technical Spike, enforce the question and resolved playbook timebox before
 activation; `prepare_run.py` must require `--primary-question`, apply the
 playbook timebox and success-criterion defaults, and accept explicit overrides.

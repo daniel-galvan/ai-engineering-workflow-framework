@@ -1,7 +1,7 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.5.5
+version: 0.5.6
 status: Pilot
 owner: Engineering
 provider: codex
@@ -174,13 +174,14 @@ the normalized result rather than the connector payload.
 | Shared scope | Codex operation | Boundary |
 | --- | --- | --- |
 | `item` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Read the exact `cloudId` plus issue key/ID with only the fields needed for the request. |
-| `hierarchy` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and bounded `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` | Read the parent/ancestors by exact key and page through all direct children of the supplied Epic or immediate parent. |
-| `selected_links` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and `mcp__codex_apps__atlassian_rovo_getjiraissueremoteissuelinks` | Inventory directly linked Jira issues; read those bearing on the objective and record dispositions for the rest. Select remote/document links by relevance. |
-| `history` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Request comments and complete attachment collections for the supplied and associated issues; retrieve actual contents of available assets through the configured connector. |
+| `hierarchy` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and bounded `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` | Read selected parent/ancestors by exact key; page through direct children only when the evidence question requires collection coverage. |
+| `selected_links` | `mcp__codex_apps__atlassian_rovo_getjiraissue` and `mcp__codex_apps__atlassian_rovo_getjiraissueremoteissuelinks` | Read selected links with their reasons; inventory the complete direct-link collection only when the evidence question requires collection coverage. |
+| `history` | `mcp__codex_apps__atlassian_rovo_getjiraissue` | Read selected comments, changelog, or attachment collections for in-scope issues; retrieve required asset contents through the configured connector. |
 | `write_metadata` | `mcp__codex_apps__atlassian_rovo_getvisiblejiraprojects`, `mcp__codex_apps__atlassian_rovo_getjiraprojectissuetypesmetadata`, `mcp__codex_apps__atlassian_rovo_getjiraissuetypemetawithfields`, and `mcp__codex_apps__atlassian_rovo_gettransitionsforjiraissue` | Read live project, issue-type, field, allowed-value, or transition metadata only; this scope never performs a write. |
 
 On Rovo, use `mcp__codex_apps__atlassian_rovo_searchjiraissuesusingjql` for bounded identity resolution and direct-child
-enumeration even when the Epic key is known. On other connectors, use the bound route's equivalent. Query by exact
+enumeration when collection coverage is required, even when the Epic key is known. On other connectors, use the bound
+route's equivalent. Query by exact
 parent key (or the Jira instance's Epic-link field), bound the page size, and follow pagination until the collection
 is complete or record `partial`. Do not substitute an unbounded project/board scan or natural-language cross-product
 search. `cloudId` must come from configured provider context and must never be hardcoded or guessed.
@@ -190,8 +191,10 @@ If the connector is unavailable, use authoritative supplied context when present
 coercing them to successful context. `work_item_read` MUST NOT invoke Jira create, edit, transition, comment, worklog,
 or other write operations; approved writes use a separate capability and gate.
 
-For any Jira-backed run, an attachment field is not optional when `history` is requested: return an explicit complete,
-empty, partial, unavailable, or permission-denied collection. Do not report a screenshot as consumed from its filename,
+When attachment inventory is selected or required by the playbook, return an explicit complete, empty, partial,
+unavailable, or permission-denied collection. For comments/changelog-only history, retain the normalized assets list
+and record attachment inventory as not requested; do not imply an empty collection. Do not report a screenshot as
+consumed from its filename,
 description, or attachment count; the downstream asset manifest requires the stable locator and review result for each
 available attachment.
 

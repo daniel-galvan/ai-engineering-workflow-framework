@@ -37,7 +37,7 @@ class ExecutionLayers(unittest.TestCase):
     def test_jira_owns_source_coverage_and_failures_and_sentry_owns_acquisition(self):
         jira = (ROOT / "integrations/jira.md").read_text()
         for policy in ("## Feature Delivery Source-Access Gate", "at most one distinct configured Jira connector",
-                       "not connector-wide authentication failures", "Inventory every associated issue",
+                       "not connector-wide authentication failures", "Inventory every member of that collection",
                        "## Freshness and reconciliation", "## Write boundary", "## Privacy and sharing"):
             with self.subTest(policy=policy):
                 self.assertIn(policy, " ".join(jira.split()) if "at most one" in policy else jira)

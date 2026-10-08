@@ -1,12 +1,12 @@
 ---
 title: Feature Delivery Playbook
-version: 0.5.6
+version: 0.5.7
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
-validation_summary: profiles/lifecycles exercised; assessment and review evidence contract-tested, not live-validated
+validation_summary: prior exercise scope retained; tiered Jira retrieval not live-validated
 owner: Engineering
-last_updated: 2026-10-06
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md
@@ -65,6 +65,14 @@ and records recovered sources, conflicts, inferences, and unknowns in the work
 record. The integration owns Jira retrieval policy; this playbook owns worker
 order, gates, and feature-specific clarification behavior.
 
+Start with the exact issue and its current acceptance criteria. Recover parent/hierarchy only when needed to interpret
+scope or assess cross-issue coverage; select links and history for named dependencies, decisions, or conflicts. For an
+Epic specification assessment, the evidence question is whether the resulting Stories cover the Epic outcome: require
+the complete direct-child inventory, select the Spike and material Stories, and preserve their exact criteria.
+Other runs do not require a sibling roster merely because the issue has a parent. Record scope reasons and stop once
+the feature question is answered. The asset gate below explicitly requires attachment and remote-link inventory for
+the target and selected related issues, plus supplied sources.
+
 The worker classifies context as `sufficient_for_planning`, `partially_recovered`, or `clarification_required`. A
 clarification-required run may complete discovery and hand off focused questions, but it must not create
 `implementation_plan.md` or claim implementation readiness.
@@ -72,8 +80,8 @@ clarification-required run may complete discovery and hand off focused questions
 ## Asset Inventory and Review Gate
 
 Every Feature Delivery run MUST create `asset_manifest.json` before downstream planning fan-in. The `feature-context`
-worker MUST inventory the complete Jira attachment collections of the supplied issue and its related-work inventory,
-and separately query Jira remote links for each inventoried issue. Record the remote-link collection as `empty`,
+worker MUST inventory the complete Jira attachment collections of the supplied issue and selected related issues,
+and separately query Jira remote links for each selected issue. Record the remote-link collection as `empty`,
 `complete`, or an explicit retrieval limitation in the Jira source's `remote_link_inventory`; every discovered link
 needs a supporting source and disposition even when non-material. Include every file or folder explicitly supplied in
 the run prompt or `run_inputs.json`. A folder inventory is recursive

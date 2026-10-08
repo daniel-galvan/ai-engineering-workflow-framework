@@ -150,6 +150,8 @@ canonical run template.
 
 ## Current playbooks
 
+The framework provides five playbooks: four delivery playbooks and the planning-only Technical Spike.
+
 | Playbook                                                                | Use for                                                                |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | [Technical Spike](playbooks/technical_spike.md)                         | Bounded technical questions and existing Spike reviews                 |
@@ -221,9 +223,16 @@ observe. See the [experimental evaluation guide](frameworks/experimental/workflo
 
 ## Versioning
 
-Versioned framework documents use independent semantic versions. Change a document's version when its contract or
-required behavior changes; related documents do not need matching versions. Git revisions identify the exact framework
-snapshot used by a run.
+**Versioned documents evolve independently.** Each document's front matter records its current semantic version.
+Change that version when its contract or required behavior changes; related documents do not need matching versions.
+Git revisions identify the exact framework snapshot used by a run. See the
+[contribution versioning policy](CONTRIBUTING.md#version-policy).
+
+[framework_manifest.json](framework_manifest.json) is the generated version inventory for the library, including the
+framework, execution contract, playbooks, provider policy baselines, and plugin package. Front matter remains the
+source of document versions. The manifest records no aggregate library release or cross-revision compatibility claim;
+Git identifies the snapshot, and the linked contracts define compatibility rules. Regenerate it with
+`python3 scripts/framework_manifest.py --write`; the framework validator rejects stale inventory.
 
 ## Status
 

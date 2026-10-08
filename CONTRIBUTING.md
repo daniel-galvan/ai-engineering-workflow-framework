@@ -1,9 +1,9 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-07
+last_updated: 2026-10-08
 ---
 
 # Contributing
@@ -93,3 +93,15 @@ maturity, template consistency, provider-adapter coverage, and Codex policy/TOML
 
 Versioned documents evolve independently. Increment a document's semantic version when its contract or required
 behavior changes; do not change unrelated document versions merely to keep them aligned.
+
+After changing a document version, adding or removing a versioned document, changing a provider policy baseline, or
+refreshing the plugin package version, run `python3 scripts/framework_manifest.py --write`. The generated
+[`framework_manifest.json`](framework_manifest.json) inventories canonical metadata; edit the source documents or plugin
+manifest rather than editing its generated values. The framework validator checks that the inventory is current.
+An aggregate library release and compatibility ranges remain unassigned; document versions do not imply compatibility.
+
+Playbook front matter also owns maturity, exercise scope, and validation summary. Refresh those claims when new run
+evidence changes them, without treating a document revision as successful exercise evidence. After changing playbook
+metadata or adding/removing a playbook, run `python3 scripts/playbook_catalog.py --write` to refresh the generated
+exercise-state table. Keep catalog architecture and selection guidance authored; the validator checks the generated
+block and fails if it is stale, missing, or malformed.

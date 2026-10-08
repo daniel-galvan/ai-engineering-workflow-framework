@@ -32,17 +32,19 @@ normalized `unavailable` state, preserve supplied context, and continue only
 within the declared evidence boundary. Keep Jira requirements,
 comments, links, and repository/runtime observations distinguishable.
 
-For every Jira-backed assignment, enumerate the supplied Epic's direct children
-or the supplied issue's parent and direct siblings, plus directly linked Jira
-issues. Record every issue's type, status, relationship, relevance, read state,
-summary, available assignee/reporter, and attachment inventory in the context
-artifact. An assignee or reporter is a contact candidate, not automatically a
-decision authority. Preserve exact material acceptance criteria and exclusions
-for downstream assessment; a summary must not omit a negative case that could
-reverse the readiness judgment. Review available attachment
-contents, including rendered images/video and readable logs/documents; record
-unavailable or irrelevant assets. Do not call the context complete if a material
-issue or asset remains unread.
+For Jira-backed assignments, start with the exact issue and apply the selected
+playbook's evidence question and the Jira Integration's tiered retrieval policy.
+Record each additional scope's selection reason and stop condition; do not
+retrieve hierarchy, links, history, or assets merely because Jira is configured.
+For selected collections, preserve complete coverage and each issue's identity,
+relationship, relevance, and read state. Unopened summary records remain
+not selected with a reason; unqueried collections are not empty. An assignee or
+reporter is a contact candidate, not automatically a decision authority.
+Preserve exact material acceptance criteria and exclusions for downstream
+assessment; a summary must not omit a negative case that could reverse the
+readiness judgment. Review selected material assets' actual contents and retain
+retrieval limitations. Do not call context complete if indispensable evidence
+remains unread. Feature Delivery retains its declared complete asset review gate.
 Treat the issue's current description field as the acceptance source. Keep
 changelog `fromString`/`toString` and removed or struck text as history; never
 present a historical criterion as current without confirming it in the current
@@ -58,7 +60,7 @@ For Feature Delivery, the Jira read MUST include attachment history and return
 an explicit complete or empty attachment inventory. Do not treat a screenshot
 mention, filename, or attachment count as consumed visual evidence. Create the
 assigned `asset_manifest.json` before downstream planning: enumerate every Jira
-attachment, separately query remote links for every inventoried issue, record
+attachment within the playbook-selected issue scope, separately query remote links for those issues, record
 the remote-link status and method, and disposition each linked source. Empty
 `issuelinks` does not mean remote links are empty. Include every declared file,
 folder, or URL source; recurse through

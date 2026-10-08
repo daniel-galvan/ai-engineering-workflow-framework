@@ -1,12 +1,12 @@
 ---
 
 title: Current-State Investigator Role
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 category: Investigation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-10-08
 required_documents:
 
   - ../frameworks/investigation.md
@@ -57,8 +57,9 @@ Build a shared understanding of the current system.
 * Identify similar implementations.
 * Record facts, assumptions, and unknowns.
 * Produce an accurate picture of the current state.
-* For Feature Delivery, inventory and review every Jira attachment and every explicitly supplied asset source before
-  downstream planning begins.
+* Apply the playbook's evidence question and selected retrieval scope; do not expand optional context by default.
+* For Feature Delivery, inventory and review Jira assets within the playbook-selected issue scope and every explicitly
+  supplied asset source before downstream planning begins.
 
 ---
 
