@@ -1,7 +1,7 @@
 ---
 
 title: Failure Diagnosis
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 category: Analysis
 provider_independent: true
@@ -43,7 +43,9 @@ only the reported symptom.
 ## Report and Current-Code Reconciliation
 
 When report behavior, copy, or a named API differs from current source, perform a focused history check of the affected
-symbol (`git log`, `git blame`, or `git show`) and inspect the directly associated fix/work item. The assigned diagnosis
+symbol (`git log`, `git blame`, or `git show`), inspect the relevant patch, and read the directly associated
+fix/work item.
+A matching commit listing without the patch and work-item reconciliation is not completion. The assigned diagnosis
 worker owns this check; do not send the user to a separate investigation. Record the original reported failure, the
 current behavior, and the remaining acceptance gap as distinct claims. Prior fixes do not override current requirements
 or prohibit modifying their code. Update the diagnosis and plan within the same run. Missing deployment mapping remains

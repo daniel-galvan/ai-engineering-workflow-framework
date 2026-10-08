@@ -47,6 +47,11 @@ try:
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.review_evidence import PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors
 
+try:
+    from validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors
+except ModuleNotFoundError:
+    from scripts.validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors
+
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
@@ -1148,6 +1153,7 @@ def _normalize_packet(
     packet: dict[str, object], closure: dict[str, object], packet_path: Path | None = None,
     budget_status: str | None = None,
 ) -> None:
+    packet["terminal_observations"] = closure.get("terminal_observations", [])
     manifest, manifest_path = _prepared_manifest(packet_path)
     _canonicalize_technical_spike_worker_ids(packet, manifest)
     identity = packet.get("identity", {})
@@ -1604,6 +1610,8 @@ def _runtime_closed(rows: list[dict[str, object]]) -> bool:
 
 def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, object]]) -> None:
     packet["runtime_closure"] = closure
+    # Finalization owns this field; a second copy in identity can contradict publication.
+    packet.get("identity", {}).pop("Finalization schema", None)
     finalization = packet.get("finalization")
     closed = _runtime_closed(closure)
     blocked_snapshot = (
@@ -1620,6 +1628,15 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
                 row["Status"] = "Blocked snapshot"
             elif name == "runtime_closure.json":
                 row["Status"] = "Unverified"
+    if closed or blocked_snapshot:
+        handoff = packet.get("handoff", {})
+        execution = re.sub(
+            r"(?:awaiting|pending)\s+(?:Coordinator\s+)?packet validation"
+            r"(?:\s+and\s+(?:packaged\s+)?finalization)?|"
+            r"(?:awaiting|pending)\s+(?:packaged\s+)?finalization",
+            "finalization validation passed", str(handoff.get("execution", "")), flags=re.IGNORECASE,
+        )
+        handoff["execution"] = execution
     if not closed:
         return
     runtime_status = "Released" if all(
@@ -1821,6 +1838,21 @@ Provenance: {handoff['provenance']}
     playbook_name = Path(str(packet["identity"].get("Playbook / version", "")).split(" / ", 1)[0]).stem
     if playbook_name == "feature_delivery":
         sections.insert(4, _section("Asset Inventory and Review", _feature_asset_section(packet)))
+    for key, title, headers in (
+        ("terminal_observations", "Worker Terminal Observations", (
+            "Provider handle", "Provider status", "Last dispatch at", "Observed at", "Status source",
+            "Thread ID", "Latest turn started at", "Latest turn status",
+            "Thread status",
+        )),
+        ("techops_checks", "TechOps Planning Checks", ("Check", "Status", "Evidence refs", "Detail")),
+        ("runtime_audits", "Worker Runtime Audits", (
+            "Worker", "Provider handle", "Provider status", "Last dispatch at", "Observed at", "Status source",
+            "Thread ID", "Latest turn started at", "Latest turn status", "Trace path", "Trace retrieval",
+            "Thread status",
+        )),
+    ):
+        if packet.get(key):
+            sections.insert(-1, _section(title, _table(headers, packet[key])))
     return "\n".join(sections)
 
 
@@ -2039,6 +2071,78 @@ def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> N
     print("Technical Spike artifact validation: passed")
 
 
+def _techops_planning_contract_errors(
+    packet: dict[str, object], packet_path: Path, *, pre_handoff: bool = False,
+) -> list[str]:
+    identity = packet.get("identity", {})
+    if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+            != "techops_issue_remediation" or identity.get("Lifecycle") != "planning"):
+        return []
+    completed = {str(row.get("Worker")) for row in packet.get("worker_results", [])
+                 if row.get("Outcome") == "complete"}
+    ready_plan = identity.get("Engineering outcome") == "plan_only" or identity.get("State") == "ready_for_implementation"
+    if "fix-design" not in completed and not ready_plan:
+        return []  # Early source-access blocks have no design to accept.
+    errors = techops_check_errors(packet.get("techops_checks"), {
+        str(row.get("Evidence ID")) for row in packet.get("evidence", [])
+    })
+    if ready_plan:
+        required = {"issue-evidence", "failure-path", "fix-design"}
+        if not pre_handoff:
+            required.add("handoff")
+        if identity.get("Executed profile") == "deep":
+            required.update({"repository-integration", "planning-review"})
+        if not required <= completed:
+            errors.append("techops_planning_workers_incomplete")
+    audits = packet.get("runtime_audits", [])
+    if not isinstance(audits, list) or any(not isinstance(row, dict) for row in audits):
+        return errors + ["techops_runtime_audits_invalid"]
+    if {row.get("Worker") for row in audits} != completed or len(audits) != len(completed):
+        errors.append("techops_runtime_audits_incomplete")
+    errors.extend(terminal_observation_errors(audits, [str(row.get("Provider handle")) for row in audits]))
+    observations = packet.get("terminal_observations", [])
+    if isinstance(observations, list) and observations:
+        dispatches = {row.get("Provider handle"): row.get("Last dispatch at") for row in audits}
+        if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):
+            errors.append("terminal_closure_worker_handle_mismatch")
+        for row in observations:
+            if isinstance(row, dict) and row.get("Last dispatch at") != dispatches.get(row.get("Provider handle")):
+                errors.append("terminal_closure_worker_audit_stale")
+    for row in audits:
+        worker = str(row.get("Worker", ""))
+        if row.get("Provider status") != "completed":
+            errors.append(f"fan_in_requires_completed_status:{worker}")
+        trace_path = str(row.get("Trace path", "")).strip()
+        if not trace_path:
+            retrieval = str(row.get("Trace retrieval", "")).strip()
+            result = next((item for item in packet.get("worker_results", []) if item.get("Worker") == worker), {})
+            if (not retrieval.startswith("unavailable:") or len(retrieval) <= len("unavailable:")
+                    or "context-unverified" not in str(result.get("Uncertainties / blockers", ""))):
+                errors.append(f"worker_trace_retrieval_evidence_required:{worker}")
+            continue
+        source = Path(trace_path)
+        source = source if source.is_absolute() else packet_path.parent / source
+        if source.resolve().parent != packet_path.parent.resolve():
+            errors.append(f"worker_trace_outside_current_run:{worker}")
+            continue
+        try:
+            trace = json.loads(source.read_text())
+            if not isinstance(trace, dict):
+                raise ValueError("trace must be an object")
+            if not isinstance(trace.get("tool_trace"), list):
+                errors.append(f"worker_tool_trace_required:{worker}")
+            errors.extend(trace_errors(trace))
+            if trace.get("last_dispatch_at") != row.get("Last dispatch at"):
+                errors.append(f"worker_trace_stale:{worker}")
+            if not any(event.get("action") == "fan_in" and event.get("provider_status") == "completed"
+                       for event in trace.get("events", []) if isinstance(event, dict)):
+                errors.append(f"worker_fan_in_guard_receipt_required:{worker}")
+        except (OSError, ValueError, TypeError) as error:
+            errors.append(f"worker_trace_invalid:{worker}:{error}")
+    return list(dict.fromkeys(errors))
+
+
+
 def _prepare_blocked_runtime_snapshot(
     packet: dict[str, object], closure: dict[str, object], packet_path: Path,
     budget_status: str | None,
@@ -2133,6 +2237,16 @@ def _prepare_blocked_runtime_snapshot(
             artifact["Status"] = "Unverified"
 
 
+def _blocked_snapshot_label(packet: dict[str, object]) -> str:
+    name = Path(str(packet['identity']['Playbook / version']).split(' / ', 1)[0]).stem
+    if name == "technical_spike":
+        return "Technical Spike"
+    if name == "techops_issue_remediation":
+        return "TechOps planning"
+    goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
+    return "Feature Delivery assessment" if goal == "specification assessment" else "Feature Delivery implementation planning"
+
+
 def finalize(
     packet_path: Path,
     closure_path: Path,
@@ -2186,6 +2300,7 @@ def finalize(
         errors.extend(_feature_delivery_packet_contract_errors(packet))
         errors.extend(_feature_delivery_asset_contract_errors(packet))
         errors.extend(_feature_assessment_reference_errors(packet))
+        errors.extend(_techops_planning_contract_errors(packet, packet_path))
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
         try:
             _validate_handoff(packet)
@@ -2193,6 +2308,34 @@ def finalize(
             errors.append(str(error))
         if not pre_release:
             errors.extend(_planning_runtime_closure_errors(packet, closure["runtime_closure"]))
+            terminal_handles = [handle.strip() for row in closure["runtime_closure"]
+                                if str(row.get("Runtime status", "")).lower() == "terminal"
+                                for handle in re.split(r",|;", str(row.get("Completed worker handles", "")))]
+            if terminal_handles:
+                errors.extend(terminal_observation_errors(closure.get("terminal_observations"), terminal_handles))
+            # TechOps uses the two-phase packet protocol. The compact Sentry publisher owns a different precheck.
+            if terminal_handles and Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem == "techops_issue_remediation":
+                try:
+                    pre_release_receipt = json.loads((packet_path.parent / "pre_release_check.json").read_text())
+                    if not isinstance(pre_release_receipt, dict):
+                        raise ValueError
+                    if (pre_release_receipt.get("status") != "passed" or
+                            pre_release_receipt.get("packet_sha256") != hashlib.sha256(packet_path.read_bytes()).hexdigest()):
+                        raise ValueError
+                    pre_release_at = pre_release_receipt["validated_at"]
+                    pre_release_time = datetime.fromisoformat(str(pre_release_at).replace("Z", "+00:00"))
+                    if pre_release_time.tzinfo is None:
+                        raise ValueError
+                except (OSError, ValueError, KeyError, TypeError):
+                    errors.append("terminal_closure_requires_current_passed_pre_release")
+                    pre_release_at = None
+                if pre_release_at and isinstance(closure.get("terminal_observations"), list):
+                    for row in closure.get("terminal_observations", []):
+                        try:
+                            if datetime.fromisoformat(str(row["Observed at"]).replace("Z", "+00:00")) < pre_release_time:
+                                errors.append("terminal_observation_predates_pre_release")
+                        except (KeyError, ValueError, TypeError):
+                            pass  # The shared observation validator reports malformed timestamps.
         try:
             _reconcile_runtime_state(packet, closure["runtime_closure"])
         except (KeyError, TypeError, ValueError) as error:
@@ -2242,19 +2385,21 @@ def finalize(
                 raise ValueError(prefix + "\n".join(errors) + f"\nreceipt={status_path}")
             terminal_status = _record_terminal_failure(packet_path, errors, previous_status)
             raise ValueError("\n".join(errors) + f"\nreceipt={terminal_status}")
+        if pre_release and not check_only:
+            (packet_path.parent / "pre_release_check.json").write_text(json.dumps({
+                "status": "passed", "packet_sha256": hashlib.sha256(packet_path.read_bytes()).hexdigest(),
+                "validated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            }, indent=2) + "\n")
         if not check_only:
             status_path.unlink(missing_ok=True)
         if not pre_release:
             temporary.replace(record_path)
         if result:
-            if blocked_runtime_snapshot:
-                name = Path(str(packet['identity']['Playbook / version']).split(' / ', 1)[0]).stem
-                goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
-                label = ("Technical Spike" if name == "technical_spike" else
-                         "Feature Delivery assessment" if goal == "specification assessment" else
-                         "Feature Delivery implementation planning")
-                print(f"{label} blocked work record: saved; runtime release unverified")
+            # Keep the validator's canonical success line first on every publication route.
             print(result.stdout, end="")
+            if blocked_runtime_snapshot:
+                label = _blocked_snapshot_label(packet)
+                print(f"{label} blocked work record: saved; runtime release unverified")
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -2998,6 +3143,100 @@ def self_test() -> None:
         _prepare_blocked_runtime_snapshot(techops, blocked_closure, planning_record, None)
         assert techops["identity"]["Workflow outcome"] == "blocked"
         assert techops["identity"]["Engineering outcome"] == "plan_only"
+        # Exercise actual TechOps publication, not only the blocked-state preparer.
+        from contextlib import redirect_stdout
+        from io import StringIO
+        published_techops = json.loads(json.dumps(planning_feature))
+        published_techops["identity"].update({
+            "Playbook / version": f"playbooks/techops_issue_remediation.md / {_frontmatter_version(ROOT / 'playbooks/techops_issue_remediation.md')}",
+            "Prompt template / revision / conformance": f"templates/techops_issue_run_prompt.md / {_frontmatter_version(ROOT / 'templates/techops_issue_run_prompt.md')} / pass",
+            "Finalization schema": "Pending",
+        })
+        roles = {"issue-evidence": "current_state_investigator", "failure-path": "dependency_analyst",
+                 "repository-integration": "repository_integrator", "fix-design": "solution_architect", "handoff": "documenter"}
+        published_techops["workers"] = [feature_ledger(worker, role, "IN-001") for worker, role in roles.items()]
+        published_techops["worker_results"] = [feature_result(worker) for worker in roles]
+        published_techops["techops_checks"] = [
+            {"Check": name, "Status": "passed", "Evidence refs": "E-001", "Detail": "Owning worker evidence"}
+            for name in ("issue_scope", "history_reconciliation", "plan_dependencies", "regression_fixture")
+        ]
+        published_techops["runtime_audits"] = []
+        for worker in roles:
+            trace_path = feature_root / f"{worker}_trace.json"
+            trace_path.write_text(json.dumps({
+                "spawn": {"activation_packet_delivered": True}, "last_dispatch_at": "2026-10-07T23:40:00Z",
+                "events": [{"action": "fan_in", "provider_status": "completed"}],
+                "tool_trace": [{"tool": "exec_command", "arguments": {"cmd": "rg -n affected_symbol src"}}],
+            }))
+            published_techops["runtime_audits"].append({
+                "Worker": worker, "Provider handle": "/root/" + worker.replace("-", "_"),
+                "Provider status": "completed", "Last dispatch at": "2026-10-07T23:40:00Z",
+                "Observed at": "2026-10-07T23:53:10Z", "Status source": "list_agents",
+                "Trace path": str(trace_path), "Trace retrieval": "read_thread command ledger",
+            })
+        published_techops["handoff"]["execution"] = (
+            "standard planning; no source changes; awaiting Coordinator packet validation and packaged finalization"
+        )
+        techops_packet = feature_root / "techops_packet.json"
+        techops_record = feature_root / "techops_work_record.md"
+        techops_packet.write_text(json.dumps(published_techops))
+        captured = StringIO()
+        with redirect_stdout(captured):
+            finalize(techops_packet, assessment_closure, techops_record, blocked_runtime_snapshot=True)
+        assert captured.getvalue().splitlines()[0] == "Workflow-framework validation: passed"
+        assert "TechOps planning blocked work record: saved; runtime release unverified" in captured.getvalue()
+        assert "Feature Delivery implementation planning blocked work record" not in captured.getvalue()
+        assert techops_record.read_text().count("| Finalization schema |") == 1
+        assert "awaiting Coordinator" not in techops_record.read_text()
+        from prepare_run import _agent_binding
+        bindings = {role: _agent_binding(role, None) for role in roles.values()}
+        baseline = re.search(r"^baseline_id: (\S+)$", (ROOT / "providers/codex/model_effort_policy.md").read_text(), re.MULTILINE)[1]
+        (feature_root / "role_bindings.json").write_text(json.dumps({
+            "playbook": "techops_issue_remediation", "baseline_id": baseline, "bindings": bindings,
+        }))
+        published_techops["identity"]["Coordinator model/effort"] = "gpt-6.1-sol / high"
+        for row in published_techops["workers"]:
+            binding = bindings[row["Role"]]
+            row["Configured model/effort"] = f"{binding['model']} / {binding['effort']}"
+            row["Provider-observed model/effort"] = row["Configured model/effort"]
+        techops_packet.write_text(json.dumps(published_techops))
+        finalize(techops_packet, assessment_closure, techops_record, pre_release=True)
+        assert (feature_root / "pre_release_check.json").is_file()
+        observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        terminal_rows = [{
+            "Provider handle": row["Provider handle"], "Provider status": "completed",
+            "Last dispatch at": row["Last dispatch at"], "Observed at": observed_at,
+            "Status source": "read_thread", "Thread ID": f"00000000-0000-0000-0000-{index:012d}",
+            "Latest turn started at": "2026-10-07T23:40:01Z", "Latest turn status": "completed",
+            "Thread status": "notLoaded",
+        } for index, row in enumerate(published_techops["runtime_audits"])]
+        terminal_closure = feature_root / "terminal_closure.json"
+        terminal_closure.write_text(json.dumps({
+            "runtime_closure": [{
+                "Run or stage": "TechOps planning", "Receipt owner": "Coordinator",
+                "Completed worker handles": "; ".join(row["Provider handle"] for row in terminal_rows),
+                "Runtime status": "Terminal", "Remaining active handles": "0",
+                "Closure evidence or blocker": "provider status snapshot " + observed_at + ": " +
+                    "; ".join(row["Provider handle"] + "=completed" for row in terminal_rows),
+            }], "terminal_observations": terminal_rows,
+        }))
+        with redirect_stdout(StringIO()):
+            finalize(techops_packet, terminal_closure, techops_record)
+        assert "| State | ready_for_implementation |" in techops_record.read_text()
+        assert "| Terminal | 0 |" in techops_record.read_text()
+        assert "runtime terminal" in techops_record.read_text()
+        changed_packet = json.loads(techops_packet.read_text())
+        changed_packet["work_item"]["Title"] = "Updated after pre-release"
+        techops_packet.write_text(json.dumps(changed_packet))
+        try:
+            finalize(techops_packet, terminal_closure, techops_record)
+        except ValueError as error:
+            assert "terminal_closure_requires_current_passed_pre_release" in str(error)
+        else:
+            raise AssertionError("packet changes must invalidate pre-release")
+        (feature_root / "role_bindings.json").unlink()
+        published_techops["runtime_audits"][0]["Trace path"] = "missing_trace.json"
+        assert any("worker_trace_invalid" in error for error in _techops_planning_contract_errors(published_techops, techops_packet))
         incomplete_techops = json.loads(json.dumps(planning_feature))
         incomplete_techops["identity"]["Playbook / version"] = techops["identity"]["Playbook / version"]
         try:

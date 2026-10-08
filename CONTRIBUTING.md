@@ -1,9 +1,9 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-10-07
 ---
 
 # Contributing
@@ -77,6 +77,10 @@ From the repository root, run:
 ```bash
 python3 scripts/validate_library.py
 python3 scripts/run_preflight.py --self-test
+python3 scripts/prepare_run.py --self-test
+python3 scripts/finalize_work_record.py --self-test
+python3 scripts/validate_library.py --self-test
+python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 ```
 

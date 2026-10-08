@@ -99,6 +99,25 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                 except ModuleNotFoundError:  # Imported as scripts.validate_worker_runtime from the repository root.
                     from scripts.finalize_work_record import feature_delivery_pre_handoff_errors
                 errors.extend(feature_delivery_pre_handoff_errors(path.parent / "finalization_packet.json"))
+            elif isinstance(bindings, dict) and bindings.get("playbook") == "techops_issue_remediation":
+                packet_path = path.parent / "finalization_packet.json"
+                try:
+                    planning = json.loads(packet_path.read_text())
+                    if planning.get("identity", {}).get("Lifecycle") == "planning":
+                        completed = {row.get("Worker") for row in planning.get("worker_results", [])
+                                     if row.get("Outcome") == "complete"}
+                        required = {"issue-evidence", "failure-path", "fix-design"}
+                        if planning.get("identity", {}).get("Executed profile") == "deep":
+                            required.update({"repository-integration", "planning-review"})
+                        if not required <= completed:
+                            errors.append("techops_pre_handoff_workers_incomplete")
+                        try:
+                            from finalize_work_record import _techops_planning_contract_errors
+                        except ModuleNotFoundError:
+                            from scripts.finalize_work_record import _techops_planning_contract_errors
+                        errors.extend(_techops_planning_contract_errors(planning, packet_path, pre_handoff=True))
+                except (OSError, ValueError, TypeError, AttributeError):
+                    errors.append("techops_pre_handoff_packet_invalid")
     return errors
 
 
@@ -113,6 +132,85 @@ def transition_error(action: str, provider_status: str) -> str | None:
     if action == "fan_in" and status != "completed":
         return f"fan_in_requires_completed_status:{status or 'unknown'}"
     return None
+
+
+def terminal_observation_errors(observations: object, handles: list[str]) -> list[str]:
+    """Validate current status reads, including workers omitted by live inventory."""
+    if not isinstance(observations, list) or not observations:
+        return ["terminal_observations_required"]
+    errors: list[str] = []
+    observed: set[str] = set()
+    for row in observations:
+        if not isinstance(row, dict):
+            errors.append("terminal_observation_invalid")
+            continue
+        handle = str(row.get("Provider handle", ""))
+        if handle not in handles or handle in observed or not re.fullmatch(
+            r"(?:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|/root/[a-z0-9_]+(?:/[a-z0-9_]+)*)", handle,
+        ):
+            errors.append(f"terminal_observation_handle_invalid:{handle}")
+        observed.add(handle)
+        if str(row.get("Provider status", "")).lower() not in {"completed", "idle"}:
+            errors.append(f"terminal_observation_not_terminal:{handle}")
+        source = str(row.get("Status source", ""))
+        if source not in {"list_agents", "read_thread", "wait_threads"}:
+            errors.append(f"terminal_observation_source_invalid:{handle}")
+        if source in {"read_thread", "wait_threads"} and not re.fullmatch(
+            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", str(row.get("Thread ID", "")),
+        ):
+            errors.append(f"terminal_observation_thread_id_required:{handle}")
+        try:
+            if any(not re.fullmatch(
+                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", str(row.get(field, "")),
+            ) for field in ("Last dispatch at", "Observed at")):
+                raise ValueError
+            times = [datetime.fromisoformat(str(row[field]).replace("Z", "+00:00"))
+                     for field in ("Last dispatch at", "Observed at")]
+            if source in {"read_thread", "wait_threads"}:
+                started = datetime.fromisoformat(str(row["Latest turn started at"]).replace("Z", "+00:00"))
+                # Thread metadata exposes seconds; dispatch receipts may retain subsecond precision.
+                if started.tzinfo is None or started < times[0].replace(microsecond=0) or started > times[1]:
+                    errors.append(f"terminal_observation_latest_turn_stale:{handle}")
+                if row.get("Latest turn status") != "completed":
+                    errors.append(f"terminal_observation_latest_turn_not_completed:{handle}")
+                if row.get("Thread status") not in {"idle", "notLoaded"}:
+                    errors.append(f"terminal_observation_thread_not_idle:{handle}")
+            if any(value.tzinfo is None for value in times):
+                raise ValueError
+            if times[1] < times[0]:
+                errors.append(f"terminal_observation_stale:{handle}")
+        except (KeyError, ValueError, TypeError):
+            errors.append(f"terminal_observation_timestamp_invalid:{handle}")
+    if observed != set(handles):
+        errors.append("terminal_observations_incomplete")
+    return list(dict.fromkeys(errors))
+
+
+TECHOPS_CHECKS = {"issue_scope", "history_reconciliation", "plan_dependencies", "regression_fixture"}
+
+
+def techops_check_errors(checks: object, evidence_ids: set[str]) -> list[str]:
+    if not isinstance(checks, list):
+        return ["techops_planning_checks_required"]
+    errors: list[str] = []
+    seen: set[str] = set()
+    for row in checks:
+        if not isinstance(row, dict):
+            errors.append("techops_planning_check_invalid")
+            continue
+        name = str(row.get("Check", ""))
+        if name not in TECHOPS_CHECKS or name in seen:
+            errors.append(f"techops_planning_check_invalid:{name}")
+        seen.add(name)
+        status = row.get("Status")
+        if status != "passed" and not (name == "history_reconciliation" and status == "not_applicable"):
+            errors.append(f"techops_planning_check_not_passed:{name}")
+        refs = re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(row.get("Evidence refs", "")))
+        if not refs or not set(refs) <= evidence_ids or not str(row.get("Detail", "")).strip():
+            errors.append(f"techops_planning_check_evidence_required:{name}")
+    if seen != TECHOPS_CHECKS:
+        errors.append("techops_planning_checks_incomplete")
+    return list(dict.fromkeys(errors))
 
 
 def _trace_strings(value: object, path: tuple[str, ...] = ()):
@@ -208,6 +306,12 @@ def self_test() -> None:
         )
         (root / "role_bindings.json").write_text("{")
         assert "role_bindings_invalid" in activation_packet_errors(packet, "documenter", doc_sha256)
+        (root / "role_bindings.json").write_text(json.dumps({"playbook": "techops_issue_remediation"}))
+        assert "techops_pre_handoff_packet_invalid" in activation_packet_errors(packet, "documenter", doc_sha256)
+        (root / "finalization_packet.json").write_text(json.dumps({
+            "identity": {"Lifecycle": "planning"}, "worker_results": [],
+        }))
+        assert "techops_pre_handoff_workers_incomplete" in activation_packet_errors(packet, "documenter", doc_sha256)
         (root / "role_bindings.json").unlink()
         packet.write_text(json.dumps({"packets": {"test_worker": documenter_bundle["packets"]["test_worker"]}}))
         packet_sha256 = hashlib.sha256(packet.read_bytes()).hexdigest()

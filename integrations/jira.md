@@ -1,6 +1,6 @@
 ---
 title: Jira Integration
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 provider: mcp
 owner: Engineering
@@ -80,7 +80,10 @@ the Stories they produced. For a bounded TechOps bug, the complete roster may be
 unopened sibling as `not selected; summary-only`, with a selection reason, never as proven non-material. Fully read the
 target, its relevant parent context, directly referenced issues, and candidates sharing the failure path, API, prior
 fix,
-or rollout dependency, including descriptions, criteria, comments, and relevant history. Inventory attachments and
+or rollout dependency, including descriptions, criteria, comments, and relevant history. Select from the summary roster
+before per-issue expansion; do not attempt attachment reads for every deferred sibling. When a selected status conflicts
+with comments or delivery evidence, retrieve its relevant change history and reconcile the conflict or record the
+concrete retrieval failure. Inventory attachments and
 remote links for those selected issues. The Coordinator records why deferred siblings cannot change the bounded
 conclusion; expand discovery when evidence challenges that judgment. This permits bounded readiness without claiming
 all sibling content was reviewed. Other Jira-backed playbooks retain the full per-issue retrieval gate below.

@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.13
+version: 0.5.14
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -318,13 +318,15 @@ worker once with the same typed inputs and require removal or current-run reveri
 enforced, preserve the partial result as contaminated evidence, record the control failure, and stop at an incomplete
 outcome. Worker self-attestation alone does not pass this gate.
 
-The Coordinator MUST audit the provider's tool trace before fan-in when the provider exposes a trace or command ledger.
-Run the packaged worker-runtime validator with `--trace <current-run-trace.json>` and treat any
-`forbidden_context_reference:*` or `context_conformance_failed` result as contaminated evidence. A trace that cannot be
-obtained is `context-unverified`; do not report the result as independently audited. For the Pilot Standard Sentry
-finalizer, the result may continue on worker self-attestation when every other contract gate passes; trace-unavailable
-evidence is never stronger than self-attestation. The trace audit covers
-unassigned memory paths, rollout summaries, memory citations, and archived `.thoughts/<WORK-ITEM-ID>/runs/` artifacts.
+The Coordinator MUST try the supported provider thread-read/export route before declaring a trace unavailable, and audit
+its tool trace before fan-in when exposed. Record the attempted route and concrete error or operation absence. Run the
+packaged worker-runtime validator with `--trace <current-run-trace.json>` and treat any `forbidden_context_reference:*`
+or `context_conformance_failed` result as contaminated evidence. A trace that cannot be obtained is
+`context-unverified`; do not report the result as independently audited. For Pilot Standard Sentry and TechOps planning,
+a result may continue as context-unverified after a recorded retrieval attempt fails or the operation is absent, when
+every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation. The trace audit
+covers unassigned memory paths, rollout summaries, memory citations, and archived `.thoughts/<WORK-ITEM-ID>/runs/`
+artifacts.
 
 Every activation packet MUST include a compact input manifest for each assigned Input ID: the short value or fact, its
 source, its authority classification, and the expected use or disposition. Assigning an ID without passing its value is
@@ -1061,15 +1063,23 @@ Every close/release instruction below uses the applicable provider route. When n
 collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
 For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
 use `Runtime status: Released` only after all run workers are released and no active handles remain.
-For Codex collaboration runtimes without a close operation, use `Runtime status: Terminal` after a fresh provider status
-snapshot, taken after the last correction/follow-up, shows every activated run worker completed or idle and none running
-or pending. Preserve each exact identifier returned by spawn (UUID or canonical `/root/...` task name), including the
-Documenter, and record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in the closure
-evidence.
-`Remaining active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.
-A result message or historical completion event alone is insufficient; later follow-ups invalidate the old snapshot.
-A task name is valid only when returned by the provider and accepted by its status operation, never an invented role
-label.
+For Codex collaboration runtimes without a close operation, collect fresh status reads after pre-release and the last
+correction/follow-up. Use `Runtime status: Terminal` only when these reads account for every activated worker, including
+Documenter. The snapshot may combine live inventory and targeted reads; one inventory call need not retain every
+completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its provider-observed
+thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess an ID. A targeted read
+must show no active or pending thread and a completed latest turn started at or after the last dispatch. Missing
+inventory entries, historical completion events and worker self-attestation alone do not establish terminal status. If
+no supported targeted read can verify a worker, retain the blocked receipt.
+
+Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
+`Provider status`, `Last dispatch at`, `Observed at`, and `Status source` (`list_agents`, `read_thread`, or
+`wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn started at`, `Latest turn status`, and `Thread
+status`. Use the normalized completed or idle status only from the provider response; `read_thread` with `notLoaded` may
+qualify only with a completed latest turn and no newer dispatch. Preserve the raw response in current-run evidence. Do
+not dispatch follow-ups during collection; a later follow-up invalidates that worker's observation and requires another
+read. Record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in closure evidence. `Remaining
+active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.
 If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
 `worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
 unsupported close receipt; name the missing provider status/release capability and its adapter owner.

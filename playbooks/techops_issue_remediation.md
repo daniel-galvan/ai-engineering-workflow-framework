@@ -1,6 +1,6 @@
 ---
 title: TechOps Issue Remediation Playbook
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 maturity: exercising
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
@@ -186,6 +186,17 @@ fan-in, and planning gates pass, the Documenter creates:
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
+
+The accepted Fix Design result supplies four evidence-backed `techops_checks` rows: `issue_scope`,
+`history_reconciliation`, `plan_dependencies`, and `regression_fixture`. Preparation delivers these requirements in the
+worker activation packets; the Coordinator verifies the evidence and the finalizer rejects missing or failed checks.
+Use `Status: passed`, except `not_applicable` for history when evidence establishes no report/current-code mismatch.
+Each row includes `Evidence refs` and `Detail`; a commit listing alone does not pass history reconciliation.
+
+Read existing fixtures before choosing a regression strategy. Include any seed, state, fresh-read, delayed-response or
+error support that the proposed test needs. Local regression work must not depend on unavailable deployed revisions
+unless those revisions change its target, scope or safety; explain such a dependency in the plan. Runtime evidence gates
+production resolution and decisions that actually require it, and may proceed alongside independent local work.
 
 The plan records the diagnosis, evidence/claim/decision IDs, change and test steps, validation ladder, risks, rollback,
 monitoring, ownership, and residual uncertainty. It is not authorization to make changes.

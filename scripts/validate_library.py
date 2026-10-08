@@ -2295,6 +2295,15 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 status = re.search(re.escape(handle) + r"=(?:completed|idle)(?=[;,.\s]|$)", evidence)
                 if not identifier or not status:
                     fail(f"{path}: Terminal closure lacks exact provider terminal status for {handle!r}")
+            try:
+                from validate_worker_runtime import terminal_observation_errors
+            except ModuleNotFoundError:
+                from scripts.validate_worker_runtime import terminal_observation_errors
+            observations = markdown_table(text, "# Worker Terminal Observations")
+            for error in terminal_observation_errors(
+                [item for item in observations if item.get("Provider handle", "").lower() in handles], handles,
+            ):
+                fail(f"{path}: {error}")
         if row.get("Runtime status", "").strip().lower() == "released":
             if not NO_ACTIVE_HANDLES.fullmatch(row.get("Remaining active handles", "").strip()):
                 fail(f"{path}: released runtime closure must have no active handles")
@@ -2368,6 +2377,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             blockers = row.get("Uncertainties / blockers", "").strip().lower()
             if re.search(r"runtime closure pending", blockers):
                 fail(f"{path}: released runtime closure cannot retain pending worker-result closure text")
+    if not _ALLOW_UNRELEASED and "Finalization schema" in identity:
+        fail(f"{path}: Finalization schema belongs only in Run Isolation and Finalization")
     if not _ALLOW_UNRELEASED and identity["State"] == "blocked":
         if finalization.get("Finalization schema", "").strip().lower() not in {
             "passed", "passed for blocked work record",
@@ -2379,6 +2390,19 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
                 r"pending|expected|prepared skeleton", row.get("Status", ""), re.IGNORECASE,
             ):
                 fail(f"{path}: published blocked record retains stale artifact status for {name}")
+    if playbook_name == "techops_issue_remediation" and identity.get("Lifecycle") == "planning":
+        try:
+            from finalize_work_record import _techops_planning_contract_errors
+        except ModuleNotFoundError:
+            from scripts.finalize_work_record import _techops_planning_contract_errors
+        for error in _techops_planning_contract_errors({
+            "identity": identity, "worker_results": table_rows["# Worker Result Summary"],
+            "evidence": markdown_table(text, "# Evidence"),
+            "techops_checks": markdown_table(text, "# TechOps Planning Checks"),
+            "runtime_audits": markdown_table(text, "# Worker Runtime Audits"),
+            "terminal_observations": markdown_table(text, "# Worker Terminal Observations"),
+        }, path):
+            fail(f"{path}: {error}")
     if playbook_name == "technical_spike":
         for row in table_rows["# Worker Result Summary"]:
             match = RANGE_REFERENCE.search(row.get("Evidence / claim refs", ""))
@@ -2680,6 +2704,11 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
     ) else "terminal" if runtime_terminal else "not released"
     execution = re.search(r"^Execution:\s*(.*?)\nProvenance:", handoff, re.MULTILINE | re.DOTALL)
     execution_text = " ".join(execution.group(1).lower().split()) if execution else ""
+    if not _ALLOW_UNRELEASED and re.search(
+        r"(?:awaiting|pending)\s+(?:coordinator\s+)?packet validation|"
+        r"(?:awaiting|pending)\s+(?:packaged\s+)?finalization", execution_text,
+    ):
+        fail(f"{path}: published handoff Execution contains obsolete publication steps")
     if not execution or f"runtime {runtime_value}" not in execution_text:
         fail(f"{path}: Final Handoff runtime must match Worker Runtime Closure")
     if identity["State"].strip().lower() == "completed" and not _ALLOW_UNRELEASED and re.search(
@@ -3704,6 +3733,12 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         ).replace("runtime closure released", "runtime closure terminal").replace(
             "runtime released", "runtime terminal",
         ).replace("| Released | Provider receipt |", "| Terminal | Provider receipt |")
+        terminal += (
+            "\n# Worker Terminal Observations\n\n"
+            "| Provider handle | Provider status | Last dispatch at | Observed at | Status source |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| /root/feature_context | completed | 2026-10-07T22:40:00Z | 2026-10-07T22:42:58Z | list_agents |\n"
+        )
         path.write_text(terminal)
         validate_work_record(path, require_terminal=True)
         assert_invalid(terminal.replace("=completed", "=running"), "snapshot contains non-terminal workers")

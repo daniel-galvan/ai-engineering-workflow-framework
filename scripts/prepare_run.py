@@ -365,6 +365,12 @@ def _initial_packet(
     packet["inputs"] = list(input_manifest["inputs"])
     packet["run_input_manifest"] = input_manifest
     packet["repositories"] = [repository_row]
+    if playbook == "techops_issue_remediation":
+        packet["techops_checks"] = [
+            {"Check": name, "Status": "pending", "Evidence refs": "", "Detail": ""}
+            for name in ("issue_scope", "history_reconciliation", "plan_dependencies", "regression_fixture")
+        ]
+        packet["runtime_audits"] = []
     packet["playbook_selection"]["Selected playbook"] = playbook
     if playbook == "technical_spike" and workflow_objective in TECHNICAL_SPIKE_PRIMARY_GOALS:
         packet["playbook_selection"]["Primary goal"] = TECHNICAL_SPIKE_PRIMARY_GOALS[workflow_objective]
@@ -466,6 +472,8 @@ def _write_activation_packets(
         "sentry_solution_architect": worker_contracts.get("fix_design"),
         "current_state_investigator": worker_contracts.get("feature_asset_inventory"),
     }
+    if manifest.get("playbook") == "techops_issue_remediation":
+        contract_by_agent.update(worker_contracts)
     packets: dict[str, dict[str, object]] = {}
     for agent, binding in manifest["bindings"].items():
         definition = Path(binding["definition"])
@@ -693,6 +701,41 @@ def prepare_run(
                 "contract": str(ASSET_MANIFEST_TEMPLATE),
                 "output": str(artifact_root / "asset_manifest.json"),
             },
+        }
+    if playbook == "techops_issue_remediation":
+        instructions = {
+            "current_state_investigator": (
+                "Enumerate the Jira sibling summary roster, then select issues sharing the failure path, API, prior fix, "
+                "or rollout dependency before detailed reads. Read target and selected issues with comments, attachments, "
+                "remote links and relevant history. Resolve conflicting selected status/comment evidence with history. "
+                "Mark deferred siblings summary-only with reasons; do not exhaustively fetch their attachments."
+            ),
+            "dependency_analyst": (
+                "When report behavior or copy differs from current code, inspect the affected commit patch and directly "
+                "associated work item; finding a git log entry alone is insufficient. Distinguish historical failure, "
+                "current behavior, remaining acceptance gap and deployment uncertainty. Correct diagnosis within this run; "
+                "prior fixes may be modified and history creates no new user task or approval gate."
+            ),
+            "solution_architect": (
+                "Verify issue_scope and history_reconciliation evidence before design. Keep local regression steps "
+                "independent of unavailable deployment evidence unless it changes target, scope or safety; explain actual "
+                "dependencies. Read existing test fixtures and plan any required seed, state, fresh-read and error support. "
+                "Return techops_checks rows for issue_scope, history_reconciliation, plan_dependencies, regression_fixture "
+                "with Status passed (history may be not_applicable with evidence), Evidence refs and Detail."
+            ),
+            "documenter": (
+                "Preserve the accepted techops_checks and Coordinator runtime_audits in finalization_packet.json. "
+                "Do not mark a check passed without its owning worker's evidence. Finalization schema belongs only in "
+                "finalization, not identity. Keep the plan unapproved and external proof gates separate from local work."
+            ),
+            "reviewer": (
+                "Challenge history reconciliation, local/external plan dependencies and fixture feasibility; return "
+                "missing evidence to the owning worker before accepting the TechOps planning checks."
+            ),
+        }
+        manifest["worker_contracts"] = {
+            agent: {"instructions": instruction, "contract": str(ROOT / "playbooks" / "techops_issue_remediation.md")}
+            for agent, instruction in instructions.items()
         }
     manifest["worker_runtime_guard"] = str(WORKER_RUNTIME_GUARD)
     manifest["activation_packet_bundle"] = _write_activation_packets(artifact_root, manifest)
@@ -1026,6 +1069,13 @@ def self_test() -> None:
         assert feature_bundle["packets"]["current_state_investigator"]["worker_contract"]["output"].endswith(
             "asset_manifest.json"
         )
+        techops = prepare_run(execution, "ITEM-TECHOPS", "techops_issue_remediation", None, False,
+                              input_manifest=input_source)
+        techops_bundle = json.loads(Path(techops["activation_packet_bundle"]["path"]).read_text())
+        assert "before detailed reads" in techops_bundle["packets"]["current_state_investigator"]["worker_contract"]["instructions"]
+        assert "commit patch" in techops_bundle["packets"]["dependency_analyst"]["worker_contract"]["instructions"]
+        assert "regression_fixture" in techops_bundle["packets"]["solution_architect"]["worker_contract"]["instructions"]
+        assert "runtime_audits" in techops_bundle["packets"]["documenter"]["worker_contract"]["instructions"]
         assert any(
             row["Artifact"] == "Asset manifest"
             for row in json.loads(Path(feature_defaults["finalization_packet"]).read_text())["durable_artifacts"]

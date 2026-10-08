@@ -65,10 +65,13 @@ description: >-
    Before analytical fan-in, audit each provider tool trace when exposed with
    `python3 <framework-root>/scripts/validate_worker_runtime.py --trace <current-run-trace.json>`.
    Treat `forbidden_context_reference:*` or `context_conformance_failed` as contamination and do not fan in that
-   result. If no trace is exposed, record context conformance as `context-unverified` and do not imply an
+   result. Before declaring a trace unavailable, try the provider thread-read/export operation for the exact child
+   (Codex: `read_thread` with `includeOutputs: true`). Record the attempted route and concrete error or capability
+   absence.
+   If no trace can be obtained, record context conformance as `context-unverified` and do not imply an
    independently audited pass. For every run, persist the audit result or `context-unverified` in each worker result's
-   `Uncertainties / blockers` field before fan-in; self-attestation is not an audited pass. The Pilot Standard finalizer
-   may continue with the worker's self-attested result when
+   `Uncertainties / blockers` field before fan-in; self-attestation is not an audited pass. Pilot Standard Sentry and
+   TechOps planning may continue with a context-unverified result only after evidenced retrieval failure and when
    every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation.
 5a. For Jira-backed Feature Delivery, before loading the full playbook, contracts, or template, select an available
    Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
@@ -247,6 +250,24 @@ description: >-
    explicitly requests continuation or recovery. Preserve template field
    names, use `Unknown` or `None` for unavailable values, and ask only for a business, scope, ownership, or approval
    decision that bounded discovery cannot resolve.
+8a. For TechOps planning, the prepared worker contracts are operative instructions, not optional references. Include
+   their complete `worker_contract` with each fresh assignment. Before accepting Fix Design, verify `techops_checks`:
+   `issue_scope`, `history_reconciliation`, `plan_dependencies`, and `regression_fixture`. Each row uses `Check`,
+   `Status`, `Evidence refs`, and `Detail`; require `passed`, except evidence-backed `not_applicable` for history with
+   no mismatch. Finding a commit without inspecting its patch and associated work item does not pass history
+   reconciliation. Return missing evidence to the owning worker inside this run. Read the actual fixture implementation
+   before promising stateful persistence tests; include required fixture changes. Explain any external prerequisite to a
+   local step. Before each worker fan-in, run `validate_worker_runtime.py --transition fan_in --provider-status
+   completed` using observed current status, then audit its retrieved command ledger with `--trace`. Normalize only tool
+   activity into `tool_trace`; preserve `spawn` binding evidence, `last_dispatch_at`, and the passed fan-in transition
+   in `events`. Save each trace as a direct child of the active artifact root. Keep one `runtime_audits` row per
+   completed worker, including handoff, with `Worker`, the status observation fields above, `Trace path`, and `Trace
+   retrieval`. On genuine trace unavailability use an empty path and `unavailable:<attempted route and concrete
+   failure>`; also retain `context-unverified` in that worker result. Any correction invalidates the audit; reread and
+   recheck its latest turn. Before Documenter activation, populate the analytical packet with the accepted checks and
+   runtime audits. Its activation guard rejects missing analytical workers or checks. Return technical errors to their
+   owning worker. The Documenter preserves these checks and audit rows in the packet. The finalizer revalidates them on
+   precheck, pre-release and publication; absent checks cannot be replaced with a generic worker complete label.
 9. Execute the selected playbook. Default to `planning`; use `remediation` only when an implementation plan exists and
    the user has explicitly approved implementation. Treat an invocation that says start as a new run. Reuse current
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
@@ -400,18 +421,24 @@ description: >-
    collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
    For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
    use `Runtime status: Released` only after all run workers are released and no active handles remain.
-   For Codex collaboration runtimes without a close operation, use `Runtime status: Terminal` after a fresh provider
-   status
-   snapshot, taken after the last correction/follow-up, shows every activated run worker completed or idle and none
-   running
-   or pending. Preserve each exact identifier returned by spawn (UUID or canonical `/root/...` task name), including the
-   Documenter, and record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in the closure
-   evidence.
-   `Remaining active handles: 0` means no active worker turns; it does not assert capacity release or handle
-   destruction.
-   A result message or historical completion event alone is insufficient; later follow-ups invalidate the old snapshot.
-   A task name is valid only when returned by the provider and accepted by its status operation, never an invented role
-   label.
+   For Codex collaboration runtimes without a close operation, collect fresh status reads after pre-release and the last
+   correction/follow-up. Use `Runtime status: Terminal` only when these reads account for every activated worker,
+   including Documenter. The snapshot may combine live inventory and targeted reads; one inventory call need not retain
+   every completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its
+   provider-observed thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess
+   an ID. A targeted read must show no active or pending thread and a completed latest turn started at or after the last
+   dispatch. Missing inventory entries, historical completion events and worker self-attestation alone do not establish
+   terminal status. If no supported targeted read can verify a worker, retain the blocked receipt.
+
+   Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
+   `Provider status`, `Last dispatch at`, `Observed at`, and `Status source` (`list_agents`, `read_thread`, or
+   `wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn started at`, and `Latest turn status`, and
+   `Thread status`. Use the normalized completed or idle status only from the provider response; `read_thread` with
+   `notLoaded` may qualify only with a completed latest turn and no newer dispatch. Preserve the raw response in
+   current-run evidence. Do not dispatch follow-ups during collection; a later follow-up invalidates that worker's
+   observation and requires another read. Record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed;
+   ...` in closure evidence. `Remaining active handles: 0` means no active worker turns; it does not assert capacity
+   release or handle destruction.
    If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
    `worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
    unsupported close receipt; name the missing provider status/release capability and its adapter owner.
@@ -429,8 +456,13 @@ description: >-
    `Engineering outcome: plan_only`; the work record must say the workflow is blocked and the plan is unapproved.
    For TechOps planning with a ready unapproved plan and complete worker results, use the same blocked-snapshot command
    when neither runtime closure route can be verified. Preserve `Engineering outcome: plan_only`; the renderer owns
-   publication statuses even when the workflow remains blocked.
+   publication statuses even when the workflow remains blocked. Require exit zero, the canonical first validation line,
+   and `TechOps planning blocked work record: saved; runtime release unverified`. The receipt follows the canonical
+   handoff; it is not a publication failure and must not replace the rendered handoff.
    Do not claim a completed workflow when neither runtime closure route is verified.
+   Successful pre-release writes `pre_release_check.json` with the packet hash and validation time. Packet changes
+   invalidate it for TechOps planning; revalidate before collecting closure status. Its Terminal observations must
+   postdate this receipt. The compact Sentry publisher retains its existing owned precheck.
    After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
    observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
