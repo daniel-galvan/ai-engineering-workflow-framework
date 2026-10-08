@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Record
-version: 0.5.3
+version: 0.5.4
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-08
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -84,31 +84,11 @@ cites the Coordinator/provider observation. Reserve `Current user` for inputs ac
 
 # Asset Inventory and Review
 
-Feature Delivery requires `asset_manifest.json` before planning fan-in. Preserve complete Jira attachment and separate
-remote-link inventories
-for the supplied issue and its associated Jira issues, plus every explicitly supplied file, folder, or URL source.
-Folder inventories are recursive and include hidden entries and symlinks. Every available asset receives an observation,
-review method, review status, relevance, disposition, and evidence references. Visual assets require visual inspection
-or rendered reading. An unavailable source or unreviewed
-asset is an explicit planning unknown, not an empty or non-material result.
-
-Source inventory:
-
-| Source ID | Input ID | Kind | Locator | Discovery | Limitation | Evidence refs |
-| --- | --- | --- | --- | --- | --- | --- |
-| SRC-001 | IN-### | jira_issue_attachments / directory / file / url | | complete / empty / unavailable | | E-### |
-
-Asset review:
-
-| Asset ID | Source ID | Kind | Locator | Availability | Review method | Review status | Relevance | Observation / disposition | Evidence refs |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ASSET-001 | SRC-001 | image / document / other | | available / unavailable | visual_inspection / rendered_read / text_read / metadata_read | consumed / reviewed_not_relevant / unavailable | material / non_material | | E-### |
-
-Record the source-level gate in `asset_manifest.json`: `inventory_complete`, `all_assets_accounted_for`,
-`all_available_assets_reviewed`, `all_material_assets_linked`, `reviewed_before_plan`, unresolved asset IDs, and
-blocking source IDs.
-`ready_for_implementation` requires manifest status `passed`; `awaiting_input` is required for unresolved material asset
-retrieval or review.
+Link `asset_manifest.json` and summarize the asset gate, material findings, and unresolved limitations.
+Keep individual inventory and review rows in the manifest.
+The manifest still records `inventory_complete`, `all_assets_accounted_for`, `all_available_assets_reviewed`,
+`all_material_assets_linked`, and `reviewed_before_plan`; unavailable, permission-denied, or unreviewed assets remain
+explicit limitations. Material assets require evidence references in the approved plan.
 
 # Path Verification
 
@@ -122,40 +102,25 @@ An empty filtered search is not evidence that a path is absent.
 
 ---
 
-# Repository Evidence Eligibility
+# Repository Baseline
 
-Record every checkout before using its contents as evidence. An undeclared feature branch cannot establish baseline,
-production, or current-main behavior.
+Record relevant repository revisions and evidence eligibility; retain full checkout observations in the packet.
 
-| Repository role | Declared path | Resolved path | Branch / detached | Full revision | Clean status | Git identity | User-selected ref | Release mapping | Evidence eligibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Execution / Primary / Additional / Source / Destination | | | | | Clean / Dirty | | Yes / No | Verified / Unknown / Mismatch | Accepted / Caveated / Rejected |
+| Repository role | Declared path | Full revision | Evidence eligibility |
+| --- | --- | --- | --- |
+| | | | |
 
----
-
-# Run and Evaluation Identity
+# Run Summary
 
 | Field | Value |
 | --- | --- |
 | Run ID | |
-| Evaluation run ID | Explicit evaluation/benchmark runs only; otherwise `Not applicable` |
 | Playbook / version | Canonical playbook path / independent document version |
 | Framework commit / status | Full Git commit / Clean or Dirty |
 | Plugin package / version | Installed plugin name/version, or `Not applicable` for manual runs |
-| Provider/runtime configuration | Optional execution-repository `.codex/agents/` path, or `Not provided` |
-| Provider configuration source/status | Resolved bundled definition or work-graph source / `resolved`, `absent`, or `blocked` |
-| Prompt template / revision / conformance | Canonical path / independent document version / `pass` or `fail` with missing required fields |
-| Role-policy baseline ID | Provider baseline ID or `Not applicable` |
-| Role binding manifest | `.thoughts/<WORK-ITEM-ID>/role_bindings.json` or `Not applicable` for a non-Codex provider |
-| Provider / model configuration | Provider name / Worker Execution Ledger |
-| Coordinator model/effort | Active parent-session model / effort, or `Not exposed / Not exposed` when telemetry is unavailable; do not infer from Orchestrator agent configuration |
 | Requested profile | `standard` / `deep` |
-| Activated profile | `standard` / `deep` / `None` |
 | Executed profile | `standard` / `deep` / `None` |
-| Profile status | `requested` / `in_progress` / `executed` / `not_executed` / `blocked` |
 | Lifecycle | `planning` / `remediation` |
-| Internal mode | `discovery` / `investigation` / `delivery` / `stabilization` / `review`; not a run input |
-| Internal depth | `quick` / `standard` / `deep`; not a run input |
 | State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |
 | Engineering state | `unknown` / `understood` / `designed` / `approved` / `implemented` / `validated` / `released` / `stabilized` / `not_applicable` |
 | Workflow outcome | `completed` / `incomplete` / `blocked`; process result, not engineering correctness |
@@ -165,28 +130,29 @@ production, or current-main behavior.
 | Next-action owner | Person, team, worker, or operator able to complete the next action |
 | User action | What the user needs to do, or `Nothing technical.` |
 | Next action | |
+| Runtime status | Pending / Released / Terminal / Blocked |
 
-# Run Isolation and Finalization
+# Workflow Receipts
 
-| Field | Value |
-| --- | --- |
-| Concurrent-run decision | Read-only shared revision / Isolated managed worktree / `run_already_active` / Not applicable |
-| Active related run or work item | None / ID and artifact root |
-| Related-run check | Provider-visible tasks and sibling artifact roots; method, RFC 3339 timestamp, and result / Detection unavailable |
-| Durable artifact root | `.thoughts/<WORK-ITEM-ID>/` |
-| Final reconciliation | Pending / Passed / Failed; state, artifacts, outcomes, and runtime closure agree |
-| Finalization schema | Pending / Passed / Failed; required terminal fields and playbook artifact set are present |
+Keep operational details in `finalization_packet.json`, `role_bindings.json`, `runtime_closure.json`, and
+`run_inputs.json`. Keep asset inventory in `asset_manifest.json` when required. Evaluation and timing details belong
+only in the optional `evaluation_work_record_addendum.md` for an explicitly declared evaluation or benchmark.
 
-Use the lifecycle, workflow-state, engineering-state, workflow-outcome, and engineering-outcome terms from
-`../contracts/workflow_execution.md`. A completed worker graph awaiting evidence or a decision uses state
-`awaiting_input`, workflow outcome `completed`, and engineering outcome `partially_solved`; it is not `blocked`. Use
-`plan_only` only when the run produced a usable implementation plan.
+The finalizer publishes a normalized `finalization_snapshot.<sha256>.json` and links it from the terminal record.
+That snapshot preserves provider configuration, repository eligibility, worker assignments, synchronization,
+finalization, and runtime observations without repeating their full tables here. Source receipts remain required.
+Configured model/effort and Provider-observed model/effort remain distinct in the packet; self-reported model values
+are not provider telemetry. Each worker receives a compact manifest for every assigned Input ID in its activation
+packet, including its value, source, authority, and expected use.
+
+Do not edit generated terminal records. Update the source packet and receipts, then rerun the finalizer. Existing
+records with full operational tables remain valid under the legacy checks; do not rewrite historical records.
 
 # Durable Artifacts
 
 When the selected playbook requires an implementation plan, planning runs that reach `ready_for_implementation` must
 produce and link it. The plan is the execution source for a later session; this work record remains the context,
-evidence, decision, and worker ledger.
+evidence, and decision record; operational ledgers live in the linked snapshot.
 
 When the selected playbook requires a different terminal artifact, add that artifact as a current-run root file and
 follow the playbook's plan-creation rule. Technical Spike requires `spike_report.md` and prohibits
@@ -206,108 +172,27 @@ implementation plan when affected files, intended changes, validation, owner, ro
 
 ---
 
-# Worker Execution Ledger
-
-`Mode`, `Worker depth`, and `Capacity classification` are internal audit metadata. The user-facing run choices are
-Lifecycle and Profile. Keep configured model and effort separate from provider-observed values.
-
-Record every worker or subagent that materially contributes to the work.
-
-| Worker | Role | Assigned inputs | Mode | Depth | Skills | Tools | Capacity | Configured model/effort | Provider-observed model/effort | Usage | Depends on | Outcome | Confidence |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | IN-### | | | | | | | | | | | |
-
-Record provider-reported usage or credits when available. Use `Unknown` when the execution surface does not expose them;
-never estimate credit consumption. For model and effort, retain the exact
-configured binding and record provider-observed values when returned. If
-applied telemetry is unavailable, use an explicit
-`Not exposed; ...` marker; never relabel the
-configured binding or treat a self-reported model or effort as provider-observed telemetry.
-Normal runs do not collect activation or timing ledgers. Explicit evaluation or benchmark runs append
-`evaluation_work_record_addendum.md`.
-
-# Worker Synchronization
-
-For every stage that launches multiple workers, record the fan-in barrier.
-
-| Stage | Workers launched | Launch mode / exception | Worker outcomes | Results summarized | Barrier status |
-| --- | --- | --- | --- | --- | --- |
-| | | Parallel / Sequential: reason | | Yes / No | Open / Passed |
-
-The workflow cannot be marked complete while a required worker or barrier is still active.
-
-Before activation, record each worker's assigned Input IDs. Reconcile them with the result envelope's
-`inputs_consumed`; an omitted authoritative input makes the result incomplete. Record outputs, approvals, and failure or
-blocked details in the timeline or relevant section below.
-
-Each activation packet must include a compact manifest for every assigned Input ID: short value, source, authority, and
-expected use. An ID without its value is not delivered context.
-
 # Delivery Activation Gate
 
-For every remediation run, record this gate at re-entry. Complete the first
-six checks before the first source, configuration, dependency, or
-infrastructure change. A downstream worker may wait for a dependency, but it
-must remain in the current run's worker execution record. Evaluate the Completion
-barrier before final handoff.
-
-| Check | Required evidence | Status |
-| --- | --- | --- |
-| Remediation re-entry | Re-entry with the same profile and `lifecycle: remediation` | Pending / Passed / Blocked |
-| Implementation approval | Approval type, owner, scope, decision, and reference | Pending / Passed / Blocked |
-| Approved plan | Existing approved `implementation_plan.md` | Pending / Passed / Blocked |
-| Delivery graph | Worker IDs, roles, dependencies, and states | Pending / Passed / Blocked |
-| Implementer authority | Delegated Implementer authorized for the approved scope | Pending / Passed / Blocked |
-| Coordinator restriction | Coordinator does not edit or substitute for delivery workers | Pending / Passed / Blocked |
-| Completion barrier | Implementer, Reviewer, Tester, Documenter, fan-in, runtime closure | Pending / Passed / Blocked |
-
-No source change is permitted while any of the first six checks is `Pending` or
-`Blocked`. A remediation run cannot be reported complete while the Completion
-barrier is `Pending` or `Blocked`.
+Summarize implementation approval and activation readiness, with references to the approved plan and packet.
+Keep the detailed barrier checks in the operational artifacts; required delivery gates still apply.
 
 # Implementation Conformance Check
 
-Before the first source change, the delegated Implementer records a
-plan-conformance manifest. Every proposed file maps to an approved plan step,
-an existing implementation or reuse target, an intended change, and validation.
-Every new table, model, fixture, runtime abstraction, or dependency maps to an
-explicit plan step.
-
-| Check | Required evidence | Status |
-| --- | --- | --- |
-| Plan-conformance manifest | Files, plan steps, reuse targets, changes, validation | Pending / Passed / Blocked |
-| Boundary compliance | No unmapped or explicitly forbidden implementation pattern | Pending / Passed / Blocked |
-
-If the manifest exposes an unmapped change, a contradictory boundary, or a
-replacement of the approved design, stop before editing with
-`replanning_required`. The Reviewer checks this manifest against the current
-diff before accepting the implementation.
-
-# Worker Runtime Closure
-
-Record the provider-handle closure barrier separately from result fan-in. `terminal` means the result was collected;
-`released` means the provider no longer counts the worker against runtime capacity.
-Record exact provider-returned handles and provider close/release confirmations. Role names or circular statements that
-all workers were released are not closure evidence.
-
-| Run or stage | Receipt owner | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
-| --- | --- | --- | --- | --- | --- |
-| | Coordinator | | Pending / Released / Unknown / Blocked | | |
-
-Do not start a new lifecycle run while the previous run has active handles. Reuse its durable artifacts after closure;
-do not reuse live worker handles.
+Link the Implementer's plan-conformance manifest and summarize any approved-scope conflict or blocker.
+An unmapped change or replacement of the approved design still requires `replanning_required` before editing.
 
 # Worker Result Summary
 
 Record one compact result for every worker that reached a terminal outcome. Summarize each worker's unique contribution;
 do not copy full reports here.
 
-| Worker | Outcome | Confidence | Unique contribution | Evidence / claim refs | Uncertainties / blockers | Actual model/effort | Usage/credits |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | |
+| Worker | Outcome | Confidence | Unique contribution | Evidence / claim refs | Uncertainties / blockers |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
 
-The final handoff presents the shared outcome; this worker summary remains in the durable record. Use `Unknown` for
-unavailable model, token, or credit data.
+The final handoff presents the shared outcome; this worker summary retains each contribution and its limitations.
+Keep model, token, and credit details in the packet.
 
 # Final Handoff
 

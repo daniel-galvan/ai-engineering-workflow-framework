@@ -19,6 +19,14 @@ AI-assisted engineering where every material conclusion is traceable from [evide
 decision, and action. Workers and provider adapters support that reasoning chain; they are not the product's central
 promise.
 
+> [!IMPORTANT]
+> **Current explicit user decisions take precedence over historical AI conclusions.** A current explicit user decision
+> or constraint is authoritative; workers must not silently override it or reopen it as unresolved because a prior
+> worker concluded otherwise. Historical artifacts are supporting evidence unless the current user input or an
+> explicitly identified approved decision adopts them. If direct evidence conflicts with the decision, present the
+> conflict and ask explicitly for a new decision. See
+> [Authoritative Run Inputs](contracts/workflow_execution.md#authoritative-run-inputs).
+
 ## Introduction
 
 This framework is a tool for engineers, not a replacement for them. The user sets the goal and scope, provides context,

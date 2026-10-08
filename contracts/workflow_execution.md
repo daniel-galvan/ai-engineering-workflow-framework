@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.15
+version: 0.5.16
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-10-07
+last_updated: 2026-10-08
 ---
 
 # Workflow Execution Contract
@@ -1058,6 +1058,19 @@ approval is required. `replanning_required` is reserved for evidence that invali
 `blocked` is reserved for a genuine external, environment, permission, or validation blocker. Numeric priority is
 evidence of urgency, not a substitute for this disposition.
 
+## Delivery Test Completion
+
+Required regression coverage is implementation work. The Implementer MUST add missing tests/assertions within the
+approved scope; the Tester MUST reconcile each approved criterion and material behavior with objective proof. A green
+suite alone does not establish missing assertions. Runnable coverage gaps and failures return through Coordinator to
+Implementer, Reviewer and Tester in the same run without another approval. Coordinator MUST NOT perform their roles.
+Any source, test or fixture change invalidates the candidate's previous review/validation acceptance. Recompute its
+fingerprint, recheck affected paths and the full resulting diff, then validate the accepted candidate. Preserve
+unchanged research and historical receipts as history. Genuine environment blockers retain their evidence, owner,
+impact and next action and prevent a solved engineering outcome.
+Final handoffs MUST close passed automated checks and separately identify release checks, their deployed boundary,
+environment, owner and additional proof. Do not leave generic D-label or DEV/QA reminders in place of concrete gaps.
+
 ## Interrupted Profile Recovery
 
 An incomplete required-worker graph is not a completed diagnosis or plan. The canonical run prompt must support an
@@ -1356,6 +1369,21 @@ The packaged `scripts/finalize_work_record.py` renderer is the only writer of th
 the packet into canonical Markdown, runs the packaged validator, and atomically replaces the record only after
 validation passes. If rendering or validation fails, the Coordinator MUST return the exact error to the same
 Documenter for a corrected packet on a Documenter-owned path; neither agent may patch the terminal Markdown by hand.
+
+New terminal records MUST use the compact engineering projection: run and outcome summaries, repository baseline,
+inputs, worker contributions, evidence, claims, decisions, actions, and the human-readable handoff. Full provider,
+worker, synchronization, finalization, and runtime tables remain in a normalized snapshot using the existing
+`finalization_packet.json` schema. The renderer publishes this snapshot as `finalization_snapshot.<sha256>.json`
+before atomically replacing the Markdown; its content hash is the filename and the record links the exact snapshot.
+Source receipts, including `runtime_closure.json`, `role_bindings.json`, `run_inputs.json`, and required
+`asset_manifest.json`, remain authoritative for their observations and MUST NOT be replaced by the snapshot.
+The validator MUST reject a missing or modified snapshot, a conflicting runtime receipt, or a Markdown projection
+that disagrees with the snapshot, then apply all existing terminal checks to the complete normalized packet.
+Historical records with full operational tables retain the existing validation path; do not migrate them implicitly.
+Pre-release checks MUST NOT replace the current record or retain a new snapshot. Standard Sentry staging MUST publish
+or restore the linked snapshot together with its terminal artifact set. Keep evaluation ledgers in the optional
+evaluation addendum; normal runs do not acquire new telemetry requirements.
+
 On either deterministic Standard planning path, a nonzero result is
 `finalization_contract_failure`; do not add a Documenter fallback or patch
 generated artifacts.

@@ -1,12 +1,12 @@
 ---
 
 title: Documenter Role
-version: 0.5.4
+version: 0.5.5
 status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-09-11
+last_updated: 2026-10-08
 required_documents:
 
   - ../frameworks/investigation.md
@@ -68,8 +68,10 @@ maintenance.
 * Update `Last Updated` after every durable change, and copy artifact paths exactly from the final packet.
 * Retain the contract's required terminal fields while compacting, validate the playbook's required artifact set, and
   keep `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` distinct.
-* Preserve the canonical `Playbook Selection`, `Run and Evaluation Identity`, `Evidence`, `Claims`, `Decision Log`, and
-  `Action Log` sections; compact wording inside those sections instead of replacing them with legacy headings.
+* Populate the full operational fields in `finalization_packet.json` and preserve source receipts. The finalizer
+  renders `Run Summary`, repository baseline, worker contributions, and the canonical `Playbook Selection`, `Evidence`,
+  `Claims`, `Decision Log`, and `Action Log` sections. Do not copy operational tables back into the compact record or
+  edit its generated snapshot. Legacy records retain `Run and Evaluation Identity` and their existing validation path.
 * For Technical Spike finalization, populate the packet's Evidence, Claims, Decision Log, and Action Log arrays with
   substantive rows and exact references. Remove template rows and unresolved markers such as `To be normalized`; a
   `spike_report.md` alone does not satisfy the canonical work-record contract.

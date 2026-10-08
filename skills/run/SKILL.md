@@ -412,6 +412,12 @@ description: >-
    `Expected before terminal finalization`.
    If it is absent, add it while the packet is still Coordinator-owned before activating `handoff`; the packaged
    publisher also rejects an omitted declaration before pre-release.
+   For Feature Delivery remediation, missing runnable tests return to the delegated Implementer, then Reviewer and
+   Tester without another approval. The Coordinator does not edit tests. Any source/test/fixture edit invalidates prior
+   acceptance; regenerate the candidate fingerprint and obtain Reviewer acceptance for that candidate. Require the
+   canonical validation_report.md and run review_evidence.py --validation with --review-report and --repository before
+   Documenter. Use --require-solved only for solved engineering value. Close passed automated checks; separate
+   deployment checks with their environment, owner and extra proof. Never leave generic DEV/QA checks as user homework.
    For Feature Delivery planning, the standard packet must contain terminal
    rows/results for `feature-context`, `impact-analysis`, `feature-design`, and
    `handoff`; add `repository-integration` when the standard conditional seam

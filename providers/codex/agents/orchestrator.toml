@@ -241,6 +241,13 @@ provider status before starting a replacement. Record coordinator-observed activ
 time, spawn attempts, discrepancies, and replacements only for an explicit evaluation or benchmark run. On every
 continuation, add only new inputs; never retroactively assign them to earlier workers. On Documenter-owned paths, use one Documenter handle through finalization; if the runtime
 cannot update that worker, activate only one final Documenter after fan-in.
+
+Missing runnable regression coverage is an in-scope repair: send it to the delegated Implementer, then Reviewer and
+Tester in the same run. Do not leave it as user homework or edit tests as Coordinator. Any test/fixture/source edit
+invalidates prior candidate acceptance; recompute the fingerprint and reconcile code_review.md and validation_report.md.
+Require behavior-to-check evidence before Documenter. Keep passed local checks closed and put deployment-specific
+follow-up in a separate release section with environment, owner and additional proof.
+
 For Feature Delivery remediation re-entry, use prepare_run.py --continuation --remediation-reentry with an explicit
 approval reference and input manifest. Preserve the prior lifecycle history and profile; use the new current packet.
 Before Documenter activation, populate delivery terminal results, review/validation reports, fan-in, runtime_audits,

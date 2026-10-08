@@ -391,6 +391,28 @@ Before recording `accepted`, run `scripts/review_evidence.py --review <run-root>
 the framework package. Missing lifecycle or counterexample evidence is not an accepted review. Finalization rechecks
 the report for completed remediation. Preserve the existing read-only Reviewer and delegated Implementer separation.
 
+### Required Test Completion
+
+The Implementer adds the required regression tests and assertions as part of the approved plan. Tester maps every
+approved criterion and reviewed behavior to exact checks and execution evidence in
+[`validation_report.md`](../templates/validation_report.md). Missing runnable tests return to Implementer, Reviewer,
+and Tester automatically; they are not user homework or a new approval gate. Check downstream inputs and forbidden
+writes, including fake call tracking when record equality can hide a write.
+Every source, test or fixture edit invalidates prior candidate acceptance. Generate the current fingerprint with
+`scripts/review_evidence.py --fingerprint --repository <repo> --base <base> --untracked <intended-new-files>` and record
+the same candidate fields in review and validation. Reviewer rechecks affected paths and the complete resulting diff.
+Before Documenter, run `scripts/review_evidence.py --validation <run-root>/validation_report.md
+--review-report <run-root>/code_review.md --repository <repo>`; add `--require-solved` only for a solved engineering
+outcome. The finalizer repeats this gate against the execution repository and current candidate.
+For older remediation continuations, preserve prior reports as historical and populate the current candidate fields
+and coverage from verified evidence plus needed focused checks. Do not restart unchanged research or treat historical
+green receipts as proof of subsequent edits.
+A real environment blocker retains failed-command evidence, impact, owner and next action; report partial/blocked
+engineering value honestly. Completed automated checks are closed. Release checks separately name their deployed
+boundary, environment, owner and additional proof; a generic remaining D3/D4/D6 or DEV/QA reminder is insufficient.
+Reconcile any deliberately omitted planned test with its authority and remaining limitation; accepting either
+committed template version does not itself waive proof of content/attachment coherence.
+
 ### Stage 6 — Stabilize and Handoff
 
 Record validation, rollout or release steps, rollback, monitoring, ownership, residual risks, and next action. Release

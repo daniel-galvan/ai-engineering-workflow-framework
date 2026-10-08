@@ -1,10 +1,10 @@
 ---
 
 title: AI-assisted Software Engineering Workflow Framework Operating Guide
-version: 0.5.1
+version: 0.5.2
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-04
+last_updated: 2026-10-08
 ---
 
 # AI-assisted Software Engineering Workflow Framework Operating Guide
@@ -68,6 +68,14 @@ The work record and implementation plan are derived paths, not additional user c
 
 The record contains scope, facts, assumptions, unknowns, evidence, decisions, risks, errors, blockers, worker history,
 validation, next actions, and handoff state. It is the durable source of truth for resuming work.
+
+New terminal records summarize worker contributions and workflow status without repeating operational tables. Their
+Workflow Receipts section links a normalized `finalization_snapshot.<sha256>.json`, using the existing finalization
+packet schema. Keep this snapshot with the record when archiving or transferring the artifact root. Provider settings,
+worker ledgers, synchronization, finalization, and runtime observations remain available there; source receipts such as
+`role_bindings.json`, `runtime_closure.json`, `run_inputs.json`, and `asset_manifest.json` remain required.
+Update the source packet and receipts, then rerun the finalizer; generated terminal Markdown must match its snapshot.
+Existing records with operational tables continue to validate without an automatic migration.
 
 The work record distinguishes workflow state from engineering state, and workflow outcome from engineering outcome.
 State says what is happening or established; outcome says whether the graph completed and what value reached the work

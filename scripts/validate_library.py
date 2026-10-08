@@ -2024,9 +2024,18 @@ def _validate_work_record(path: Path, require_terminal: bool = False) -> str:
             file=sys.stderr,
         )
     text = path.read_text()
+    try:
+        from finalize_work_record import expand_work_record
+    except ModuleNotFoundError:
+        from scripts.finalize_work_record import expand_work_record
+    try:
+        text = expand_work_record(text, path.parent)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        fail(f"{path}: invalid workflow-state snapshot: {error}")
+        return ""
     identity = {
         row.get("Field", ""): row.get("Value", "")
-        for row in markdown_table(text, "# Run and Evaluation Identity")
+        for row in (markdown_table(text, "# Run and Evaluation Identity") or markdown_table(text, "# Run Summary"))
     }
     if identity.get("State") not in TERMINAL_STATES:
         if require_terminal:
@@ -4312,7 +4321,8 @@ for relative, phrases in {
         "## Requirement applicability", "## Review boundary and identity", "## Behavior review",
         "## Finding validity", "## Validation and disposition", "unchanged payload builders",
     ),
-    "templates/code_review.md": ("## Behavior Review", "## Reconciliation and Next Action"),
+    "templates/code_review.md": ("## Behavior Review", "## Reconciliation and Next Action", "Candidate SHA256"),
+    "templates/validation_report.md": ("## Behavior Coverage", "## Release Follow-up", "Candidate SHA256"),
     "templates/implementation_plan.md": ("# Behavior Applicability", "Counterexample check / result"),
     "playbooks/feature_delivery.md": ("scripts/review_evidence.py", "contracts/code_review.md"),
 }.items():
@@ -4773,7 +4783,7 @@ if "# Path Verification" not in work_record_template:
     fail("templates/work_record.md is missing path verification")
 if "# Input Register" not in work_record_template:
     fail("templates/work_record.md is missing input provenance")
-if "| Input ID |" not in work_record_template or "| Assigned inputs |" not in work_record_template:
+if "| Input ID |" not in work_record_template or "assigned Input ID" not in work_record_template:
     fail("templates/work_record.md is missing input assignment tracking")
 if "evaluation_work_record_addendum.md" not in work_record_template:
     fail("templates/work_record.md is missing the optional evaluation boundary")
@@ -4798,25 +4808,19 @@ for phrase in (
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing outcome/classification field: {phrase}")
 for phrase in (
-    "# Run and Evaluation Identity",
-    "| Evaluation run ID |",
+    "# Run Summary",
     "| Playbook / version |",
     "| Framework commit / status |",
     "| Plugin package / version |",
-    "| Provider/runtime configuration |",
-    "| Provider configuration source/status |",
-    "| Prompt template / revision / conformance |",
-    "| Role-policy baseline ID |",
-    "| Provider / model configuration |",
 ):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing evaluation identity: {phrase}")
 for phrase in (
-    "# Run Isolation and Finalization",
-    "Concurrent-run decision",
-    "Related-run check",
-    "Final reconciliation",
-    "Finalization schema",
+    "# Workflow Receipts",
+    "finalization_packet.json",
+    "role_bindings.json",
+    "runtime_closure.json",
+    "finalization_snapshot.<sha256>.json",
     "compact manifest for every assigned Input ID",
 ):
     if phrase not in work_record_template:
@@ -5015,6 +5019,18 @@ for phrase in (
 ):
     if phrase not in orchestrator_role.lower():
         fail(f"roles/orchestrator.md is missing final-handoff ownership: {phrase}")
+
+for relative, phrases in {
+    "providers/codex/agents/implementer.toml": ("Required regression tests are part of implementation", "missing assertions"),
+    "providers/codex/agents/tester.toml": ("missing runnable assertions", "Release Follow-up", "candidate"),
+    "providers/codex/agents/orchestrator.toml": ("do not leave it as user homework", "Any test/fixture/source edit"),
+    "providers/codex/agents/documenter.toml": ("validation_report.md coverage", "Close passed automated checks"),
+    "contracts/workflow_execution.md": ("## Delivery Test Completion", "Any source, test or fixture change"),
+}.items():
+    content = (ROOT / relative).read_text()
+    for phrase in phrases:
+        if phrase.lower() not in content.lower():
+            fail(f"{relative} is missing test-completion control: {phrase}")
 
 tester_role = (ROOT / "roles" / "tester.md").read_text()
 tester_agent = (CODEX_AGENT_DIR / "tester.toml").read_text()
@@ -5442,8 +5458,8 @@ if "Framework commit / status" not in work_record_template:
 if "Plugin package / version" not in work_record_template:
     fail("templates/work_record.md is missing plugin-package provenance")
 for phrase in (
-    "Repository Evidence Eligibility",
-    "Prompt template / revision / conformance",
+    "Repository Baseline",
+    "finalization_packet.json",
 ):
     if phrase not in work_record_template:
         fail(f"templates/work_record.md is missing run-control evidence: {phrase}")

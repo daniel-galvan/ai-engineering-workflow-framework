@@ -1,6 +1,6 @@
 ---
 title: Compact Sentry Work Record
-version: 0.5.2
+version: 0.5.3
 status: Pilot
 ---
 
@@ -26,32 +26,22 @@ status: Pilot
 | --- | --- | --- | --- | --- |
 | | | | | |
 
-# Repository Evidence Eligibility
+# Repository Baseline
 
-| Repository role | Declared path | Resolved path | Branch / detached | Full revision | Clean status | User-selected ref | Release mapping | Evidence eligibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Execution | | | | | | | | |
+| Repository role | Declared path | Full revision | Evidence eligibility |
+| --- | --- | --- | --- |
+| Execution | | | |
 
-# Run and Evaluation Identity
+# Run Summary
 
 | Field | Value |
 | --- | --- |
 | Run ID | |
-| Evaluation run ID | Not applicable |
 | Playbook / version | playbooks/sentry_issue_remediation.md / 0.5.2 |
 | Framework commit / status | |
 | Plugin package / version | |
-| Provider/runtime configuration | Not provided |
-| Provider configuration source/status | |
-| Prompt template / revision / conformance | templates/sentry_issue_run_prompt.md / 0.5.1 / pending |
-| Role-policy baseline ID | |
-| Role binding manifest | role_bindings.json |
-| Provider / model configuration | Codex / Worker Execution Ledger |
-| Coordinator model/effort | Active parent-session model / effort |
 | Requested profile | standard |
-| Activated profile | None |
 | Executed profile | None |
-| Profile status | requested |
 | Lifecycle | planning |
 | State | intake |
 | Engineering state | unknown |
@@ -62,17 +52,23 @@ status: Pilot
 | Next-action owner | Coordinator |
 | User action | Nothing technical. |
 | Next action | Activate evidence-topology. |
+| Runtime status | Pending / Released / Terminal / Blocked |
 
-# Run Isolation and Finalization
+# Workflow Receipts
 
-| Field | Value |
-| --- | --- |
-| Concurrent-run decision | |
-| Active related run or work item | |
-| Related-run check | |
-| Durable artifact root | |
-| Final reconciliation | Pending |
-| Finalization schema | Pending |
+Keep operational details in `finalization_packet.json`, `role_bindings.json`, `runtime_closure.json`, and
+`run_inputs.json`. Keep asset inventory in `asset_manifest.json` when required. Evaluation and timing details belong
+only in the optional `evaluation_work_record_addendum.md` for an explicitly declared evaluation or benchmark.
+
+The finalizer publishes a normalized `finalization_snapshot.<sha256>.json` and links it from the terminal record.
+That snapshot preserves provider configuration, repository eligibility, worker assignments, synchronization,
+finalization, and runtime observations without repeating their full tables here. Source receipts remain required.
+Configured model/effort and Provider-observed model/effort remain distinct in the packet; self-reported model values
+are not provider telemetry. Each worker receives a compact manifest for every assigned Input ID in its activation
+packet, including its value, source, authority, and expected use.
+
+Do not edit generated terminal records. Update the source packet and receipts, then rerun the finalizer. Existing
+records with full operational tables remain valid under the legacy checks; do not rewrite historical records.
 
 # Durable Artifacts
 
@@ -84,29 +80,11 @@ status: Pilot
 | Normalized evidence | `normalized_evidence.md` | Pending | Current-run evidence |
 | Fix design result | `fix_design_result.json` | Pending | Canonical readiness and artifact action |
 
-# Worker Execution Ledger
-
-| Worker | Role | Assigned inputs | Mode | Depth | Skills | Tools | Capacity | Configured model/effort | Provider-observed model/effort | Elapsed | Wait | Usage | Depends on | Outcome | Confidence |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | | | | | | | | | |
-
-# Worker Synchronization
-
-| Stage | Workers launched | Launch mode / exception | Worker outcomes | Results summarized | Barrier status |
-| --- | --- | --- | --- | --- | --- |
-| | | | | | Open |
-
-# Worker Runtime Closure
-
-| Run or stage | Receipt owner | Completed worker handles | Runtime status | Remaining active handles | Closure evidence or blocker |
-| --- | --- | --- | --- | --- | --- |
-| Current run | Coordinator | None | Pending | None | Workers not activated |
-
 # Worker Result Summary
 
-| Worker | Outcome | Confidence | Unique contribution | Evidence / claim refs | Uncertainties / blockers | Actual model/effort | Usage/credits |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | | |
+| Worker | Outcome | Confidence | Unique contribution | Evidence / claim refs | Uncertainties / blockers |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
 
 # Evidence
 

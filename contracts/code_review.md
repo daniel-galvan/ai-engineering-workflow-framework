@@ -112,6 +112,17 @@ historical artifacts as historical; do not silently reintroduce a rejected assum
 Do not commit, push, upload, submit, resolve remote discussions, change external systems, or rewrite/discard user work
 without the corresponding authorization. For Gerrit, preserve Change-Ids and distinguish local and uploaded patch sets.
 
+## Test Changes and Candidate Continuity
+
+Required tests and assertions are part of the approved implementation. Verify that each test would detect the named
+failure, including downstream arguments and forbidden writes. An unchanged fake record does not prove that no write
+operation was called. Reuse call tracking or the existing mock expectations.
+Any source, test or fixture edit requires independent acceptance of the resulting candidate before Tester completion.
+For Feature Delivery remediation, record `Repository`, `Base revision`, `Candidate SHA256`, and
+`Untracked candidate files` using the packaged fingerprint command described in `templates/validation_report.md`.
+Cross-check all approved criteria against the behavior inventory; Tester reconciles that inventory with exact checks.
+A changed timing/version policy does not silently remove coherent-snapshot or other explicit acceptance assertions.
+
 ## Evidence gate
 
 Before accepting Feature Delivery review, run:

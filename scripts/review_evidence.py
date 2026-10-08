@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -106,6 +108,103 @@ def review_report_errors(text: str, *, require_accepted: bool = False) -> list[s
     return errors
 
 
+RELEASE_COLUMNS = ("Check", "Environment / dependency", "Additional proof", "Owner / next action")
+COVERAGE_COLUMNS = (
+    "Criterion / behavior", "Test / check", "Result", "Evidence / environment",
+    "Gap / reason", "Owner / next action",
+)
+
+
+def candidate_fingerprint(repository: Path, base: str, untracked: list[str]) -> str:
+    """Bind review to commits, tracked edits and explicitly included new files."""
+    def git(*args: str) -> bytes:
+        return subprocess.check_output(["git", "-c", "core.fsmonitor=false", "-C", str(repository), *args],
+                                       stderr=subprocess.PIPE)
+    head = git("rev-parse", "HEAD").strip().decode()
+    revision = git("rev-parse", "--verify", f"{base}^{{commit}}").strip().decode()
+    files = []
+    root = repository.resolve()
+    if len(untracked) != len(set(untracked)):
+        raise ValueError("duplicate untracked candidate file")
+    available = set(git("ls-files", "--others", "--exclude-standard", "-z").decode().split("\0"))
+    for name in sorted(untracked):
+        path = (root / name).resolve()
+        if Path(name).is_absolute() or not path.is_relative_to(root) or name not in available:
+            raise ValueError(f"not an untracked candidate file: {name}")
+        files.append([name, hashlib.sha256(path.read_bytes()).hexdigest()])
+    content = {"base": revision, "head": head,
+               "diff": hashlib.sha256(git("diff", "--binary", "--no-ext-diff", "--no-textconv", revision, "--")).hexdigest(),
+               "untracked": files}
+    return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+
+def _candidate_fields(text: str) -> tuple[dict[str, str], list[str]]:
+    fields = {}
+    errors = []
+    for name in ("Repository", "Base revision", "Candidate SHA256", "Untracked candidate files"):
+        values = re.findall(rf"^{re.escape(name)}: (.+)$", text, re.M)
+        if len(values) != 1:
+            errors.append(f"requires exactly one {name} field")
+        else:
+            fields[name] = values[0].strip()
+    if not re.fullmatch(r"[0-9a-f]{64}", fields.get("Candidate SHA256", "")):
+        errors.append("requires a concrete Candidate SHA256")
+    return fields, errors
+
+
+def validation_report_errors(text: str, review_text: str, *, require_solved: bool = False,
+                             expected_repository: Path | None = None, require_accepted: bool = True) -> list[str]:
+    """Reconcile Tester coverage with review and independently inspect the current candidate."""
+    errors = review_report_errors(review_text, require_accepted=require_accepted)
+    errors.extend(_heading_errors(text, ("# Validation Report", "## Behavior Coverage", "## Release Follow-up")))
+    candidate, candidate_errors = _candidate_fields(text)
+    reviewed, review_errors = _candidate_fields(review_text)
+    errors.extend(candidate_errors + review_errors)
+    if not candidate_errors and not review_errors:
+        if candidate != reviewed:
+            errors.append("validation candidate must match the accepted review candidate")
+        try:
+            repository = Path(candidate["Repository"])
+            if not repository.is_absolute():
+                raise ValueError("Repository must be an absolute path")
+            if expected_repository is not None and repository.resolve() != expected_repository.resolve():
+                errors.append("validation repository must match the execution repository")
+            untracked = json.loads(candidate["Untracked candidate files"])
+            if not isinstance(untracked, list) or any(not isinstance(name, str) for name in untracked):
+                raise ValueError("Untracked candidate files must be a JSON list of paths")
+            if candidate_fingerprint(repository, candidate["Base revision"], untracked) != candidate["Candidate SHA256"]:
+                errors.append("candidate changed since review/validation; return to Implementer, Reviewer and Tester")
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            errors.append(f"candidate verification unavailable: {error}")
+    rows, row_errors = _rows(text, "## Behavior Coverage", COVERAGE_COLUMNS)
+    errors.extend(row_errors)
+    behaviors, behavior_errors = _rows(review_text, "## Behavior Review", REVIEW_COLUMNS)
+    errors.extend(behavior_errors)
+    names = [row[0] for row in rows]
+    if len(names) != len(set(names)):
+        errors.append("validation coverage has duplicate behaviors")
+    if set(names) != {row[0] for row in behaviors}:
+        errors.append("validation coverage must reconcile every reviewed behavior without extra rows")
+    for index, row in enumerate(rows, 1):
+        if row[2] not in {"pass", "fail", "blocked", "not_applicable"}:
+            errors.append(f"coverage row {index} has invalid result; runnable gaps cannot be deferred")
+        if any(row[column].strip("` ").lower() in PLACEHOLDERS for column in (0, 1, 3, 4, 5)):
+            errors.append(f"coverage row {index} requires a check, evidence, reason and owner/next action")
+        if require_solved and row[2] in {"fail", "blocked"}:
+            errors.append(f"solved delivery cannot contain unresolved coverage row {index}")
+    release = _section(text, "## Release Follow-up")
+    if release != "No release checks required.":
+        follow_up, follow_up_errors = _rows(text, "## Release Follow-up", RELEASE_COLUMNS)
+        errors.extend(follow_up_errors)
+        passed = {row[1] for row in rows if row[2] == "pass"}
+        for index, row in enumerate(follow_up, 1):
+            if any(cell.strip("` ").lower() in PLACEHOLDERS for cell in row):
+                errors.append(f"release row {index} requires environment, additional proof and owner/next action")
+            if row[0] in passed:
+                errors.append(f"release row {index} repeats a passed local check")
+    return list(dict.fromkeys(errors))
+
+
 def completed_review_errors(
     identity: dict[str, str], root: Path, *,
     registered_paths: set[Path] | None = None, handoff_paths: set[Path] | None = None,
@@ -145,6 +244,31 @@ REVIEW_FIXTURE = (
     "| Source path trace | pass | candidate abc1234 plus worktree | no orphan pending state | Runtime deferred |\n"
     "## Reconciliation and Next Action\nPlan reconciled; Tester owns runtime tests. Release readiness not assessed.\n"
 )
+
+
+def delivery_evidence_fixture(root: Path) -> tuple[Path, str, str]:
+    """Real Git candidate used by the evidence and finalization regressions."""
+    repository = root / "candidate"
+    repository.mkdir()
+    def git(*args: str) -> str:
+        return subprocess.check_output(["git", "-C", str(repository), *args], stderr=subprocess.PIPE).decode().strip()
+    git("init")
+    (repository / "asset.py").write_text("version = 1\n")
+    git("add", "asset.py")
+    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
+        "-c", "core.hooksPath=/dev/null", "commit", "-m", "baseline")
+    base = git("rev-parse", "HEAD")
+    (repository / "asset.py").write_text("version = 2\n")
+    fields = (f"Repository: {repository}\nBase revision: {base}\n"
+              f"Candidate SHA256: {candidate_fingerprint(repository, base, [])}\nUntracked candidate files: []\n")
+    review = REVIEW_FIXTURE.replace("## Scope\n", "## Scope\n" + fields)
+    validation = ("# Validation Report\n## Candidate\n" + fields + "## Behavior Coverage\n| "
+                  + " | ".join(COVERAGE_COLUMNS) + " |\n| " + " | ".join(["---"] * 6) + " |\n"
+                  "| Asset-only edit preserves publication | python -m unittest tests.assets.TestVersion | pass | "
+                  "tests/assets.py:20; fixture command output; local Git candidate | "
+                  "No remaining local gap | Tester: local check complete |\n"
+                  "## Release Follow-up\nNo release checks required.\n")
+    return repository, review, validation
 
 
 def self_test() -> None:
@@ -199,17 +323,35 @@ if __name__ == "__main__":
     group.add_argument("--plan", type=Path)
     group.add_argument("--review", type=Path)
     group.add_argument("--self-test", action="store_true")
+    group.add_argument("--validation", type=Path)
+    group.add_argument("--fingerprint", action="store_true")
+    parser.add_argument("--review-report", type=Path)
+    parser.add_argument("--repository", type=Path)
+    parser.add_argument("--base")
+    parser.add_argument("--untracked", nargs="*", default=[])
+    parser.add_argument("--require-solved", action="store_true")
     parser.add_argument("--require-accepted", action="store_true")
     args = parser.parse_args()
-    if args.self_test:
+    if args.fingerprint:
+        if not args.repository or not args.base:
+            parser.error("--fingerprint requires --repository and --base")
+        print(candidate_fingerprint(args.repository, args.base, args.untracked))
+    elif args.self_test:
         self_test()
         print("review_evidence self-test: passed")
     else:
         try:
-            value = (args.plan or args.review).read_text()
-            errors = applicability_errors(value) if args.plan else review_report_errors(
-                value, require_accepted=args.require_accepted,
-            )
+            if args.validation:
+                if not args.review_report:
+                    parser.error("--validation requires --review-report")
+                errors = validation_report_errors(args.validation.read_text(), args.review_report.read_text(),
+                                                  require_solved=args.require_solved,
+                                                  expected_repository=args.repository)
+            else:
+                value = (args.plan or args.review).read_text()
+                errors = applicability_errors(value) if args.plan else review_report_errors(
+                    value, require_accepted=args.require_accepted,
+                )
         except OSError as error:
             errors = [str(error)]
         print(json.dumps({"status": "failed" if errors else "passed", "errors": errors}))

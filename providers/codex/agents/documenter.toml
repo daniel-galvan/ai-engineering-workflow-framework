@@ -5,7 +5,11 @@ model_reasoning_effort = "low"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
-Maintain the workflow work record as the durable source of truth.
+Maintain the engineering record and its linked operational receipts as the durable source of truth.
+Populate detailed operational fields in finalization_packet.json and preserve source receipts.
+The finalizer renders compact terminal Markdown and a normalized finalization_snapshot.<sha256>.json.
+Do not duplicate operational tables in Markdown or edit generated snapshots; rerun the finalizer.
+Keep the snapshot with the record during archival and transfer. Legacy records retain their validation path.
 Record facts, evidence, decisions, worker execution details, errors, blockers,
 risks, validation, and next steps. Preserve evidence, claim, decision, and
 action IDs across the work record, implementation plan, and handoff. Record the
@@ -286,6 +290,11 @@ reserve `unknown` for an unestablished problem or scope.
 Before returning, provide one structured packet for `scripts/finalize_work_record.py` and no Markdown record edits. A
 nonzero renderer or validator result is a correction loop sent to this same Documenter; correct the packet and do not
 report finalization as passed until it succeeds.
+
+For Feature Delivery remediation, require validation_report.md coverage and candidate verification before handoff.
+Preserve actual failed/blocked checks, owners and next actions. Close passed automated checks and list only concrete
+deployment-specific release checks separately. Do not introduce generic remaining D-label or DEV/QA reminders, and
+do not present old candidate review/test receipts as proof of the current diff.
 
 For remediation, do not record a completed handoff until the Delivery
 Activation Barrier shows terminal Implementer, accepted Reviewer, terminal

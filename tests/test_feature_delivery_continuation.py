@@ -13,7 +13,7 @@ import prepare_run as preparation
 import finalize_work_record as finalizer
 import validate_worker_runtime as runtime
 from run_input_manifest import load_manifest
-from review_evidence import REVIEW_FIXTURE
+from review_evidence import delivery_evidence_fixture
 
 
 class FeatureDeliveryContinuation(unittest.TestCase):
@@ -149,8 +149,10 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                                            "Provider status": "completed", "Last dispatch at": "2026-10-07T23:40:00Z",
                                            "Observed at": "2026-10-07T23:50:00Z", "Status source": "list_agents",
                                            "Trace retrieval": "unavailable: provider export returned permission_denied"})
-        (root / "code_review.md").write_text(REVIEW_FIXTURE)
-        (root / "validation_report.md").write_text("Unit tests passed; database concurrency unverified.\n")
+        repository, review, validation = delivery_evidence_fixture(root)
+        packet["repositories"] = [{"Repository role": "Execution", "Resolved path": str(repository)}]
+        (root / "code_review.md").write_text(review)
+        (root / "validation_report.md").write_text(validation)
         return packet
 
     def test_remediation_gate_requires_workers_review_validation_fan_in_and_audits(self):
@@ -164,13 +166,22 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                 broken[field] = []
                 with self.subTest(field=field):
                     self.assertTrue(finalizer._feature_delivery_remediation_errors(broken, path, pre_handoff=True))
-            (root / "code_review.md").write_text(REVIEW_FIXTURE.replace("Disposition: accepted", "Disposition: changes_required"))
+            current_review = (root / "code_review.md").read_text()
+            (root / "code_review.md").write_text(current_review.replace("Disposition: accepted", "Disposition: changes_required"))
             self.assertTrue(finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True))
-            (root / "code_review.md").write_text(REVIEW_FIXTURE)
+            (root / "code_review.md").write_text(current_review)
             unverified = copy.deepcopy(packet)
             unverified["identity"].update({"State": "completed", "Workflow outcome": "completed"})
             self.assertIn("feature_delivery_context_unverified_prevents_completion",
                           finalizer._feature_delivery_remediation_errors(unverified, path, pre_handoff=True))
+            validation = (root / "validation_report.md").read_text()
+            (root / "validation_report.md").write_text("Unit tests passed.\n")
+            self.assertTrue(finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True))
+            (root / "validation_report.md").write_text(validation)
+            repository = Path(packet["repositories"][0]["Resolved path"])
+            (repository / "asset.py").write_text("version = 3\n")
+            self.assertTrue(any("candidate changed" in error for error in
+                                finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True)))
             (root / "validation_report.md").unlink()
             self.assertTrue(finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True))
 

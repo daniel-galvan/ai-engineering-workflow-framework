@@ -149,6 +149,14 @@ design instead of repairing the named implementation, stop before editing with
 
 ---
 
+
+Required regression tests are part of implementation. Map every approved acceptance criterion and material changed
+behavior to the existing test seam, add missing assertions, and run the focused command. A green suite does not close
+an unasserted behavior. Check the actual downstream inputs and side effects; for non-mutation, assert write/freeze
+operations are not called when a fake could return unchanged data. Reuse existing tests and fakes.
+Complete runnable in-scope test gaps without asking the user to identify tests or approve another slice. Receive
+missing coverage from Tester, repair it, and return the resulting candidate to Reviewer before Tester reruns checks.
+
 ## Implement Incrementally
 
 Each change should:

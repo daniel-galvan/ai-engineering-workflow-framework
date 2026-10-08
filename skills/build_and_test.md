@@ -34,6 +34,16 @@ Record the representative test paths, language and framework, owning target, and
 guidance and local tests when evidence conflicts. Do not add a test dependency when the repository already provides a
 supported framework.
 
+## Required Coverage and Evidence
+
+For approved remediation, the Implementer adds missing regression assertions and the Tester checks coverage against
+criteria and material behavior. Return runnable gaps through Coordinator to Implementer, Reviewer and Tester without
+another approval; do not defer them to the user. A passing target is not proof that every required assertion exists.
+Check downstream arguments and forbidden side effects; mocks must expose writes rather than silently return unchanged
+data. Any source/test/fixture edit requires acceptance of the resulting candidate before final validation.
+Feature Delivery uses `templates/validation_report.md` and `scripts/review_evidence.py --validation` to reconcile the
+reviewed inventory, current candidate and execution evidence. Separate blocked local proof from deployment follow-up.
+
 ## Produces
 
 * Commands executed

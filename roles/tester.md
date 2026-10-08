@@ -164,6 +164,21 @@ Prioritize testing based on:
 
 ---
 
+
+For Feature Delivery remediation, write `validation_report.md` from `templates/validation_report.md`. Reconcile every
+approved criterion with the reviewed behavior inventory and exact tests/assertions, commands, candidate and execution
+evidence. Use identical behavior names to `code_review.md`; record source-only checks as such, not as executed tests.
+Return missing runnable assertions, failing tests, or an incomplete approved validation step to Implementer through
+the Coordinator; do not implement them yourself, declare validation complete, or ask the user to write the tests.
+After any source or test edit, require Reviewer acceptance of the resulting candidate before validation is accepted.
+Use the packaged fingerprint command to bind both reports to base, HEAD, tracked edits and intended untracked files.
+Run the packaged validation evidence check. Preserve a genuine environment blocker as `blocked` with the failed
+command/evidence, consequence, owner and next action; it prevents a `solved` engineering outcome.
+Close passed local checks. Keep release checks in `Release Follow-up` with the deployment boundary, environment,
+owner and extra proof they provide. Do not relabel an already passed unit check as generic remaining DEV/QA work.
+A decision accepting either committed version does not waive a coherence assertion; reconcile any changed validation
+strategy with the approved plan and name the remaining limitation.
+
 ## Verify Acceptance Criteria
 
 Confirm every acceptance criterion has objective evidence.

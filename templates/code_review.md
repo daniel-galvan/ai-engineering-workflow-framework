@@ -17,6 +17,14 @@ Create `code_review.md` in the active run root. Replace instructions and empty c
 Record repository, branch, actual target/base and merge-base, HEAD, exact reviewed range, candidate fingerprint and
 method (including intended worktree/untracked files), stacked dependencies, and local versus uploaded review state.
 
+For Feature Delivery remediation, also record these exact fields (replace placeholders). Generate the fingerprint
+with the command in `templates/validation_report.md`; include all intended untracked candidate files.
+
+Repository: <ABSOLUTE-EXECUTION-REPOSITORY>
+Base revision: <VERIFIED-BASE-COMMIT>
+Candidate SHA256: <64-LOWERCASE-HEX-DIGEST>
+Untracked candidate files: []
+
 Disposition: accepted / changes_required / replanning_required / blocked
 
 ## Behavior Review

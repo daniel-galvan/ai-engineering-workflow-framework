@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
-from finalize_work_record import finalize
+from finalize_work_record import expand_work_record, finalize, render_compact, snapshot_bytes, snapshot_name
 try:
     from run_input_manifest import load_manifest
 except ModuleNotFoundError:  # Imported as scripts.finalize_sentry_planning from the repository root.
@@ -1015,6 +1015,16 @@ def finalize_standard_sentry(
             )
             for name in output_names
         }
+        # Rebase the normalized snapshot before hashing; staging paths are not durable provenance.
+        staged_record = (stage_root / "work_record.md").read_text()
+        snapshot_reference = re.search(r"<!-- workflow-state: (finalization_snapshot\.[0-9a-f]{64}\.json) -->", staged_record)
+        snapshot = json.loads((stage_root / snapshot_reference.group(1)).read_text().replace(
+            stage_prefix, canonical_prefix,
+        ))
+        name = snapshot_name(snapshot)
+        candidates = {name: snapshot_bytes(snapshot), **candidates}
+        candidates["work_record.md"] = render_compact(snapshot).encode()
+        output_names += (name,)
         originals = {
             name: (artifact_root / name).read_bytes() if (artifact_root / name).is_file() else None
             for name in output_names
@@ -1152,8 +1162,8 @@ def self_test() -> None:
         assert "| State | ready_for_implementation |" in record_text
         assert "deterministic rendering passed" in record_text
         assert "| USER-001 |" in record_text
-        assert "Run input manifest" in record_text
-        assert "active parent session; no dedicated Coordinator worker spawned" in record_text
+        assert "Run input manifest" in expand_work_record(record_text, artifact_root)
+        assert "active parent session; no dedicated Coordinator worker spawned" in expand_work_record(record_text, artifact_root)
         conditional = v36_fixture["conditional_workers"][0]
         assert f"| {conditional['worker']} |" in record_text
         assert conditional["handle"] in (artifact_root / "runtime_closure.json").read_text()
@@ -1162,6 +1172,7 @@ def self_test() -> None:
             "finalization_packet.json",
             "runtime_closure.json",
             "work_record.md",
+            re.search(r"<!-- workflow-state: (finalization_snapshot\.[0-9a-f]{64}\.json) -->", record_text).group(1),
         )
         output_before_failure = {
             name: (artifact_root / name).read_bytes() for name in output_names

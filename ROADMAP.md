@@ -14,6 +14,13 @@ playbooks. This file lists only planned evolution.
 - Improve remediation completion reliability across all four delivery playbooks.
 - Perform a cross-playbook failure audit after collecting comparable current-baseline run evidence.
 
+## Work-record validation
+
+Exercise compact records and their linked operational snapshots on new Standard runs across all playbooks.
+Verify continuation, archive/transfer, and missing or conflicting receipt failures on real runs; retain historical
+records under the legacy reader. Current format and responsibilities are documented in
+[OPERATING_GUIDE.md](OPERATING_GUIDE.md).
+
 ## Expansion freeze
 
 Do not add more playbooks or execution abstractions during the current pilot. First exercise Technical Spike and
