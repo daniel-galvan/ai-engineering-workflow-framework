@@ -1,10 +1,10 @@
 ---
 title: Claims, Evidence, Decisions, and Actions Contract
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-10-08
 ---
 
 # Claims, Evidence, Decisions, and Actions Contract

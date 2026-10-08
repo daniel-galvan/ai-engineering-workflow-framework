@@ -40,10 +40,12 @@ def build_manifest(root: Path = ROOT) -> dict:
         return {"path": name, "version": documents[name]}
 
     package = json.loads((root / ".codex-plugin/plugin.json").read_text())
+    release = package["version"].split("+", 1)[0]
     return {
         "schema_version": 1,
-        "library_release": None,
-        "library_release_status": "No aggregate library release is assigned; Git revisions identify snapshots.",
+        "library_release": release,
+        "last_updated": metadata(root / "frameworks/investigation.md")["last_updated"],
+        "library_release_status": "Coordinated document and plugin release; Git revisions identify snapshots.",
         "plugin_package": {"name": package["name"], "version": package["version"]},
         "framework": revision("frameworks/investigation.md"),
         "execution_contract": revision("contracts/workflow_execution.md"),
@@ -54,7 +56,7 @@ def build_manifest(root: Path = ROOT) -> dict:
         },
         "provider_policies": policies,
         "compatibility": {
-            "document_versions": "independent",
+            "document_versions": "coordinated_release",
             "cross_revision_compatibility": "not_declared",
             "rules": ["CONTRIBUTING.md", "contracts/workflow_execution.md", "providers/README.md"],
         },
@@ -70,7 +72,13 @@ def manifest_errors(root: Path = ROOT) -> list[str]:
         return [f"{FILENAME}: {error}"]
     if actual != expected:
         return [f"{FILENAME} is stale; run python3 scripts/framework_manifest.py --write"]
-    return []
+    errors = []
+    for name, version in expected["documents"].items():
+        if version != expected["library_release"]:
+            errors.append(f"{name}: version {version} differs from library release {expected['library_release']}")
+        if metadata(root / name).get("last_updated") != expected["last_updated"]:
+            errors.append(f"{name}: last_updated differs from release date {expected['last_updated']}")
+    return errors
 
 
 def main() -> int:

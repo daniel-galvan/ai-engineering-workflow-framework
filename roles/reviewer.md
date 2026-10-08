@@ -1,12 +1,12 @@
 ---
 
 title: Reviewer Role
-version: 0.5.2
+version: 0.5.20
 status: Pilot
 category: Review
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-10-02
+last_updated: 2026-10-08
 required_documents:
 
   - ../frameworks/investigation.md

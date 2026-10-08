@@ -1,9 +1,9 @@
 ---
 title: Feature Delivery Run Prompt
-version: 0.5.2
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-23
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/feature_delivery.md

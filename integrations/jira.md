@@ -1,6 +1,6 @@
 ---
 title: Jira Integration
-version: 0.5.6
+version: 0.5.20
 status: Pilot
 provider_independent: true
 owner: Engineering

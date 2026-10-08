@@ -1,7 +1,7 @@
 ---
 
 title: Engineering Work Record
-version: 0.5.4
+version: 0.5.20
 status: Pilot
 owner: Engineering
 last_updated: 2026-10-08
@@ -115,7 +115,7 @@ Record relevant repository revisions and evidence eligibility; retain full check
 | Field | Value |
 | --- | --- |
 | Run ID | |
-| Playbook / version | Canonical playbook path / independent document version |
+| Playbook / version | Canonical playbook path / coordinated release version |
 | Framework commit / status | Full Git commit / Clean or Dirty |
 | Plugin package / version | Installed plugin name/version, or `Not applicable` for manual runs |
 | Requested profile | `standard` / `deep` |
@@ -219,7 +219,7 @@ Artifacts:
 Execution: <profile/lifecycle>; validation <result>; workers <complete/incomplete>;
 runtime <released/not released>; source or external changes <none/summary>.
 Provenance: plugin <package and version, or Not applicable>; framework revision <Git SHA> (<clean/dirty>);
-playbook <name and independent document version>.
+playbook <name and coordinated release version>.
 ```
 
 ---

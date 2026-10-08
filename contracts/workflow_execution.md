@@ -1,6 +1,6 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.18
+version: 0.5.20
 status: Pilot
 provider_independent: true
 owner: Engineering
@@ -1283,7 +1283,7 @@ Artifacts:
 Execution: <profile/lifecycle>; validation <result>; workers <complete/incomplete>;
 runtime <released/not released>; source or external changes <none/summary>.
 Provenance: plugin <package and version, or Not applicable>; framework revision <Git SHA> (<clean/dirty>);
-playbook <name and independent document version>.
+playbook <name and coordinated release version>.
 ```
 
 `Workflow outcome: completed` means required workers reached terminal results, fan-in passed, and runtime closure was

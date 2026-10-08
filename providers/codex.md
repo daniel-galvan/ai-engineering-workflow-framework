@@ -1,7 +1,7 @@
 ---
 
 title: Codex Provider Adapter
-version: 0.5.6
+version: 0.5.20
 status: Pilot
 owner: Engineering
 provider: codex

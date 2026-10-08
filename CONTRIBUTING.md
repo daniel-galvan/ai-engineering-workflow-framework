@@ -1,6 +1,6 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.5.3
+version: 0.5.20
 status: Pilot
 owner: Engineering
 last_updated: 2026-10-08
@@ -51,8 +51,8 @@ Because the plugin packages this repository, every tracked content change affect
 
 1. keep `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `skills/run/`, and `scripts/run_preflight.py`
    consistent with the repository layout;
-2. preserve the plugin's base version and refresh its single `+codex.<timestamp>` cache-busting suffix before packaging
-   or installing the changed snapshot;
+2. align the plugin's base version with the coordinated framework release and refresh its single `+codex.<timestamp>`
+   cache-busting suffix before packaging or installing the changed snapshot;
 3. run the framework validator and preflight self-test; they reject changed package content that reuses a plugin build
    identity;
 4. reinstall the plugin and test it in a new Codex task.
@@ -99,17 +99,33 @@ output. Both `python3 scripts/validate_library.py` and `python3 -m scripts.valid
 
 ## Version policy
 
-Versioned documents evolve independently. Increment a document's semantic version when its contract or required
-behavior changes; do not change unrelated document versions merely to keep them aligned.
+Versioned framework documents and the plugin base version use one coordinated release number. The current baseline is
+`0.5.20`, dated `2026-10-08`; `0.6.0` is reserved for a planned later release. A release update changes every canonical
+document's `version` and `last_updated` together. Changes staged within a release retain its baseline until the next
+coordinated release; Git revisions and the plugin build suffix distinguish those snapshots.
+
+The plugin base version is the canonical library release number. The date in `frameworks/investigation.md` defines the
+canonical release update date. The validator rejects documents whose versions or dates differ from that baseline.
+Historical fixtures retain their recorded identities, and generated work artifacts use their actual creation or update
+timestamps. Update only canonical front matter during a release; preserve dynamic version and timestamp expressions.
 
 After changing a document version, adding or removing a versioned document, changing a provider policy baseline, or
 refreshing the plugin package version, run `python3 scripts/framework_manifest.py --write`. The generated
 [`framework_manifest.json`](framework_manifest.json) inventories canonical metadata; edit the source documents or plugin
 manifest rather than editing its generated values. The framework validator checks that the inventory is current.
-An aggregate library release and compatibility ranges remain unassigned; document versions do not imply compatibility.
+Cross-revision compatibility ranges remain unassigned; aligned versions do not imply compatibility or live validation.
 
 Playbook front matter also owns maturity, exercise scope, and validation summary. Refresh those claims when new run
 evidence changes them, without treating a document revision as successful exercise evidence. After changing playbook
 metadata or adding/removing a playbook, run `python3 scripts/playbook_catalog.py --write` to refresh the generated
 exercise-state table. Keep catalog architecture and selection guidance authored; the validator checks the generated
 block and fails if it is stale, missing, or malformed.
+
+Declare `supported_lifecycles` explicitly as `planning` or `planning, remediation`. Each playbook must also declare
+`exercise_status_standard_planning`, `exercise_status_deep_planning`, `exercise_status_standard_remediation`, and
+`exercise_status_deep_remediation`. These flat scalar fields keep the existing front-matter reader sufficient.
+Use `pending` when current evidence is insufficient, `exercised` for observed runs, `validated` only for supported
+validation evidence, and `unsupported` for lifecycles the playbook cannot execute. The catalog generator and library
+validator reject missing or invalid statuses and conflicts with supported lifecycles. Exercise scope records coverage;
+it does not certify every current dependency revision. Keep historical exercise evidence and current limitations in
+`validation_summary`; do not infer validation from a document version or a static test pass.

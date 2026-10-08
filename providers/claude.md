@@ -1,11 +1,11 @@
 ---
 
 title: Claude Provider Adapter
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 owner: Engineering
 provider: claude
-last_updated: 2026-08-21
+last_updated: 2026-10-08
 ---
 
 # Claude Provider Adapter

@@ -1,12 +1,12 @@
 ---
 
 title: Build and Test
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 category: Validation
 provider_independent: true
 owner: Engineering
-last_updated: 2026-08-25
+last_updated: 2026-10-08
 ---
 
 # Build and Test

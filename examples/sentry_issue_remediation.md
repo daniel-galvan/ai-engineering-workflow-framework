@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Example
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-10-08
 depends_on:
   - ../playbooks/sentry_issue_remediation.md
   - ../templates/sentry_issue_run_prompt.md

@@ -1,9 +1,14 @@
 ---
 title: TechOps Issue Remediation Playbook
-version: 0.5.4
+version: 0.5.20
 status: Pilot
 maturity: exercising
+supported_lifecycles: planning, remediation
 exercise_scope: standard + planning; deep + planning; standard + remediation; deep + remediation
+exercise_status_standard_planning: exercised
+exercise_status_deep_planning: pending
+exercise_status_standard_remediation: exercised
+exercise_status_deep_remediation: pending
 validation_summary: prior exercise scope retained; tiered Jira retrieval not live-validated
 owner: Engineering
 last_updated: 2026-10-08

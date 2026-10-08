@@ -1,9 +1,9 @@
 ---
 title: Engineering Implementation Plan
-version: 0.5.3
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: <DATE-OF-CREATION>
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md

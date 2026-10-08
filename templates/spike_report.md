@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Report
-version: 0.5.8
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: <DATE-OF-CREATION>
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/claims.md
   - ./work_record.md

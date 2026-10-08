@@ -1,10 +1,10 @@
 ---
 
 title: Engineering Work Framework
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-10-08
 depends_on:
 
   - ../contracts/workflow_execution.md
@@ -117,6 +117,12 @@ For code behavior, prefer conclusions supported by the current repository. For i
 evidence may be more authoritative. In every case, identify the source and explain conflicts.
 
 Do not treat any source as authoritative merely because it is convenient.
+
+A current explicit user decision or constraint takes precedence over a historical AI conclusion. Historical artifacts
+support the investigation unless the current user input or an identified approved decision adopts them. Do not reopen
+an accepted decision as unresolved because a prior worker disagreed. If direct evidence conflicts with the decision,
+present the conflict and request a new decision before changing the affected behavior. See
+[Authoritative Run Inputs](../contracts/workflow_execution.md#authoritative-run-inputs).
 
 ---
 

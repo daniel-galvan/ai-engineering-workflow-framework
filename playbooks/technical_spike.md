@@ -1,12 +1,16 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.16
+version: 0.5.20
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
 exercise_scope: standard + planning; deep + planning
 default_timebox_minutes: 35
 default_success_criterion: "Report verified evidence, unknowns, options, and a recommendation or unresolved decision."
+exercise_status_standard_planning: exercised
+exercise_status_deep_planning: pending
+exercise_status_standard_remediation: unsupported
+exercise_status_deep_remediation: unsupported
 validation_summary: tiered Jira retrieval contract-tested; live rerun pending
 owner: Engineering
 last_updated: 2026-10-08

@@ -152,13 +152,21 @@ canonical run template.
 
 The framework provides five playbooks: four delivery playbooks and the planning-only Technical Spike.
 
+### Delivery playbooks
+
+These support read-only planning and approved remediation.
+
 | Playbook                                                                | Use for                                                                |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [Technical Spike](playbooks/technical_spike.md)                         | Bounded technical questions and existing Spike reviews                 |
 | [Feature Delivery](playbooks/feature_delivery.md)                       | Jira features and improvements                                         |
 | [TechOps Issue Remediation](playbooks/techops_issue_remediation.md)     | Support- and operations-reported Jira issues                           |
 | [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
 | [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
+
+### Investigation playbooks
+
+[Technical Spike](playbooks/technical_spike.md) answers bounded technical questions or reviews an existing Spike.
+It supports planning only and produces a Spike report; delivery requires a separate delivery-playbook run.
 
 Exercise state and worker graphs are maintained in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md). Add another playbook only
 when the existing stages, gates, and artifacts cannot express the scenario cleanly.
@@ -224,15 +232,16 @@ observe. See the [experimental evaluation guide](frameworks/experimental/workflo
 
 ## Versioning
 
-**Versioned documents evolve independently.** Each document's front matter records its current semantic version.
-Change that version when its contract or required behavior changes; related documents do not need matching versions.
-Git revisions identify the exact framework snapshot used by a run. See the
+**The framework uses a coordinated release version, currently `0.5.20`.** Versioned documents and the plugin's base
+version share that release number. Canonical document dates record the release update date, currently `2026-10-08`.
+Git revisions and the plugin build suffix identify the exact snapshot used by a run. See the
 [contribution versioning policy](CONTRIBUTING.md#version-policy).
 
 [framework_manifest.json](framework_manifest.json) is the generated version inventory for the library, including the
 framework, execution contract, playbooks, provider policy baselines, and plugin package. Front matter remains the
-source of document versions. The manifest records no aggregate library release or cross-revision compatibility claim;
-Git identifies the snapshot, and the linked contracts define compatibility rules. Regenerate it with
+source of document versions; the plugin base version defines the library release. The validator enforces matching
+document versions and release dates. Matching versions do not establish cross-revision compatibility or successful
+live exercise. Regenerate the manifest with
 `python3 scripts/framework_manifest.py --write`; the framework validator rejects stale inventory.
 
 ## Status

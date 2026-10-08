@@ -1,9 +1,9 @@
 ---
 title: Sentry Issue Remediation Run Prompt
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: 2026-09-01
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/workflow_execution.md
 ---

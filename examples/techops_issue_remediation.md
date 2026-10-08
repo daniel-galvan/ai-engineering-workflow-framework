@@ -1,9 +1,9 @@
 ---
 title: TechOps Issue Remediation Example
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-10
+last_updated: 2026-10-08
 depends_on:
   - ../playbooks/techops_issue_remediation.md
   - ../templates/techops_issue_run_prompt.md

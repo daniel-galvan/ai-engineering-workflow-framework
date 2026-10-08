@@ -1,12 +1,12 @@
 ---
 
 title: Repository Integrator Role
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 category: Integration
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-08-21
+last_updated: 2026-10-08
 required_documents:
 
   - ../frameworks/investigation.md

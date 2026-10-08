@@ -1,9 +1,9 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.5.1
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: 2026-08-31
+last_updated: 2026-10-08
 ---
 
 # Setup
@@ -101,7 +101,7 @@ The plugin-specific files are deliberately small:
 
 | Path | Purpose |
 | --- | --- |
-| `.codex-plugin/plugin.json` | Plugin identity, independent plugin version, capabilities, and skill root |
+| `.codex-plugin/plugin.json` | Plugin identity, coordinated release plus build suffix, capabilities, and skill root |
 | `.agents/plugins/marketplace.json` | Local marketplace identity and repository-relative plugin source |
 | `skills/run/SKILL.md` | Explicit workflow launcher and package preflight sequence |
 | `skills/run/agents/openai.yaml` | Codex display metadata and explicit-invocation policy |
@@ -111,8 +111,9 @@ The plugin-specific files are deliberately small:
 | `scripts/validate_worker_runtime.py` | Hashed role-envelope validation and active-worker transition guard |
 | `templates/sentry_work_record.md` | Compact initial and terminal record surface for Sentry runs |
 
-The plugin version and framework document versions are independent. The plugin version identifies an installed package;
-document versions identify individual contracts, playbooks, templates, and guides.
+The plugin base version and versioned framework documents share the coordinated library release. The plugin's
+`+codex.<timestamp>` suffix identifies the installed package build; Git identifies the source snapshot. See the
+[version policy](CONTRIBUTING.md#version-policy).
 
 ### Install or update
 

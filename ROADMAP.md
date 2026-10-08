@@ -23,6 +23,15 @@ records under the legacy reader. Current format and responsibilities are documen
 
 ## Expansion freeze
 
+After comparable pilot evidence, declare dependency compatibility ranges and validate them against document revisions.
+Keep cross-revision compatibility undeclared until supported versions have evidence; dependency paths and matching
+version inventories alone do not establish compatibility.
+
+Extend the existing approval/re-entry and finalization tests to cover the complete workflow state machine: recovery
+from awaiting input or blocked, approved implementation, review corrections, validation failures, handoff, and terminal
+completion. Preserve the distinction between lifecycle (`planning` / `remediation`) and workflow state; use the
+[canonical state machine](contracts/workflow_execution.md#workflow-state-machine) rather than introducing another one.
+
 Do not add more playbooks or execution abstractions during the current pilot. First exercise Technical Spike and
 validate the four delivery playbooks through remediation, Code Review, validation, and handoff; simplify any rules that
 real runs prove unnecessary.

@@ -12,6 +12,7 @@ from .common import (
     INTERFACE_CONTRACT_FIELDS,
     MODEL_BASELINE_ID,
     RANGE_REFERENCE,
+    ROOT,
     SENTRY_EVIDENCE_INPUT_MARKERS,
     V28_STABILIZATION_FIXTURE,
     V29_CONTRACT_FAILURE_FIXTURE,
@@ -34,6 +35,7 @@ from .contracts import (
 from .markdown import (
     table_cells,
 )
+from .frontmatter import frontmatter_value
 from .playbooks import (
     feature_assessment_disposition_error,
     technical_spike_disposition_error,
@@ -582,7 +584,7 @@ Keep the current boundary pending runtime confirmation (E-001).
 | Plugin package / version | ai-engineering-workflows / 0.2.1 |
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
-| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / 0.5.2 / pass |
+| Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / __PROMPT_REVISION__ / pass |
 | Role-policy baseline ID | codex-role-policy-gpt61-sol-luna-orchestrator-v20261001 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
@@ -679,6 +681,8 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
 0123456789abcdef0123456789abcdef01234567 (dirty); playbook feature_delivery 0.5.1.
 ```
 """
+    prompt_revision = frontmatter_value(ROOT / "templates/feature_delivery_run_prompt.md", "version")
+    valid = valid.replace("__PROMPT_REVISION__", prompt_revision)
     assert reasoning_record_errors(valid) == []
     invalid = valid.replace("| claim-001 | evidence-001 |", "| claim-001 | evidence-999 |")
     assert "claim-001 references missing evidence evidence-999" in reasoning_record_errors(invalid)
@@ -1052,10 +1056,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         )
         assert_invalid(
             valid.replace(
-                "templates/feature_delivery_run_prompt.md / 0.5.2 / pass",
+                f"templates/feature_delivery_run_prompt.md / {prompt_revision} / pass",
                 "templates/feature_delivery_run_prompt.md / framework revision 0123456789abcdef / pass",
             ),
-            "Prompt template revision must be 0.5.2",
+            f"Prompt template revision must be {prompt_revision}",
         )
         assert_invalid(
             valid.replace(

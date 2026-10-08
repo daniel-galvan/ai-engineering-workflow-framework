@@ -1,7 +1,7 @@
 ---
 
 title: Sentry Integration
-version: 0.5.2
+version: 0.5.20
 status: Pilot
 provider: mcp
 owner: Engineering

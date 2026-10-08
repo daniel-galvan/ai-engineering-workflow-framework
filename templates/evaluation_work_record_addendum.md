@@ -1,9 +1,9 @@
 ---
 title: Evaluation Work Record Addendum
-version: 0.5.1
+version: 0.5.20
 status: Experimental / Deferred
 owner: Engineering
-last_updated: 2026-08-27
+last_updated: 2026-10-08
 ---
 
 # Evaluation Run Continuation Ledger

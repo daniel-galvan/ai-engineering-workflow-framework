@@ -1,9 +1,9 @@
 ---
 title: Feature Delivery Validation Evidence
-version: 0.1.0
+version: 0.5.20
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-07
+last_updated: 2026-10-08
 depends_on:
   - ../contracts/code_review.md
 ---
