@@ -267,7 +267,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
     if identity.get("State") not in TERMINAL_STATES:
         if require_terminal:
             fail(f"{path}: work record is not terminal or lacks Run and Evaluation Identity")
-        return ""
+        if not allow_unreleased:
+            return ""
     for error in reasoning_record_errors(text):
         fail(f"{path}: {error}")
     selection = markdown_table(text, "# Playbook Selection")
@@ -322,7 +323,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
     ]
     if unresolved:
         fail(f"{path}: unresolved Run Identity placeholders: {', '.join(unresolved)}")
-    for error in terminal_semantics_errors(identity):
+    for error in terminal_semantics_errors(identity, allow_unreleased=allow_unreleased):
         fail(f"{path}: {error}")
     evaluation_run_id = identity.get("Evaluation run ID", "Not applicable")
     evaluation_run = evaluation_run_id != "Not applicable"

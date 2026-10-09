@@ -97,7 +97,11 @@ correction/follow-up. Use `Runtime status: Terminal` only when these reads accou
 Documenter. The snapshot may combine live inventory and targeted reads; one inventory call need not retain every
 completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its provider-observed
 thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess an ID. A targeted read
-must show no active or pending thread and a completed latest turn started at or after the last dispatch. Missing
+must show no active or pending thread and a completed latest turn started at or after the last dispatch. For a
+correction delivered during an active turn, an earlier start is valid only with provider-observed `Latest turn
+completed at` at or after the dispatch, `Dispatch consumed: true`, and `Dispatch consumption evidence` identifying
+the accepted corrected result. A completion timestamp alone does not prove that a queued correction was consumed.
+Missing
 inventory entries, historical completion events and worker self-attestation alone do not establish terminal status. If
 no supported targeted read can verify a worker, retain the blocked receipt.
 
@@ -155,7 +159,24 @@ its mapped concrete operation is absent or an attempted in-scope operation fails
 A collaboration task handle is not a Codex thread UUID. Retain the exact spawn handle for collaboration operations;
 use thread-read tools only with a provider-returned or verified mapped UUID. When no mapping/export exists, record
 that specific capability absence once rather than repeatedly passing a task path to read_thread.
-For every follow-up, record one exact dispatch time from the Coordinator clock in the dispatch ledger. That ledger
+For prepared TechOps runs, use `runtime_evidence.collector` to extract this run's provider events into
+`runtime_evidence.ledger`. Read only the verified current parent session, never memory or prior runs:
+
+```bash
+python3 <collector> --provider-session <current-parent-rollout.jsonl> \
+  --parent-thread-id <verified-current-task-UUID> --started-at <prepared-run-start> --ledger <prepared-ledger>
+```
+
+Use `runtime_evidence.run_started_at` as the prepared run start. The collector verifies the parent identity,
+extracts exact spawn/follow-up/message timestamps, preserves live
+inventory responses unchanged and maps child UUIDs from `SubAgentActivity` metadata. Use those UUIDs for targeted
+`read_thread`/`wait_threads` calls when live inventory omits a child. A metadata mapping proves identity, not current
+completion. Sync after every dispatch and fresh inventory read; copy `Last dispatch at` from the latest matching
+event, never from an earlier clock sample. The finalizer compares audits with current provider events and rejects
+stale or edited ledgers. If this provider event route is unavailable, record that concrete capability failure once;
+do not substitute invented times, shortened messages labeled raw, or historical completion for fresh closure.
+
+For every follow-up, preserve the actual provider event time in the Coordinator dispatch ledger. That ledger
 owns Last dispatch at in worker audits and closure observations. Invalidate the affected prior status/trace observation
 in both records; after the correction ends, obtain a fresh provider observation and reconcile both records from it.
 Revalidate the packet before collecting final closure evidence. If a worker is absent from inventory and no supported

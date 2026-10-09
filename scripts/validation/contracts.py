@@ -691,7 +691,7 @@ def _contains_hypothesis(value: object) -> bool:
     return False
 
 
-def terminal_semantics_errors(identity: dict[str, str]) -> list[str]:
+def terminal_semantics_errors(identity: dict[str, str], *, allow_unreleased: bool = False) -> list[str]:
     errors = []
     enums = {
         "Requested profile": PROFILES,
@@ -699,9 +699,9 @@ def terminal_semantics_errors(identity: dict[str, str]) -> list[str]:
         "Executed profile": PROFILES | {"None"},
         "Profile status": PROFILE_STATUSES,
         "Lifecycle": LIFECYCLES,
-        "State": TERMINAL_STATES,
+        "State": TERMINAL_STATES | ({"handoff", "in_progress"} if allow_unreleased else set()),
         "Engineering state": ENGINEERING_STATES,
-        "Workflow outcome": WORKFLOW_OUTCOMES,
+        "Workflow outcome": WORKFLOW_OUTCOMES | ({"in_progress"} if allow_unreleased else set()),
         "Engineering outcome": ENGINEERING_OUTCOMES,
     }
     for field, allowed in enums.items():

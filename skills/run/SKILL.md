@@ -39,7 +39,11 @@ description: >-
    supplies a complete compatible override pair. Reject explicit placeholders such as `<...>`, `None`, or
    `Not provided` with `run_prompt_incomplete:<field>`. Do not create a temporary input manifest, invoke
    `prepare_run.py`, or perform context discovery before this gate passes.
-4. Treat the current working directory as the execution repository unless the user explicitly names another repository.
+4. Use the current repository unless the user explicitly names another repository. Preparation resolves its main Git
+   checkout as the execution repository and durable artifact root; the active equivalent worktree remains the source
+   checkout. Use returned `execution_repository`, `source_checkout`, and `artifact_root` paths unchanged. Never create
+   `.thoughts` in a linked worktree, even when that worktree was named explicitly. Non-Git record folders retain their
+   declared path. Do not ask for an Execution repository field when the current repository is unambiguous.
 5. When the prompt supplies an existing playbook, use it directly and do not read `PLAYBOOK_CATALOG.md`; record the
    primary evidence, primary goal, closest alternative, and selection rationale from the supplied playbook and request.
    Read the catalog only when no playbook was supplied or the supplied path is unavailable or materially contradicted by
@@ -265,7 +269,13 @@ description: >-
    names, use `Unknown` or `None` for unavailable values, and ask only for a business, scope, ownership, or approval
    decision that bounded discovery cannot resolve.
 8a. For TechOps planning, the prepared worker contracts are operative instructions, not optional references. Include
-   their complete `worker_contract` with each fresh assignment. Before accepting Fix Design, verify `techops_checks`:
+   their complete `worker_contract` with each fresh assignment. Each analytical worker writes its assigned narrative
+   and JSON result to the exact `output` and `result` paths; preserve the prepared ID namespace and upstream IDs.
+   After the fan-in guard passes, merge it with
+   `python3 <worker_result_merger> --packet <artifact-root>/finalization_packet.json --agent <provider-role>`.
+   Do not reconstruct accepted evidence, outcomes or references from prose. The merger preserves immutable identity
+   and Coordinator audits; it does not grant readiness or implementation approval. Before accepting Fix Design,
+   verify `techops_checks`:
    `issue_scope`, `history_reconciliation`, `plan_dependencies`, and `regression_fixture`. Each row uses `Check`,
    `Status`, `Evidence refs`, and `Detail`; require `passed`, except evidence-backed `not_applicable` for history with
    no mismatch. Finding a commit without inspecting its patch and associated work item does not pass history
@@ -282,6 +292,8 @@ description: >-
    runtime audits. Its activation guard rejects missing analytical workers or checks. Return technical errors to their
    owning worker. The Documenter preserves these checks and audit rows in the packet. The finalizer revalidates them on
    precheck, pre-release and publication; absent checks cannot be replaced with a generic worker complete label.
+   Use `runtime_evidence.run_started_at` as the collector's `--started-at` value. The event ledger is execution
+   bookkeeping, not permission to reuse a previous run's analysis or infer completion from a historical event.
 9. Execute the selected playbook. Default to `planning`; use `remediation` only when an implementation plan exists and
    the user has explicitly approved implementation. Treat an invocation that says start as a new run. Reuse current
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
@@ -446,8 +458,14 @@ description: >-
    including Documenter. The snapshot may combine live inventory and targeted reads; one inventory call need not retain
    every completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its
    provider-observed thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess
-   an ID. A targeted read must show no active or pending thread and a completed latest turn started at or after the last
-   dispatch. Missing inventory entries, historical completion events and worker self-attestation alone do not establish
+   an ID. Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events
+   before declaring child identity unavailable. Sync its ledger after dispatches and status reads, following
+   `providers/codex.md#worker-identity-and-correction-observations`; derive audit times from actual events.
+   A targeted read must show no active or pending thread and a completed latest turn started at or after the last
+   dispatch. For corrections delivered during an active turn, also permit an earlier start with a provider-observed
+   `Latest turn completed at` after dispatch, `Dispatch consumed: true`, and concrete `Dispatch consumption evidence`
+   from the accepted corrected result. Missing inventory entries, historical completion events and worker
+   self-attestation alone do not establish
    terminal status. If no supported targeted read can verify a worker, retain the blocked receipt.
 
    Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,

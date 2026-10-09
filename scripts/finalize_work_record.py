@@ -58,6 +58,11 @@ try:
 except ModuleNotFoundError:
     from scripts.validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors
 
+try:
+    from worker_runtime_evidence import dispatch_audit_errors
+except ModuleNotFoundError:
+    from scripts.worker_runtime_evidence import dispatch_audit_errors
+
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
@@ -2333,6 +2338,7 @@ def _worker_runtime_audit_errors(
     if {row.get("Worker") for row in audits} != completed or len(audits) != len(completed):
         errors.append("worker_runtime_audits_incomplete")
     errors.extend(terminal_observation_errors(audits, [str(row.get("Provider handle")) for row in audits]))
+    errors.extend(dispatch_audit_errors(packet, packet_path))
     observations = packet.get("terminal_observations", [])
     if isinstance(observations, list) and observations:
         dispatches = {row.get("Provider handle"): row.get("Last dispatch at") for row in audits}

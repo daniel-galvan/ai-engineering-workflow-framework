@@ -1083,7 +1083,11 @@ verifiable, retain the Coordinator-owned blocked receipt and name the missing ca
 Runtime-audit timestamps and provider closure receipts are Coordinator-owned. Repair these from provider evidence
 without redispatching Documenter solely for bookkeeping; technical packet or handoff changes still return to their
 owning worker. Such substantive corrections require new dispatch and observation evidence.
-The Coordinator dispatch ledger is the source of truth for Last dispatch at. Each correction invalidates the affected
+The Coordinator dispatch ledger preserves actual provider dispatch events and is the source of truth for Last dispatch
+at; an earlier clock sample is not a dispatch receipt. Provider metadata may supply a verified child-thread mapping,
+but identity metadata is not fresh completion evidence. A correction delivered during an active turn can be accepted
+without a new turn start only when a fresh terminal read shows completion after dispatch and the corrected result
+confirms consumption. Each correction invalidates the affected
 worker's prior audit, trace and terminal observation. Obtain a new supported provider observation after that dispatch
 and reconcile the audit and closure from the same evidence before revalidation. Never repair freshness by changing
 only a timestamp. Collaboration handles and thread UUIDs are distinct identities; thread-read operations require an
@@ -1156,8 +1160,8 @@ artifacts, and supporting evidence paths.
 
 ## Durable Artifact Root
 
-The prompt's `Execution repository` is the repository where the workflow is started. It is the durable-artifact root for
-that run:
+The execution repository is the main checkout of the repository where the workflow is started, or of an explicitly
+selected record repository. It is the durable-artifact root for that run:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/
@@ -1167,10 +1171,10 @@ The `work_record.md`, worker artifacts, and any implementation plan belong there
 investigation are not artifact roots. The execution repository may itself contain code. A worker must not choose an
 artifact root merely because a repository is suspected or appears first in the topology.
 
-The prompt path identifies both the intended repository and its durable-artifact root. During initialization, resolve a
-separate source checkout before repository inspection:
+During initialization, resolve a separate source checkout before repository inspection:
 
-* if the runtime starts inside a Git worktree of the declared execution repository, use that active worktree as the
+* resolve the main checkout through Git worktree metadata; a linked worktree MUST NOT be a durable-artifact root;
+* if the runtime starts inside a Git worktree of the selected execution repository, use that active worktree as the
   source checkout and remap source/component paths beneath it;
 * verify equivalence from Git identity, such as the shared common Git directory or matching canonical remote, rather
   than path text alone;
@@ -1180,8 +1184,9 @@ separate source checkout before repository inspection:
 
 Branch and revision evidence, scope checks, and source commands MUST come from the resolved source checkout. A prompt's
 absolute source/component path MUST NOT override an equivalent active worktree. Durable artifacts MUST remain under the
-prompt's declared execution repository, never under an ephemeral managed-worktree path unless that exact worktree was
-explicitly declared as the execution repository.
+resolved main execution repository, never under an ephemeral managed-worktree path. This also applies when the prompt
+names a linked worktree. Non-Git record folders retain their declared durable path. Existing worktree artifacts MUST
+NOT be silently moved or reused; continuation requiring migration stops with an explicit migration limitation.
 
 Before using any execution, primary, additional, source, or destination repository as evidence, record its declared and
 resolved path, repository role, branch or detached state, full revision, clean status, canonical Git identity, and
@@ -1197,8 +1202,9 @@ For a bounded dependency route, the execution repository is the in-scope reposit
 artifact unless the user explicitly selects a separate record repository. Never infer the framework checkout as the
 execution repository merely because it contains the selected playbook.
 
-The execution repository must be explicit in the canonical run prompt. If it is missing or ambiguous, stop with
-`blocked` and request the smallest missing path; do not infer it from the playbook location or code-repository list.
+Record the resolved execution repository explicitly in run identity. An omitted prompt field defaults to the current
+repository, resolved as above. Only an ambiguous or unavailable repository requires the smallest missing path; never
+infer the execution repository from the framework location or code-repository list.
 
 # Parallelism Semantics
 

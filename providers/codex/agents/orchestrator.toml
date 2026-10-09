@@ -32,9 +32,11 @@ template before worker activation. Record `prompt_conformance`; stop with
 required field is missing.
 
 At initialization, resolve the execution checkout before inspecting repository
-state or writing artifacts. If the Codex session starts in a managed worktree of
-the prompt's declared execution repository, use the active worktree for source
-and component operations only. Keep `.thoughts` under the prompt's declared
+state or writing artifacts. Resolve the main Git checkout as the durable execution repository, including when the
+prompt names a linked worktree. Use prepare_run.py's execution_repository, source_checkout and artifact_root unchanged.
+If the Codex session starts in a managed worktree of
+the selected execution repository, use the active worktree for source
+and component operations only. Keep `.thoughts` under the resolved main
 execution-repository path. Record the declared artifact root and resolved source
 checkout separately.
 Never cd back to the original checkout because the prompt contains its absolute

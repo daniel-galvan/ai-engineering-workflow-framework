@@ -345,6 +345,25 @@ def _repository_row(repository: Path) -> dict[str, str]:
     }
 
 
+def resolve_repository_paths(repository: Path) -> tuple[Path, Path]:
+    """Keep source evidence in the active checkout and durable records in the main checkout."""
+    declared = repository.resolve()
+    common = _git(declared, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if common == "Unknown":
+        return declared, declared  # Non-Git execution folders remain supported.
+    source = Path(_git(declared, "rev-parse", "--show-toplevel"))
+    if _git(Path.cwd(), "rev-parse", "--path-format=absolute", "--git-common-dir") == common:
+        source = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel"))
+    listing = _git(declared, "worktree", "list", "--porcelain")
+    first = listing.split("\n\n", 1)[0]
+    if not first.startswith("worktree ") or "\nbare" in first:
+        raise ValueError("main_execution_repository_unavailable")
+    main = Path(first.splitlines()[0].removeprefix("worktree ")).resolve()
+    if not main.is_dir() or _git(main, "rev-parse", "--path-format=absolute", "--git-common-dir") != common:
+        raise ValueError("main_execution_repository_identity_mismatch")
+    return main, source
+
+
 def _initial_packet(
     artifact_root: Path,
     work_item: str,
@@ -362,13 +381,19 @@ def _initial_packet(
     input_manifest = manifest["run_input_manifest"]
     recorded_at = str(manifest.get("run_budget", {}).get("started_at", ""))
     if not recorded_at:
-        recorded_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        recorded_at = str(manifest.get("prepared_at") or datetime.now(UTC).isoformat().replace("+00:00", "Z"))
     run_stamp = re.sub(r"[^0-9A-Za-z]", "", recorded_at)
     packet["work_item"]["ID"] = work_item
     packet["work_item"]["Last Updated"] = recorded_at
     packet["inputs"] = list(input_manifest["inputs"])
     packet["run_input_manifest"] = input_manifest
     packet["repositories"] = [repository_row]
+    main_repository = Path(str(manifest.get("execution_repository", repository_row["Resolved path"])))
+    if str(main_repository) != repository_row["Resolved path"]:
+        record_repository = _repository_row(main_repository)
+        record_repository["Repository role"] = "Execution repository (durable records only)"
+        record_repository["Evidence eligibility"] = "Not source evidence; durable artifact storage only"
+        packet["repositories"].append(record_repository)
     if playbook == "techops_issue_remediation":
         packet["techops_checks"] = [
             {"Check": name, "Status": "pending", "Evidence refs": "", "Detail": ""}
@@ -670,6 +695,7 @@ def prepare_run(
         raise ValueError("invalid_work_item")
     if not execution_repository.resolve().is_dir():
         raise ValueError("execution_repository_unavailable")
+    resolved_execution_repository, source_checkout = resolve_repository_paths(execution_repository)
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
     if remediation_reentry and (not continuation or playbook != "feature_delivery"):
@@ -686,11 +712,11 @@ def prepare_run(
         if remediation_reentry:
             workflow_objective, requested_outcome = "feature_implementation", "feature_delivery"
         elif continuation and playbook == "feature_delivery":
-            existing = execution_repository.resolve() / ".thoughts" / work_item / "finalization_packet.json"
+            existing = resolved_execution_repository / ".thoughts" / work_item / "finalization_packet.json"
             if existing.is_file() and json.loads(existing.read_text()).get("identity", {}).get("Lifecycle") == "remediation":
                 workflow_objective, requested_outcome = "feature_implementation", "feature_delivery"
     if playbook == "feature_delivery" and workflow_objective == "feature_implementation" and not remediation_reentry:
-        existing = execution_repository.resolve() / ".thoughts" / work_item / "finalization_packet.json"
+        existing = resolved_execution_repository / ".thoughts" / work_item / "finalization_packet.json"
         if not continuation or not existing.is_file() or json.loads(existing.read_text())["identity"]["Lifecycle"] != "remediation":
             raise ValueError("feature_implementation_requires_remediation_reentry")
     if remediation_reentry and (workflow_objective, requested_outcome) != ("feature_implementation", "feature_delivery"):
@@ -714,9 +740,13 @@ def prepare_run(
     if playbook == "technical_spike":
         primary_question = _required_spike_bound(primary_question, "primary_question")
         success_criterion = _required_spike_bound(success_criterion, "success_criterion")
-    resolved_execution_repository = execution_repository.resolve()
-    repository_row = _repository_row(resolved_execution_repository)
+    repository_row = _repository_row(source_checkout)
+    repository_row["Repository role"] = "Source checkout"
+    repository_row["Declared path"] = str(execution_repository.resolve())
     artifact_root = resolved_execution_repository / ".thoughts" / work_item
+    legacy_root = source_checkout / ".thoughts" / work_item
+    if continuation and legacy_root != artifact_root and legacy_root.exists() and not artifact_root.exists():
+        raise ValueError("legacy_worktree_artifacts_require_explicit_migration")
     # Validate supplied input and provider bindings before creating, archiving, or
     # overwriting any run artifact. This makes invalid retries transactional.
     if playbook == "feature_delivery" and input_manifest is None:
@@ -731,6 +761,11 @@ def prepare_run(
     )
     resolved_runtime_agents = runtime_agents.resolve() if runtime_agents else None
     manifest = resolve_bindings(playbook, resolved_runtime_agents)
+    manifest["prepared_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    manifest["execution_repository"] = str(resolved_execution_repository)
+    manifest["source_checkout"] = str(source_checkout)
+    manifest["coordinator_execution"]["execution_repository"] = str(resolved_execution_repository)
+    manifest["coordinator_execution"]["source_checkout"] = str(source_checkout)
     if continuation and not (artifact_root / "work_record.md").is_file():
         raise ValueError("continuation_record_unavailable")
     if playbook == "feature_delivery":
@@ -817,10 +852,11 @@ def prepare_run(
     if playbook == "techops_issue_remediation":
         instructions = {
             "current_state_investigator": (
-                "Enumerate the Jira sibling summary roster, then select issues sharing the failure path, API, prior fix, "
-                "or rollout dependency before detailed reads. Read target and selected issues with comments, attachments, "
-                "remote links and relevant history. Resolve conflicting selected status/comment evidence with history. "
-                "Mark deferred siblings summary-only with reasons; do not exhaustively fetch their attachments."
+                "Start with the exact issue and report-bearing comments. Expand to hierarchy, selected links, "
+                "siblings, attachments, remote links or history only for a recorded scope, failure-path, prior-fix "
+                "or rollout question. A self-contained bug does not require a sibling roster. Reuse successful "
+                "reads; unselected collections are not empty. Resolve conflicting selected status/comment evidence "
+                "with history. Use exact evidence IDs, never ranges, in result references."
             ),
             "dependency_analyst": (
                 "When report behavior or copy differs from current code, inspect the affected commit patch and directly "
@@ -845,10 +881,49 @@ def prepare_run(
                 "missing evidence to the owning worker before accepting the TechOps planning checks."
             ),
         }
+        outputs = {
+            "current_state_investigator": "issue_evidence.md", "dependency_analyst": "failure_path.md",
+            "repository_integrator": "repository_integration.md", "solution_architect": "fix_design.md",
+            "reviewer": "code_review.md", "documenter": "finalization_packet.json",
+        }
+        instructions["repository_integrator"] = (
+            "Consume the accepted failure-path evidence; inspect only ownership, deployment and integration seams. "
+            "Repeat source tracing only for a named discrepancy. Keep runtime unknowns separate from local work."
+        )
         manifest["worker_contracts"] = {
-            agent: {"instructions": instruction, "contract": str(ROOT / "playbooks" / "techops_issue_remediation.md")}
+            agent: {"instructions": instruction, "contract": str(ROOT / "playbooks" / "techops_issue_remediation.md"),
+                    "output": str(artifact_root / outputs[agent])}
             for agent, instruction in instructions.items()
         }
+        try:
+            from merge_techops_result import WORKERS, TABLES
+        except ModuleNotFoundError:
+            from scripts.merge_techops_result import WORKERS, TABLES
+        result_template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
+        for agent, (worker, namespace) in WORKERS.items():
+            manifest["worker_contracts"][agent].update({
+                "worker_id": worker, "id_namespace": namespace,
+                "result": str(artifact_root / f"{worker.replace('-', '_')}_result.json"),
+                "result_fields": {name: list(result_template[name][0])
+                                  for name in ("worker_results", *TABLES)},
+                "result_instructions": (
+                    "Write the narrative to output and a JSON envelope to result with run_id, worker_result, "
+                    "and evidence/claims/decisions/actions arrays. Use result_fields exactly; worker_result uses "
+                    "worker_results fields. Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
+                    "Consume upstream IDs unchanged. Outcome is complete, failed or blocked, never completed. "
+                    "Fix Design also supplies the four techops_checks. Do not edit the Coordinator packet or audits."
+                ),
+            })
+        manifest["worker_result_merger"] = str(ROOT / "scripts" / "merge_techops_result.py")
+        manifest["runtime_evidence"] = {
+            "collector": str(ROOT / "scripts" / "worker_runtime_evidence.py"),
+            "ledger": str(artifact_root / "runtime_dispatches.json"),
+            "run_started_at": manifest["prepared_at"],
+        }
+        if continuation and (artifact_root / "role_bindings.json").is_file():
+            previous = json.loads((artifact_root / "role_bindings.json").read_text()).get("runtime_evidence", {})
+            if previous.get("run_started_at"):
+                manifest["runtime_evidence"]["run_started_at"] = previous["run_started_at"]
     manifest["worker_runtime_guard"] = str(WORKER_RUNTIME_GUARD)
     manifest["activation_packet_bundle"] = _write_activation_packets(artifact_root, manifest)
     manifest_path = artifact_root / "role_bindings.json"
@@ -910,6 +985,7 @@ def prepare_run(
     return {
         "status": "prepared",
         "artifact_root": str(artifact_root),
+        "legacy_artifact_root": str(legacy_root) if legacy_root != artifact_root and legacy_root.exists() else None,
         "work_record": str(record),
         "finalization_packet": str(packet_path),
         "run_input_manifest": str(run_inputs_path),
@@ -1217,7 +1293,7 @@ def self_test() -> None:
         techops = prepare_run(execution, "ITEM-TECHOPS", "techops_issue_remediation", None, False,
                               input_manifest=input_source)
         techops_bundle = json.loads(Path(techops["activation_packet_bundle"]["path"]).read_text())
-        assert "before detailed reads" in techops_bundle["packets"]["current_state_investigator"]["worker_contract"]["instructions"]
+        assert "does not require a sibling roster" in techops_bundle["packets"]["current_state_investigator"]["worker_contract"]["instructions"]
         assert "commit patch" in techops_bundle["packets"]["dependency_analyst"]["worker_contract"]["instructions"]
         assert "regression_fixture" in techops_bundle["packets"]["solution_architect"]["worker_contract"]["instructions"]
         assert "runtime_audits" in techops_bundle["packets"]["documenter"]["worker_contract"]["instructions"]

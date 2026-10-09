@@ -57,6 +57,13 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         errors.append("provider_instructions_unavailable")
     if not packet.get("model") or not packet.get("effort"):
         errors.append("provider_binding_incomplete")
+    contract = packet.get("worker_contract")
+    if isinstance(contract, dict) and "output" in contract:
+        for field in ("output", "result"):
+            if field in contract:
+                output = Path(str(contract[field]))
+                if not output.is_absolute() or output.resolve().parent != path.parent.resolve():
+                    errors.append(f"worker_{field}_outside_current_run")
     budget_path = path.parent / "run_budget.json"
     if budget_path.is_file():
         try:
@@ -175,7 +182,13 @@ def terminal_observation_errors(observations: object, handles: list[str]) -> lis
             if source in {"read_thread", "wait_threads"}:
                 started = datetime.fromisoformat(str(row["Latest turn started at"]).replace("Z", "+00:00"))
                 # Thread metadata exposes seconds; dispatch receipts may retain subsecond precision.
-                if started.tzinfo is None or started < times[0].replace(microsecond=0) or started > times[1]:
+                fresh_turn = started >= times[0].replace(microsecond=0)
+                if (not fresh_turn and row.get("Dispatch consumed") is True
+                        and str(row.get("Dispatch consumption evidence", "")).strip()):
+                    completed = datetime.fromisoformat(str(row["Latest turn completed at"]).replace("Z", "+00:00"))
+                    fresh_turn = (completed.tzinfo is not None and
+                                  times[0].replace(microsecond=0) <= completed <= times[1] and started <= completed)
+                if started.tzinfo is None or not fresh_turn or started > times[1]:
                     errors.append(f"terminal_observation_latest_turn_stale:{handle}")
                 if row.get("Latest turn status") != "completed":
                     errors.append(f"terminal_observation_latest_turn_not_completed:{handle}")

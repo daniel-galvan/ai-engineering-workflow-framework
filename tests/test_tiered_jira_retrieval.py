@@ -21,10 +21,11 @@ class TieredJiraRetrieval(unittest.TestCase):
             "For every Jira-backed assignment, enumerate",
             "parent and direct siblings of a supplied child",
             "recover and record their complete direct inventory",
+            "Enumerate the Jira sibling summary roster",
         )
         for name in ("integrations/jira.md", "skills/work_item_context.md", "skills/run/SKILL.md",
                      "providers/codex/agents/current_state_investigator.toml",
-                     "providers/codex/agents/orchestrator.toml"):
+                     "providers/codex/agents/orchestrator.toml", "scripts/prepare_run.py"):
             text = " ".join((ROOT / name).read_text().split())
             for phrase in forbidden:
                 with self.subTest(file=name, phrase=phrase):
