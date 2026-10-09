@@ -1080,6 +1080,15 @@ event, or worker self-attestation alone does not establish terminal status. Pres
 observations; any later dispatch invalidates the affected observation. If neither release nor terminal status is
 verifiable, retain the Coordinator-owned blocked receipt and name the missing capability and adapter owner.
 
+Runtime-audit timestamps and provider closure receipts are Coordinator-owned. Repair these from provider evidence
+without redispatching Documenter solely for bookkeeping; technical packet or handoff changes still return to their
+owning worker. Such substantive corrections require new dispatch and observation evidence.
+The Coordinator dispatch ledger is the source of truth for Last dispatch at. Each correction invalidates the affected
+worker's prior audit, trace and terminal observation. Obtain a new supported provider observation after that dispatch
+and reconcile the audit and closure from the same evidence before revalidation. Never repair freshness by changing
+only a timestamp. Collaboration handles and thread UUIDs are distinct identities; thread-read operations require an
+actual provider-returned or verified mapped UUID. Record missing mapping/export capability once.
+
 The approval gate applies to delivery workers. Missing implementation approval must not prevent remaining planning
 workers from completing diagnosis and fix design. If recovery delegation is unavailable, remain `blocked` or
 `not_executed`; do not substitute a generic workflow or claim success.
@@ -1440,8 +1449,16 @@ finalization. This is a blocked record, never evidence that provider workers wer
 For Feature Delivery implementation planning and TechOps planning, preserve `Engineering outcome: plan_only` when the
 plan itself passed pre-release validation; it remains unapproved and the workflow is not complete.
 
-The final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` from the
-reconciled record as distinct fields. The terminal `Engineering state` MUST use one value from the canonical enum; a
+If terminal publication fails, the packaged finalizer emits a canonical provisional failure handoff from usable saved
+packet fields, retaining recorded findings, explanations, plan, engineering next action, failure reason and artifact
+links. It returns nonzero, emits no success receipt and does not replace work_record.md. The provisional handoff is
+not a validated terminal record; failed-publication fields are blocked/unknown, and saved engineering claims are
+unverified. Copy the full emitted failure report rather than a compact status paragraph. Omit unrelated skill banners.
+Precheck and pre-release errors remain bounded correction feedback rather than terminal failure reports.
+
+For successfully published records, the final answer MUST copy `state`, `engineering_state`, `workflow_outcome`, and
+`engineering_outcome` from the reconciled record as distinct fields. The terminal `Engineering state` MUST use one value
+from the canonical enum; a
 handoff lifecycle phrase such as `handoff pending finalization` is invalid. It MUST NOT relabel `state: awaiting_input`
 as the engineering state or otherwise substitute one vocabulary value for another. The selected playbook's required
 artifact set is part of reconciliation:

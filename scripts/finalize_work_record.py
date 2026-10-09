@@ -240,6 +240,10 @@ ROLE_AGENTS = {
     "Fix design": "sentry_solution_architect",
 }
 FINALIZATION_STATUS_FILENAME = "finalization_failure.json"
+TECHOPS_STATE_RESULT_TOKENS = {
+    "ready for implementation", "completed", "blocked", "awaiting input", "plan only", "handoff",
+    "ready with explicit follow ups", "ready for approval", "designed", "implemented", "validated",
+}
 ANALYTICAL_FAILURE_STAGES = {
     "evidence_topology": {
         "binding": "sentry_current_state_investigator",
@@ -1423,6 +1427,11 @@ def _validate_handoff(
             raise ValueError(f"packet.handoff.{field} must be a non-empty string")
     identity = packet.get("identity", {})
     if isinstance(identity, dict):
+        playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+        if playbook == "techops_issue_remediation" and (
+            re.sub(r"[_-]+", " ", str(handoff["workflow_result"]).strip().lower()) in TECHOPS_STATE_RESULT_TOKENS
+        ):
+            raise ValueError("TechOps workflow_result requires a plain-language work summary, not a state token")
         provenance = str(handoff["provenance"]).lower()
         framework_revision = str(identity.get("Framework commit / status", "")).split(" / ", 1)[0].lower()
         playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)[0]
@@ -1954,7 +1963,7 @@ def expand_work_record(text: str, root: Path) -> str:
     return render(packet)
 
 
-def render(packet: dict[str, object]) -> str:
+def render_handoff(packet: dict[str, object]) -> str:
     handoff = packet["handoff"]
     explanations = handoff.get("best_current_explanations", [])
     explanation_block = ""
@@ -1975,7 +1984,7 @@ def render(packet: dict[str, object]) -> str:
     execution = str(handoff["execution"]).rstrip(" .;")
     if not re.search(rf"\bruntime\s+{runtime}\b", execution, flags=re.IGNORECASE):
         execution = f"{execution}; runtime {runtime}"
-    handoff_text = f"""```text
+    return f"""```text
 Workflow result: {handoff['workflow_result']}
 
 - State: {packet['identity']['State']}
@@ -1997,6 +2006,9 @@ Execution: {execution}.
 Provenance: {handoff['provenance']}
 ```"""
 
+
+def render(packet: dict[str, object]) -> str:
+    handoff_text = render_handoff(packet)
     sections = [
         "# Engineering Work Record\n",
         _section("Work Item", _mapping_table(packet["work_item"])),
@@ -4563,6 +4575,73 @@ Runtime behavior remains unverified.
     print("finalize_work_record self-test: passed")
 
 
+
+def failure_handoff(packet_path: Path, reason: str) -> str:
+    """Report saved work provisionally without publishing or certifying a terminal record."""
+    try:
+        packet = json.loads(packet_path.read_text())
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        packet = {}
+    if not isinstance(packet, dict):
+        packet = {}
+    identity = packet.get("identity", {})
+    handoff = packet.get("handoff", {})
+    identity = identity if isinstance(identity, dict) else {}
+    handoff = handoff if isinstance(handoff, dict) else {}
+    def value(key: str, fallback: str) -> str:
+        item = handoff.get(key)
+        return item.strip() if isinstance(item, str) and item.strip() else fallback
+    def items(key: str) -> list[str]:
+        entries = handoff.get(key, [])
+        return [entry for entry in entries if isinstance(entry, str) and entry.strip()] if isinstance(entries, list) else []
+    summary = value("workflow_result", "No usable work summary was recorded.")
+    if re.sub(r"[_-]+", " ", summary.lower()) in TECHOPS_STATE_RESULT_TOKENS:
+        summary = next(iter(items("established")), "No usable work summary was recorded.")
+    established = ["Provisional saved findings follow; failed finalization has not validated these claims."] + items("established")
+    next_action = handoff.get("next_action", {})
+    if isinstance(next_action, dict):
+        action = "; ".join(f"{key}: {next_action[key]}" for key in ("owner", "action", "complete_when")
+                           if isinstance(next_action.get(key), str))
+        if action:
+            established.append("Recorded engineering next action (not implementation authorization): " + action)
+    root = packet_path.parent
+    artifacts = []
+    for item in items("artifacts") + [str(packet_path)]:
+        try:
+            artifacts.append(_artifact_link(item, root))
+        except (OSError, ValueError):
+            established.append("Unrenderable recorded artifact reference: " + repr(item))
+    receipt = root / FINALIZATION_STATUS_FILENAME
+    if receipt.is_file():
+        artifacts.append(str(receipt))
+    explanations = []
+    recorded = handoff.get("best_current_explanations", [])
+    for item in recorded if isinstance(recorded, list) else []:
+        try:
+            explanations.append(_explanation_text(item))
+        except ValueError:
+            explanations.append("Malformed recorded explanation (unverified): " + str(item))
+    provisional = {
+        "identity": {"State": "blocked", "Engineering state": "unknown", "Workflow outcome": "blocked",
+                     "Engineering outcome": "blocked"},
+        "runtime_closure": [], "finalization": {"Durable artifact root": str(root)},
+        "handoff": {
+            "workflow_result": "Finalization failed. Provisional work summary: " + summary,
+            "implementation_plan": value("implementation_plan", "Not established; inspect preserved artifacts."),
+            "established": established, "best_current_explanations": explanations,
+            "next_action": {"owner": "Workflow Coordinator / framework maintainer",
+                            "action": "Reconcile the failure receipt and fresh provider evidence, then rerun finalization. " + reason,
+                            "complete_when": "The packaged finalizer exits zero and emits its canonical validated handoff."},
+            "artifacts": artifacts,
+            "execution": "Terminal publication failed; reported work is provisional. Recorded engineering state: "
+                         + str(identity.get("Engineering state", "unknown"))
+                         + ". Recorded execution (unverified): " + value("execution", "Not available"),
+            "provenance": "Recorded, not verified: " + value("provenance", "Not available"),
+        },
+    }
+    return "Workflow-framework validation: failed\n" + render_handoff(provisional).removeprefix("```text\n").removesuffix("```")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path)
@@ -4632,6 +4711,8 @@ def main() -> int:
             )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
+        if not args.pre_release and not args.check_packet:
+            print(failure_handoff(args.packet.resolve(), str(error)))
         return 2
     return 0
 

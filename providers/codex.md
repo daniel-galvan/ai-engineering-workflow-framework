@@ -150,6 +150,17 @@ work-item, and scanner tools remain conditional. A worker MUST NOT search `ALL_T
 or report the capability unavailable merely because that name is absent. Report a capability unavailable only after
 its mapped concrete operation is absent or an attempted in-scope operation fails.
 
+## Worker Identity and Correction Observations
+
+A collaboration task handle is not a Codex thread UUID. Retain the exact spawn handle for collaboration operations;
+use thread-read tools only with a provider-returned or verified mapped UUID. When no mapping/export exists, record
+that specific capability absence once rather than repeatedly passing a task path to read_thread.
+For every follow-up, record one exact dispatch time from the Coordinator clock in the dispatch ledger. That ledger
+owns Last dispatch at in worker audits and closure observations. Invalidate the affected prior status/trace observation
+in both records; after the correction ends, obtain a fresh provider observation and reconcile both records from it.
+Revalidate the packet before collecting final closure evidence. If a worker is absent from inventory and no supported
+lookup exists, retain Unknown/Blocked evidence; do not copy a historical observation or edit its time to appear fresh.
+
 ## Source Routing
 
 For equivalent connected-source reads, try a configured direct MCP operation first, then an app-backed connector if

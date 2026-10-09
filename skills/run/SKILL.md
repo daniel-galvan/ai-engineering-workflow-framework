@@ -70,6 +70,10 @@ description: >-
    result. Before declaring a trace unavailable, try the provider thread-read/export operation for the exact child
    (Codex: `read_thread` with `includeOutputs: true`). Record the attempted route and concrete error or capability
    absence.
+   Keep collaboration handles separate from Codex thread UUIDs. Use `read_thread`/`wait_threads` only with a verified
+   thread UUID returned or mapped by the provider; never pass a `/root/...` task handle to those tools. If no mapping
+   or supported export exists, record that operation absence once and use the collaboration status route. Do not
+   repeat the same invalid identifier probe.
    If no trace can be obtained, record context conformance as `context-unverified` and do not imply an
    independently audited pass. For every run, persist the audit result or `context-unverified` in each worker result's
    `Uncertainties / blockers` field before fan-in; self-attestation is not an audited pass. Pilot Standard Sentry and
@@ -495,8 +499,11 @@ description: >-
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
    failure. On a deterministic Standard planning failure, stop with `finalization_contract_failure`; do not add a
-   Documenter fallback or patch generated artifacts. For Documenter-owned paths, return packet, path, table, rendering,
-   or closure errors to the same Documenter. Return errors naming Fix
+   Documenter fallback or patch generated artifacts. Return Documenter-owned packet, path, table and rendering errors
+   to the same Documenter. Dispatch timestamps, runtime-audit rows and provider closure receipts are Coordinator-owned:
+   reconcile them from fresh provider evidence without redispatching Documenter solely to rewrite runtime bookkeeping.
+   A substantive handoff correction still requires its owning worker and invalidates the affected observations.
+   Return errors naming Fix
    Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning
    Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.
    Treat finalizer errors as self-contained received/expected corrections. Do not read or search validator source unless
@@ -504,6 +511,13 @@ description: >-
    For Technical Spike, the emitted canonical handoff already contains the disposition, strongest evidence, unresolved
    decisions, measured budget, next workflow, and artifact links. After successful finalization, send only that block;
    do not add a second summary. If finalization fails, link `finalization_failure.json`; do not claim validation passed.
+   A terminal publication failure emits `Workflow-framework validation: failed` and a canonical provisional handoff
+   after its JSON error. Copy that complete failed handoff, including saved findings, explanations and engineering
+   next steps. Its states describe failed publication; recorded engineering claims are explicitly unverified. Do not
+   use the skeleton work record as terminal evidence, claim a passed receipt, or replace the report with a short
+   status paragraph. Precheck/pre-release failures remain correction feedback, not user-facing terminal reports.
+   Success and failure reports must contain only workflow content; omit unrelated skill tips, promotional banners,
+   preambles and postscripts. A TechOps Workflow result is a plain-language work summary, never a readiness token.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; it is rendered from the finalized work record. Never compose a second summary or regenerate, shorten, or

@@ -252,6 +252,11 @@ Report:
 6. residual risks, owner, and next action. The next action must name the owner,
    location, and completion condition in plain language.
 
+Workflow result must summarize the investigation's findings, proposed disposition/change and main limitation in
+plain English. A readiness/state token such as ready_for_implementation is not a work summary; use the distinct state
+fields for readiness. Finalization failure must still preserve recorded findings, confidence/alternatives, the plan
+and engineering next step in the canonical provisional failure report, without claiming those records are validated.
+
 Use the shared canonical Human-Readable Handoff template. Detailed worker results remain in the work record.
 
 ## Related Documents
