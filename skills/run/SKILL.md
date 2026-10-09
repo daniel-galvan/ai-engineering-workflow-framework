@@ -228,10 +228,17 @@ description: >-
    For Feature Delivery specification assessment, the Documenter activation guard also checks that analytical
    artifacts and a populated `feature_design.md` coverage table exist. Return pre-handoff errors to the owning worker
    for one bounded correction before retrying; do not start Documenter with an unchecked coverage mapping.
-   Start the worker message with the returned `activation_packet` envelope's literal
-   `Coordinator initialization: complete` prefix, include the complete envelope unchanged, then append only the typed
-   assignment and current-run input manifest. When spawn metadata does not expose `agent_role` or `agent_path`, this
+   Save the typed assignment as JSON with `objective` and optional `input_paths`; outputs, policies and bindings come
+   from the prepared contract. Pass `--assignment <path>` to the activation guard and use its returned
+   `activation_message` string directly as the spawn message. Never reconstruct, summarize or shorten the envelope.
+   The guard serializes the complete envelope and assignment once and returns their SHA-256. When validating a saved
+   outbound message, also pass `--activation-message <path>`; any difference is `activation_message_mismatch`.
+   The validated payload must be the exact value submitted to the provider; a bundle hash alone proves no delivery. When
+   spawn metadata does not expose `agent_role` or `agent_path`, this
    exact envelope is the binding-delivery mechanism; missing metadata alone is not a reason to discard the worker.
+   If delivery differs from the guarded payload, stop new dispatch, reconcile already-started workers, and record the
+   activation failure. Do not convert that failure into a demand for a new investigation. Before ending, use the
+   terminal failure route below; a stop-dispatch instruction does not waive terminal reporting.
    Conflicting observed metadata remains `provider_configuration_unavailable`.
    The same guard enforces the duration budget's finalization reserve. On `run_budget_finalization_reserve`, do not
    activate another worker; preserve the useful result already established and proceed directly to bounded terminal
@@ -279,12 +286,20 @@ description: >-
    `issue_scope`, `history_reconciliation`, `plan_dependencies`, and `regression_fixture`. Each row uses `Check`,
    `Status`, `Evidence refs`, and `Detail`; require `passed`, except evidence-backed `not_applicable` for history with
    no mismatch. Finding a commit without inspecting its patch and associated work item does not pass history
-   reconciliation. Return missing evidence to the owning worker inside this run. Read the actual fixture implementation
+   reconciliation. A passed history check also records `Commit`, `Patch evidence refs`,
+   `Work item` and `Work item evidence refs`. Verify that both sources were inspected; a commit message naming a Jira
+   key is not a Jira read. Return missing evidence to the owning worker inside this run. Read the actual fixture
+   implementation
    before promising stateful persistence tests; include required fixture changes. Explain any external prerequisite to a
    local step. Before each worker fan-in, run `validate_worker_runtime.py --transition fan_in --provider-status
-   completed` using observed current status, then audit its retrieved command ledger with `--trace`. Normalize only tool
-   activity into `tool_trace`; preserve `spawn` binding evidence, `last_dispatch_at`, and the passed fan-in transition
-   in `events`. Save each trace as a direct child of the active artifact root. Keep one `runtime_audits` row per
+   completed` using observed current status. Export tool activity through `worker_runtime_evidence.py` with its parent
+   session, start and ledger flags, plus `--worker-session <exact-child-session> --observation <fresh-status-json>`
+   `--agent <role> --trace <path>`. The observation uses runtime audit fields and `Binding evidence` with observed
+   role/path or the Coordinator's explicit envelope-delivery receipt. Do not infer delivery from a prepared bundle.
+   The exporter checks parent/child identity, latest dispatch and fresh status and writes canonical `last_dispatch_at`,
+   `tool_trace`, `spawn` and fan-in events. Run `--trace <path> --require-freshness` before accepting it; never write an
+   ad hoc exporter or repair dispatch timestamps. Save each trace as a direct child of the active artifact root. Keep
+   one `runtime_audits` row per
    completed worker, including handoff, with `Worker`, the status observation fields above, `Trace path`, and `Trace
    retrieval`. On genuine trace unavailability use an empty path and `unavailable:<attempted route and concrete
    failure>`; also retain `context-unverified` in that worker result. Any correction invalidates the audit; reread and
@@ -498,6 +513,10 @@ description: >-
    and `TechOps planning blocked work record: saved; runtime release unverified`. The receipt follows the canonical
    handoff; it is not a publication failure and must not replace the rendered handoff.
    Do not claim a completed workflow when neither runtime closure route is verified.
+   Treat a completed worker requesting correction as a terminal provider turn with an unsatisfied assignment; it is not
+   an active or awaiting-input runtime. Refresh provider status after its response. For TechOps handoff, the prepared
+   contract assigns both `implementation_plan` and `output`; do not restrict the worker to the packet or require Sentry
+   disposition fields. Use current-run accepted TechOps checks and Coordinator engineering outcome.
    Successful pre-release writes `pre_release_check.json` with the packet hash and validation time. Packet changes
    invalidate it for TechOps planning; revalidate before collecting closure status. Its Terminal observations must
    postdate this receipt. The compact Sentry publisher retains its existing owned precheck.
@@ -534,6 +553,20 @@ description: >-
    next steps. Its states describe failed publication; recorded engineering claims are explicitly unverified. Do not
    use the skeleton work record as terminal evidence, claim a passed receipt, or replace the report with a short
    status paragraph. Precheck/pre-release failures remain correction feedback, not user-facing terminal reports.
+   If activation, upstream correction, or Documenter execution cannot be recovered within this run, always invoke
+   `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet <artifact-root>/finalization_packet.json`
+   `--workflow-failure <exact-reason>`. This terminal failure mode needs no invented closure receipt or implementation
+   plan. It writes `finalization_failure.json` and `handoff_failure.md`, preserves recorded analytical contributions,
+   limitations, proposed actions and existing artifacts even when `handoff` is empty, and returns exit 2 with the
+   canonical
+   failed handoff. Copy the complete report. It does not validate findings, overwrite the work-record skeleton or claim
+   runtime release. Continue only where the recorded failure and fresh runtime evidence permit it; a fresh run is not
+   automatically required. Every post-preparation exit must produce either the successful or failed canonical handoff.
+   After each fan-in, check elapsed coordination time and proceed to the next eligible stage. Issue evidence can enable
+   independent integration work; record the actual dependency when it must wait. Time spent preparing handoff is part
+   of the run, and does not justify ending without terminal reporting.
+   The provider event ledger's `timing` records elapsed time, the union of worker-active intervals and time with no
+   worker active. Use these observations when reviewing delays; they are not token, cost or CPU measurements.
    Success and failure reports must contain only workflow content; omit unrelated skill tips, promotional banners,
    preambles and postscripts. A TechOps Workflow result is a plain-language work summary, never a readiness token.
    Finalization passes only when the exit status is zero and the

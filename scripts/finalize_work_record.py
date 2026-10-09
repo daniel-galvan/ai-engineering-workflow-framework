@@ -2073,7 +2073,10 @@ def render(packet: dict[str, object]) -> str:
             "Thread ID", "Latest turn started at", "Latest turn status",
             "Thread status",
         )),
-        ("techops_checks", "TechOps Planning Checks", ("Check", "Status", "Evidence refs", "Detail")),
+        ("techops_checks", "TechOps Planning Checks", (
+            "Check", "Status", "Evidence refs", "Detail", "Commit", "Patch evidence refs",
+            "Work item", "Work item evidence refs",
+        )),
         ("runtime_audits", "Worker Runtime Audits", (
             "Worker", "Provider handle", "Provider status", "Last dispatch at", "Observed at", "Status source",
             "Thread ID", "Latest turn started at", "Latest turn status", "Trace path", "Trace retrieval",
@@ -2370,7 +2373,7 @@ def _worker_runtime_audit_errors(
                 raise ValueError("trace must be an object")
             if not isinstance(trace.get("tool_trace"), list):
                 errors.append(f"worker_tool_trace_required:{worker}")
-            errors.extend(trace_errors(trace))
+            errors.extend(trace_errors(trace, require_freshness=True))
             if trace.get("last_dispatch_at") != row.get("Last dispatch at"):
                 errors.append(f"worker_trace_stale:{worker}")
             if not any(event.get("action") == "fan_in" and event.get("provider_status") == "completed"
@@ -3443,7 +3446,8 @@ def self_test() -> None:
         published_techops["workers"] = [feature_ledger(worker, role, "IN-001") for worker, role in roles.items()]
         published_techops["worker_results"] = [feature_result(worker) for worker in roles]
         published_techops["techops_checks"] = [
-            {"Check": name, "Status": "passed", "Evidence refs": "E-001", "Detail": "Owning worker evidence"}
+            {"Check": name, "Status": "not_applicable" if name == "history_reconciliation" else "passed",
+             "Evidence refs": "E-001", "Detail": "Owning worker evidence; fixture has no history mismatch"}
             for name in ("issue_scope", "history_reconciliation", "plan_dependencies", "regression_fixture")
         ]
         published_techops["runtime_audits"] = []
@@ -4600,10 +4604,33 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     def items(key: str) -> list[str]:
         entries = handoff.get(key, [])
         return [entry for entry in entries if isinstance(entry, str) and entry.strip()] if isinstance(entries, list) else []
-    summary = value("workflow_result", "No usable work summary was recorded.")
+    # Documenter may fail before populating handoff; preserve recorded analytical content.
+    results = packet.get("worker_results", [])
+    results = [row for row in results if isinstance(row, dict)] if isinstance(results, list) else []
+    design = next((row for row in results if row.get("Worker") == "fix-design"), {})
+    fallback_summary = str(design.get("Unique contribution", "")).strip() or "No usable work summary was recorded."
+    summary = value("workflow_result", fallback_summary)
     if re.sub(r"[_-]+", " ", summary.lower()) in TECHOPS_STATE_RESULT_TOKENS:
         summary = next(iter(items("established")), "No usable work summary was recorded.")
     established = ["Provisional saved findings follow; failed finalization has not validated these claims."] + items("established")
+    if not items("established"):
+        for row in results:
+            contribution = row.get("Unique contribution")
+            if isinstance(contribution, str) and contribution.strip():
+                established.append("Recorded " + str(row.get("Worker", "worker")) + ": " + contribution)
+            blockers = row.get("Uncertainties / blockers", [])
+            if isinstance(blockers, list):
+                established.extend("Recorded limitation: " + item for item in blockers
+                                   if isinstance(item, str) and item.strip())
+        for row in packet.get("claims", []) if isinstance(packet.get("claims"), list) else []:
+            if isinstance(row, dict) and isinstance(row.get("Claim"), str) and row["Claim"].strip():
+                established.append("Recorded claim " + str(row.get("Claim ID", "")) + ": " + row["Claim"]
+                                   + "; confidence: " + str(row.get("Confidence", "Unknown"))
+                                   + "; uncertainty: " + str(row.get("Uncertainty", "Unknown")))
+        for row in packet.get("actions", []) if isinstance(packet.get("actions"), list) else []:
+            if isinstance(row, dict) and isinstance(row.get("Action"), str):
+                established.append("Recorded proposed action (not authorization): " + row["Action"]
+                                   + "; owner: " + str(row.get("Owner", "Unknown")))
     next_action = handoff.get("next_action", {})
     if isinstance(next_action, dict):
         action = "; ".join(f"{key}: {next_action[key]}" for key in ("owner", "action", "complete_when")
@@ -4612,7 +4639,17 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
             established.append("Recorded engineering next action (not implementation authorization): " + action)
     root = packet_path.parent
     artifacts = []
-    for item in items("artifacts") + [str(packet_path)]:
+    saved_paths = []
+    for row in packet.get("durable_artifacts", []) if isinstance(packet.get("durable_artifacts"), list) else []:
+        if isinstance(row, dict) and isinstance(row.get("Path"), str):
+            saved = Path(row["Path"])
+            saved = saved if saved.is_absolute() else root / saved
+            try:
+                if saved.resolve().parent == root.resolve() and saved.is_file():
+                    saved_paths.append(str(saved))
+            except (OSError, ValueError):
+                pass
+    for item in dict.fromkeys(items("artifacts") + saved_paths + [str(packet_path)]):
         try:
             artifacts.append(_artifact_link(item, root))
         except (OSError, ValueError):
@@ -4627,22 +4664,28 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
             explanations.append(_explanation_text(item))
         except ValueError:
             explanations.append("Malformed recorded explanation (unverified): " + str(item))
+    plan = root / "implementation_plan.md"
+    plan_status = str(plan) if plan.is_file() else "Not created; inspect the recorded fix design and missing deliverables."
+    provenance = "; ".join(str(identity[key]) for key in
+                           ("Plugin package / version", "Framework commit / status", "Playbook / version")
+                           if identity.get(key)) or "Not available"
     provisional = {
         "identity": {"State": "blocked", "Engineering state": "unknown", "Workflow outcome": "blocked",
                      "Engineering outcome": "blocked"},
         "runtime_closure": [], "finalization": {"Durable artifact root": str(root)},
         "handoff": {
             "workflow_result": "Finalization failed. Provisional work summary: " + summary,
-            "implementation_plan": value("implementation_plan", "Not established; inspect preserved artifacts."),
+            "implementation_plan": value("implementation_plan", plan_status),
             "established": established, "best_current_explanations": explanations,
             "next_action": {"owner": "Workflow Coordinator / framework maintainer",
-                            "action": "Reconcile the failure receipt and fresh provider evidence, then rerun finalization. " + reason,
+                            "action": "Correct the recorded failure and reconcile fresh provider evidence within this run where permitted; "
+                                      "then rerun finalization. A fresh investigation is not automatically required. " + reason,
                             "complete_when": "The packaged finalizer exits zero and emits its canonical validated handoff."},
             "artifacts": artifacts,
             "execution": "Terminal publication failed; reported work is provisional. Recorded engineering state: "
                          + str(identity.get("Engineering state", "unknown"))
                          + ". Recorded execution (unverified): " + value("execution", "Not available"),
-            "provenance": "Recorded, not verified: " + value("provenance", "Not available"),
+            "provenance": "Recorded, not verified: " + value("provenance", provenance),
         },
     }
     return "Workflow-framework validation: failed\n" + render_handoff(provisional).removeprefix("```text\n").removesuffix("```")
@@ -4657,6 +4700,7 @@ def main() -> int:
     parser.add_argument("--check-packet", action="store_true")
     parser.add_argument("--blocked-runtime-snapshot", action="store_true")
     parser.add_argument("--publish-technical-spike-report", type=Path)
+    parser.add_argument("--workflow-failure")
     parser.add_argument("--analytical-failure")
     parser.add_argument("--analytical-failure-stage", choices=tuple(ANALYTICAL_FAILURE_STAGES))
     parser.add_argument("--completed-handle", action="append", default=[])
@@ -4669,6 +4713,25 @@ def main() -> int:
     if args.self_test:
         self_test()
         return 0
+    if args.workflow_failure:
+        if (not args.packet or args.pre_release or args.check_packet or args.blocked_runtime_snapshot
+                or args.publish_technical_spike_report or args.analytical_failure):
+            parser.error("--workflow-failure requires --packet and cannot be combined with another mode")
+        try:
+            packet_path = args.packet.resolve()
+            # This receipt reports failure; it never certifies activation, readiness or runtime release.
+            receipt = {"schema_version": 1, "status": "failed", "stage": "workflow",
+                       "errors": [args.workflow_failure], "runtime_closure": "unverified",
+                       "observed_at": datetime.now(timezone.utc).isoformat(),
+                       "packet_sha256": hashlib.sha256(packet_path.read_bytes()).hexdigest()}
+            (packet_path.parent / FINALIZATION_STATUS_FILENAME).write_text(json.dumps(receipt, indent=2) + "\n")
+            report = failure_handoff(packet_path, args.workflow_failure)
+            (packet_path.parent / "handoff_failure.md").write_text(report + "\n")
+            print(report)
+        except (OSError, ValueError, TypeError) as error:
+            print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
+            print(failure_handoff(args.packet, args.workflow_failure))
+        return 2
     if args.blocked_runtime_snapshot and (args.pre_release or args.publish_technical_spike_report or args.analytical_failure):
         parser.error("--blocked-runtime-snapshot cannot be combined with another finalization mode")
     if args.check_packet and (args.pre_release or args.blocked_runtime_snapshot or args.publish_technical_spike_report

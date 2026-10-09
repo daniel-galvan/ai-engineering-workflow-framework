@@ -869,12 +869,16 @@ def prepare_run(
                 "independent of unavailable deployment evidence unless it changes target, scope or safety; explain actual "
                 "dependencies. Read existing test fixtures and plan any required seed, state, fresh-read and error support. "
                 "Return techops_checks rows for issue_scope, history_reconciliation, plan_dependencies, regression_fixture "
-                "with Status passed (history may be not_applicable with evidence), Evidence refs and Detail."
+                "with Status passed (history may be not_applicable with evidence), Evidence refs and Detail. "
+                "A passed history_reconciliation records Commit, Patch evidence refs, "
+                "Work item and Work item evidence refs from an inspected patch and its associated work item."
             ),
             "documenter": (
                 "Preserve the accepted techops_checks and Coordinator runtime_audits in finalization_packet.json. "
                 "Do not mark a check passed without its owning worker's evidence. Finalization schema belongs only in "
-                "finalization, not identity. Keep the plan unapproved and external proof gates separate from local work."
+                "finalization, not identity. For Engineering outcome plan_only after analytical fan-in, create "
+                "implementation_plan as well as output; use the accepted TechOps checks, not Sentry readiness fields. "
+                "Keep the plan unapproved and external proof gates separate from local work."
             ),
             "reviewer": (
                 "Challenge history reconciliation, local/external plan dependencies and fixture feasibility; return "
@@ -887,7 +891,8 @@ def prepare_run(
             "reviewer": "code_review.md", "documenter": "finalization_packet.json",
         }
         instructions["repository_integrator"] = (
-            "Consume the accepted failure-path evidence; inspect only ownership, deployment and integration seams. "
+            "Consume issue-evidence and any available accepted failure-path evidence; inspect only ownership, deployment "
+            "and integration seams. Do not wait for failure-path when issue-evidence identifies an independent seam. "
             "Repeat source tracing only for a named discrepancy. Keep runtime unknowns separate from local work."
         )
         manifest["worker_contracts"] = {
@@ -895,6 +900,7 @@ def prepare_run(
                     "output": str(artifact_root / outputs[agent])}
             for agent, instruction in instructions.items()
         }
+        manifest["worker_contracts"]["documenter"]["implementation_plan"] = str(artifact_root / "implementation_plan.md")
         try:
             from merge_techops_result import WORKERS, TABLES
         except ModuleNotFoundError:

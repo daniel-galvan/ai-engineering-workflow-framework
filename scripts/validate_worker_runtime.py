@@ -59,7 +59,7 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         errors.append("provider_binding_incomplete")
     contract = packet.get("worker_contract")
     if isinstance(contract, dict) and "output" in contract:
-        for field in ("output", "result"):
+        for field in ("output", "result", "implementation_plan"):
             if field in contract:
                 output = Path(str(contract[field]))
                 if not output.is_absolute() or output.resolve().parent != path.parent.resolve():
@@ -132,6 +132,18 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                 except (OSError, ValueError, TypeError, AttributeError):
                     errors.append("techops_pre_handoff_packet_invalid")
     return errors
+
+
+def activation_message(packet: dict, assignment: dict) -> str:
+    """Serialize the binding once; assignments cannot override prepared outputs or policy."""
+    if (not isinstance(assignment, dict) or not isinstance(assignment.get("objective"), str)
+            or not assignment["objective"].strip()
+            or set(assignment) - {"objective", "input_paths"}
+            or not isinstance(assignment.get("input_paths", []), list)
+            or not all(isinstance(path, str) and path.strip() for path in assignment.get("input_paths", []))):
+        raise ValueError("expected objective and optional input_paths only")
+    return (packet["required_prefix"] + "\n" + json.dumps(packet, sort_keys=True)
+            + "\nTyped assignment:\n" + json.dumps(assignment, sort_keys=True))
 
 
 def transition_error(action: str, provider_status: str) -> str | None:
@@ -224,6 +236,20 @@ def techops_check_errors(checks: object, evidence_ids: set[str]) -> list[str]:
         status = row.get("Status")
         if status != "passed" and not (name == "history_reconciliation" and status == "not_applicable"):
             errors.append(f"techops_planning_check_not_passed:{name}")
+        if name == "history_reconciliation" and status == "passed":
+            if (not re.fullmatch(r"[0-9a-fA-F]{7,40}", str(row.get("Commit", "")))
+                    or not str(row.get("Work item", "")).strip()):
+                errors.append("techops_history_patch_and_work_item_required")
+            else:
+                for field in ("Patch evidence refs", "Work item evidence refs"):
+                    proof = re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(row.get(field, "")))
+                    check_refs = set(re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(row.get("Evidence refs", ""))))
+                    if not proof or not set(proof) <= evidence_ids & check_refs:
+                        errors.append("techops_history_patch_and_work_item_required")
+                patch_refs = set(re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(row.get("Patch evidence refs", ""))))
+                item_refs = set(re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(row.get("Work item evidence refs", ""))))
+                if patch_refs & item_refs:
+                    errors.append("techops_history_distinct_sources_required")
         refs = re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(row.get("Evidence refs", "")))
         if not refs or not set(refs) <= evidence_ids or not str(row.get("Detail", "")).strip():
             errors.append(f"techops_planning_check_evidence_required:{name}")
@@ -262,11 +288,27 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
     return list(dict.fromkeys(errors))
 
 
-def trace_errors(trace: dict[str, object]) -> list[str]:
+def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -> list[str]:
+    if not isinstance(trace, dict):
+        return ["tool_trace_invalid"]
+    if not isinstance(trace.get("events", []), list):
+        return ["runtime_event_invalid"]
     errors: list[str] = []
     spawn = trace.get("spawn", {})
     if not isinstance(spawn, dict):
         return ["spawn_trace_invalid"]
+    if require_freshness:
+        dispatch = trace.get("last_dispatch_at")
+        try:
+            if not isinstance(dispatch, str) or datetime.fromisoformat(dispatch.replace("Z", "+00:00")).tzinfo is None:
+                raise ValueError
+        except ValueError:
+            errors.append("worker_trace_dispatch_required")
+        if not isinstance(trace.get("tool_trace"), list):
+            errors.append("worker_tool_trace_required")
+        if not any(isinstance(event, dict) and event.get("action") == "fan_in"
+                   and event.get("provider_status") == "completed" for event in trace.get("events", [])):
+            errors.append("worker_fan_in_guard_receipt_required")
     observed_role = spawn.get("observed_agent_role")
     observed_path = spawn.get("observed_agent_path")
     if not observed_role and not observed_path and not spawn.get("activation_packet_delivered"):
@@ -378,6 +420,9 @@ def main() -> int:
     parser.add_argument("--transition", choices=("wait", "interrupt", "close", "replace", "fan_in"))
     parser.add_argument("--provider-status")
     parser.add_argument("--trace", type=Path)
+    parser.add_argument("--require-freshness", action="store_true")
+    parser.add_argument("--assignment", type=Path)
+    parser.add_argument("--activation-message", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     result: dict[str, object] = {"status": "allowed"}
@@ -393,8 +438,15 @@ def main() -> int:
     )
     if selected_modes > 1:
         parser.error("activation, transition, and trace validation modes are mutually exclusive")
+    if args.require_freshness and not args.trace:
+        parser.error("--require-freshness requires --trace")
+    if (args.assignment or args.activation_message) and not args.activation_packet_bundle:
+        parser.error("--assignment and --activation-message require activation mode")
     if args.trace:
-        errors = trace_errors(json.loads(args.trace.read_text()))
+        try:
+            errors = trace_errors(json.loads(args.trace.read_text()), require_freshness=args.require_freshness)
+        except (OSError, ValueError, TypeError) as error:
+            errors = [f"tool_trace_invalid:{error}"]
     elif args.activation_packet_bundle or args.expected_agent or args.expected_bundle_sha256:
         if not args.activation_packet_bundle or not args.expected_agent or not args.expected_bundle_sha256:
             parser.error(
@@ -405,7 +457,21 @@ def main() -> int:
         )
         if not errors:
             bundle = json.loads(args.activation_packet_bundle.read_text())
-            result["activation_packet"] = bundle["packets"][args.expected_agent]
+            packet = bundle["packets"][args.expected_agent]
+            if args.assignment:
+                try:
+                    message = activation_message(packet, json.loads(args.assignment.read_text()))
+                    if args.activation_message and args.activation_message.read_text() != message:
+                        errors.append("activation_message_mismatch")
+                    else:
+                        result["activation_message"] = message
+                        result["activation_message_sha256"] = hashlib.sha256(message.encode()).hexdigest()
+                except (OSError, ValueError, TypeError) as error:
+                    errors.append(f"activation_assignment_invalid:{error}")
+            elif args.activation_message:
+                errors.append("activation_message_requires_assignment")
+            else:
+                result["activation_packet"] = packet
     elif args.transition or args.provider_status:
         if not args.transition or not args.provider_status:
             parser.error("--transition and --provider-status are required together")

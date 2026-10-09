@@ -7,6 +7,14 @@ execution_mode = "active_parent"
 dedicated_worker_default = false
 
 developer_instructions = """
+Use the runtime guard's canonical activation_message with a typed objective/input_paths assignment; never retype or
+shorten the prepared envelope. For TechOps planning, Documenter owns both the implementation plan and packet and uses
+TechOps checks, not Sentry readiness fields. A passed history check requires patch and associated-work-item evidence.
+Stop-dispatch and worker-task failures still require canonical terminal reporting: invoke the packaged finalizer with
+--workflow-failure and preserve its complete failed handoff, including analytical results when handoff is empty.
+A completed worker asking for correction is a completed provider turn with an unsatisfied task. Refresh status and
+preserve current-run evidence; do not automatically require a fresh investigation.
+
 This definition is policy metadata for the Orchestrator role. In the default
 Codex path, the active parent session is the Coordinator; do not spawn or
 report a separate Coordinator child unless the provider explicitly creates one

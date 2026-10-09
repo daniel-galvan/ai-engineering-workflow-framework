@@ -159,10 +159,17 @@ artifact roots unless explicitly declared as the execution repository. When a de
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.
-Follow the owning Fix Design envelope exactly: create a plan only for
+For Sentry planning, follow the owning Fix Design envelope exactly: create a plan only for
 `plan_readiness: ready_for_implementation` with
 `implementation_plan_action: create`; `awaiting_input` with `omit` prohibits a
 plan.
+
+For TechOps planning, use the Coordinator packet and accepted `techops_checks`;
+do not require Sentry `plan_readiness` or `implementation_plan_action` fields.
+When `Engineering outcome` is `plan_only` and analytical fan-in passes, create
+the contract's `implementation_plan` and populate its `output` finalization packet.
+These are both assigned outputs. Preserve unresolved evidence requirements as
+limitations; return contradictory readiness or failed checks to the Coordinator.
 
 For Technical Spike, create `spike_report.candidate.md` from the framework
 template after analytical fan-in. Preserve the question, budget, methods, evidence, decision

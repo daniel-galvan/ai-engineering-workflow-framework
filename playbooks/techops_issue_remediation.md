@@ -123,8 +123,9 @@ The remediation sequence is `implement` ↔ `review` → `validate` → `handoff
 Downstream workers consume normalized artifacts. They repeat evidence or repository analysis only to resolve a recorded
 discrepancy.
 
-For `deep`, start `failure-path` and `repository-integration` in parallel after `issue-evidence`; record a runtime or
-dependency reason when they cannot run together.
+Start independent `failure-path` and conditional `repository-integration` work after `issue-evidence`; for `deep`,
+dispatch in parallel is required unless a runtime or evidence dependency prevents it. Record the actual dependency when
+integration must consume a completed failure-path result.
 
 ## Stages and Gates
 
@@ -203,6 +204,11 @@ The accepted Fix Design result supplies four evidence-backed `techops_checks` ro
 worker activation packets; the Coordinator verifies the evidence and the finalizer rejects missing or failed checks.
 Use `Status: passed`, except `not_applicable` for history when evidence establishes no report/current-code mismatch.
 Each row includes `Evidence refs` and `Detail`; a commit listing alone does not pass history reconciliation.
+A passed history row records `Commit`, `Patch evidence refs`, `Work item`
+and `Work item evidence refs`; inspect the associated work item, not only its key in the commit message.
+
+The Documenter contract assigns both `implementation_plan.md` and `finalization_packet.json`. TechOps readiness comes
+from accepted planning checks and the Coordinator packet; it does not require Sentry disposition fields.
 
 Read existing fixtures before choosing a regression strategy. Include any seed, state, fresh-read, delayed-response or
 error support that the proposed test needs. Local regression work must not depend on unavailable deployed revisions
@@ -256,6 +262,10 @@ Workflow result must summarize the investigation's findings, proposed dispositio
 plain English. A readiness/state token such as ready_for_implementation is not a work summary; use the distinct state
 fields for readiness. Finalization failure must still preserve recorded findings, confidence/alternatives, the plan
 and engineering next step in the canonical provisional failure report, without claiming those records are validated.
+Activation or Documenter failure also requires terminal reporting. Use the packaged finalizer's `--workflow-failure`
+mode; it preserves recorded analytical content in `handoff_failure.md` even when Documenter never populated `handoff`.
+A failed activation does not automatically require repeating the investigation. Keep provider turn status, task
+completion, engineering readiness and runtime closure separate.
 
 Use the shared canonical Human-Readable Handoff template. Detailed worker results remain in the work record.
 

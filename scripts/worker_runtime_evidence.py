@@ -31,6 +31,8 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
         events, mappings, inventories = [], {}, []
         pending_spawn = None
         inventory_pending = False
+        observed_until = started
+        active, intervals = {}, []
         for line in stream:
             try:
                 row = json.loads(line)
@@ -40,8 +42,15 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
                 raise ValueError("provider_session_event_invalid") from None
             if timestamp(row["timestamp"]) < started:
                 continue
+            observed_until = max(observed_until, timestamp(row["timestamp"]))
             payload = row.get("payload", {})
             item = payload.get("item", {})
+            if row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity":
+                handle = item.get("agent_path")
+                if item.get("kind") == "started":
+                    active.setdefault(handle, timestamp(row["timestamp"]))
+                elif item.get("kind") == "completed" and handle in active:
+                    intervals.append((active.pop(handle), timestamp(row["timestamp"])))
             if (row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity"
                     and item.get("kind") == "started"):
                 handle, thread = item.get("agent_path"), item.get("agent_thread_id")
@@ -79,9 +88,67 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
                     inventories.append({"Observed at": row["timestamp"], "Status source": "list_agents",
                                         "raw_response": raw})
                 inventory_pending = False
+    intervals.extend((start, observed_until) for start in active.values())
+    merged = []
+    for start, end in sorted(intervals):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    worker_seconds = sum((end - start).total_seconds() for start, end in merged)
+    elapsed = (observed_until - started).total_seconds()
     return {"schema_version": 1, "parent_thread_id": parent_thread_id, "run_started_at": started_at,
+            "timing": {"observed_until": observed_until.isoformat(), "elapsed_seconds": elapsed,
+                       "worker_active_seconds": worker_seconds, "no_worker_active_seconds": elapsed - worker_seconds,
+                       "open_worker_intervals": len(active)},
             "provider_session": str(path.resolve()), "events": events,
             "thread_mappings": mappings, "inventories": inventories}
+
+
+def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict) -> dict:
+    """Export tool activity only, using the exact parent mapping and fresh status receipt."""
+    try:
+        from validate_worker_runtime import terminal_observation_errors, trace_errors
+    except ModuleNotFoundError:
+        from scripts.validate_worker_runtime import terminal_observation_errors, trace_errors
+    thread = observation["Thread ID"]
+    handle = observation["Provider handle"]
+    if ledger["thread_mappings"].get(handle) != thread:
+        raise ValueError("worker_trace_thread_mismatch")
+    dispatches = [row for row in ledger["events"] if row["Provider handle"] == handle]
+    if not dispatches or observation.get("Last dispatch at") != dispatches[-1]["Last dispatch at"]:
+        raise ValueError("worker_trace_dispatch_mismatch")
+    errors = terminal_observation_errors([observation], [handle])
+    if errors:
+        raise ValueError(";".join(errors))
+    tool_trace = []
+    with source.open() as stream:
+        first = json.loads(next(stream))
+        if first.get("type") != "session_meta" or first.get("payload", {}).get("id") != thread:
+            raise ValueError("worker_trace_session_mismatch")
+        for line in stream:
+            row = json.loads(line)
+            if timestamp(row["timestamp"]) < timestamp(dispatches[0]["Last dispatch at"]):
+                continue
+            if timestamp(row["timestamp"]) > timestamp(observation["Observed at"]):
+                continue
+            payload = row.get("payload", {})
+            if row.get("type") == "response_item" and payload.get("type") in {
+                    "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output"}:
+                tool_trace.append(payload)
+    binding = observation.get("Binding evidence", {})
+    if not isinstance(binding, dict):
+        raise ValueError("worker_trace_binding_evidence_invalid")
+    result = {"schema_version": 1, "worker": agent, "thread_id": thread,
+              "last_dispatch_at": dispatches[-1]["Last dispatch at"],
+              "spawn": dict(binding, agent=agent, provider_handle=handle, thread_id=thread),
+              "tool_trace": tool_trace,
+              "events": [{"action": "fan_in", "provider_status": "completed", "guard_result": "allowed"}],
+              "trace_retrieval": str(source.resolve()), "status_observation": observation}
+    errors = trace_errors(result, require_freshness=True)
+    if errors:
+        raise ValueError(";".join(errors))
+    return result
 
 
 def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
@@ -122,9 +189,22 @@ def main() -> int:
     parser.add_argument("--parent-thread-id", required=True)
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--ledger", type=Path, required=True)
+    parser.add_argument("--worker-session", type=Path)
+    parser.add_argument("--observation", type=Path)
+    parser.add_argument("--agent")
+    parser.add_argument("--trace", type=Path)
     args = parser.parse_args()
+    if any((args.worker_session, args.observation, args.agent, args.trace)) and not all(
+            (args.worker_session, args.observation, args.agent, args.trace)):
+        parser.error("trace export requires --worker-session, --observation, --agent and --trace")
     try:
         result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at)
+        if args.trace:
+            if args.trace.resolve().parent != args.ledger.resolve().parent:
+                raise ValueError("worker_trace_outside_current_run")
+            trace = export_worker_trace(result, args.worker_session, args.agent,
+                                        json.loads(args.observation.read_text()))
+            args.trace.write_text(json.dumps(trace, indent=2) + "\n")
         args.ledger.write_text(json.dumps(result, indent=2) + "\n")
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}))

@@ -727,6 +727,11 @@ guard and spawn are an ordered pair: a guard run after dispatch does not satisfy
 starts first, record `activation_sequence_nonconformant`, stop further dispatch, set `profile_status: blocked` and
 `Workflow outcome: blocked`, and reconcile the already-started worker without claiming that its activation was
 validated. Preserve a ready plan as `Engineering outcome: plan_only`; runtime closure remains an independent status.
+Validate the exact outbound activation payload; a correct stored bundle does not prove that the dispatched message
+matches it. A delivery mismatch stops new dispatch and must retain a canonical terminal failure report. It does not
+waive reconciliation or require discarding accepted analysis. Use `finalize_work_record.py --workflow-failure` when
+Documenter or activation cannot complete; never end with only a status paragraph and an unfinished skeleton.
+A completed provider turn may return a task error or request correction; record both facts separately.
 
 ## Clarification Framing
 

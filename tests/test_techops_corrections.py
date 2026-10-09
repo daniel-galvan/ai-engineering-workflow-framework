@@ -48,7 +48,7 @@ class TechOpsCorrections(unittest.TestCase):
         self.assertEqual(runtime.terminal_observation_errors(precise, handles), [])
 
     def test_planning_checks_require_supported_evidence(self):
-        checks = [{"Check": name, "Status": "passed", "Evidence refs": "E-001",
+        checks = [{"Check": name, "Status": "not_applicable" if name == "history_reconciliation" else "passed", "Evidence refs": "E-001",
                    "Detail": "Current-run owning worker evidence"} for name in runtime.TECHOPS_CHECKS]
         self.assertEqual(runtime.techops_check_errors(checks, {"E-001"}), [])
         self.assertTrue(runtime.techops_check_errors(checks[:-1], {"E-001"}))
@@ -61,7 +61,7 @@ class TechOpsCorrections(unittest.TestCase):
                          "Lifecycle": "planning"},
             "worker_results": [{"Worker": "fix-design", "Outcome": "complete"}],
             "evidence": [{"Evidence ID": "E-001"}],
-            "techops_checks": [{"Check": name, "Status": "passed", "Evidence refs": "E-001",
+            "techops_checks": [{"Check": name, "Status": "not_applicable" if name == "history_reconciliation" else "passed", "Evidence refs": "E-001",
                                 "Detail": "Owning worker evidence"} for name in runtime.TECHOPS_CHECKS],
             "runtime_audits": [{"Worker": "fix-design", "Provider handle": "/root/design",
                                 "Provider status": "completed", "Last dispatch at": "2026-10-07T23:40:00Z",
