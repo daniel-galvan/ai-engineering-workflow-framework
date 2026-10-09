@@ -36,6 +36,21 @@ current evidence IDs. Counterexample checks must record observations, not just f
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | | | | | | | | |
 
+## Affected Tests
+
+One row per behavior and affected target, using the exact Behavior Review names. Discover targets from changed
+contracts, actual callers, existing tests/SQL mocks/fixtures, owning build definitions and repository-native dependency
+queries or CI selection. Unchanged consumers and tests remain in scope. Include the discovery command/source evidence;
+file location alone cannot justify excluding a target. Use a concrete source/manual check for documentation-only work.
+Reviewer must independently verify completeness and each exclusion, recording `Reviewer:` with the traced evidence.
+For excluded targets, record non-impact proof and `Not executed: reviewed exclusion` as execution evidence. A source
+review may use deferred with its planned command and Tester owner; final validation cannot defer runnable work.
+Results: pass, fail, blocked, deferred, excluded. Pass requires exact execution receipt; compilation is not execution.
+
+| Changed behavior / contract | Caller / existing tests | Test target / command | Discovery evidence | Result | Execution evidence | Reason / reviewer |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | |
+
 ## Findings
 
 For each finding record P0/P1/P2, exact location and introducing commit/hunk, changed behavior, reachable path, trigger,

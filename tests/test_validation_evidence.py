@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from review_evidence import candidate_fingerprint, delivery_evidence_fixture, validation_report_errors
+from review_evidence import candidate_fingerprint, delivery_evidence_fixture, review_report_errors, validation_report_errors
 
 
 class ValidationEvidence(unittest.TestCase):
@@ -68,6 +68,45 @@ class ValidationEvidence(unittest.TestCase):
             current = candidate_fingerprint(repository, base, [])
             self.assertTrue(validation_report_errors(report.replace(prior, current), review))
             self.assertEqual(validation_report_errors(report.replace(prior, current), review.replace(prior, current)), [])
+
+    def test_affected_targets_cannot_be_missing_deferred_or_silently_excluded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, review, report = delivery_evidence_fixture(Path(directory))
+            start = report.index("## Affected Tests")
+            end = report.index("## Release Follow-up", start)
+            self.assertTrue(validation_report_errors(report[:start] + report[end:], review))
+            review_start = review.index("## Affected Tests")
+            review_end = review.index("## Findings", review_start)
+            self.assertTrue(review_report_errors(review[:review_start] + review[review_end:], require_accepted=True))
+            inventory = report[start:end]
+            row = next(line for line in inventory.splitlines() if line.startswith("| Asset-only"))
+            for broken in (inventory.replace(row, ""), inventory.replace(row, row + "\n" + row),
+                           inventory.replace("| pass |", "| deferred |"),
+                           inventory.replace("| pass |", "| excluded |"),
+                           inventory.replace("asset.py caller search; test discovery", "Unknown"),
+                           inventory.replace("Reviewer:", "Implementer:"),
+                           inventory.replace("tests/assets.py:20; fixture command output", "Pending"),
+                           inventory.replace("| pass |", "| bogus |")):
+                with self.subTest(inventory=broken):
+                    self.assertTrue(validation_report_errors(report.replace(inventory, broken), review))
+            extra = row.replace("tests.assets.TestVersion", "tests.consumer.TestSQLArguments")
+            expanded_review = review.replace(row, row + "\n" + extra)
+            self.assertTrue(validation_report_errors(report, expanded_review))
+            expanded_report = report.replace(row, row + "\n" + extra)
+            self.assertEqual(validation_report_errors(expanded_report, expanded_review, require_solved=True), [])
+            excluded = extra.replace("| pass |", "| excluded |").replace(
+                "tests/assets.py:20; fixture command output", "Not executed: reviewed exclusion").replace(
+                "Reviewer: traced upload consumer and owning tests",
+                "Reviewer: consumer uses independent storage; traced source proves no changed contract")
+            self.assertEqual(validation_report_errors(report.replace(row, row + "\n" + excluded),
+                review.replace(row, row + "\n" + excluded), require_solved=True), [])
+            for result in ("fail", "blocked"):
+                partial = report.replace(inventory, inventory.replace("| pass |", f"| {result} |"))
+                self.assertEqual(validation_report_errors(partial, review), [])
+                self.assertTrue(validation_report_errors(partial, review, require_solved=True))
+                self.assertTrue(review_report_errors(review.replace(row, row.replace("| pass |", f"| {result} |"))))
+            deferred_review = review.replace(row, row.replace("| pass |", "| deferred |"))
+            self.assertEqual(validation_report_errors(report, deferred_review, require_solved=True), [])
 
     def test_untracked_candidate_content_is_bound_and_paths_are_constrained(self):
         with tempfile.TemporaryDirectory() as directory:

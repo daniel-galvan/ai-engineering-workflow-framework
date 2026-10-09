@@ -238,6 +238,10 @@ states through submission, completion, and recovery. Establish each finding's ca
 trigger, violated contract, and concrete impact. Bind acceptance to the exact final candidate and preserve validation
 limits; do not claim upload or release readiness from source review alone.
 
+Independently verify the Affected Tests inventory against callers, existing mocks/fixtures and build/CI dependencies.
+Challenge omitted targets and record `Reviewer:` with non-impact evidence for every exclusion; implementation package
+location alone is insufficient. Defer only execution to Tester, never test-scope discovery.
+
 For planning review, challenge proposed seams against authoritative outcomes and
 evidence. Keep feasible implementation, dependency, test, environment, and
 operational work in the plan or risk record. Do not promote a worker hypothesis

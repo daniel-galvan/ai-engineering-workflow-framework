@@ -20,6 +20,10 @@ REVIEW_COLUMNS = (
     "Counterexample check / result", "Regression evidence", "Result",
 )
 VALIDATION_COLUMNS = ("Check", "Result", "Environment / revision", "What it proves", "Remaining limits")
+AFFECTED_TEST_COLUMNS = (
+    "Changed behavior / contract", "Caller / existing tests", "Test target / command", "Discovery evidence",
+    "Result", "Execution evidence", "Reason / reviewer",
+)
 PLACEHOLDERS = {"", "unknown", "todo", "tbd", "pending", "not applicable", "none"}
 
 
@@ -68,6 +72,28 @@ def applicability_errors(text: str) -> list[str]:
     return errors
 
 
+def affected_test_errors(text: str, *, validation: bool = False, accepted: bool = False) -> list[str]:
+    heading = "## Affected Tests"
+    errors = _heading_errors(text, (heading,))
+    rows, row_errors = _rows(text, heading, AFFECTED_TEST_COLUMNS)
+    errors.extend(row_errors)
+    identities = [(row[0], row[2]) for row in rows]
+    if len(identities) != len(set(identities)):
+        errors.append("affected tests has duplicate behavior/target rows")
+    for index, row in enumerate(rows, 1):
+        if any(cell.strip("` ").lower() in PLACEHOLDERS for cell in row):
+            errors.append(f"affected test row {index} requires discovery, execution or deferral evidence and reviewer reason")
+        if row[4] not in {"pass", "fail", "blocked", "deferred", "excluded"}:
+            errors.append(f"affected test row {index} has invalid result")
+        if validation and row[4] == "deferred":
+            errors.append(f"affected test row {index} is runnable deferred work; return to Implementer/Reviewer/Tester")
+        if accepted and row[4] in {"fail", "blocked"}:
+            errors.append(f"accepted review has unresolved affected test row {index}")
+        if not re.search(r"\bReviewer:", row[6]):
+            errors.append(f"affected test row {index} requires explicit Reviewer verification of scope/exclusion")
+    return errors
+
+
 def review_report_errors(text: str, *, require_accepted: bool = False) -> list[str]:
     headings = (
         "# Code Review", "## Scope", "## Behavior Review", "## Findings", "## Validation",
@@ -83,6 +109,7 @@ def review_report_errors(text: str, *, require_accepted: bool = False) -> list[s
         errors.append("review requires one valid Disposition")
     if require_accepted and disposition != "accepted":
         errors.append("completed delivery requires accepted code review")
+    errors.extend(affected_test_errors(text, accepted=disposition == "accepted"))
     rows, row_errors = _rows(text, "## Behavior Review", REVIEW_COLUMNS)
     errors.extend(row_errors)
     for index, row in enumerate(rows, 1):
@@ -94,6 +121,9 @@ def review_report_errors(text: str, *, require_accepted: bool = False) -> list[s
                 errors.append(f"accepted review cannot contain {result} behavior row {index}")
             if any(cell.strip("`").lower() in PLACEHOLDERS for cell in row[:7]):
                 errors.append(f"accepted behavior row {index} requires concrete lifecycle and counterexample evidence")
+    affected, _ = _rows(text, "## Affected Tests", AFFECTED_TEST_COLUMNS)
+    if {row[0] for row in affected} != {row[0] for row in rows}:
+        errors.append("affected tests must cover every reviewed behavior using its exact name")
     validation, validation_errors = _rows(text, "## Validation", VALIDATION_COLUMNS)
     errors.extend(validation_errors)
     for index, row in enumerate(validation, 1):
@@ -192,6 +222,16 @@ def validation_report_errors(text: str, review_text: str, *, require_solved: boo
             errors.append(f"coverage row {index} requires a check, evidence, reason and owner/next action")
         if require_solved and row[2] in {"fail", "blocked"}:
             errors.append(f"solved delivery cannot contain unresolved coverage row {index}")
+    errors.extend(affected_test_errors(text, validation=True))
+    affected, _ = _rows(text, "## Affected Tests", AFFECTED_TEST_COLUMNS)
+    reviewed_tests, _ = _rows(review_text, "## Affected Tests", AFFECTED_TEST_COLUMNS)
+    def scope(row: list[str]) -> tuple[str, ...]:
+        return tuple(row[:4]) + ("excluded" if row[4] == "excluded" else "required", row[6])
+    if {scope(row) for row in affected} != {scope(row) for row in reviewed_tests}:
+        errors.append("validation affected tests must match independently reviewed targets, discovery and exclusions")
+    for index, row in enumerate(affected, 1):
+        if require_solved and row[4] in {"fail", "blocked"}:
+            errors.append(f"solved delivery has unresolved affected test row {index}")
     release = _section(text, "## Release Follow-up")
     if release != "No release checks required.":
         follow_up, follow_up_errors = _rows(text, "## Release Follow-up", RELEASE_COLUMNS)
@@ -239,6 +279,11 @@ REVIEW_FIXTURE = (
     "review payload omits assets | Published remains editable; version advances | "
     "Compared payload and UI lock: no review submission; pending would strand edit | "
     "tests/assets.py:20 version and published assertions | verified |\n"
+    "## Affected Tests\n| " + " | ".join(AFFECTED_TEST_COLUMNS) + " |\n| "
+    + " | ".join(["---"] * 7) + " |\n"
+    "| Asset-only edit preserves publication | api.upload; tests/assets.py | "
+    "python -m unittest tests.assets.TestVersion | asset.py caller search; test discovery | pass | "
+    "tests/assets.py:20; fixture command output | Reviewer: traced upload consumer and owning tests |\n"
     "## Findings\nNo confirmed candidate defects.\n## Validation\n| "
     + " | ".join(VALIDATION_COLUMNS) + " |\n| " + " | ".join(["---"] * 5) + " |\n"
     "| Source path trace | pass | candidate abc1234 plus worktree | no orphan pending state | Runtime deferred |\n"
@@ -267,6 +312,7 @@ def delivery_evidence_fixture(root: Path) -> tuple[Path, str, str]:
                   "| Asset-only edit preserves publication | python -m unittest tests.assets.TestVersion | pass | "
                   "tests/assets.py:20; fixture command output; local Git candidate | "
                   "No remaining local gap | Tester: local check complete |\n"
+                  "## Affected Tests\n" + _section(review, "## Affected Tests") + "\n"
                   "## Release Follow-up\nNo release checks required.\n")
     return repository, review, validation
 

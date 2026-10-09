@@ -178,6 +178,12 @@ class FeatureDeliveryContinuation(unittest.TestCase):
             (root / "validation_report.md").write_text("Unit tests passed.\n")
             self.assertTrue(finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True))
             (root / "validation_report.md").write_text(validation)
+            start = validation.index("## Affected Tests")
+            end = validation.index("## Release Follow-up", start)
+            (root / "validation_report.md").write_text(validation[:start] + validation[end:])
+            self.assertTrue(any("Affected Tests" in error for error in
+                                finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True)))
+            (root / "validation_report.md").write_text(validation)
             repository = Path(packet["repositories"][0]["Resolved path"])
             (repository / "asset.py").write_text("version = 3\n")
             self.assertTrue(any("candidate changed" in error for error in

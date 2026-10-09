@@ -152,6 +152,12 @@ evidence. Otherwise report that it appears unrelated to the diff and that baseli
 
 ---
 
+Reconcile the independently reviewed Affected Tests inventory with exact execution receipts. Run affected existing
+targets, including unchanged consumers of shared SQL or contracts; do not substitute builds or unrelated green targets.
+Return runnable omissions/failures through Implementer and Reviewer, then rerun on the accepted resulting candidate.
+After CI repairs, preserve failed receipts and refresh candidate identity, affected-test results, active status and
+next actions before delivery. A pending broader run or local pass cannot establish that remote CI passed.
+
 ## Execute Risk-Based Testing
 
 Prioritize testing based on:

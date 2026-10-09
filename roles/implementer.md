@@ -157,6 +157,10 @@ operations are not called when a fake could return unchanged data. Reuse existin
 Complete runnable in-scope test gaps without asking the user to identify tests or approve another slice. Receive
 missing coverage from Tester, repair it, and return the resulting candidate to Reviewer before Tester reruns checks.
 
+For shared SQL, argument or payload changes, search all callers and existing mock/fixture expectations before editing.
+Update every invalidated expectation with the source change and identify owning and dependent test targets using
+repository build/CI evidence. Supply discovery evidence for the Affected Tests review table; unchanged tests count.
+
 ## Implement Incrementally
 
 Each change should:

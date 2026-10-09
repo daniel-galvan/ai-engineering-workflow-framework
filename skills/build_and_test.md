@@ -34,6 +34,15 @@ Record the representative test paths, language and framework, owning target, and
 guidance and local tests when evidence conflicts. Do not add a test dependency when the repository already provides a
 supported framework.
 
+## Affected Test Scope
+
+Trace each changed contract through callers and existing tests, mocks and fixtures; use owning build definitions and
+repository-native dependency/CI discovery to identify affected targets. Update all expectations invalidated by shared
+SQL/argument/payload changes in the same implementation. An unchanged test directory can depend on changed code.
+Record discovery evidence and every target in the review/validation Affected Tests tables. Reviewer independently
+checks completeness and non-impact evidence for exclusions. Run the narrow proving target, then the discovered
+regression targets or repository-supported scoped suite. A build or a different passing target cannot substitute.
+
 ## Required Coverage and Evidence
 
 For approved remediation, the Implementer adds missing regression assertions and the Tester checks coverage against

@@ -79,6 +79,15 @@ non-applicability reason. Do not execute irrelevant technology checklists or rep
 - authorization, configuration/dependency failure, cleanup and recovery; and
 - modified operational commands: real route, prerequisites, fixture, repeatability and safe cleanup.
 
+## Affected test discovery
+
+Require the Affected Tests table in code_review.md and independently trace every changed contract to existing callers,
+SQL expectations, mocks, fixtures and owning test targets. Check repository-native dependency/CI discovery against the
+source trace; candidate file location and unchanged consumer files are not non-impact evidence. Record `Reviewer:`
+verification for required targets and each exclusion. Source review can defer execution to Tester with a concrete
+command and owner; validation must reconcile the same targets/discovery/exclusions and their execution evidence.
+Matching behavior inventories do not independently establish test-scope completeness.
+
 ## Finding validity
 
 Every correctness finding MUST establish this causal chain with exact source/test references:

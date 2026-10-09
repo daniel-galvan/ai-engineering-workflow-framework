@@ -43,6 +43,21 @@ engineering value.
 | --- | --- | --- | --- | --- | --- |
 | | | | | | |
 
+## Affected Tests
+
+One row per behavior and affected target, using the exact Behavior Review names. Discover targets from changed
+contracts, actual callers, existing tests/SQL mocks/fixtures, owning build definitions and repository-native dependency
+queries or CI selection. Unchanged consumers and tests remain in scope. Include the discovery command/source evidence;
+file location alone cannot justify excluding a target. Use a concrete source/manual check for documentation-only work.
+Reviewer must independently verify completeness and each exclusion, recording `Reviewer:` with the traced evidence.
+For excluded targets, record non-impact proof and `Not executed: reviewed exclusion` as execution evidence. A source
+review may use deferred with its planned command and Tester owner; final validation cannot defer runnable work.
+Results: pass, fail, blocked, deferred, excluded. Pass requires exact execution receipt; compilation is not execution.
+
+| Changed behavior / contract | Caller / existing tests | Test target / command | Discovery evidence | Result | Execution evidence | Reason / reviewer |
+| --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | |
+
 ## Release Follow-up
 
 List only concrete deployment checks: boundary/dependency, environment, owner, next action and proof beyond completed
@@ -62,4 +77,6 @@ python3 <framework-root>/scripts/review_evidence.py --validation <run-root>/vali
 ```
 
 Any source, test or fixture edit invalidates these receipts. Return to Implementer/Reviewer/Tester and recompute the
-candidate. Preserve historical reports as history; update active plan/test status and CURRENT.md from current proof.
+candidate. After CI repairs, record the failed build/test receipt and repaired expectations; refresh active status,
+commit/upload identity and next actions. A local rerun does not prove remote CI is green. Preserve historical reports
+as history; update active plan/test status and CURRENT.md from current proof.
