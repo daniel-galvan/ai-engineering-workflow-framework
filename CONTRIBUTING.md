@@ -10,8 +10,8 @@ last_updated: 2026-10-08
 
 Keep the framework provider-neutral, composable, evidence-driven, and small.
 
-For the architecture and building-block map, see the [README](README.md) and the detailed [Operating
-Guide](OPERATING_GUIDE.md). This file focuses only on how to extend the framework.
+For architecture and building blocks, see the [README](README.md); for run procedures, see the
+[Operating Guide](OPERATING_GUIDE.md). This file explains how to extend and validate the framework.
 
 ## Change rules
 
@@ -22,10 +22,9 @@ Guide](OPERATING_GUIDE.md). This file focuses only on how to extend the framewor
    playbook.
 5. Keep lifecycle, worker activation, fan-in, recovery, approval, handoff, and claims/evidence/decision/action rules in
    the shared contracts.
-6. Use the canonical run-template format. Update the template when the shared prompt contract changes; do not create
-   one-off prompt formats.
-7. Keep work records in the execution repository under `.thoughts/<WORK-ITEM-ID>/`; do not commit real work-item context
-   here.
+6. Keep canonical plugin-input templates in sync with the shared prompt contract; do not create one-off input formats.
+7. Keep work records in the main execution repository under `.thoughts/<WORK-ITEM-ID>/`; do not commit real
+   work-item context here.
 8. Record verified facts, hypotheses, unknowns, blockers, and limitations separately.
 9. Keep plugin packaging thin: launcher and metadata files may route into the framework, but must not redefine
    contracts, playbooks, templates, roles, skills, or provider policy.
@@ -75,16 +74,18 @@ Do not change framework document versions merely because the plugin cache-buster
 From the repository root, run:
 
 ```bash
-python3 scripts/validate_library.py
+python3 scripts/validate_library.py --self-test
 python3 scripts/run_preflight.py --self-test
 python3 scripts/prepare_run.py --self-test
 python3 scripts/finalize_work_record.py --self-test
-python3 scripts/validate_library.py --self-test
 python3 -m unittest discover -s tests -p 'test_*.py'
-python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
 ```
 
-The optional path performs terminal work-record identity and referential-integrity validation.
+To validate a terminal work record's identity and referential integrity, supply its path:
+
+```bash
+python3 scripts/validate_library.py /path/to/.thoughts/WORK-ITEM/work_record.md
+```
 
 The validator checks document semantic versions, Markdown prose width and table structure, TOML syntax, playbook
 maturity, template consistency, provider-adapter coverage, and Codex policy/TOML alignment.
@@ -99,10 +100,9 @@ output. Both `python3 scripts/validate_library.py` and `python3 -m scripts.valid
 
 ## Version policy
 
-Versioned framework documents and the plugin base version use one coordinated release number. The current baseline is
-`0.5.20`, dated `2026-10-08`; `0.6.0` is reserved for a planned later release. A release update changes every canonical
-document's `version` and `last_updated` together. Changes staged within a release retain its baseline until the next
-coordinated release; Git revisions and the plugin build suffix distinguish those snapshots.
+Versioned framework documents and the plugin base version use one coordinated release number. A release update changes
+every canonical document's `version` and `last_updated` together. Changes staged within a release retain its baseline
+until the next coordinated release; Git revisions and the plugin build suffix distinguish those snapshots.
 
 The plugin base version is the canonical library release number. The date in `frameworks/investigation.md` defines the
 canonical release update date. The validator rejects documents whose versions or dates differ from that baseline.

@@ -17,10 +17,9 @@ Remediation, Vulnerability Investigation, and Sentry Issue Remediation. It is ad
 normal run input. The role policy below is an initial hypothesis: an experimental baseline to validate against real
 runs, not a claim of optimal model selection.
 
-The experimental baseline is `codex-role-policy-gpt61-sol-luna-orchestrator-v20261001` and is shared across Technical
-Spike, Feature Delivery, Sentry, TechOps Issue Remediation, and Vulnerability Investigation. Profiles select which roles
-run; they do not change a role's model or reasoning effort. Record the baseline ID plus requested and resolved values in
-the work record, and revise it only from comparable evaluation evidence.
+The experimental baseline is identified by `baseline_id` in front matter and shared across these playbooks. Profiles
+select which roles run; they do not change a role's model or reasoning effort. Record the baseline ID plus requested and
+resolved values in the work record, and revise it only from comparable evaluation evidence.
 
 Codex policy labels map to configuration values as follows:
 

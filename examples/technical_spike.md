@@ -20,13 +20,16 @@ depends_on:
 A Jira Spike asks whether an existing service boundary can satisfy a proposed privacy constraint. The run has one
 question, a fixed evidence budget, named repositories and documents, and no authorization to change production source.
 
-## Run Format
+## Plugin Invocation
 
-Use the canonical [`technical_spike_run_prompt.md`](../templates/technical_spike_run_prompt.md) template:
+Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
+context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
+records belong in the resolved main checkout, while source operations use the active equivalent worktree.
 
 ```text
+Use $ai-engineering-workflows:run.
+Work item: <SPIKE-JIRA-ID-OR-URL>
 Playbook: playbooks/technical_spike.md
-Canonical run template: templates/technical_spike_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
 Requested outcome: technical_answer

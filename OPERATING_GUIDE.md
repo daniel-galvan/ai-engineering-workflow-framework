@@ -1,5 +1,4 @@
 ---
-
 title: AI-assisted Software Engineering Workflow Framework Operating Guide
 version: 0.5.20
 status: Pilot
@@ -55,10 +54,12 @@ They support provider adapters and audit records; users do not select them in a 
 
 ## Work records
 
-Every work item declares one execution repository. It is the checkout in which the session starts and the
-durable-artifact root; it is not a claim that the root cause is in that repository. For a cross-repository
-investigation, choose the most likely primary checkout, declare the other repositories as additional working
-directories, and preserve the same artifact root for that run.
+Every work item records one execution repository. Preparation resolves its main Git checkout as the durable artifact
+root; source inspection and revision evidence use the active equivalent worktree. The current repository is the default
+when the prompt omits the field. For a cross-repository investigation, choose the most likely primary checkout, declare
+other repositories as additional working directories, and preserve the same artifact root for that run. The artifact
+root does not imply root-cause ownership. See the
+[artifact-root contract](contracts/workflow_execution.md#durable-artifact-root).
 
 The work record and implementation plan are derived paths, not additional user choices:
 
@@ -118,7 +119,7 @@ from the selected playbook and prior work record; users do not enter them manual
 
 | Case | Use when | Fill in | Omit |
 | --- | --- | --- | --- |
-| New planning run | First investigation of a work item | Work item, profile, lifecycle `planning`, one execution repository, evidence, additional repositories, and constraints | Continuation and approval reference |
+| New planning run | First investigation of a work item | Work item, profile, lifecycle `planning`, an execution repository override if needed, evidence, additional repositories, and constraints | Continuation and approval reference |
 | Planning follow-up | New evidence or a resolved product decision changes planning | Prior work record/plan and the new evidence or decision | Approval reference unless also entering remediation |
 | Interrupted recovery | A required worker, fan-in, or runtime step did not finish | Prior work record/plan and the specific recovery reason | Worker lists; the Coordinator derives them |
 | Remediation re-entry | Planning passed and implementation is explicitly approved | Lifecycle `remediation`, prior work record/plan, and approval reference | New planning inputs unless they changed |

@@ -203,7 +203,7 @@ rules apply.
 
 ## Context Preservation and Classification
 
-All user-supplied context is workflow input. The Coordinator and prompt-preparation step must not discard material
+All user-supplied context is workflow input. The Coordinator must not discard material
 details because they do not fit the first obvious field or because they are not yet verified.
 
 Classify each material detail as one or more of:
@@ -221,9 +221,9 @@ unavailable; do not use it to erase information the user supplied. If inputs con
 identify the conflict, and resolve it through evidence or an explicit user decision. Never silently drop, rewrite, or
 replace user context.
 
-The prompt-preparation request may contain context before or after its formal fields. The preparation step must read all
-of it and fill the canonical run template. The user must not be required to copy the same information into a second
-section manually.
+The run request may contain context before or after its formal fields. The Coordinator must read all of it and map
+material inputs to the canonical run fields. The user must not be required to repeat that information in another
+section.
 
 Historical artifacts, including prior plans, work records, and worker conclusions, are supporting evidence by default.
 A current explicit user decision or constraint overrides a historical worker conclusion. A statement in a historical
@@ -506,7 +506,7 @@ Each run records:
 | `playbook`     | Canonical playbook identifier.                                                       |
 | `playbook_version` | Version from the selected playbook's front matter.                              |
 | `framework_commit` | Full framework Git commit and clean or dirty status.                             |
-| `plugin_package` | Installed plugin name/version, or `Not applicable` for manual runs.              |
+| `plugin_package` | Installed plugin name/version.              |
 | `provider_runtime_view` | Optional provider runtime configuration path, or `Not provided`.      |
 | `provider_configuration` | Resolved provider-definition source and status; must not be inherited or guessed. |
 | `prompt_template_revision` | Canonical prompt template path, version, and conformance result.          |

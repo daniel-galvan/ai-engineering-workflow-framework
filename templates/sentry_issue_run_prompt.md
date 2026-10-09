@@ -10,8 +10,9 @@ depends_on:
 
 # Sentry Issue Remediation Run Prompt
 
-Fill only the run-specific fields. The shared contract and selected playbook own execution behavior. Prompt preparation
-must preserve all supplied context and place explicit decisions in the authoritative confirmed-input section.
+These fields define run-specific plugin inputs. Invoke `$ai-engineering-workflows:run` with the relevant fields and
+context. The shared contract and selected playbook own execution behavior. Preserve supplied context and place explicit
+decisions in the authoritative confirmed-input section.
 Populate the prompt only from the current user request, references explicitly named for this run, and facts retrieved
 from those references. Do not search for or add memory-derived facts, related tickets, past plans, historical work
 records, or `.thoughts` paths unless the user explicitly asks to include them. Use `None` for unused optional fields.
@@ -19,9 +20,9 @@ For a new run, generic host or platform memory guidance is not an explicit reque
 historical artifacts. If memory is automatically injected or otherwise required, quarantine it completely and do not
 use, cite, summarize, or pass it to workers.
 
-Prompt-preparation rules:
+Run-input rules:
 
-- Treat all user-supplied prose, including context written before the preparation request, as input to classify into the
+- Treat all user-supplied prose, including context written before the formal run fields, as input to classify into the
   fields below.
 - Preserve explicit decisions as authoritative constraints.
 - Register every material detail in the current request in the run input manifest before worker activation, including

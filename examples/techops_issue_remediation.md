@@ -26,20 +26,23 @@ screenshots, a payload export, and an approximate timestamp, but the responsible
 | Item | Example |
 | --- | --- |
 | Work item | `<TECHOPS-JIRA-ID-OR-URL>` |
-| Execution repository | Local checkout where the workflow is started |
+| Execution repository | Resolved main checkout; defaults to the current repository |
 | Primary or additional code repositories | `<ABSOLUTE-PATHS-OR-UNKNOWN>` |
 | Reported behavior | `<DESCRIPTION>` |
 | Expected behavior | `<DESCRIPTION>` |
 | Artifacts | `<SCREENSHOT-LOG-JSON-OR-TRANSCRIPT-PATHS>` |
 | Related work | `<JIRA-PR-RUNBOOK-OR-NONE>` |
 
-## Run Format
+## Plugin Invocation
 
-Use the canonical [`techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md) template. Start with:
+Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
+context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
+records belong in the resolved main checkout, while source operations use the active equivalent worktree.
 
 ```text
+Use $ai-engineering-workflows:run.
+Work item: <TECHOPS-JIRA-ID-OR-URL>
 Playbook: playbooks/techops_issue_remediation.md
-Canonical run template: templates/techops_issue_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
 ```
@@ -49,25 +52,31 @@ or the impact and rollback are non-trivial.
 
 ## Run-Input Examples
 
-For a new planning run, fill the required inputs and omit `Continuation`:
+For a new planning run, invoke the plugin with the work item and omit `Continuation`:
 
 ```text
+Use $ai-engineering-workflows:run.
+Work item: <TECHOPS-JIRA-ID-OR-URL>
 Execution repository: /projects/primary-service
 Playbook: playbooks/techops_issue_remediation.md
-Canonical run template: templates/techops_issue_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
-Provider/runtime configuration: /projects/primary-service/.codex/agents/
 ```
 
-The current session is the Coordinator. If the likely fault later moves to a second checkout, list it as an additional
+The current session is the Coordinator. The execution repository override is optional; omit it to use the current
+repository. Provider definitions come from the installed plugin unless a verified local view is supplied. If the likely
+fault later moves to a second checkout, list it as an additional
 repository; retain the same work record for the run.
 
 For an approved remediation re-entry, keep the same artifact root and add only the continuation information that
 changed:
 
 ```text
+Use $ai-engineering-workflows:run.
+Work item: <TECHOPS-JIRA-ID-OR-URL>
+Playbook: playbooks/techops_issue_remediation.md
 Lifecycle: remediation
+Execution profile: <PREVIOUS-RUN-PROFILE>
 Continuation:
 - Run type: Remediation re-entry
 - Previous work record, plan, or handoff: /projects/primary-service/.thoughts/<WORK-ITEM-ID>/implementation_plan.md

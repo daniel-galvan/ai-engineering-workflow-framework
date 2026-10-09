@@ -15,8 +15,8 @@ workflow playbooks. It is a design reference; the playbook files remain the exec
 
 The table below is generated from playbook front matter. Update exercise claims in the playbook when new evidence
 changes them, then run `python3 scripts/playbook_catalog.py --write`. The library validator rejects stale generated
-content. Architecture and selection guidance below remain authored; the catalog's update date records edits to this
-document, not certification against every dependency revision. Use the
+content. Architecture and selection guidance below remain authored; the catalog's update date records the coordinated
+release date, not certification against every dependency revision. Use the
 [framework manifest](framework_manifest.json) for the current contract, integration, and provider-policy versions.
 
 Per-combination status is generated from the four `exercise_status_*` front-matter fields. `pending` means current

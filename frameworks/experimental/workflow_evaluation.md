@@ -40,10 +40,9 @@ time when the runtime exposes no separate value.
 Every evaluation MUST identify its evaluation run ID, framework commit, prompt template revision, playbook version, and
 role-policy baseline ID. It must also record requested and executed profile, lifecycle, provider/model configuration,
 and relevant repository revisions. Use the provider run ID when no independent experiment ID was supplied.
-Plugin-backed evaluations MUST record the installed plugin name and version; manual runs record
-`Not applicable`. The execution-repository `.codex/agents/` runtime view is optional, but the resolved provider
-configuration source and status are mandatory. Missing reproducibility identity makes Process quality and Efficiency no
-better than `partial`.
+Evaluations MUST record the installed plugin name and version. The execution-repository `.codex/agents/` runtime view
+is optional, but the resolved provider configuration source and status are mandatory. Missing reproducibility identity
+makes Process quality and Efficiency no better than `partial`.
 
 | Dimension | Question | Evidence |
 | --- | --- | --- |

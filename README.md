@@ -5,7 +5,7 @@
 > You are responsible for its use and resulting decisions or changes.
 
 Provider-neutral, evidence-driven playbooks, roles, skills, and execution contracts for AI-assisted software
-engineering.
+engineering. The Codex plugin bundles these components and provides the normal launch path.
 
 The framework turns a work item into a traceable workflow with investigation, design, implementation, independent
 review, validation, durable context, and an honest, human-readable handoff.
@@ -16,8 +16,7 @@ what value the run delivered to the work item—as separate fields.
 ## Core promise
 
 AI-assisted engineering where every material conclusion is traceable from [evidence](contracts/claims.md) to claim,
-decision, and action. Workers and provider adapters support that reasoning chain; they are not the product's central
-promise.
+decision, and action. Workers and provider adapters support that reasoning chain.
 
 > [!IMPORTANT]
 > **Current explicit user decisions take precedence over historical AI conclusions.** A current explicit user decision
@@ -59,14 +58,24 @@ enough evidence and validation.
 
 ## Quick start
 
-1. Complete [SETUP.md](SETUP.md) for the framework and execution repository; configure a provider runtime view when
-   needed.
-2. Choose the playbook that matches the primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md).
-3. Copy the matching canonical run template from [templates/](templates/) into a session started in the execution
-   repository. Fill only the required first-run and scenario fields; do not invent a second prompt format.
-4. Start with `planning` for read-only discovery, diagnosis, design, and an implementation plan. Create the plan only
-   after required fan-in passes.
-5. After explicit approval, run `remediation` through implementation, Code Review, validation, and handoff.
+1. Install or update the [Codex launcher plugin](SETUP.md#codex-launcher-plugin).
+2. Start a new Codex task in the repository being investigated. Durable records go to its main checkout; an active
+   equivalent worktree supplies source code and revision evidence.
+3. Explicitly invoke the launcher with the work item and relevant context:
+
+   ```text
+   Use $ai-engineering-workflows:run.
+   Work item: <stable ID or URL>
+   ```
+
+   Add the playbook, profile, lifecycle, goal, repositories, or constraints when needed. The launcher selects a playbook
+   when omitted and records its defaults; some scenarios require additional inputs, such as a Spike's primary question.
+   See [plugin execution examples](SETUP.md#plugin-execution-examples).
+4. Review the planning result. Answers, reports, assessments, and implementation plans depend on the selected goal.
+5. For a delivery playbook, approve the implementation plan explicitly before entering `remediation`.
+
+The installed plugin supplies the framework package, provider definitions, and run contracts. A local `.codex/agents/`
+view is optional.
 
 ## First-use view
 
@@ -75,10 +84,10 @@ The user-facing model is intentionally small:
 | Question | Answer |
 | --- | --- |
 | What playbook do I use? | Choose the most specialized playbook for the work item's primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md). |
-| What do I provide? | Work-item ID or URL, execution repository, lifecycle, profile, and relevant context. |
-| What happens first? | The run initializes or recovers the work record, activates the selected worker graph, and completes required fan-in before claiming success. |
+| What do I provide? | Work-item ID or URL, lifecycle, profile, and relevant context. The current repository is the default; specify another execution repository when needed. |
+| What happens first? | Package preflight and required input/source gates pass before preparation, worker activation, and fan-in. |
 | What may I approve? | Scope and design approvals are conditional. Implementation approval is required before remediation. Release approval is required for deployment, cutover, or another external operational write. See the [human control model](contracts/workflow_execution.md#human-control-model). |
-| Where do results go? | The execution repository's `.thoughts/<WORK-ITEM-ID>/work_record.md`; `implementation_plan.md` and its optional portable handoff are created after planning reaches `ready_for_implementation`. |
+| Where do results go? | The main execution repository's `.thoughts/<WORK-ITEM-ID>/` contains `work_record.md` and goal-specific artifacts. An implementation plan is created only at `ready_for_implementation`; its portable handoff is optional. |
 
 Users normally make only two execution choices:
 
@@ -99,69 +108,62 @@ portable-handoff rules, and non-normative execution guidance are linked from tha
 evidence-to-action reasoning model is [contracts/claims.md](contracts/claims.md);
 [OPERATING_GUIDE.md](OPERATING_GUIDE.md) explains normal operation.
 
-### Ask an AI agent to prepare a run prompt
-
-If you are unsure which fields to provide, use the request and example in
-[SETUP.md](SETUP.md#ask-codex-to-prepare-the-prompt) from a session started in the execution repository. The request
-explicitly supplies the absolute framework checkout path, execution repository, primary code repository when different,
-work-item ID or URL, selected playbook, and canonical template. It instructs the agent to fill the existing template,
-mark missing information as `Unknown`, and avoid executing or modifying the workflow.
-
-Review the generated prompt before using it. The user remains responsible for the selected playbook, scope, lifecycle,
-profile, permissions, and approvals.
-
 ## Architecture
 
 ### User-facing flow
 
 ```text
-Work item
-  -> choose playbook
-    -> fill canonical run template
-      -> planning
-        -> approve implementation plan
-          -> remediation
-            -> Code Review, validation, and handoff
+Work item + goal + context
+  -> explicitly invoke the plugin launcher
+    -> select playbook, profile, and lifecycle
+      -> planning: answer, report, assessment, or implementation plan
+        -> approved implementation plan + supported remediation lifecycle
+          -> implementation, Code Review, validation, and handoff
 ```
 
-### Execution flow
+Technical Spike ends in planning. A specification assessment also ends with its assessment rather than an
+implementation plan.
+
+### Codex plugin execution flow
 
 ```text
-Coordinator
-  -> worker graph
-    -> roles + skills + tools
-      -> provider adapter and model policy
-        -> evidence, artifacts, validation, and work record
+Installed plugin + explicit request
+  -> package preflight and required input/source gates
+    -> prepare repository paths, inputs, work record, and role bindings
+      -> Coordinator activates the selected worker graph
+        -> roles + skills + tools + provider model policy
+          -> fan-in, review, and validation
+            -> runtime closure and finalization
+              -> human-readable handoff and durable artifact receipts
 ```
 
-The execution flow is the framework's internal model. Users primarily interact with the user-facing flow and the
-canonical run template.
+The launcher routes into the provider-neutral framework; it does not redefine its roles, playbooks, or contracts.
+Source operations use the resolved source checkout. Durable records and receipts stay in the main execution repository.
 
-| Building block   | Purpose                                                                             |
-| ---------------- | ----------------------------------------------------------------------------------- |
-| Framework        | Shared investigation-first engineering method                                       |
-| Contract         | Common lifecycle, worker, claims, evidence, decisions, gates, and handoff semantics |
-| Strategy         | Coordination and parallelization approach                                           |
-| Role             | Reusable responsibility and reasoning boundary                                      |
-| Skill            | Reusable provider-neutral capability                                                |
-| Playbook         | Scenario-specific stages, dependencies, and outputs                                 |
-| Provider adapter | Mapping to Codex or another execution platform                                      |
-| Work record      | Durable facts, decisions, errors, evidence, and next steps                          |
+| Building block | Purpose |
+| --- | --- |
+| Plugin launcher | Explicit entry point, bundled package discovery, preflight, and execution routing |
+| Framework | Shared investigation-first engineering method |
+| Contract | Common lifecycle, worker, claims, evidence, decisions, gates, and handoff semantics |
+| Strategy | Coordination and parallelization approach |
+| Role | Reusable responsibility and reasoning boundary |
+| Skill | Reusable provider-neutral capability |
+| Playbook | Scenario-specific stages, dependencies, and outputs |
+| Provider adapter | Mapping to Codex or another execution platform |
+| Work record | Durable facts, decisions, errors, evidence, and next steps |
 
 ## Current playbooks
-
-The framework provides five playbooks: four delivery playbooks and the planning-only Technical Spike.
 
 ### Delivery playbooks
 
 These support read-only planning and approved remediation.
 
-| Playbook                                                                | Use for                                                                |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [Feature Delivery](playbooks/feature_delivery.md)                       | Jira features and improvements                                         |
-| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md)     | Support- and operations-reported Jira issues                           |
-| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md)       | Production issues backed by Sentry evidence                            |
-| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk                  |
+| Playbook | Use for |
+| --- | --- |
+| [Feature Delivery](playbooks/feature_delivery.md) | Jira features, improvements, and specification assessments |
+| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | Support- and operations-reported Jira issues |
+| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | Production issues backed by Sentry evidence |
+| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | Scanner findings, advisories, CVEs, and security risk |
 
 ### Investigation playbooks
 
@@ -175,10 +177,10 @@ when the existing stages, gates, and artifacts cannot express the scenario clean
 
 Use this reading path:
 
-1. [Setup](SETUP.md) — clone, configure, and start a run.
-2. [Operating Guide](OPERATING_GUIDE.md) — architecture, responsibilities, lifecycle, and usage rules.
+1. [Setup](SETUP.md) — install the plugin and start a run.
+2. [Operating Guide](OPERATING_GUIDE.md) — responsibilities, lifecycle, work records, and usage rules.
 3. [Playbook Catalog](PLAYBOOK_CATALOG.md) — choose a scenario and see its worker graph.
-4. [Templates](templates/) — start a run with the canonical prompt and create the durable work record.
+4. [Templates](templates/) — canonical plugin input schemas and durable artifact formats.
 5. [Examples](examples/) — follow a safe, generic scenario guide for each current playbook.
 6. [Contributing](CONTRIBUTING.md) — extend the framework without duplicating contracts, roles, skills, or provider
    behavior.
@@ -186,8 +188,8 @@ Use this reading path:
 ## Repository map
 
 ```text
-.agents/plugins/  Codex marketplace metadata
-.codex-plugin/    Codex plugin manifest
+.agents/plugins/ Codex marketplace metadata
+.codex-plugin/   Codex plugin manifest
 contracts/       shared execution and reasoning semantics
 examples/        safe, generic scenario guides
 frameworks/      reusable engineering method
@@ -195,17 +197,23 @@ frameworks/      reusable engineering method
 integrations/    external evidence and work-item sources
 playbooks/       scenario workflows
 providers/       platform adapters and agent definitions
+  codex/agents/  packaged Codex worker definitions
 roles/           reusable responsibilities
-scripts/         package preflight, run preparation, and deterministic framework validation
+scripts/         preflight, preparation, evidence collection, validation, and finalization
   validation/    domain modules for library, contract, playbook, provider, and finalization checks
-skills/          provider-neutral capabilities and the explicit Codex launcher
+skills/          provider-neutral capabilities
+  run/           explicit Codex plugin launcher
+    agents/      launcher display and invocation metadata
 strategies/      coordination approaches
 templates/       canonical prompts and durable work artifacts
-tests/           synthetic/redacted regression fixtures and unit tests
+tests/           regression unit tests
+  fixtures/      synthetic/redacted historical regression evidence
+framework_manifest.json  generated canonical version inventory
+PLAYBOOK_CATALOG.md      playbook selection, worker graphs, and generated exercise state
 ```
 
 The Codex plugin is a thin package over this repository; it does not duplicate framework behavior. See the
-[launcher setup](SETUP.md#optional-codex-launcher-plugin) for package layout, installation, and update requirements;
+[launcher setup](SETUP.md#codex-launcher-plugin) for package layout, installation, and update requirements;
 [`skills/run/SKILL.md`](skills/run/SKILL.md) for execution controls; and [providers/codex.md](providers/codex.md) plus
 [the model and effort policy](providers/codex/model_effort_policy.md) for provider behavior.
 
@@ -232,17 +240,11 @@ observe. See the [experimental evaluation guide](frameworks/experimental/workflo
 
 ## Versioning
 
-**The framework uses a coordinated release version, currently `0.5.20`.** Versioned documents and the plugin's base
-version share that release number. Canonical document dates record the release update date, currently `2026-10-08`.
-Git revisions and the plugin build suffix identify the exact snapshot used by a run. See the
-[contribution versioning policy](CONTRIBUTING.md#version-policy).
-
-[framework_manifest.json](framework_manifest.json) is the generated version inventory for the library, including the
-framework, execution contract, playbooks, provider policy baselines, and plugin package. Front matter remains the
-source of document versions; the plugin base version defines the library release. The validator enforces matching
-document versions and release dates. Matching versions do not establish cross-revision compatibility or successful
-live exercise. Regenerate the manifest with
-`python3 scripts/framework_manifest.py --write`; the framework validator rejects stale inventory.
+Versioned documents and the plugin base version share one coordinated release number. Canonical document dates record
+the release update date; Git revisions and the plugin build suffix identify the snapshot used by a run.
+[framework_manifest.json](framework_manifest.json) provides the current release and version inventory. See the
+[version policy](CONTRIBUTING.md#version-policy) for source metadata, regeneration, and validation rules. Matching
+versions do not establish cross-revision compatibility or successful live exercise.
 
 ## Status
 

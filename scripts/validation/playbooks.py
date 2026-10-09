@@ -674,8 +674,8 @@ def validate_scenario_readiness() -> None:
             fail(f"playbooks/vulnerability_investigation.md is missing {phrase}")
 
     sentry_playbook = (ROOT / "playbooks" / "sentry_issue_remediation.md").read_text()
-    if "Prompt-preparation rules:" not in (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text():
-        fail("templates/sentry_issue_run_prompt.md is missing prompt-preparation rules")
+    if "Run-input rules:" not in (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text():
+        fail("templates/sentry_issue_run_prompt.md is missing run-input rules")
     if "event_origin_repository: A" not in (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text():
         fail("templates/sentry_issue_run_prompt.md is missing topology extraction rules")
     for phrase in (

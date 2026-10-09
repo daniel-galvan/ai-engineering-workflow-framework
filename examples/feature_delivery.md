@@ -29,7 +29,7 @@ as automatic scope.
 | Item | Example |
 | --- | --- |
 | Work item | `<JIRA-TICKET-ID-OR-URL>` |
-| Execution repository | Local checkout where the run begins |
+| Execution repository | Resolved main checkout; defaults to the current repository |
 | Primary or additional code repositories | Affected repository checkouts |
 | Parent or ancestor context | `<JIRA-URLS-OR-UNKNOWN>` |
 | Related siblings or decisions | `<JIRA-URLS-OR-NONE>` |
@@ -37,14 +37,16 @@ as automatic scope.
 | Desired outcome | `<DESCRIPTION-OR-UNKNOWN>` |
 | Constraints and non-goals | `<DESCRIPTION-OR-NONE>` |
 
-## Run Format
+## Plugin Invocation
 
-Use the canonical [`feature_delivery_run_prompt.md`](../templates/feature_delivery_run_prompt.md) template. For a
-bounded feature, begin with:
+Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
+context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
+records belong in the resolved main checkout, while source operations use the active equivalent worktree.
 
 ```text
+Use $ai-engineering-workflows:run.
+Work item: <JIRA-TICKET-ID-OR-URL>
 Playbook: playbooks/feature_delivery.md
-Canonical run template: templates/feature_delivery_run_prompt.md
 Execution profile: standard
 Lifecycle: planning
 ```
@@ -101,6 +103,7 @@ Spike or treat the completed Spike as the new review target.
 The short run-specific request is:
 
 ```text
+Use $ai-engineering-workflows:run.
 Run Feature Delivery specification_assessment for <EPIC-ID>. Assess whether the Stories produced by the completed
 Spike cover the Epic's required behavior and are ready for implementation.
 ```

@@ -297,7 +297,7 @@ description: >-
 9. Execute the selected playbook. Default to `planning`; use `remediation` only when an implementation plan exists and
    the user has explicitly approved implementation. Treat an invocation that says start as a new run. Reuse current
    artifacts only when the user explicitly says continue or resume. Record the installed plugin
-   name/version in Run Identity; manual runs use `Not applicable`. Populate evaluation identity and telemetry only when
+   name/version in Run Identity. Populate evaluation identity and telemetry only when
    the request explicitly declares an evaluation or benchmark run.
    The current-run input manifest is authoritative for supplied decisions, context, and artifacts. If a Sentry issue ID
    or live runtime source is also supplied, use it as additive evidence unless the user explicitly selected live-only

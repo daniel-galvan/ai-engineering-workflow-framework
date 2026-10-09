@@ -38,7 +38,7 @@ last_updated: 2026-10-08
 | Field | Value |
 | --- | --- |
 | Run ID | |
-| Playbook / version | playbooks/sentry_issue_remediation.md / 0.5.2 |
+| Playbook / version | playbooks/sentry_issue_remediation.md / pending |
 | Framework commit / status | |
 | Plugin package / version | |
 | Requested profile | standard |
@@ -135,5 +135,5 @@ Artifacts:
 
 Execution: standard/planning; validation pending; workers incomplete; runtime not released;
 source or external changes none.
-Provenance: plugin pending; framework revision pending; playbook sentry_issue_remediation 0.5.1.
+Provenance: plugin pending; framework revision pending; playbook sentry_issue_remediation pending.
 ```

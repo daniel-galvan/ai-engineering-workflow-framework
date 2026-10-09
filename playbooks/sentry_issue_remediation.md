@@ -381,7 +381,7 @@ Initialize the run identity before the first worker. Populate evaluation identit
 and timing ledgers only when the request explicitly declares an evaluation or benchmark run.
 
 For a versioned evaluation run, the launcher preflight verifies the prompt's framework Git revision against the
-checkout containing this playbook before loading it. Manual runs perform the same check before reading this playbook.
+installed package containing this playbook before loading it.
 Stop with `framework_revision_mismatch` when HEAD differs or the framework worktree is dirty; regenerate the prompt
 from a clean revision instead of running against moving instructions. Record `preflight_elapsed_ms` and
 `worker_activation_attempts: 0` for this blocked path. A stale plugin path stops with

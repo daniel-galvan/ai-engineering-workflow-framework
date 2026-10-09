@@ -29,7 +29,7 @@ regression test, and validation plan.
 | Work item | `<STABLE-WORK-ITEM-ID-OR-URL>` |
 | Evidence source | `live_sentry`, `supplied_occurrence`, or `mixed` |
 | Sentry issue | `<SENTRY-ISSUE-ID-OR-URL-OR-NOT-PROVIDED>` |
-| Execution repository | Local checkout where the workflow starts and stores artifacts |
+| Execution repository | Resolved main checkout for durable artifacts |
 | Event-origin repository | `<REPORTING-REPOSITORY>` |
 | Candidate fault repository | `<REPOSITORY-OR-UNKNOWN>` |
 | Candidate component | `<COMPONENT-OR-UNKNOWN>` |
@@ -38,17 +38,17 @@ regression test, and validation plan.
 | Additional repositories and assets | Relevant local checkouts and evidence folders |
 | Supporting artifacts | Payload JSON, logs, screenshots, traces, or reproduction fixtures |
 
-## Run Format
+## Plugin Invocation
 
-Use the canonical [`templates/sentry_issue_run_prompt.md`](../templates/sentry_issue_run_prompt.md) template. Fill in
-the work item, evidence source, Sentry issue when applicable, repositories, topology, artifacts, profile, and lifecycle.
-Do not copy the playbook process into the prompt.
+Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
+context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
+records belong in the resolved main checkout, while source operations use the active equivalent worktree.
 
 For a normal first investigation, use:
 
 ```text
+Use $ai-engineering-workflows:run.
 Playbook: playbooks/sentry_issue_remediation.md
-Canonical run template: templates/sentry_issue_run_prompt.md
 Work item: <STABLE-WORK-ITEM-ID-OR-URL>
 Evidence source: live_sentry
 Sentry issue: <SENTRY-ISSUE-ID-OR-URL>
@@ -82,11 +82,13 @@ selected implementation plan or Clarification Brief and links them from the work
 ## Planning Follow-up and Remediation Re-entry
 
 Clarifying questions do not change the planning lifecycle. If implementation is approved, start or explicitly record a
-new remediation run using the same profile and work record, set `Lifecycle: remediation`, re-read the playbook and
-implementation plan, activate the required remediation workers, and complete fan-in before source changes. Do not
+new remediation run using the same profile and work record, invoke the plugin with `Lifecycle: remediation`, the
+implementation plan, and its approval reference. The Coordinator
+loads the playbook, activates the required remediation workers, and completes fan-in before source changes. Do not
 replace this re-entry with a generic `implement-plan` workflow.
 
-If the worker graph is interrupted before the selected profile completes, use the canonical run template with
+If the worker graph is interrupted before the selected profile completes, invoke the plugin again with the prior
+work-record path and
 `Interrupted profile recovery`. Reuse completed artifacts, activate the missing required workers, wait for fan-in, and
 report the recovered profile status before claiming diagnosis or fix design complete.
 

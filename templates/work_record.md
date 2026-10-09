@@ -117,7 +117,7 @@ Record relevant repository revisions and evidence eligibility; retain full check
 | Run ID | |
 | Playbook / version | Canonical playbook path / coordinated release version |
 | Framework commit / status | Full Git commit / Clean or Dirty |
-| Plugin package / version | Installed plugin name/version, or `Not applicable` for manual runs |
+| Plugin package / version | Installed plugin name/version |
 | Requested profile | `standard` / `deep` |
 | Executed profile | `standard` / `deep` / `None` |
 | Lifecycle | `planning` / `remediation` |
