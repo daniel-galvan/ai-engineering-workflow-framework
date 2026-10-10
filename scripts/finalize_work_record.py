@@ -1981,7 +1981,7 @@ def render_handoff(packet: dict[str, object]) -> str:
         f"- {_artifact_link(item, packet['finalization']['Durable artifact root'])}\n"
         for item in handoff["artifacts"]
     )
-    runtime = "not released"
+    runtime = "not released" if packet["runtime_closure"] else "closure unverified"
     if _runtime_closed(packet["runtime_closure"]):
         runtime = "released" if all(
             str(row.get("Runtime status", "")).lower() == "released" for row in packet["runtime_closure"]
@@ -4608,10 +4608,14 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     results = packet.get("worker_results", [])
     results = [row for row in results if isinstance(row, dict)] if isinstance(results, list) else []
     design = next((row for row in results if row.get("Worker") == "fix-design"), {})
-    fallback_summary = str(design.get("Unique contribution", "")).strip() or "No usable work summary was recorded."
+    fallback_summary = str(design.get("Unique contribution", "")).strip() or (
+        "No accepted worker result was recorded for this run."
+        if not any(row.get("Outcome") == "complete" for row in results)
+        else "Recorded worker findings are available; no consolidated work summary was recorded."
+    )
     summary = value("workflow_result", fallback_summary)
     if re.sub(r"[_-]+", " ", summary.lower()) in TECHOPS_STATE_RESULT_TOKENS:
-        summary = next(iter(items("established")), "No usable work summary was recorded.")
+        summary = next(iter(items("established")), fallback_summary)
     established = ["Provisional saved findings follow; failed finalization has not validated these claims."] + items("established")
     if not items("established"):
         for row in results:
@@ -4628,18 +4632,45 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
                                    + "; confidence: " + str(row.get("Confidence", "Unknown"))
                                    + "; uncertainty: " + str(row.get("Uncertainty", "Unknown")))
         for row in packet.get("actions", []) if isinstance(packet.get("actions"), list) else []:
-            if isinstance(row, dict) and isinstance(row.get("Action"), str):
+            if isinstance(row, dict) and isinstance(row.get("Action"), str) and row["Action"].strip():
                 established.append("Recorded proposed action (not authorization): " + row["Action"]
                                    + "; owner: " + str(row.get("Owner", "Unknown")))
     next_action = handoff.get("next_action", {})
     if isinstance(next_action, dict):
         action = "; ".join(f"{key}: {next_action[key]}" for key in ("owner", "action", "complete_when")
-                           if isinstance(next_action.get(key), str))
+                           if isinstance(next_action.get(key), str) and next_action[key].strip())
         if action:
             established.append("Recorded engineering next action (not implementation authorization): " + action)
     root = packet_path.parent
     artifacts = []
     saved_paths = []
+    try:
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        accepted = {row.get("Worker") for row in results if row.get("Outcome") == "complete"}
+        missing = []
+        for contract in bindings.get("worker_contracts", {}).values():
+            worker = contract.get("worker_id") or contract.get("worker")
+            if worker and worker not in accepted:
+                missing.append(worker)
+            if not worker:
+                continue
+            for field in ("output", "result"):
+                saved = Path(str(contract.get(field, "")))
+                if saved.is_file() and saved.resolve().parent == root.resolve():
+                    saved_paths.append(str(saved))
+                    if worker not in accepted:
+                        established.append("Unaccepted worker artifact retained for audit only: " + str(saved))
+        if missing:
+            established.append("Prepared workers without an accepted result: " + ", ".join(dict.fromkeys(missing)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    for saved in root.glob("*trace*.json"):
+        if saved.is_file() and saved.resolve().parent == root.resolve():
+            saved_paths.append(str(saved))
+    for saved in root.glob("*.rejected.*"):
+        if saved.is_file() and saved.resolve().parent == root.resolve():
+            saved_paths.append(str(saved))
+            established.append("Rejected artifact retained for audit only: " + str(saved))
     for row in packet.get("durable_artifacts", []) if isinstance(packet.get("durable_artifacts"), list) else []:
         if isinstance(row, dict) and isinstance(row.get("Path"), str):
             saved = Path(row["Path"])
@@ -4657,6 +4688,7 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     receipt = root / FINALIZATION_STATUS_FILENAME
     if receipt.is_file():
         artifacts.append(str(receipt))
+    artifacts.append(str(root / "handoff_failure.md"))
     explanations = []
     recorded = handoff.get("best_current_explanations", [])
     for item in recorded if isinstance(recorded, list) else []:
@@ -4665,7 +4697,7 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
         except ValueError:
             explanations.append("Malformed recorded explanation (unverified): " + str(item))
     plan = root / "implementation_plan.md"
-    plan_status = str(plan) if plan.is_file() else "Not created; inspect the recorded fix design and missing deliverables."
+    plan_status = str(plan) if plan.is_file() else "Not created; resolve the recorded workflow failure and missing deliverables."
     provenance = "; ".join(str(identity[key]) for key in
                            ("Plugin package / version", "Framework commit / status", "Playbook / version")
                            if identity.get(key)) or "Not available"
@@ -4683,7 +4715,7 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
                             "complete_when": "The packaged finalizer exits zero and emits its canonical validated handoff."},
             "artifacts": artifacts,
             "execution": "Terminal publication failed; reported work is provisional. Recorded engineering state: "
-                         + str(identity.get("Engineering state", "unknown"))
+                         + str(identity.get("Engineering state") or "unknown")
                          + ". Recorded execution (unverified): " + value("execution", "Not available"),
             "provenance": "Recorded, not verified: " + value("provenance", provenance),
         },
@@ -4781,7 +4813,12 @@ def main() -> int:
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
         if not args.pre_release and not args.check_packet:
-            print(failure_handoff(args.packet.resolve(), str(error)))
+            report = failure_handoff(args.packet.resolve(), str(error))
+            try:
+                (args.packet.parent / "handoff_failure.md").write_text(report + "\n")
+            except OSError as write_error:
+                print(json.dumps({"status": "blocked", "reason": "failure_handoff_save_failed:" + str(write_error)}))
+            print(report)
         return 2
     return 0
 

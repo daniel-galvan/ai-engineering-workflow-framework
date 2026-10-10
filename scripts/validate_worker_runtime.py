@@ -25,7 +25,7 @@ FORBIDDEN_CONTEXT_PATTERNS = (
     ("memory_path", re.compile(r"(?i)(?:^|[/\\])memory\.md(?:$|[/\\])")),
     ("memory_directory", re.compile(r"(?i)(?:^|[/\\])\.codex[/\\]memories(?:$|[/\\])")),
     ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries(?:$|[/\\])")),
-    ("archived_artifact", re.compile(r"(?i)(?:^|[/\\])\.thoughts[/\\][^/\\]+[/\\]runs[/\\]")),
+    ("archived_artifact", re.compile(r"(?i)(?:^|[\s/\\\"'])\.thoughts[/\\][^/\\]+[/\\]runs(?:$|[\s/\\\"'])")),
     ("memory_citation", re.compile(r"(?i)<oai-mem-citation>")),
 )
 
@@ -58,6 +58,17 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
     if not packet.get("model") or not packet.get("effort"):
         errors.append("provider_binding_incomplete")
     contract = packet.get("worker_contract")
+    if "run_id" in packet or "finalization_packet" in packet:
+        current_path = path.parent / "finalization_packet.json"
+        try:
+            current = json.loads(current_path.read_text())
+            if (not packet.get("run_id") or packet["run_id"] != current["identity"]["Run ID"]
+                    or packet.get("finalization_packet") != str(current_path.resolve())):
+                errors.append("worker_run_identity_mismatch")
+        except (OSError, ValueError, KeyError, TypeError):
+            errors.append("worker_run_identity_unavailable")
+    elif isinstance(contract, dict) and "run_id" in str(contract.get("result_instructions", "")):
+        errors.append("worker_run_identity_not_delivered")
     if isinstance(contract, dict) and "output" in contract:
         for field in ("output", "result", "implementation_plan"):
             if field in contract:
@@ -146,17 +157,40 @@ def activation_message(packet: dict, assignment: dict) -> str:
             + "\nTyped assignment:\n" + json.dumps(assignment, sort_keys=True))
 
 
-def transition_error(action: str, provider_status: str) -> str | None:
+def transition_error(action: str, provider_status: str, *, rejected_result: bool = False) -> str | None:
     status = provider_status.strip().lower()
     if action in DESTRUCTIVE_TRANSITIONS and status in ACTIVE_STATUSES:
         return f"unsafe_{action}_while_{status}"
     if action == "close" and status not in TERMINAL_STATUSES:
         return f"close_requires_terminal_status:{status or 'unknown'}"
-    if action == "replace" and status not in {"failed", "stopped", "interrupted", "cancelled"}:
+    if (action == "replace" and status not in {"failed", "stopped", "interrupted", "cancelled"}
+            and not (status == "completed" and rejected_result)):
         return f"replace_requires_failed_or_stopped_status:{status or 'unknown'}"
     if action == "fan_in" and status != "completed":
         return f"fan_in_requires_completed_status:{status or 'unknown'}"
     return None
+
+
+def rejected_result_errors(trace: dict, handle: str, dispatch: str) -> list[str]:
+    """A completed task can be replaced only with its independently rejected current result."""
+    if not isinstance(trace, dict):
+        return ["rejected_result_trace_invalid"]
+    observation = trace.get("status_observation", {})
+    if not isinstance(observation, dict) or not isinstance(trace.get("spawn"), dict):
+        return ["rejected_result_trace_invalid"]
+    errors = terminal_observation_errors([observation], [handle])
+    if (trace.get("spawn", {}).get("provider_handle") != handle
+            or trace.get("last_dispatch_at") != dispatch
+            or observation.get("Last dispatch at") != dispatch
+            or observation.get("Thread ID") != trace.get("thread_id")
+            or observation.get("Thread ID") != trace["spawn"].get("thread_id")):
+        errors.append("rejected_result_dispatch_mismatch")
+    audit = trace.get("audit", {})
+    actual = trace_errors(trace, require_freshness=True)
+    if (not any(error != "worker_fan_in_rejected" for error in actual)
+            or not isinstance(audit, dict) or audit.get("status") != "rejected" or audit.get("errors") != actual):
+        errors.append("rejected_result_audit_required")
+    return errors
 
 
 def terminal_observation_errors(observations: object, handles: list[str]) -> list[str]:
@@ -320,6 +354,8 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -
         error = transition_error(str(event["action"]), str(event.get("provider_status", "")))
         if error:
             errors.append(error)
+        if event.get("action") == "fan_in" and event.get("guard_result") == "blocked":
+            errors.append("worker_fan_in_rejected")
     failure = trace.get("analytical_failure", {})
     if isinstance(failure, dict) and failure.get("requested") and not failure.get("artifact_created"):
         if failure.get("evidence_artifact_required"):
@@ -419,6 +455,9 @@ def main() -> int:
     parser.add_argument("--expected-bundle-sha256")
     parser.add_argument("--transition", choices=("wait", "interrupt", "close", "replace", "fan_in"))
     parser.add_argument("--provider-status")
+    parser.add_argument("--rejected-trace", type=Path)
+    parser.add_argument("--provider-handle")
+    parser.add_argument("--last-dispatch-at")
     parser.add_argument("--trace", type=Path)
     parser.add_argument("--require-freshness", action="store_true")
     parser.add_argument("--assignment", type=Path)
@@ -440,6 +479,9 @@ def main() -> int:
         parser.error("activation, transition, and trace validation modes are mutually exclusive")
     if args.require_freshness and not args.trace:
         parser.error("--require-freshness requires --trace")
+    if any((args.rejected_trace, args.provider_handle, args.last_dispatch_at)) and (
+            args.transition != "replace" or not all((args.rejected_trace, args.provider_handle, args.last_dispatch_at))):
+        parser.error("rejected-result recovery requires replace, --rejected-trace, --provider-handle and --last-dispatch-at")
     if (args.assignment or args.activation_message) and not args.activation_packet_bundle:
         parser.error("--assignment and --activation-message require activation mode")
     if args.trace:
@@ -475,8 +517,23 @@ def main() -> int:
     elif args.transition or args.provider_status:
         if not args.transition or not args.provider_status:
             parser.error("--transition and --provider-status are required together")
-        error = transition_error(args.transition, args.provider_status)
-        errors = [error] if error else []
+        errors = []
+        if args.rejected_trace:
+            try:
+                trace = json.loads(args.rejected_trace.read_text())
+                errors = rejected_result_errors(trace,
+                                                args.provider_handle, args.last_dispatch_at)
+                current = json.loads((args.rejected_trace.parent / "finalization_packet.json").read_text())
+                if (not trace.get("run_id") or trace["run_id"] != current["identity"]["Run ID"]
+                        or any(pattern.search(str(args.rejected_trace.resolve()))
+                               for label, pattern in FORBIDDEN_CONTEXT_PATTERNS if label == "archived_artifact")):
+                    errors.append("rejected_result_current_run_required")
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                errors = [f"rejected_result_trace_invalid:{error}"]
+        error = transition_error(args.transition, args.provider_status,
+                                 rejected_result=bool(args.rejected_trace) and not errors)
+        if error:
+            errors.append(error)
     else:
         parser.error("choose --activation-packet-bundle, --transition, --trace, or --self-test")
     if errors:

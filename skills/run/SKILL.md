@@ -233,8 +233,11 @@ description: >-
    `activation_message` string directly as the spawn message. Never reconstruct, summarize or shorten the envelope.
    The guard serializes the complete envelope and assignment once and returns their SHA-256. When validating a saved
    outbound message, also pass `--activation-message <path>`; any difference is `activation_message_mismatch`.
-   The validated payload must be the exact value submitted to the provider; a bundle hash alone proves no delivery. When
-   spawn metadata does not expose `agent_role` or `agent_path`, this
+   The validated payload must be the exact value submitted to the provider; a bundle hash alone proves no delivery.
+   When writing a result envelope, use its prepared `run_id` verbatim. The envelope also supplies `finalization_packet`;
+   its identity is at `identity["Run ID"]`. Never search archived runs for missing assignment metadata. Return an
+   incomplete envelope to the Coordinator before doing analytical work.
+   When spawn metadata does not expose `agent_role` or `agent_path`, this
    exact envelope is the binding-delivery mechanism; missing metadata alone is not a reason to discard the worker.
    If delivery differs from the guarded payload, stop new dispatch, reconcile already-started workers, and record the
    activation failure. Do not convert that failure into a demand for a new investigation. Before ending, use the
@@ -294,12 +297,25 @@ description: >-
    local step. Before each worker fan-in, run `validate_worker_runtime.py --transition fan_in --provider-status
    completed` using observed current status. Export tool activity through `worker_runtime_evidence.py` with its parent
    session, start and ledger flags, plus `--worker-session <exact-child-session> --observation <fresh-status-json>`
-   `--agent <role> --trace <path>`. The observation uses runtime audit fields and `Binding evidence` with observed
-   role/path or the Coordinator's explicit envelope-delivery receipt. Do not infer delivery from a prepared bundle.
+   `--agent <role> --trace <path>`. The observation is a JSON object with the status fields listed above.
+   `Binding evidence` must be a JSON object, such as `{"activation_packet_delivered": true}` when the Coordinator
+   observed delivery of the exact guarded message, or `{"observed_agent_role": "<provider-returned-role>"}`.
+   A prose string is invalid. Do not infer delivery from a prepared bundle.
    The exporter checks parent/child identity, latest dispatch and fresh status and writes canonical `last_dispatch_at`,
    `tool_trace`, `spawn` and fan-in events. Run `--trace <path> --require-freshness` before accepting it; never write an
-   ad hoc exporter or repair dispatch timestamps. Save each trace as a direct child of the active artifact root. Keep
-   one `runtime_audits` row per
+   ad hoc exporter or repair dispatch timestamps. Save each trace as a direct child of the active artifact root.
+   Keep a rejected trace: the exporter writes its `audit.status: rejected`, exact errors and blocked fan-in receipt
+   before returning exit 2. Do not merge that result. Return the same typed inputs once for correction and require
+   current-run reverification. Before redispatch, copy narrative and result files to `<stem>.rejected.<extension>` in
+   the active root; preserve the rejected trace under its original path. These audit files are not worker inputs.
+   Export and audit only the corrected turn to a new trace path using its fresh dispatch observation. If clean isolation
+   requires a fresh worker, validate replacement with `--transition replace --provider-status completed`
+   `--rejected-trace <saved-trace> --provider-handle <observed-handle> --last-dispatch-at <latest-dispatch>`.
+   The trace must prove rejection of that handle's latest completed result. Completion alone does not authorize
+   replacement, and an active worker cannot be replaced. Use a new provider handle, retain the rejected artifacts,
+   and keep the same run identity and typed inputs. Allow one recovery attempt total per rejected stage, whether
+   correction or replacement; if it fails or isolation cannot be enforced, use the terminal failure route.
+   Keep one `runtime_audits` row per
    completed worker, including handoff, with `Worker`, the status observation fields above, `Trace path`, and `Trace
    retrieval`. On genuine trace unavailability use an empty path and `unavailable:<attempted route and concrete
    failure>`; also retain `context-unverified` in that worker result. Any correction invalidates the audit; reread and
@@ -569,6 +585,10 @@ description: >-
    worker active. Use these observations when reviewing delays; they are not token, cost or CPU measurements.
    Success and failure reports must contain only workflow content; omit unrelated skill tips, promotional banners,
    preambles and postscripts. A TechOps Workflow result is a plain-language work summary, never a readiness token.
+   Save the proposed final response and compare its bytes with the emitted canonical report before sending it.
+   Run `cmp -s <canonical-response-file> <proposed-response-file>` and require exit zero.
+   For failure, compare against `handoff_failure.md`; for success, use the emitted handoff block. A comparison failure
+   requires copying the canonical report again, without adding content before or after it.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; it is rendered from the finalized work record. Never compose a second summary or regenerate, shorten, or

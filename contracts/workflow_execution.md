@@ -298,7 +298,12 @@ The Coordinator MUST also reconcile the worker's activity with its assigned cont
 material that appears in an artifact, citation, claim, hypothesis, decision, or result envelope fails
 `context_conformance`; that result MUST NOT enter fan-in. Automatically injected or otherwise required memory is not
 evidence and remains quarantined; if it influences a worker result, fail `context_conformance`. Return a contaminated
-worker once with the same typed inputs and require removal or current-run reverification. If clean isolation cannot be
+worker once with the same typed inputs and require removal or current-run reverification. A provider-completed task
+with a rejected result is eligible for one replacement when clean isolation requires it: use the worker-runtime
+guard's `replace` mode with its saved rejected trace, observed handle and latest dispatch. Preserve the rejected
+evidence and run identity, and activate a fresh handle with the same guarded envelope and typed inputs. Completion
+alone never permits replacement; active tasks remain protected. Correction and replacement share one recovery
+attempt per rejected stage. If clean isolation cannot be
 enforced, preserve the partial result as contaminated evidence, record the control failure, and stop at an incomplete
 outcome. Worker self-attestation alone does not pass this gate.
 

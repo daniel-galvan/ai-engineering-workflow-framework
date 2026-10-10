@@ -382,7 +382,6 @@ def _initial_packet(
     recorded_at = str(manifest.get("run_budget", {}).get("started_at", ""))
     if not recorded_at:
         recorded_at = str(manifest.get("prepared_at") or datetime.now(UTC).isoformat().replace("+00:00", "Z"))
-    run_stamp = re.sub(r"[^0-9A-Za-z]", "", recorded_at)
     packet["work_item"]["ID"] = work_item
     packet["work_item"]["Last Updated"] = recorded_at
     packet["inputs"] = list(input_manifest["inputs"])
@@ -409,7 +408,7 @@ def _initial_packet(
             "Feature implementation" if workflow_objective == "feature_implementation" else "Implementation planning"
         )
     packet["identity"].update({
-        "Run ID": f"{work_item}-{run_stamp}",
+        "Run ID": manifest["run_id"],
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
         "Plugin package / version": f"{plugin['name']} / {plugin['version']}",
         "Provider/runtime configuration": str(runtime_agents) if runtime_agents else "Not provided",
@@ -516,6 +515,8 @@ def _write_activation_packets(
             "schema_version": 1,
             "required_prefix": "Coordinator initialization: complete",
             "agent": agent,
+            "run_id": manifest["run_id"],
+            "finalization_packet": str(artifact_root / "finalization_packet.json"),
             "definition": binding["definition"],
             "definition_sha256": binding["definition_sha256"],
             "model": binding["model"],
@@ -931,10 +932,15 @@ def prepare_run(
             if previous.get("run_started_at"):
                 manifest["runtime_evidence"]["run_started_at"] = previous["run_started_at"]
     manifest["worker_runtime_guard"] = str(WORKER_RUNTIME_GUARD)
+    packet_path = artifact_root / "finalization_packet.json"
+    if continuation and not prior and packet_path.is_file():
+        manifest["run_id"] = json.loads(packet_path.read_text())["identity"]["Run ID"]
+    else:
+        started_at = str(manifest.get("run_budget", {}).get("started_at") or manifest["prepared_at"])
+        manifest["run_id"] = work_item + "-" + re.sub(r"[^0-9A-Za-z]", "", started_at)
     manifest["activation_packet_bundle"] = _write_activation_packets(artifact_root, manifest)
     manifest_path = artifact_root / "role_bindings.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    packet_path = artifact_root / "finalization_packet.json"
     if prior or (not continuation and not packet_path.exists()):
         packet = _initial_packet(
             artifact_root, work_item, playbook, workflow_objective, repository_row,

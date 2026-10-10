@@ -128,7 +128,7 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
             raise ValueError("worker_trace_session_mismatch")
         for line in stream:
             row = json.loads(line)
-            if timestamp(row["timestamp"]) < timestamp(dispatches[0]["Last dispatch at"]):
+            if timestamp(row["timestamp"]) < timestamp(dispatches[-1]["Last dispatch at"]):
                 continue
             if timestamp(row["timestamp"]) > timestamp(observation["Observed at"]):
                 continue
@@ -138,7 +138,7 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
                 tool_trace.append(payload)
     binding = observation.get("Binding evidence", {})
     if not isinstance(binding, dict):
-        raise ValueError("worker_trace_binding_evidence_invalid")
+        raise ValueError("worker_trace_binding_evidence_invalid: expected JSON object, received " + type(binding).__name__)
     result = {"schema_version": 1, "worker": agent, "thread_id": thread,
               "last_dispatch_at": dispatches[-1]["Last dispatch at"],
               "spawn": dict(binding, agent=agent, provider_handle=handle, thread_id=thread),
@@ -147,7 +147,9 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
               "trace_retrieval": str(source.resolve()), "status_observation": observation}
     errors = trace_errors(result, require_freshness=True)
     if errors:
-        raise ValueError(";".join(errors))
+        result["events"][0]["guard_result"] = "blocked"
+        errors = trace_errors(result, require_freshness=True)
+    result["audit"] = {"status": "rejected" if errors else "passed", "errors": errors}
     return result
 
 
@@ -204,8 +206,19 @@ def main() -> int:
                 raise ValueError("worker_trace_outside_current_run")
             trace = export_worker_trace(result, args.worker_session, args.agent,
                                         json.loads(args.observation.read_text()))
+            packet_path = args.trace.parent / "finalization_packet.json"
+            if packet_path.is_file():
+                trace["run_id"] = json.loads(packet_path.read_text())["identity"]["Run ID"]
+            if args.trace.is_file():
+                saved = json.loads(args.trace.read_text())
+                if saved.get("audit", {}).get("status") == "rejected" and saved != trace:
+                    raise ValueError("worker_trace_rejected_evidence_requires_new_path")
             args.trace.write_text(json.dumps(trace, indent=2) + "\n")
         args.ledger.write_text(json.dumps(result, indent=2) + "\n")
+        if args.trace and trace["audit"]["errors"]:
+            print(json.dumps({"status": "blocked", "errors": trace["audit"]["errors"],
+                              "trace": str(args.trace), "ledger": str(args.ledger)}))
+            return 2
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}))
         return 2

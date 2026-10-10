@@ -159,6 +159,8 @@ class TechOpsCorrections(unittest.TestCase):
             self.assertIn("unverified", text)
             self.assertEqual(record.read_text(), "prepared skeleton\n")
             self.assertEqual(packet_path.read_bytes(), before)
+            self.assertEqual((packet_path.parent / "handoff_failure.md").read_text().strip(),
+                             text[text.index("Workflow-framework validation: failed"):].strip())
             for flag in ("--check-packet", "--pre-release"):
                 with patch.object(sys, "argv", arguments + [flag]), patch.object(finalizer, "finalize", side_effect=ValueError("failure")), redirect_stdout(io.StringIO()) as feedback:
                     self.assertEqual(finalizer.main(), 2)
@@ -169,7 +171,7 @@ class TechOpsCorrections(unittest.TestCase):
             self.assertIn("Provisional work summary: The update path", failed_summary)
             self.assertNotIn("Provisional work summary: Ready for implementation", failed_summary)
             packet_path.write_text("[]")
-            self.assertIn("No usable work summary", finalizer.failure_handoff(packet_path, "invalid packet"))
+            self.assertIn("No accepted worker result", finalizer.failure_handoff(packet_path, "invalid packet"))
             packet["handoff"]["artifacts"].append("invalid\0path")
             packet_path.write_text(json.dumps(packet))
             self.assertIn("Unrenderable recorded artifact", finalizer.failure_handoff(packet_path, "invalid artifact"))
