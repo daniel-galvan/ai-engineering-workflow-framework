@@ -170,6 +170,26 @@ description: >-
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
    sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
+   On every follow-up in a selected playbook, read its current packet and saved decisions before choosing an action.
+   A request to implement an existing plan, including after a terminal planning handoff, enters the re-entry path
+   above; it must not silently invoke a generic single-agent implementation skill. Selecting the playbook requests its
+   mandatory delegated roles; the user need not request each subagent separately. If runtime instructions genuinely
+   prevent the graph, report `remediation_not_activated` and use the canonical failure handoff before any source edit.
+   Status answers must distinguish an active conformant playbook run from merely using a framework-generated plan.
+   Preserve terminal history, and update the current identity, plan progress and decisions as continuation proceeds.
+   Do not report completed delivery while the current packet still says planning or required reports are missing.
+   Feature Delivery re-entry validates the plan's applicability, design justification and complete-solution sections
+   before changing artifacts. Review each added mechanism against the existing flow; a later question or agent
+   recommendation does not approve a scope change or prove a simpler design satisfies the accepted criteria.
+   Prepared delivery envelopes give Implementer the `before_source_change_guard`. Before each implementation slice,
+   record the delivery graph in packet `workers`: implement/review/validate have distinct observed provider handles
+   in `Assigned inputs` as `Provider handle <handle>`, correct roles, dependencies and active/awaiting states; handoff
+   is registered awaiting dependency. Set the matching activated profile and `in_progress` state/profile status.
+   Run `validate_worker_runtime.py --before-source-change <packet> --implementer-handle <observed-handle>`
+   `--provider-status <fresh-observed-status>` and require exit zero. The approved plan hash must still match re-entry.
+   An approved plan amendment requires its explicit approval reference and exact hash to be reconciled before retry;
+   do not refresh a hash to hide an unapproved design change. Pre-existing edits remain an unreviewed candidate;
+   recording the graph later cannot certify that earlier edits followed the activation barrier.
    Technical Spike is budget-gated: always pass the captured
    current-turn RFC 3339 start as `--started-at` and the resolved playbook/default or override as `--timebox-minutes`; a
    missing captured start stops before artifact creation or worker activation. Use `run_budget.json` as the terminal

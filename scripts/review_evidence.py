@@ -15,6 +15,14 @@ PLAN_COLUMNS = (
     "Behavior", "Authority / condition", "Applicability evidence", "Counterexample check / result",
     "Disposition", "Planned action / exclusion",
 )
+DESIGN_COLUMNS = (
+    "Change / mechanism", "Required outcome", "Existing handling / evidence",
+    "Smallest alternative / check", "Selected change / reason", "Additional cost",
+)
+SOLUTION_COLUMNS = (
+    "Component / boundary", "Required outcome", "Status", "Evidence / limitation",
+    "Owner / next action", "Completion effect",
+)
 REVIEW_COLUMNS = (
     "Behavior", "Applicability evidence", "Caller / producer", "Consumer / contract", "Lifecycle / invariant",
     "Counterexample check / result", "Regression evidence", "Result",
@@ -69,6 +77,27 @@ def applicability_errors(text: str) -> list[str]:
             errors.append(f"ready plan cannot contain unverified applicability row {index}")
         if any(row[column].strip("`").lower() in PLACEHOLDERS for column in (0, 1, 2, 3, 5)):
             errors.append(f"applicability row {index} requires authority, evidence, observed check and consequence")
+    errors.extend(plan_design_errors(text))
+    return errors
+
+
+def plan_design_errors(text: str, *, require_complete: bool = False) -> list[str]:
+    """Check recorded design choices and dependencies; independent review establishes their truth."""
+    errors = _heading_errors(text, ("# Design Justification", "# Complete Solution"))
+    for heading, columns in (("# Design Justification", DESIGN_COLUMNS), ("# Complete Solution", SOLUTION_COLUMNS)):
+        rows, row_errors = _rows(text, heading, columns)
+        errors.extend(row_errors)
+        for index, row in enumerate(rows, 1):
+            evidence_cells = row if heading == "# Design Justification" else [row[i] for i in (0, 1, 3, 4)]
+            if any(cell.strip("`").lower() in PLACEHOLDERS for cell in evidence_cells):
+                errors.append(f"{heading} row {index} requires concrete evidence, alternative and disposition")
+            if heading == "# Complete Solution":
+                if row[2] not in {"verified", "planned", "assumed", "unverified", "not_applicable"}:
+                    errors.append(f"complete solution row {index} has invalid status")
+                if row[5] not in {"required_for_completion", "release_only", "follow_up", "none"}:
+                    errors.append(f"complete solution row {index} has invalid completion effect")
+                if require_complete and row[5] == "required_for_completion" and row[2] != "verified":
+                    errors.append(f"complete solution required outcome remains {row[2]} in row {index}")
     return errors
 
 
@@ -91,6 +120,17 @@ def affected_test_errors(text: str, *, validation: bool = False, accepted: bool 
             errors.append(f"accepted review has unresolved affected test row {index}")
         if not re.search(r"\bReviewer:", row[6]):
             errors.append(f"affected test row {index} requires explicit Reviewer verification of scope/exclusion")
+    return errors
+
+
+def plan_review_coverage_errors(plan_text: str, review_text: str) -> list[str]:
+    planned, errors = _rows(plan_text, "# Behavior Applicability", PLAN_COLUMNS)
+    reviewed, review_errors = _rows(review_text, "## Behavior Review", REVIEW_COLUMNS)
+    errors.extend(review_errors)
+    covered = {row[0] for row in reviewed}
+    missing = {row[0] for row in planned if row[4] in {"required", "conditional"}} - covered
+    if missing:
+        errors.append("review omits required plan behaviors: " + ", ".join(sorted(missing)))
     return errors
 
 
@@ -268,8 +308,17 @@ def completed_review_errors(
 PLAN_FIXTURE = (
     "# Behavior Applicability\n"
     "| " + " | ".join(PLAN_COLUMNS) + " |\n| " + " | ".join(["---"] * 6) + " |\n"
-    "| Advance asset version | ITEM-1 current asset requirement | repo/assets.py:10 | "
+    "| Asset-only edit preserves publication | ITEM-1 current asset requirement | repo/assets.py:10 | "
     "Compared unchanged upload consumer; version must change | required | Update version atomically |\n"
+    "# Design Justification\n| " + " | ".join(DESIGN_COLUMNS) + " |\n| "
+    + " | ".join(["---"] * 6) + " |\n"
+    "| Existing version update | ITEM-1 asset requirement | Current upload leaves version unchanged | "
+    "Checked existing timestamp; consumer requires asset version | Update existing version; no new state | "
+    "One existing write; no migration or external contract change |\n"
+    "# Complete Solution\n| " + " | ".join(SOLUTION_COLUMNS) + " |\n| "
+    + " | ".join(["---"] * 6) + " |\n"
+    "| Asset consumer | Observe changed version | verified | Consumer source and focused check inspected | "
+    "Implementer retains existing contract | required_for_completion |\n"
 )
 REVIEW_FIXTURE = (
     "# Code Review\n## Scope\nRepo candidate HEAD abc1234 / base def5678, worktree fingerprint sha256:example.\n"

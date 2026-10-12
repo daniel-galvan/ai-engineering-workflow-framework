@@ -943,6 +943,13 @@ Coordinator initialization and MUST NOT repeat package preflight or run preparat
 
 ## Delivery Activation and Completion Barrier
 
+Selection of a worker-based playbook requests its mandatory delegated graph across follow-up turns, including after
+a terminal planning handoff. An implementation approval routes to recorded remediation re-entry; it does not replace
+the graph with a generic implementation skill. Resolve an actual runtime/instruction conflict before source edits.
+Report plan provenance separately from current playbook execution. Preserve prior terminal records as history and
+keep the current lifecycle, approved decisions and delivery evidence aligned; never reuse a planning receipt as proof
+of completed remediation.
+
 Implementation approval is necessary but not sufficient to start remediation. Before any source, configuration,
 dependency, or infrastructure change, the current remediation run MUST record a Delivery Activation Barrier containing:
 
@@ -957,6 +964,11 @@ dependency, or infrastructure change, the current remediation run MUST record a 
 The graph may execute sequentially. A downstream worker may be recorded as `awaiting_dependency`, but it must not be
 omitted from the current run's worker execution record. If the required graph or active Implementer cannot be created,
 stop before source changes with `profile_status: blocked` and reason `remediation_not_activated`.
+Feature Delivery prepares an exact approved-plan hash and a before-source-change worker-runtime guard. Invoke that
+guard before each implementation slice with current provider-observed Implementer status and handle. It validates
+recorded re-entry, plan bytes, matching active profile and distinct delivery handles. A changed plan requires its
+approval and current evidence to be reconciled; changing the hash alone is not approval. These are structural checks,
+not proof of source correctness or an interception of arbitrary edits outside the selected workflow.
 
 The Coordinator may inspect files to coordinate work and maintain durable artifacts, but it MUST NOT implement, review,
 or validate source changes. A source change made before the barrier is a workflow violation and invalidates any claim

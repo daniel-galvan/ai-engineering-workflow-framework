@@ -157,6 +157,60 @@ def activation_message(packet: dict, assignment: dict) -> str:
             + "\nTyped assignment:\n" + json.dumps(assignment, sort_keys=True))
 
 
+def delivery_start_errors(path: Path, implementer_handle: str, provider_status: str) -> list[str]:
+    """Check the current approved plan and independent graph before an Implementer edits."""
+    try:
+        from review_evidence import applicability_errors
+    except ModuleNotFoundError:
+        from scripts.review_evidence import applicability_errors
+    try:
+        packet = json.loads(path.read_text())
+        identity = packet["identity"]
+        if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem != "feature_delivery"
+                or identity.get("Lifecycle") != "remediation"):
+            return ["feature_implementation_requires_remediation_reentry"]
+        if (identity.get("Requested profile") not in {"standard", "deep"}
+                or identity.get("Activated profile") != identity["Requested profile"]
+                or identity.get("Profile status") != "in_progress" or identity.get("State") != "in_progress"):
+            return ["remediation_not_activated:expected matching active profile and in_progress state"]
+        reentry = packet.get("reentry", {})
+        plan = path.parent / "implementation_plan.md"
+        if (not reentry.get("Prior run ID") or reentry.get("Prior run ID") == identity.get("Run ID")
+                or not str(reentry.get("Approval reference", "")).strip()
+                or reentry.get("Approved plan") != str(plan.resolve())
+                or reentry.get("Approved plan SHA256") != hashlib.sha256(plan.read_bytes()).hexdigest()):
+            return ["approved_plan_changed_or_reentry_incomplete:record approval for the exact current plan"]
+        errors = applicability_errors(plan.read_text())
+        if provider_status not in {"running", "in_progress"}:
+            errors.append("active_implementer_required:expected running or in_progress; received " + provider_status)
+        roles = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
+        handles = []
+        for worker, role in roles.items():
+            rows = [row for row in packet.get("workers", []) if row.get("Worker") == worker]
+            if len(rows) != 1 or str(rows[0].get("Role", "")).lower() != role:
+                errors.append("delivery_worker_registration_required:" + worker)
+                continue
+            row = rows[0]
+            expected = {"in_progress", "running"} if worker == "implement" else {"awaiting_dependency", "in_progress", "running"}
+            if row.get("Outcome") not in expected or not str(row.get("Depends on", "")).strip():
+                errors.append("delivery_worker_activation_required:" + worker)
+            if worker != "handoff":
+                match = re.search(r"Provider handle[: ]+(/root/[a-z0-9_]+(?:/[a-z0-9_]+)*|"
+                                  r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})(?=\s|;|$)",
+                                  str(row.get("Assigned inputs", "")))
+                if not match:
+                    errors.append("delivery_worker_provider_handle_required:" + worker)
+                else:
+                    handles.append(match[1])
+                    if worker == "implement" and match[1] != implementer_handle:
+                        errors.append("implementer_handle_mismatch")
+        if len(handles) != len(set(handles)):
+            errors.append("independent_delivery_handles_required")
+        return errors
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        return ["delivery_activation_invalid:" + str(error)]
+
+
 def transition_error(action: str, provider_status: str, *, rejected_result: bool = False) -> str | None:
     status = provider_status.strip().lower()
     if action in DESTRUCTIVE_TRANSITIONS and status in ACTIVE_STATUSES:
@@ -455,6 +509,8 @@ def main() -> int:
     parser.add_argument("--expected-bundle-sha256")
     parser.add_argument("--transition", choices=("wait", "interrupt", "close", "replace", "fan_in"))
     parser.add_argument("--provider-status")
+    parser.add_argument("--before-source-change", type=Path)
+    parser.add_argument("--implementer-handle")
     parser.add_argument("--rejected-trace", type=Path)
     parser.add_argument("--provider-handle")
     parser.add_argument("--last-dispatch-at")
@@ -472,11 +528,14 @@ def main() -> int:
         bool(value) for value in (
             args.trace,
             args.activation_packet_bundle or args.expected_agent or args.expected_bundle_sha256,
-            args.transition or args.provider_status,
+            args.transition or (args.provider_status and not args.before_source_change),
+            args.before_source_change,
         )
     )
     if selected_modes > 1:
-        parser.error("activation, transition, and trace validation modes are mutually exclusive")
+        parser.error("activation, transition, trace and before-source-change modes are mutually exclusive")
+    if args.implementer_handle and not args.before_source_change:
+        parser.error("--implementer-handle requires --before-source-change")
     if args.require_freshness and not args.trace:
         parser.error("--require-freshness requires --trace")
     if any((args.rejected_trace, args.provider_handle, args.last_dispatch_at)) and (
@@ -484,7 +543,11 @@ def main() -> int:
         parser.error("rejected-result recovery requires replace, --rejected-trace, --provider-handle and --last-dispatch-at")
     if (args.assignment or args.activation_message) and not args.activation_packet_bundle:
         parser.error("--assignment and --activation-message require activation mode")
-    if args.trace:
+    if args.before_source_change:
+        if not args.implementer_handle or not args.provider_status:
+            parser.error("--before-source-change requires --implementer-handle and --provider-status")
+        errors = delivery_start_errors(args.before_source_change.resolve(), args.implementer_handle, args.provider_status)
+    elif args.trace:
         try:
             errors = trace_errors(json.loads(args.trace.read_text()), require_freshness=args.require_freshness)
         except (OSError, ValueError, TypeError) as error:

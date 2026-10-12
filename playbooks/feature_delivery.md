@@ -390,6 +390,13 @@ deep-profile alternative.
 Before source changes, activate and record `implement`, `review`, and `validate` with their declared dependencies; run
 the final `handoff` after delivery fan-in. The Coordinator must not perform those roles itself. If this graph is
 unavailable, stop as `remediation_not_activated`; do not edit source.
+Run the prepared worker-runtime guard in `--before-source-change` mode at each implementation slice. It checks the
+current remediation identity, matching activated profile, exact approved plan hash and independent delivery handles.
+The guard is an explicit worker obligation; it does not intercept arbitrary editor operations outside the playbook.
+Before accepting a ready plan, require its Design Justification and Complete Solution evidence tables. Compare each
+new mechanism against existing handling and the smallest alternative. Keep scenario exposure/disposition in Behavior
+Applicability; a schema concern requires reassessment, not an automatic acceptance reduction. Completion requires
+verified outcomes marked `required_for_completion`; local ownership does not prove an external consumer works.
 
 Then continue the approved plan through every in-scope implementation step, review the diff, and run the validation
 ladder. In-scope review findings return to `implement` until the Reviewer accepts the affected diff; they are not a

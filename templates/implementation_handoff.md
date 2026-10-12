@@ -66,6 +66,9 @@ monorepo, keep the session at the repository root so sibling projects remain ava
 
 If the target repository, default branch, approved scope, or required environment cannot be verified, stop before source
 changes and report the exact mismatch. Do not infer that a different checkout or dependency state is equivalent.
+For a framework playbook, continue its required independent delivery graph through recorded remediation re-entry.
+Do not substitute a generic single-agent implementation flow. Reconcile current decisions and exact approved plan
+bytes; use the prepared before-source-change guard for Feature Delivery at each slice.
 
 ## Scope Boundaries
 

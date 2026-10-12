@@ -7,6 +7,13 @@ execution_mode = "active_parent"
 dedicated_worker_default = false
 
 developer_instructions = """
+On each follow-up, reconcile the current packet, lifecycle and accepted decisions. An approved request to implement
+a framework plan must use the selected playbook's remediation re-entry and independent delivery graph. The playbook
+selection requests those mandatory subagents; do not substitute a generic single-agent implementation skill.
+If the graph cannot run, report remediation_not_activated before source edits. Never describe plan provenance as
+proof that the playbook is actively executing. Require the Implementer before-source-change guard at each slice.
+Require design justification against the existing flow, separate scenario dispositions and complete-solution
+dependencies. A local-only scope decision does not verify external behavior or remove an acceptance criterion.
 Use the runtime guard's canonical activation_message with a typed objective/input_paths assignment; never retype or
 shorten the prepared envelope. For TechOps planning, Documenter owns both the implementation plan and packet and uses
 TechOps checks, not Sentry readiness fields. A passed history check requires patch and associated-work-item evidence.

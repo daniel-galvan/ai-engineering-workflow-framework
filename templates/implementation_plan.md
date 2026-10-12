@@ -106,6 +106,29 @@ For a new state transition, include the initiating path, supported submission/pa
 failure and recovery contract in the behavior evidence or linked design. Feasible future work may be planned; source
 comparison does not require implementing or executing future tests during planning.
 
+# Design Justification
+
+For each new schema field, stored state, callback identity, dependency, or stronger guarantee, compare the existing
+flow with the smallest alternative before selecting it. A plausible mechanism is not proof that it is necessary.
+When existing behavior is sufficient, record that choice and the check supporting it. Independent review challenges
+these claims; table completeness does not prove correctness.
+
+| Change / mechanism | Required outcome | Existing handling / evidence | Smallest alternative / check | Selected change / reason | Additional cost |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
+
+# Complete Solution
+
+Separate local implementation ownership from complete feature readiness. Retain known external findings even when
+the user limits edits to this repository. Status is `verified`, `planned`, `assumed`, `unverified`, or `not_applicable`.
+Use completion effect `required_for_completion`, `release_only`, `follow_up`, or `none`. A required outcome still
+assumed, planned or unverified prevents a solved delivery; release-only checks stay separate from local validation.
+For no additional boundary, record the bounded check and its non-applicability reason. Do not invent external work.
+
+| Component / boundary | Required outcome | Status | Evidence / limitation | Owner / next action | Completion effect |
+| --- | --- | --- | --- | --- | --- |
+| | | | | | |
+
 # Interface Contract
 
 Complete this table when the change crosses an API, event, payload, schema, or other repository boundary. Copy the exact

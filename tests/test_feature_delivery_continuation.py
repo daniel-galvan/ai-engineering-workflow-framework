@@ -13,7 +13,7 @@ import prepare_run as preparation
 import finalize_work_record as finalizer
 import validate_worker_runtime as runtime
 from run_input_manifest import load_manifest
-from review_evidence import delivery_evidence_fixture
+from review_evidence import delivery_evidence_fixture, PLAN_FIXTURE
 
 
 class FeatureDeliveryContinuation(unittest.TestCase):
@@ -67,7 +67,7 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                                       "Requested profile": "deep", "Workflow outcome": "completed"})
             prior["decisions"] = [{"Decision": "Keep accepted compatibility rule"}]
             packet_path.write_text(json.dumps(prior))
-            (artifact_root / "implementation_plan.md").write_text("Approved plan\n")
+            (artifact_root / "implementation_plan.md").write_text(PLAN_FIXTURE)
             (artifact_root / "runtime_closure.json").write_text(json.dumps({"runtime_closure": [{
                 "Run or stage": "planning", "Receipt owner": "Coordinator",
                 "Completed worker handles": "/root/handoff", "Runtime status": "Released",
@@ -77,6 +77,14 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                 preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, True,
                                         input_manifest=Path(result["run_input_manifest"]["path"]), remediation_reentry=True)
             old_bytes = packet_path.read_bytes()
+            plan = artifact_root / "implementation_plan.md"
+            plan.write_text("Unassessed schema proposal\n")
+            with self.assertRaisesRegex(ValueError, "remediation_plan_evidence_required"):
+                preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, True,
+                    input_manifest=self.inputs(root), remediation_reentry=True, approval_reference="User approved plan")
+            self.assertEqual(packet_path.read_bytes(), old_bytes)
+            self.assertFalse((artifact_root / "runs").exists())
+            plan.write_text(PLAN_FIXTURE)
             closure_path = artifact_root / "runtime_closure.json"
             closed_bytes = closure_path.read_bytes()
             closure_path.write_text(closed_bytes.decode().replace('"Released"', '"Blocked"'))
@@ -100,7 +108,21 @@ class FeatureDeliveryContinuation(unittest.TestCase):
             self.assertEqual(current["identity"]["Requested profile"], "deep")
             self.assertEqual(current["decisions"], prior["decisions"])
             self.assertEqual(current["worker_results"], [])
-            self.assertEqual((artifact_root / "implementation_plan.md").read_text(), "Approved plan\n")
+            self.assertEqual((artifact_root / "implementation_plan.md").read_text(), PLAN_FIXTURE)
+            self.assertEqual(current["reentry"]["Approved plan SHA256"],
+                             hashlib.sha256(PLAN_FIXTURE.encode()).hexdigest())
+            packets = json.loads(Path(result["activation_packet_bundle"]["path"]).read_text())["packets"]
+            self.assertIn("before_source_change_guard", packets["implementer"]["worker_contract"])
+            self.assertTrue(runtime.delivery_start_errors(packet_path, "/root/implement", "running"))
+            current["identity"].update({"Activated profile": "deep", "Profile status": "in_progress"})
+            for worker, role in (("implement", "implementer"), ("review", "reviewer"),
+                                 ("validate", "tester"), ("handoff", "documenter")):
+                current["workers"].append({"Worker": worker, "Role": role,
+                    "Outcome": "in_progress" if worker == "implement" else "awaiting_dependency",
+                    "Assigned inputs": f"Approved plan; Provider handle /root/{worker}",
+                    "Depends on": "Approved plan" if worker == "implement" else "implement"})
+            packet_path.write_text(json.dumps(current))
+            self.assertEqual(runtime.delivery_start_errors(packet_path, "/root/implement", "running"), [])
             self.assertFalse((artifact_root / "runtime_closure.json").exists())
             current_run_id = current["identity"]["Run ID"]
             result = preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, True,
@@ -153,6 +175,7 @@ class FeatureDeliveryContinuation(unittest.TestCase):
         packet["repositories"] = [{"Repository role": "Execution", "Resolved path": str(repository)}]
         (root / "code_review.md").write_text(review)
         (root / "validation_report.md").write_text(validation)
+        (root / "implementation_plan.md").write_text(PLAN_FIXTURE)
         return packet
 
     def test_remediation_gate_requires_workers_review_validation_fan_in_and_audits(self):
@@ -161,6 +184,20 @@ class FeatureDeliveryContinuation(unittest.TestCase):
             packet = self.delivery_packet(root)
             path = root / "finalization_packet.json"
             self.assertEqual(finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True), [])
+            original_plan = (root / "implementation_plan.md").read_text()
+            (root / "implementation_plan.md").write_text(original_plan.replace("| verified |", "| assumed |"))
+            solved = copy.deepcopy(packet)
+            solved["identity"]["Engineering outcome"] = "solved"
+            self.assertTrue(any("complete solution required outcome remains assumed" in error for error in
+                                finalizer._feature_delivery_remediation_errors(solved, path, pre_handoff=True)))
+            self.assertFalse(any("complete solution required outcome" in error for error in
+                                 finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True)))
+            (root / "implementation_plan.md").write_text(original_plan)
+            omitted = (root / "code_review.md").read_text().replace("Asset-only edit preserves publication", "Other path")
+            (root / "code_review.md").write_text(omitted)
+            self.assertTrue(any("review omits required plan" in error for error in
+                                finalizer._feature_delivery_remediation_errors(packet, path, pre_handoff=True)))
+            (root / "code_review.md").write_text(omitted.replace("Other path", "Asset-only edit preserves publication"))
             for field in ("worker_results", "workers", "synchronization", "runtime_audits"):
                 broken = copy.deepcopy(packet)
                 broken[field] = []

@@ -502,7 +502,8 @@ def _write_activation_packets(
         "sentry_solution_architect": worker_contracts.get("fix_design"),
         "current_state_investigator": worker_contracts.get("feature_asset_inventory"),
     }
-    if manifest.get("playbook") == "techops_issue_remediation":
+    if (manifest.get("playbook") == "techops_issue_remediation"
+            or (manifest.get("playbook") == "feature_delivery" and manifest.get("lifecycle") == "remediation")):
         contract_by_agent.update(worker_contracts)
     packets: dict[str, dict[str, object]] = {}
     for agent, binding in manifest["bindings"].items():
@@ -594,6 +595,13 @@ def _reentry_source(artifact_root: Path, approval_reference: str | None) -> dict
         raise ValueError("approval_reference_required")
     if not (artifact_root / "implementation_plan.md").is_file():
         raise ValueError("remediation_approved_plan_unavailable")
+    try:
+        from review_evidence import applicability_errors
+    except ModuleNotFoundError:
+        from scripts.review_evidence import applicability_errors
+    plan_errors = applicability_errors((artifact_root / "implementation_plan.md").read_text())
+    if plan_errors:
+        raise ValueError("remediation_plan_evidence_required:" + ";".join(plan_errors))
     try:
         prior = json.loads((artifact_root / "finalization_packet.json").read_text())
         closure = json.loads((artifact_root / "runtime_closure.json").read_text())
@@ -850,6 +858,19 @@ def prepare_run(
                 "output": str(artifact_root / "asset_manifest.json"),
             },
         }
+        if manifest["lifecycle"] == "remediation":
+            for agent in ("implementer", "reviewer", "tester", "documenter"):
+                manifest["worker_contracts"][agent] = {
+                    "implementation_plan": str(artifact_root / "implementation_plan.md"),
+                    "before_source_change_guard": str(WORKER_RUNTIME_GUARD),
+                    "instructions": (
+                        "Remain in Feature Delivery remediation. Required independent roles are implement, review, "
+                        "validate and handoff; Coordinator cannot substitute. Before each implementation slice run "
+                        "the runtime guard --before-source-change finalization_packet --implementer-handle the "
+                        "provider-returned handle --provider-status the freshly observed status. Wait until allowed. "
+                        "Review and validation stay independent and cover the exact candidate and every criterion."
+                    ),
+                }
     if playbook == "techops_issue_remediation":
         instructions = {
             "current_state_investigator": (
@@ -961,7 +982,9 @@ def prepare_run(
             packet["runtime_audits"] = []
             packet["reentry"] = {"Prior run ID": prior["identity"]["Run ID"],
                                  "Prior artifacts": archived, "Approval reference": approval_reference,
-                                 "Approved plan": str(artifact_root / "implementation_plan.md")}
+                                 "Approved plan": str(artifact_root / "implementation_plan.md"),
+                                 "Approved plan SHA256": hashlib.sha256(
+                                     (artifact_root / "implementation_plan.md").read_bytes()).hexdigest()}
             packet["durable_artifacts"].append({
                 "Artifact": "Approved implementation plan", "Path": str(artifact_root / "implementation_plan.md"),
                 "Status": "Approved", "Purpose": "Preserved plan; delivery activation barrier still required",

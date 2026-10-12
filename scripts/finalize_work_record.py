@@ -45,12 +45,12 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
 try:
     from review_evidence import (
         PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors, delivery_evidence_fixture,
-        review_report_errors, validation_report_errors,
+        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors,
     )
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.review_evidence import (
         PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors, delivery_evidence_fixture,
-        review_report_errors, validation_report_errors,
+        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors,
     )
 
 try:
@@ -897,8 +897,14 @@ def _feature_delivery_remediation_errors(
         errors.append("feature_delivery_coordinator_fan_in_required")
     root = packet_path.parent
     try:
+        errors.extend(plan_design_errors((root / "implementation_plan.md").read_text(),
+                                        require_complete=identity.get("Engineering outcome") == "solved"))
+    except OSError:
+        errors.append("feature_delivery_approved_plan_required")
+    try:
         review_text = (root / "code_review.md").read_text()
         errors.extend(review_report_errors(review_text, require_accepted=identity.get("State") != "blocked"))
+        errors.extend(plan_review_coverage_errors((root / "implementation_plan.md").read_text(), review_text))
     except OSError:
         review_text = ""
         errors.append("feature_delivery_code_review_required")
