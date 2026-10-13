@@ -502,10 +502,14 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
             if label == "archived_artifact" and any(path[:len(prefix)] == prefix for prefix in listings):
                 continue
             # Required instruction output can contain preservation locators; archive operations still fail.
+            candidate = value
             if (label == "archived_artifact" and value == dispatch_content
                     and path[:1] == ("tool_trace",) and "output" in path[2:]):
                 continue
-            if pattern.search(value):
+            if (label == "archived_artifact" and dispatch_content and dispatch_content in value
+                    and path[:1] == ("tool_trace",) and "output" in path[2:]):
+                candidate = value.replace(dispatch_content, "")
+            if pattern.search(candidate):
                 errors.append(f"forbidden_context_reference:{label}")
                 break
     return list(dict.fromkeys(errors))

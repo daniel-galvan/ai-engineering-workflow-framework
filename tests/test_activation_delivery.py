@@ -30,6 +30,7 @@ class ActivationDelivery(unittest.TestCase):
         self.run = prepare.prepare_run(self.root, "ITEM-1", "feature_delivery", None, False, input_manifest=inputs)
         self.artifacts = Path(self.run["artifact_root"])
         self.bundle = self.run["activation_packet_bundle"]
+        self.dispatch_number = 0
 
     def command(self, *args):
         return subprocess.run([sys.executable, str(runtime.ROOT / "scripts/validate_worker_runtime.py"),
@@ -84,7 +85,8 @@ class ActivationDelivery(unittest.TestCase):
         bindings_path.write_text(json.dumps(bindings))
         assignment = self.root / "assignment.json"
         assignment.write_text(json.dumps({"objective": "Verify current source findings"}))
-        dispatch = self.artifacts / "activation_context.txt"
+        self.dispatch_number += 1
+        dispatch = self.artifacts / f"activation_context_{self.dispatch_number}.txt"
         result = self.command("--activation-packet-bundle", bundle_path,
                               "--expected-agent", "current_state_investigator",
                               "--expected-bundle-sha256", digest, "--assignment", assignment,
@@ -114,6 +116,11 @@ class ActivationDelivery(unittest.TestCase):
         trace = self.instruction_trace()
         self.assertEqual(trace["audit"], {"status": "passed", "errors": []})
         self.assertEqual(runtime.trace_errors(trace, require_freshness=True), [])
+        trace["tool_trace"][1]["output"][0]["text"] = "provider warning\n" + trace["tool_trace"][1]["output"][0]["text"]
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"][1]["output"][0]["text"] += "\ncat " + ARCHIVE
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+        trace = self.instruction_trace()
         for operation in (f"cat {ARCHIVE}", f"*** Add File: {ARCHIVE}", f"*** Delete File: {ARCHIVE}"):
             with self.subTest(operation=operation):
                 changed = json.loads(json.dumps(trace))
@@ -134,7 +141,8 @@ class ActivationDelivery(unittest.TestCase):
                 elif change == "run":
                     changed["run_id"] = "prior-run"
                 elif change == "content":
-                    changed["tool_trace"][1]["output"][0]["text"] += " altered"
+                    changed["tool_trace"][1]["output"][0]["text"] = changed["tool_trace"][1]["output"][0]["text"].replace(
+                        "Coordinator initialization: complete", "Coordinator initialization: altered", 1)
                 elif change == "input":
                     changed["tool_trace"][0]["input"] = changed["tool_trace"][1]["output"][0]["text"]
                 elif change == "extra-output":
