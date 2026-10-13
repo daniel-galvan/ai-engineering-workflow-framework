@@ -120,6 +120,20 @@ class V4Regressions(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "parent_mismatch"):
             read_runtime_events(source, CHILD, START)
 
+    def test_provider_events_accept_structured_json_payloads(self):
+        rows = self.provider_events()
+        rows[1]["payload"]["arguments"] = {"task_name": "evidence"}
+        rows[-1]["payload"]["output"] = [{"type": "text", "text": json.dumps({
+            "agents": [{"agent_name": "/root/evidence", "agent_status": "completed"}]})}]
+        source = self.root / "provider.jsonl"
+        source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+        result = read_runtime_events(source, PARENT, START)
+
+        self.assertEqual(result["events"][0]["Thread ID"], CHILD)
+        self.assertEqual(result["inventories"][0]["raw_response"]["agents"][0]["agent_name"],
+                         "/root/evidence")
+
     def test_spawn_does_not_pair_with_an_unrelated_child_event(self):
         source = self.provider_file()
         rows = self.provider_events()

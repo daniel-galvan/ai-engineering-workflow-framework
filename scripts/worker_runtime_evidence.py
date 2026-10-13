@@ -20,6 +20,18 @@ def timestamp(value: str) -> datetime:
     return result
 
 
+def provider_json_value(value):
+    if isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict) \
+            and value[0].get("type") == "text" and isinstance(value[0].get("text"), str):
+        value = value[0]["text"]
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    return value
+
+
 def read_runtime_events(
     path: Path, parent_thread_id: str, started_at: str, identity_sessions: tuple[Path, ...] = (),
 ) -> dict:
@@ -88,7 +100,9 @@ def read_runtime_events(
                     inventory_pending = payload.get("call_id") or True
                 if operation not in {"spawn_agent", "followup_task", "send_message"}:
                     continue
-                arguments = json.loads(payload["arguments"])
+                arguments = provider_json_value(payload["arguments"])
+                if not isinstance(arguments, dict):
+                    raise ValueError("provider_function_arguments_invalid")
                 event = {"Operation": operation, "Last dispatch at": row["timestamp"]}
                 if operation == "spawn_agent":
                     if pending_spawn is not None or not isinstance(arguments.get("task_name"), str):
@@ -102,10 +116,7 @@ def read_runtime_events(
                 handle = matches[0]
                 events.append({**event, "Provider handle": handle, "Thread ID": mappings[handle]})
             elif payload.get("type") == "function_call_output":
-                try:
-                    raw = json.loads(payload["output"])
-                except json.JSONDecodeError:
-                    raw = payload["output"]
+                raw = provider_json_value(payload["output"])
                 call_id = payload.get("call_id")
                 if pending_spawn is not None and call_id == pending_spawn[2]:
                     if not isinstance(raw, dict) or not raw.get("task_name"):
