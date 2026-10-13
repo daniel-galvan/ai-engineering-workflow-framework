@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -157,6 +158,27 @@ def activation_message(packet: dict, assignment: dict) -> str:
             + "\nTyped assignment:\n" + json.dumps(assignment, sort_keys=True))
 
 
+def dispatch_message(packet: dict, message: str, path: Path) -> str:
+    """Keep the complete guarded instructions in an immutable current-run file."""
+    root = Path(packet["finalization_packet"]).resolve().parent
+    if path.resolve().parent != root or path.name in {"finalization_packet.json", "work_record.md"}:
+        raise ValueError("activation_dispatch_file_outside_current_run")
+    digest = hashlib.sha256(message.encode()).hexdigest()
+    if path.exists():
+        if path.read_text() != message:
+            raise ValueError("activation_dispatch_file_conflict: use a new path for a corrected assignment")
+    else:
+        with path.open("x") as stream:
+            stream.write(message)
+    return (packet["required_prefix"] + "\n"
+            + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
+            + f"Run ID: {packet['run_id']}.\n"
+            + f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
+            + f"Verify its SHA256 is {digest} before analytical work; on mismatch stop and report it.\n"
+            + "The file is the operative role, input, output and policy contract. Read it in full; do not substitute "
+              "this launch notice for those instructions. Do not rerun Coordinator initialization.")
+
+
 def delivery_start_errors(path: Path, implementer_handle: str, provider_status: str) -> list[str]:
     """Check the current approved plan and independent graph before an Implementer edits."""
     try:
@@ -233,6 +255,12 @@ def rejected_result_errors(trace: dict, handle: str, dispatch: str) -> list[str]
     if not isinstance(observation, dict) or not isinstance(trace.get("spawn"), dict):
         return ["rejected_result_trace_invalid"]
     errors = terminal_observation_errors([observation], [handle])
+    if trace["spawn"].get("activation_message_conformance") == "failed":
+        expected = trace["spawn"].get("expected_message_sha256", "")
+        observed = trace["spawn"].get("observed_message_sha256", "")
+        if (not all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                    for value in (expected, observed)) or expected == observed):
+            errors.append("activation_rejection_evidence_required")
     if (trace.get("spawn", {}).get("provider_handle") != handle
             or trace.get("last_dispatch_at") != dispatch
             or observation.get("Last dispatch at") != dispatch
@@ -360,6 +388,76 @@ def _trace_strings(value: object, path: tuple[str, ...] = ()):
         yield path, value
 
 
+def _listing_command(command: object) -> bool:
+    """Recognize name-only discovery; shell expansion and content consumers remain unaudited."""
+    if not isinstance(command, str) or any(char in command for char in "$`<>"):
+        return False
+    try:
+        tokens = shlex.split(command)
+        if len(tokens) == 3 and Path(tokens[0]).name in {"bash", "sh", "zsh"} and tokens[1] in {"-lc", "-c"}:
+            command = tokens[2]
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="|;&")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        parts, current = [], []
+        for token in lexer:
+            if token in {";", "&&", "|", "||", "&"}:
+                parts.extend([current, token])
+                current = []
+            else:
+                current.append(token)
+        parts.append(current)
+        previous = ""
+        for part in parts:
+            if isinstance(part, str):
+                if part not in {";", "&&", "|"}:
+                    return False
+                previous = part
+                continue
+            args = part
+            if not args:
+                continue
+            tool = Path(args[0]).name
+            listing = (tool in {"ls", "pwd"} or (tool == "rg" and "--files" in args)
+                       or (tool == "find" and not set(args) & {
+                           "-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf"}))
+            filter_only = (previous == "|" and (
+                (tool in {"head", "tail"} and all(re.fullmatch(r"-?(?:n|[0-9]+)", arg) for arg in args[1:]))
+                or (tool in {"rg", "grep"} and len(args) == 2 and not args[1].startswith("-"))))
+            if not listing and not filter_only:
+                return False
+            previous = ""
+        return bool(tokens)
+    except ValueError:
+        return False
+
+
+def _listing_outputs(trace: dict) -> set[tuple[str, ...]]:
+    outputs, calls = set(), set()
+    rows = trace.get("tool_trace", [])
+    if not isinstance(rows, list):
+        return outputs
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        prefix = ("tool_trace", str(index))
+        arguments = row.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except ValueError:
+                arguments = {}
+        known_exec = row.get("tool") == "exec_command" or (
+            row.get("type") == "function_call" and row.get("name") == "exec_command")
+        if known_exec and isinstance(arguments, dict) and _listing_command(arguments.get("cmd")):
+            if row.get("call_id"):
+                calls.add(row["call_id"])
+            outputs.update({prefix + ("result",), prefix + ("output",), prefix + ("arguments", "output")})
+        if row.get("type") == "function_call_output" and row.get("call_id") in calls:
+            outputs.add(prefix + ("output",))
+    return outputs
+
+
 def context_trace_errors(trace: dict[str, object]) -> list[str]:
     """Reject worker traces that reference unassigned memory or archived runs."""
     if not isinstance(trace, dict):
@@ -368,8 +466,11 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
     declared = str(trace.get("context_conformance", "")).strip().lower()
     if declared in {"fail", "failed", "blocked"}:
         errors.append("context_conformance_failed")
-    for _, value in _trace_strings(trace):
+    listings = _listing_outputs(trace)
+    for path, value in _trace_strings(trace):
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
+            if label == "archived_artifact" and any(path[:len(prefix)] == prefix for prefix in listings):
+                continue
             if pattern.search(value):
                 errors.append(f"forbidden_context_reference:{label}")
                 break
@@ -397,6 +498,8 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -
         if not any(isinstance(event, dict) and event.get("action") == "fan_in"
                    and event.get("provider_status") == "completed" for event in trace.get("events", [])):
             errors.append("worker_fan_in_guard_receipt_required")
+    if spawn.get("activation_message_conformance") == "failed":
+        errors.append("activation_message_mismatch")
     observed_role = spawn.get("observed_agent_role")
     observed_path = spawn.get("observed_agent_path")
     if not observed_role and not observed_path and not spawn.get("activation_packet_delivered"):
@@ -518,6 +621,8 @@ def main() -> int:
     parser.add_argument("--require-freshness", action="store_true")
     parser.add_argument("--assignment", type=Path)
     parser.add_argument("--activation-message", type=Path)
+    parser.add_argument("--dispatch-file", type=Path,
+                        help="Save complete guarded instructions and return a compact canonical launch message")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     result: dict[str, object] = {"status": "allowed"}
@@ -541,8 +646,10 @@ def main() -> int:
     if any((args.rejected_trace, args.provider_handle, args.last_dispatch_at)) and (
             args.transition != "replace" or not all((args.rejected_trace, args.provider_handle, args.last_dispatch_at))):
         parser.error("rejected-result recovery requires replace, --rejected-trace, --provider-handle and --last-dispatch-at")
-    if (args.assignment or args.activation_message) and not args.activation_packet_bundle:
-        parser.error("--assignment and --activation-message require activation mode")
+    if args.dispatch_file and not args.assignment:
+        parser.error("--dispatch-file requires --assignment in activation mode")
+    if (args.assignment or args.activation_message or args.dispatch_file) and not args.activation_packet_bundle:
+        parser.error("--assignment, --activation-message and --dispatch-file require activation mode")
     if args.before_source_change:
         if not args.implementer_handle or not args.provider_status:
             parser.error("--before-source-change requires --implementer-handle and --provider-status")
@@ -566,6 +673,10 @@ def main() -> int:
             if args.assignment:
                 try:
                     message = activation_message(packet, json.loads(args.assignment.read_text()))
+                    if args.dispatch_file:
+                        message = dispatch_message(packet, message, args.dispatch_file)
+                        result["dispatch_file"] = str(args.dispatch_file.resolve())
+                        result["dispatch_file_sha256"] = hashlib.sha256(args.dispatch_file.read_bytes()).hexdigest()
                     if args.activation_message and args.activation_message.read_text() != message:
                         errors.append("activation_message_mismatch")
                     else:
@@ -597,6 +708,21 @@ def main() -> int:
                                  rejected_result=bool(args.rejected_trace) and not errors)
         if error:
             errors.append(error)
+        if not errors and args.rejected_trace and trace.get("spawn", {}).get("activation_message_conformance") == "failed":
+            try:
+                role = trace["spawn"].get("agent") or trace["spawn"].get("expected_agent")
+                bindings = json.loads((args.rejected_trace.parent / "role_bindings.json").read_text())
+                if not role or role not in bindings["bindings"]:
+                    raise ValueError("activation_repair_binding_required")
+                repairs = current.setdefault("activation_repairs", {})
+                if role in repairs:
+                    raise ValueError("activation_repair_limit_reached")
+                repairs[role] = {"Provider handle": args.provider_handle, "Last dispatch at": args.last_dispatch_at,
+                                 "Rejected trace": str(args.rejected_trace.resolve()), "Attempt": 1}
+                (args.rejected_trace.parent / "finalization_packet.json").write_text(json.dumps(current, indent=2) + "\n")
+                result["activation_repair"] = "reserved; preserve rejected output and dispatch the complete guarded assignment"
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                errors.append(str(error))
     else:
         parser.error("choose --activation-packet-bundle, --transition, --trace, or --self-test")
     if errors:

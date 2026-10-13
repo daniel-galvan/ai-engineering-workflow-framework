@@ -174,6 +174,8 @@ description: >-
    finalization attempts. For explicitly authorized planning recovery, reconcile prior actual worker rows and fresh
    Coordinator closure first, then pass `--continuation --planning-recovery` with
    `--approval-reference <recovery authorization>`.
+   Planning recovery is untimeboxed unless the user supplies a timebox. Omit both `--started-at` and
+   `--timebox-minutes` otherwise; do not invent a deadline or explicit goal overrides. Use the playbook defaults.
    Preparation preserves the prior invocation under `runs/`, starts a new planning identity, and clears current
    execution/closure rows. The archived retry counters remain intact. This is not implementation approval.
    Supply accepted prior findings as named current inputs; recovery workers check their applicability and investigate
@@ -258,7 +260,11 @@ description: >-
    for one bounded correction before retrying; do not start Documenter with an unchecked coverage mapping.
    Save the typed assignment as JSON with `objective` and optional `input_paths`; outputs, policies and bindings come
    from the prepared contract. Pass `--assignment <path>` to the activation guard and use its returned
-   `activation_message` string directly as the spawn message. Never reconstruct, summarize or shorten the envelope.
+   `activation_message` string directly as the spawn message. For ordinary Codex dispatch, also pass
+   `--dispatch-file <artifact-root>/activation_<role>_<attempt>.txt`. This saves the complete guarded instructions and
+   returns a compact canonical launch message with its file path and SHA256. Send that returned message verbatim;
+   the worker verifies the hash and reads the entire file before analytical work. Use a new file for a changed
+   assignment; do not overwrite an existing dispatch file. Never reconstruct or summarize either delivery form.
    The guard serializes the complete envelope and assignment once and returns their SHA-256. When validating a saved
    outbound message, also pass `--activation-message <path>`; any difference is `activation_message_mismatch`.
    The validated payload must be the exact value submitted to the provider; a bundle hash alone proves no delivery.
@@ -267,9 +273,18 @@ description: >-
    incomplete envelope to the Coordinator before doing analytical work.
    When spawn metadata does not expose `agent_role` or `agent_path`, this
    exact envelope is the binding-delivery mechanism; missing metadata alone is not a reason to discard the worker.
-   If delivery differs from the guarded payload, stop new dispatch, reconcile already-started workers, and record the
-   activation failure. Do not convert that failure into a demand for a new investigation. Before ending, use the
-   terminal failure route below; a stop-dispatch instruction does not waive terminal reporting.
+   If delivery differs, stop downstream dispatch and preserve the rejected outputs. Record the expected and actual
+   provider-observed message SHA256 values and `activation_message_conformance: failed` in the canonical trace's
+   Binding evidence. Obtain the actual submitted message through the exact worker's provider history; never invent a
+   delivery receipt. Export and audit the latest completed result with the prepared collector. One activation repair
+   per bound role is permitted in this invocation: use `--transition replace` with the latest observed handle,
+   dispatch and rejected trace before correcting the same completed worker or starting a fresh replacement. The
+   guard reserves that role's repair in `activation_repairs`; another attempt is rejected. Send the complete guarded
+   assignment, audit the new turn, and merge only its accepted result. Never interrupt a running worker for repair.
+   A filename-only discovery result is not archived analysis consumption. The trace auditor excludes archive names
+   from proven name-only listing outputs; commands that read archive contents and unknown tool shapes remain gated.
+   If repair fails, evidence is unavailable, or the budget is exhausted, use the terminal failure route below. Do not
+   turn a recoverable dispatch error into a requirement to repeat accepted analysis or silently discard the checks.
    Conflicting observed metadata remains `provider_configuration_unavailable`.
    The same guard enforces the duration budget's finalization reserve. On `run_budget_finalization_reserve`, do not
    activate another worker; preserve the useful result already established and proceed directly to bounded terminal

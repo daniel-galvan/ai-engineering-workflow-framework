@@ -112,6 +112,27 @@ class PlanningRecovery(unittest.TestCase):
         self.assertFalse(any(Path(row['Path']).name == 'implementation_plan.md'
                              for row in current['durable_artifacts']))
 
+    def test_hash_bound_failure_receipt_allows_recovery_of_provisional_packet(self):
+        self.close_prior()
+        self.packet['identity']['State'] = 'in_progress'
+        self.packet_path.write_text(json.dumps(self.packet))
+        subprocess.run([sys.executable, str(finalizer.ROOT / 'scripts/finalize_work_record.py'),
+            '--packet', str(self.packet_path), '--workflow-failure', 'activation_message_mismatch'],
+            capture_output=True, text=True, check=False)
+        result = preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True,
+            input_manifest=self.inputs, planning_recovery=True, approval_reference='User requests recovery')
+        self.assertTrue(Path(result['archived_prior_run']).is_dir())
+
+    def test_stale_failure_receipt_does_not_close_an_active_invocation(self):
+        self.close_prior()
+        self.packet['identity']['State'] = 'in_progress'
+        self.packet_path.write_text(json.dumps(self.packet))
+        (self.artifacts / 'finalization_failure.json').write_text(json.dumps({
+            'status': 'failed', 'stage': 'workflow', 'packet_sha256': '0' * 64}))
+        with self.assertRaisesRegex(ValueError, 'requires_terminal_invocation'):
+            preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True,
+                input_manifest=self.inputs, planning_recovery=True, approval_reference='User requests recovery')
+
     def test_recovery_requires_prior_closure_and_partial_plan_cannot_enter_remediation(self):
         self.close_prior()
         (self.artifacts / "implementation_plan.md").write_text(DRAFT)

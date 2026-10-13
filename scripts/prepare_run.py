@@ -621,7 +621,11 @@ def _reentry_source(
             raise ValueError("remediation_requires_ready_plan")
         if planning_recovery and prior["identity"].get("State") not in {
                 "awaiting_input", "ready_for_implementation", "completed", "blocked"}:
-            raise ValueError("planning_recovery_requires_terminal_invocation")
+            receipt = json.loads((artifact_root / "finalization_failure.json").read_text())
+            if (receipt.get("status") != "failed" or receipt.get("stage") != "workflow"
+                    or receipt.get("packet_sha256") != hashlib.sha256(
+                        (artifact_root / "finalization_packet.json").read_bytes()).hexdigest()):
+                raise ValueError("planning_recovery_requires_terminal_invocation")
         if prior["identity"]["Lifecycle"] != "planning":
             raise ValueError("remediation_reentry_requires_planning_run")
         if prior["identity"]["Requested profile"] not in {"standard", "deep"}:

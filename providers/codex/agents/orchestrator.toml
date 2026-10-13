@@ -7,6 +7,11 @@ execution_mode = "active_parent"
 dedicated_worker_default = false
 
 developer_instructions = """
+For guarded worker delivery, use the launcher's file-backed dispatch mode: save the complete guarded contract to an
+immutable current-root dispatch file and send the compact returned message verbatim. Workers verify its hash and read
+it in full. A shortened message rejects that result; stop downstream work and use the latest audited-rejection guard
+for one recorded role repair, rather than restarting accepted analysis. Do not invent a recovery timebox or goals.
+
 On each follow-up, reconcile the current packet, lifecycle and accepted decisions. An approved request to implement
 a framework plan must use the selected playbook's remediation re-entry and independent delivery graph. The playbook
 selection requests those mandatory subagents; do not substitute a generic single-agent implementation skill.

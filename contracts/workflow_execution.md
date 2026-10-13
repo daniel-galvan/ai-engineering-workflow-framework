@@ -1710,3 +1710,18 @@ An `awaiting_input` planning handoff may preserve a structurally validated parti
 decisions and its Clarification Brief. It grants neither full-ticket readiness nor implementation approval. Only a
 ready, explicitly approved plan may enter remediation. Failure publication preserves detailed prior errors and retry
 accounting; it must not reset the exhausted same-invocation correction budget.
+
+### Guarded Activation Delivery and Repair
+
+A provider may deliver the complete guarded instructions through an immutable current-root dispatch file. The canonical
+launch message names its SHA256; the worker verifies and reads the full file before analysis. A short launch notice is
+not a replacement for the role contract. Modified instructions require a new file and a fresh guarded dispatch.
+
+A provider-proven shortened message rejects that result, not all previously accepted work. Preserve the trace and
+actual/expected message hashes, stop downstream dispatch, and reserve one repair for that bound role using the existing
+rejected-result guard. Only completed workers may be corrected or replaced. Audit the corrected turn before fan-in;
+another repair for the same role is blocked. Name-only file discovery does not constitute reading archived analysis.
+Unknown tool operations and actual archive content reads retain the context gate.
+
+A terminal workflow-failure receipt bound to the exact packet hash may establish the closed invocation for explicit
+planning recovery even when the provisional packet still says `in_progress`. Actual provider closure remains required.
