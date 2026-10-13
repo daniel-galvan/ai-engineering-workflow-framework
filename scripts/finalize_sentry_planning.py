@@ -577,10 +577,10 @@ def _finalize_standard_sentry_in_place(
             raise ValueError(f"required artifact is missing: {required}")
     if not re.fullmatch(r"[0-9a-fA-F]{40}", framework_revision):
         raise ValueError("framework_revision must be a 40-character Git SHA")
-    if not re.fullmatch(
+    if coordinator_model_effort != "Not exposed / Not exposed" and not re.fullmatch(
         r"\S+\s*/\s*(?:none|minimal|low|medium|high|xhigh|max|ultra)", coordinator_model_effort
     ):
-        raise ValueError("coordinator_model_effort must use '<model> / <effort>'")
+        raise ValueError("coordinator_model_effort must use '<model> / <effort>' or 'Not exposed / Not exposed'")
 
     packet = json.loads(packet_path.read_text())
     fix = json.loads(fix_path.read_text())
@@ -1145,7 +1145,7 @@ def self_test() -> None:
         finalize_standard_sentry(
             artifact_root,
             evidence_handle="01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
-            coordinator_model_effort="gpt-5.6-luna / high",
+            coordinator_model_effort="Not exposed / Not exposed",
             framework_revision=framework_revision,
             framework_status=framework_status,
             repository_specs=[f"Execution={execution_repository}"],
@@ -1160,6 +1160,7 @@ def self_test() -> None:
             assert _cell(contract[field]) in plan_text
         assert "| documenter |" not in record_text.lower()
         assert "| State | ready_for_implementation |" in record_text
+        assert "Not exposed / Not exposed" in expand_work_record(record_text, artifact_root)
         assert "deterministic rendering passed" in record_text
         assert "| USER-001 |" in record_text
         assert "Run input manifest" in expand_work_record(record_text, artifact_root)

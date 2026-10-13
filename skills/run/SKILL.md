@@ -108,6 +108,26 @@ description: >-
    the result `awaiting_input` or `Not ready for implementation`. Preserve `not_found` and `permission_denied` as
    item-specific outcomes, not connector-wide authentication failures. The context worker must still enumerate the
    issue hierarchy, links, history, and assets; a successful item read proves none of those scopes.
+5b. For Sentry Issue Remediation with an explicit Sentry issue ID or URL, apply the
+   [Sentry source-access gate](../../integrations/sentry.md#source-access-gate) before loading the full framework,
+   creating an input manifest, preparation, repository analysis, or worker activation. Use the enabled tool inventory
+   and at most one tool-discovery call to find a configured Sentry issue/event read route. Read the exact requested
+   issue and its latest event through that route; connector discovery or organization visibility is not item access.
+   Try at most one distinct configured route after a failure, never an unchanged failed route. Bound each read to
+   30 seconds and the whole gate to 90 seconds. Do not search projects or unrelated issues, request credentials, or
+   open an unauthenticated public-web route. If no route can read both required records, run:
+   ```bash
+   python3 <framework-root>/scripts/source_access_receipt.py --source Sentry --work-item <key-or-issue-id> \
+     --operation <attempted-operation-or-issue_event_read> --provider-code <SAFE_ERROR_CODE> \
+     --started-at <current-turn-RFC3339-start>
+   ```
+   Use `OPERATION_UNAVAILABLE` when no read operation exists. Report the blocked receipt and one access-restoration
+   action, then stop with zero worker activation attempts and no artifact root or work record. Supplied logs do not
+   waive this gate or silently change `live_sentry` or `mixed` to `supplied_occurrence`. Proceed without live access
+   only when the user explicitly selects an offline supplied-occurrence investigation; record that changed scope and
+   do not claim the supplied data belongs to the inaccessible issue. Pass the successful route and issue/event
+   observations to Evidence Topology so it does not repeat the access probe. If live access fails later, stop further
+   analysis and downstream activation, report `required_source_unavailable`, and close already-started workers.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
@@ -133,7 +153,8 @@ description: >-
    passed to the assigned worker. Keep the original locator in `Source or path` and record the access result in that
    input row's `Status`; do not leave an inaccessible artifact marked only `Registered`. If unavailable, record the
    attempted route and its impact, tell the user promptly, and continue only if independent evidence can still produce
-   a useful partial result; otherwise stop for the indispensable input.
+   a useful partial result; otherwise stop for the indispensable input. Required Jira or Sentry source-access
+   gates still apply; supporting artifacts do not waive those gates.
    For Feature Delivery, add `Asset source: true` to the input row for each explicitly supplied file, folder, or URL
    that must be inventoried; the asset gate reconciles those markers against `asset_manifest.json`.
    Jira-related children, linked issues, and attachments are discovered evidence,
@@ -437,8 +458,8 @@ description: >-
    artifact creation intentionally omits it.
    When provider tool traces are exposed, pass each validated trace as
    `--worker-trace <worker>=<absolute-trace-path>`; if none are exposed, the finalizer records the audit as unavailable
-   instead of implying independent context conformance. Do not load the `sentry` skill or invoke a Sentry MCP/app from
-   the Coordinator before Evidence Topology activation; raw Sentry access is worker-owned.
+   instead of implying independent context conformance. Coordinator Sentry reads before Evidence Topology activation
+   are limited to the required source-access gate; subsequent raw evidence acquisition is worker-owned.
    When Standard Sentry Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, do not
    activate a Documenter. Release every activated analytical handle, then run the manifest's
    `standard_planning_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact

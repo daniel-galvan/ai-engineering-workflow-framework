@@ -49,11 +49,15 @@ was supplied. A Sentry-shaped work-item key is not an issue ID unless the prompt
 `Sentry identity: unresolved (no stable Sentry issue identifier was supplied; a work-item key is not treated as one)`,
 and `evidence source: supplied_occurrence`. When an explicit issue ID or URL and organization identity are
 available,
-resolve that issue directly before any project or issue search. If resolution fails, perform at most one justified
-fallback search and stop with bounded uncertainty. Never send an issue request with a missing organization parameter.
+reuse the Coordinator's successful source-access observations and selected route before requesting further data.
+For a necessary new lookup, resolve that issue directly before any project or issue search.
+If required live issue or event access fails, return a blocked result with `required_source_unavailable` immediately.
+Do not continue repository analysis, downgrade to supplied logs, or authorize downstream Fix Design. Only an explicitly
+selected offline investigation may use `supplied_occurrence` without live access. Never send an issue request with a
+missing organization parameter.
 For standard planning, use at most one tool-discovery call and three Sentry data queries total: direct resolution, latest event, and one discriminating
 follow-up. Stop each query after 30 seconds and all Sentry investigation after 90 seconds. Return a bounded partial
-result when a limit is reached. Inspect the latest event first. Do not enumerate or
+result when an optional follow-up limit is reached; required live-access failure is blocked. Inspect the latest event first. Do not enumerate or
 compare every occurrence in a high-volume issue. Add one older representative
 event only when the latest event is insufficient, inconsistent, or the symptom
 may vary by occurrence, and record why that sample was selected. Treat a

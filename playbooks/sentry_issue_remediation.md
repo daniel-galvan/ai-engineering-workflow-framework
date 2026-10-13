@@ -63,6 +63,11 @@ Use another workflow when:
   working directories; live Sentry identity and access are optional
 - For `mixed`: the `live_sentry` inputs plus the current-run occurrence artifact
 
+An explicit Sentry issue ID or URL requires the [source-access gate](../integrations/sentry.md#source-access-gate)
+before preparation or worker activation. Missing live access stops `live_sentry` and `mixed` runs with
+`required_source_unavailable`. Supplied logs do not waive this prerequisite. Only an explicitly selected offline
+supplied-occurrence investigation may proceed without live access, with the inaccessible issue association unverified.
+
 ## Recommended Inputs
 
 - Sentry organization and project, when not derivable from the issue URL
@@ -289,11 +294,11 @@ Workers use the shared result envelope defined in the execution contract. Sentry
 - The Coordinator activates every delegated worker with fresh context (`fork_context: false` or provider equivalent).
   Every packet starts with `Coordinator initialization: complete`; workers do not rerun the launcher, preflight, run
   preparation, or edit the work record.
-- `evidence-topology` owns raw Sentry queries for the run.
+- After the Coordinator source-access gate, `evidence-topology` owns raw Sentry queries for the run.
 - When the prompt supplies a stable Sentry issue ID or URL, resolve that issue directly before any project or issue
-  search, then request the latest issue event first (`limit: 1` when supported). If direct resolution fails, perform at
-  most one justified fallback search and stop with bounded uncertainty; do not enumerate projects or fan out across
-  organizations and datasets.
+  search, then request the latest issue event first (`limit: 1` when supported). Reuse the successful access-gate
+  observations. If required live access fails, stop with `required_source_unavailable`; do not replace it with logs,
+  enumerate projects, or fan out across organizations and datasets.
 - A direct issue lookup requires a stable issue identifier and organization slug (or a URL that carries both). When
   only a work-item key is supplied, retain `supplied_occurrence` and record that lookup was skipped because the
   organization identity was unavailable; do not call the issue endpoint with a missing organization parameter.
@@ -428,9 +433,10 @@ worker activation. Do not allow a live issue lookup to erase those inputs.
 
 ### Stage 1 — Collect Sentry Evidence
 
-The `evidence-topology` worker exclusively owns raw Sentry queries and initial repository topology for the run. The
-Orchestrator does not load the `sentry` skill, invoke a Sentry MCP/app, pre-query Sentry, or duplicate repository
-exploration before that worker activates. When explicit Sentry identity is available,
+After the Coordinator source-access gate, the `evidence-topology` worker exclusively owns raw Sentry queries and
+initial repository topology for the run. The Orchestrator passes the gate observations and selected route to the worker;
+it does not duplicate evidence acquisition or repository exploration before that worker activates.
+When explicit Sentry identity is available,
 use MCP to inspect the issue and request only the latest event first (`limit: 1` when supported); otherwise use the
 supplied occurrence without Sentry discovery.
 Classify the evidence source before querying: `live_sentry` requires a stable issue ID or URL; `supplied_occurrence`
@@ -440,12 +446,13 @@ URL carrying the organization); a Sentry-shaped work-item key is not an issue ID
 When only a work-item key is present, retain `supplied_occurrence`, do not perform organization/project/issue discovery,
 and record `Sentry issue: not supplied` plus `Sentry identity: unresolved (no stable Sentry issue identifier was
 supplied; a work-item key is not treated as one)`. Never call the issue endpoint with a missing organization
-parameter. When the
-required identity is available but resolution fails, attempt direct resolution once
-without search, then retain `supplied_occurrence` and the bounded uncertainty. Standard planning permits
+parameter. When required live resolution fails, stop with `required_source_unavailable` and close active workers.
+Do not retain `supplied_occurrence` as a fallback unless the user explicitly selects an offline investigation.
+Standard planning permits
 one tool discovery call and at most three Sentry data queries total: direct issue resolution, latest event, and one
 justified discriminating follow-up. Stop each query after 30 seconds and stop Sentry investigation after 90 seconds
-total. Return the bounded partial result when a limit is reached; a timeout does not authorize broader searches.
+total. Return a bounded partial result only for optional follow-up limits; required live-access failure is blocked.
+A timeout does not authorize broader searches.
 Bound initial source mapping to the reporting repository's stack or culprit entry, outbound endpoint, and direct return
 boundary required by fix design. Do not inspect an additional repository's internal compatibility or deployment path in
 this stage; that belongs to Repository Integrator when its activation gate passes.

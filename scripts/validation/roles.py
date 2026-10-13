@@ -260,7 +260,9 @@ def validate_sentry_roles() -> None:
         "organization identity was unavailable",
         "validated envelope fallback",
         "Never interrupt a live worker",
-        "Do not load the `sentry` skill or invoke any Sentry MCP/app",
+        "source-access gate",
+        "required_source_unavailable",
+        "Supplied logs do not waive required live access",
     ):
         if phrase not in sentry_orchestrator:
             fail(f"providers/codex/agents/sentry_orchestrator.toml is missing Standard control: {phrase}")

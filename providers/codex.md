@@ -41,8 +41,13 @@ alternative. Bind the successful connector and exact-key issue-read operation to
 If the permitted source routes fail, emit the packaged `scripts/source_access_receipt.py` receipt with the source,
 attempted operation, safe provider code, and current-turn start. Exit status 2 with a JSON `status: blocked` receipt is
 a block, not a parser error. Report its fields and one access-restoration action. Create no artifact root or work
-record; this pre-initialization block is not an assessment disposition. Do not probe optional sources for other
-playbooks.
+record; this pre-initialization block is not an assessment disposition.
+
+For Sentry Issue Remediation with an explicit issue ID or URL, apply the
+[Sentry source-access gate](../integrations/sentry.md#source-access-gate) at the same pre-initialization boundary.
+Read the exact issue and latest event; use the same `source_access_receipt.py` blocked path when required access fails.
+Pass the successful route and observations to Evidence Topology. Do not substitute supplied logs for required live
+access without the user's explicit selection of an offline investigation. Do not probe optional sources.
 
 ## Agent Definitions
 

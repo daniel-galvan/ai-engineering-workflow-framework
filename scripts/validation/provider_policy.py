@@ -196,6 +196,11 @@ def validate_runtime_mapping() -> None:
     ):
         if phrase not in run_skill:
             fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
+    for phrase in ("5b. For Sentry Issue Remediation", "Read the exact requested", "issue and its latest event",
+                   "--source Sentry", "zero worker activation attempts", "Supplied logs do not",
+                   "stop further", "analysis and downstream activation"):
+        if phrase not in run_skill:
+            fail(f"skills/run/SKILL.md is missing Sentry source-access control: {phrase}")
     if "--framework-root" in run_skill:
         fail("skills/run/SKILL.md must not pass a separately constructed framework root")
     codex_adapter = CODEX_ADAPTER.read_text()

@@ -127,20 +127,21 @@ Runtime bootstrap:
   finalizer owns implementation-plan or clarification-brief rendering plus terminal rendering. Retain the final
   Documenter only for Deep planning and remediation. An initialization acknowledgement never satisfies final handoff.
 - The Coordinator performs Standard initialization directly; never spawn or delegate an `initialize` worker.
-- The evidence worker exclusively owns raw Sentry queries and initial repository topology. The Coordinator must not
-  load the `sentry` skill, invoke a Sentry MCP/app, pre-query Sentry, or duplicate that investigation before Evidence
-  Topology activation. When `Sentry issue` supplies a stable ID or URL, resolve it directly
-  before any project or issue search. A direct issue lookup requires a stable issue identifier and organization slug
-  (or a URL that carries both); when only a work-item key is present, record `supplied_occurrence` and do not call the
-  issue endpoint with a missing organization. If the required identity is available but resolution fails, allow one
-  justified fallback and stop.
+- Before preparation or worker activation, the Coordinator applies the Sentry source-access gate: read the exact
+  supplied issue and latest event, or stop with `required_source_unavailable`, zero workers, and no artifact root.
+  Supplied logs do not waive required live access or silently change the run to `supplied_occurrence`. An offline
+  investigation requires the user's explicit selection. After the gate, the evidence worker exclusively owns raw Sentry queries
+  and initial repository topology; it reuses the successful gate observations and selected route. A direct issue
+  lookup requires a stable issue identifier and organization slug (or a URL carrying both). When only a work-item
+  key is present, record `supplied_occurrence` and do not call the issue endpoint with a missing organization.
+  If required access later fails, stop analysis and downstream activation and close active workers.
   Request the latest event first (`limit: 1` when supported). For Standard, allow one tool-discovery call.
   Allow at most three Sentry data queries, 30 seconds per query, and 90 seconds total. Never enumerate projects or fan
   out across organizations and
   datasets. When only a supplied occurrence exists, use it without broad Sentry discovery.
 - Before that worker starts, Standard initialization is limited to turn-start capture, framework/repository/path
   verification, authoritative-input registration, the minimal work-record skeleton, and worker configuration/activation.
-  Do not search candidate source, history, tests, or Sentry during initialization.
+  Do not search candidate source, history, or tests during initialization; Sentry reads are limited to the access gate.
 - Before worker activation, record the concurrent-run decision. Read-only planning may share a clean revision. When
   another run is active, remediation or any writer requires a separate managed worktree and artifact root. Stop with
   `run_already_active` for the same work item unless this is an explicit continuation or recovery run.

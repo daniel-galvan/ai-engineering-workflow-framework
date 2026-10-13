@@ -842,8 +842,11 @@ def validate_execution_contracts() -> None:
             fail(f"contracts/claims.md is missing referential-integrity control: {phrase}")
     if "Claims, Evidence, Decisions, and Actions Contract" not in workflow_contract:
         fail("contracts/workflow_execution.md is missing the claims contract reference")
-    if "Coordinator MUST NOT load the `sentry` skill or invoke a Sentry MCP/app" not in (ROOT / "integrations/sentry.md").read_text():
-        fail("integrations/sentry.md is missing the Coordinator Sentry-access boundary")
+    sentry_integration = (ROOT / "integrations/sentry.md").read_text()
+    for phrase in ("## Source-Access Gate", "required_source_unavailable", "zero worker activation attempts",
+                   "Do not silently downgrade", "stop further analysis and downstream worker activation"):
+        if phrase not in sentry_integration:
+            fail(f"integrations/sentry.md is missing required source-access control: {phrase}")
     if "| `confidence`       | Yes" not in workflow_contract:
         fail("contracts/workflow_execution.md is missing required worker confidence")
     if "# Workflow State Machine" not in workflow_contract:

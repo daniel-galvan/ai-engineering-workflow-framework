@@ -225,7 +225,9 @@ def validate_sentry_prompt_and_isolation() -> None:
         "validate_worker_runtime.py --trace",
         "organization slug",
         "field-preservation change",
-        "load the `sentry` skill",
+        "Sentry source-access gate",
+        "required_source_unavailable",
+        "Supplied logs do not waive",
         "Pilot Standard finalizer may continue",
     ):
         if phrase not in sentry_prompt:

@@ -56,17 +56,21 @@ required. Activate every required worker, preserve dependencies, collect
 terminal envelopes, complete fan-in, and never silently downgrade the profile
 or substitute the Coordinator for an independent worker.
 
+Before preparation or worker activation, apply the Sentry source-access gate for an explicit issue ID or URL:
+read the exact issue and latest event, or stop with `required_source_unavailable`, zero workers, and no artifact root.
+Supplied logs do not waive required live access or silently switch to `supplied_occurrence`; an offline investigation
+requires the user's explicit selection. If required access later fails, stop analysis and downstream activation and
+close active workers. After this gate:
 Do not query Sentry or explore the candidate source path before activating
-`sentry_current_state_investigator`; that worker exclusively owns raw Sentry
-queries and initial repository topology. Select evidence mode from explicit identity fields: an explicit stable issue
+`sentry_current_state_investigator`; that worker owns raw evidence acquisition and initial repository topology. Select evidence mode from explicit identity fields: an explicit stable issue
 ID or URL plus organization slug allows direct resolution; supplied occurrence or artifacts may then make the mode
 `mixed`. A Sentry-shaped work-item key is not an issue ID unless the prompt labels it as one. Without an explicit
 identity, retain `supplied_occurrence`, do not perform organization/project/issue discovery, and record
 `Sentry issue: not supplied` plus `Sentry identity: unresolved (no stable Sentry issue identifier was supplied; a
 work-item key is not treated as one)`; organization identity was unavailable for direct lookup. Never send an issue
-with a missing organization parameter. Do not load the `sentry` skill or invoke any Sentry MCP/app from the
-Coordinator before that worker activation; the capability is worker-owned and supplied Sentry context remains opaque
-until Evidence Topology consumes it.
+with a missing organization parameter. Before worker activation, Coordinator Sentry reads are limited to the
+source-access gate. Pass its successful observations and selected route to Evidence Topology rather than repeating
+those reads.
 Request only the latest issue event first (`limit: 1` when supported). Repeat its work only for
 a named discrepancy that is recorded and returned to that worker.
 
