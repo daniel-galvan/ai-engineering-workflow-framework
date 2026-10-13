@@ -61,9 +61,9 @@ try:
 except ModuleNotFoundError:
     from scripts.asset_manifest import ASSET_MANIFEST_FILENAME, asset_plan_errors, validate_asset_manifest
 try:
-    from review_evidence import applicability_errors, completed_review_errors
+    from review_evidence import applicability_errors, completed_review_errors, draft_plan_errors
 except ModuleNotFoundError:
-    from scripts.review_evidence import applicability_errors, completed_review_errors
+    from scripts.review_evidence import applicability_errors, completed_review_errors, draft_plan_errors
 try:
     from run_input_manifest import load_manifest
 except ModuleNotFoundError:
@@ -217,7 +217,13 @@ def feature_asset_record_errors(
             errors.append(f"{path}: Feature Delivery planning requires implementation_plan.md")
     if not assessment and identity.get("State") == "awaiting_input":
         if (root / "implementation_plan.md").is_file():
-            errors.append("Feature Delivery awaiting_input must not retain implementation_plan.md")
+            errors.extend(draft_plan_errors((root / "implementation_plan.md").read_text()))
+            errors.extend(asset_plan_errors((root / "implementation_plan.md").read_text(), manifest))
+            for name in ("implementation_plan.md", "clarification_brief.md"):
+                if (root / name).resolve() not in durable_targets or (root / name).resolve() not in handoff_targets:
+                    errors.append(f"Partial planning handoff must register and link {name}")
+            if not (root / "clarification_brief.md").is_file():
+                errors.append("Draft partial plan requires clarification_brief.md")
     return list(dict.fromkeys(f"{path}: {error}" for error in errors))
 
 

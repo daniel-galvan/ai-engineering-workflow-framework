@@ -1698,3 +1698,15 @@ A pilot run MUST NOT be called contract-compliant unless its work record can ans
 - Were all explicitly named paths verified, including symlink targets where applicable?
 - Why did the workflow finish, stop, or defer?
 - What is the next action and who owns it?
+
+### Feature Delivery Planning Recovery
+
+Explicit planning recovery preserves the closed failed/completed invocation, including its attempt counters, before
+starting a new planning execution identity in the same session. Reconcile actual prior workers and current provider
+closure before preparation. Historical executions are provenance, not current worker or runtime rows. Recover accepted
+findings as named inputs and reverify applicability; do not restart discovery without a material gap.
+
+An `awaiting_input` planning handoff may preserve a structurally validated partial Draft plan with owned unresolved
+decisions and its Clarification Brief. It grants neither full-ticket readiness nor implementation approval. Only a
+ready, explicitly approved plan may enter remediation. Failure publication preserves detailed prior errors and retry
+accounting; it must not reset the exhausted same-invocation correction budget.

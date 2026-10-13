@@ -309,8 +309,10 @@ approval or enabled setting is not proof that every mutation requires the same l
 trace initiation, submission/payload, completion and recovery; atomic persistence alone is insufficient. Independent
 planning review challenges these assumptions, not only conformance with upstream conclusions.
 
-For a clarification-required run, design does not create an implementation plan. It frames one or more supported
-solutions, recommends one when evidence permits, and identifies the smallest decision that would make planning ready.
+For a clarification-required run, design frames supported solutions and the smallest decision needed for readiness.
+When independent work has a feasible plan, Documenter may preserve a partial `status: Draft` implementation plan with
+complete applicability, design and dependency tables and owned unresolved decisions. Retain the Clarification Brief;
+the workflow remains `awaiting_input`, and the draft grants neither full readiness nor implementation approval.
 
 The feature-design result must list the context and artifacts consumed,
 confirmed acceptance facts, assumptions or hypotheses, feasible feature
@@ -328,8 +330,8 @@ workers return terminal envelopes and fan-in passes, the Documenter creates the 
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md
 ```
 
-The plan is not authorization to make changes. If context remains `clarification_required`, do not create it; hand off
-`awaiting_input` with the clarification packet and Clarification Brief instead.
+The plan is not authorization to make changes. If context remains `clarification_required`, hand off `awaiting_input`
+with the Clarification Brief. A partial Draft plan may accompany it under the disposition above.
 
 Apply the shared [planning-readiness rule][planning-readiness]. Remaining code, dependency, configuration, test,
 environment, operational, rollout, or validation work belongs in the plan when a feasible sequence exists; it is not a

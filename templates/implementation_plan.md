@@ -200,3 +200,11 @@ record any decision-changing focused check already run as existing evidence.
 # Open Questions and Decisions
 
 Record unresolved questions, decisions required before implementation, and any plan revision history.
+
+For an `awaiting_input` planning handoff, a partial plan may be retained only with frontmatter `status: Draft`, the
+complete applicability/design/dependency tables, and an unresolved decision table below. Link the accompanying
+`clarification_brief.md` in the terminal handoff. This draft neither establishes full readiness nor grants approval.
+
+| Question or decision | Why it matters | Owner | Status | Evidence refs |
+| --- | --- | --- | --- | --- |
+| | | | pending / open / resolved | |

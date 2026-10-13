@@ -45,12 +45,12 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
 try:
     from review_evidence import (
         PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors, delivery_evidence_fixture,
-        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors,
+        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors, draft_plan_errors,
     )
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.review_evidence import (
         PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors, delivery_evidence_fixture,
-        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors,
+        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors, draft_plan_errors,
     )
 
 try:
@@ -697,10 +697,20 @@ def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[s
         else:
             errors.extend(asset_plan_errors(plan_path.read_text(), manifest))
             errors.extend(applicability_errors(plan_path.read_text()))
+    elif state == "awaiting_input" and (root / "implementation_plan.md").is_file():
+        errors.extend(draft_plan_errors((root / "implementation_plan.md").read_text()))
+        errors.extend(asset_plan_errors((root / "implementation_plan.md").read_text(), manifest))
+        for name in ("implementation_plan.md", "clarification_brief.md"):
+            if (root / name).resolve() not in durable_paths or (root / name).resolve() not in handoff_paths:
+                errors.append(f"Partial planning handoff must register and link {name}")
+        if not (root / "clarification_brief.md").is_file():
+            errors.append("Draft partial plan requires clarification_brief.md")
     return list(dict.fromkeys(errors))
 
 
-def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[str]:
+def _feature_delivery_packet_contract_errors(
+    packet: dict[str, object], *, pre_handoff: bool = False,
+) -> list[str]:
     identity = packet.get("identity", {})
     if not isinstance(identity, dict):
         return []
@@ -768,6 +778,8 @@ def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[
 
     profile = profiles[2]
     contract = dict(FEATURE_DELIVERY_WORKER_ROLES[(profile, "planning")])
+    if pre_handoff:
+        contract.pop("handoff", None)
     rows_by_worker: dict[str, list[dict[str, object]]] = {}
     for row in packet.get("workers", []):
         if isinstance(row, dict):
@@ -843,6 +855,13 @@ def _feature_delivery_packet_contract_errors(packet: dict[str, object]) -> list[
                 ledger_rows[0].get("Outcome", "")
             ).strip().lower():
                 errors.append(f"Feature Delivery worker {worker} ledger/result outcomes must match")
+    bindings = root / "role_bindings.json" if (root := Path(str(
+        packet.get("finalization", {}).get("Durable artifact root", "")))).is_absolute() else None
+    if not pre_handoff and bindings and bindings.is_file():
+        if json.loads(bindings.read_text()).get("runtime_evidence"):
+            errors.extend(_worker_runtime_audit_errors(packet, root / "finalization_packet.json", {
+                row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"
+            }))
     return errors
 
 
@@ -962,8 +981,7 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
     if Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower() != "feature_delivery":
         return []
     remediation = identity.get("Lifecycle") == "remediation"
-    if not remediation and str(selection.get("Primary goal", "")).strip().lower() != "specification assessment":
-        return []
+    planning = not remediation and str(selection.get("Primary goal", "")).strip().lower() == "implementation planning"
     errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
     if errors:
         return errors
@@ -976,6 +994,26 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
     errors.extend(asset_gate_errors(
         root / ASSET_MANIFEST_FILENAME, root / "run_inputs.json", str(packet["work_item"]["ID"]),
     ))
+    if planning:
+        errors.extend(error.replace("Technical Spike", "Feature Delivery")
+                      for error in _technical_spike_reasoning_graph_errors(packet))
+        for name in ("feature_context.md", "impact_analysis.md", "feature_design.md"):
+            if not (root / name).is_file():
+                errors.append(f"Feature Delivery pre-handoff requires {name}")
+        candidate = json.loads(json.dumps(packet))
+        candidate["identity"].update({"State": "awaiting_input", "Workflow outcome": "completed",
+                                      "Engineering outcome": "partially_solved"})
+        errors.extend(_feature_delivery_packet_contract_errors(candidate, pre_handoff=True))
+        errors.extend(_worker_runtime_audit_errors(packet, packet_path, {
+            row.get("Worker") for row in packet.get("worker_results", [])
+            if row.get("Outcome") == "complete" and row.get("Worker") != "handoff"
+        }))
+        _, manifest = _feature_asset_manifest(packet)
+        if manifest:
+            errors.extend(validate_asset_manifest(manifest, expected_evidence_ids={
+                row.get("Evidence ID") for row in packet.get("evidence", [])
+            }))
+        return list(dict.fromkeys(errors))
     if remediation:
         errors.extend(_feature_delivery_remediation_errors(packet, packet_path, pre_handoff=True))
         return list(dict.fromkeys(errors))
@@ -3221,6 +3259,40 @@ def self_test() -> None:
         plan_path.write_text("# Asset Baseline\nasset_manifest.json\n")
         assert any("Behavior Applicability" in error for error in _feature_delivery_asset_contract_errors(feature))
         plan_path.write_text("# Asset Baseline\nasset_manifest.json\n" + PLAN_FIXTURE)
+        partial = json.loads(json.dumps(feature))
+        partial["identity"].update({"State": "awaiting_input", "Engineering outcome": "partially_solved",
+                                    "Run input manifest": str(run_inputs_path),
+                                    "Run input manifest hash": hashlib.sha256(run_inputs_path.read_bytes()).hexdigest()})
+        partial["handoff"].update({"workflow_result": "Independent plan saved; retry policy needs input",
+                                   "implementation_plan": "Draft partial plan; not ready or approved"})
+        draft = "---\nstatus: Draft\n---\n" + plan_path.read_text() + (
+            "\n# Open Questions and Decisions\n"
+            "| Question or decision | Why it matters | Owner | Status | Evidence refs |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| Retry policy | Defines recovery | Issue owner | pending | E-001 |\n"
+        )
+        plan_path.write_text(draft)
+        brief = feature_root / "clarification_brief.md"
+        brief.write_text("# Clarification Brief\n\nIssue owner must select retry policy before implementation.\n")
+        partial["durable_artifacts"].extend([
+            {"Artifact": "Partial plan", "Path": str(plan_path), "Status": "Draft", "Purpose": "Independent work"},
+            {"Artifact": "Clarification brief", "Path": str(brief), "Status": "Open", "Purpose": "Owned decision"},
+        ])
+        partial["handoff"]["artifacts"].extend([str(plan_path), str(brief)])
+        partial_closure = feature_root / "runtime_closure.json"
+        partial_closure.write_text(json.dumps({"runtime_closure": [{
+            **packet["runtime_closure"][0], "Completed worker handles": "/root/context, /root/impact, /root/design, /root/handoff",
+            "Closure evidence or blocker": "Provider close confirmed /root/context, /root/impact, /root/design, /root/handoff",
+        }]}))
+        partial_packet = feature_root / "partial_packet.json"
+        partial_packet.write_text(json.dumps(partial))
+        partial_record = feature_root / "work_record.md"
+        finalize(partial_packet, partial_closure, partial_record, check_only=True)
+        finalize(partial_packet, partial_closure, partial_record, pre_release=True)
+        finalize(partial_packet, partial_closure, partial_record)
+        assert "| State | awaiting_input |" in partial_record.read_text()
+        assert "Independent plan saved" in partial_record.read_text()
+        plan_path.write_text("# Asset Baseline\nasset_manifest.json\n" + PLAN_FIXTURE)
         delivery = json.loads(json.dumps(feature))
         delivery["identity"].update({"Lifecycle": "remediation", "State": "completed"})
         assert any("code_review.md" in error for error in _feature_delivery_packet_contract_errors(delivery))
@@ -4758,8 +4830,9 @@ def main() -> int:
         try:
             packet_path = args.packet.resolve()
             # This receipt reports failure; it never certifies activation, readiness or runtime release.
-            receipt = {"schema_version": 1, "status": "failed", "stage": "workflow",
-                       "errors": [args.workflow_failure], "runtime_closure": "unverified",
+            _, previous = _finalization_status(packet_path)
+            receipt = {**previous, "schema_version": 1, "status": "failed", "stage": "workflow",
+                       "errors": list(dict.fromkeys(previous.get("errors", []) + [args.workflow_failure])), "runtime_closure": "unverified",
                        "observed_at": datetime.now(timezone.utc).isoformat(),
                        "packet_sha256": hashlib.sha256(packet_path.read_bytes()).hexdigest()}
             (packet_path.parent / FINALIZATION_STATUS_FILENAME).write_text(json.dumps(receipt, indent=2) + "\n")

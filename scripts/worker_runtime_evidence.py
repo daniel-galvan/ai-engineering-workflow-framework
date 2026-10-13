@@ -20,7 +20,9 @@ def timestamp(value: str) -> datetime:
     return result
 
 
-def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> dict:
+def read_runtime_events(
+    path: Path, parent_thread_id: str, started_at: str, identity_sessions: tuple[Path, ...] = (),
+) -> dict:
     if not UUID.fullmatch(parent_thread_id):
         raise ValueError("parent_thread_id_invalid")
     started = timestamp(started_at)
@@ -28,9 +30,25 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
         first = json.loads(next(stream))
         if first.get("type") != "session_meta" or first.get("payload", {}).get("id") != parent_thread_id:
             raise ValueError("provider_session_parent_mismatch")
-        events, mappings, inventories = [], {}, []
+        events, mappings, inventories, failed_dispatches = [], {}, [], []
+        for source in identity_sessions:
+            with source.open() as identity_stream:
+                header = json.loads(next(identity_stream))
+                if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != parent_thread_id:
+                    raise ValueError("provider_session_parent_mismatch")
+                for line in identity_stream:
+                    row = json.loads(line)
+                    item = row.get("payload", {}).get("item", {})
+                    if row.get("type") != "event_msg" or item.get("type") != "SubAgentActivity" or item.get("kind") != "started":
+                        continue
+                    handle, thread = item.get("agent_path"), item.get("agent_thread_id")
+                    if not isinstance(handle, str) or not isinstance(thread, str) or not UUID.fullmatch(thread):
+                        raise ValueError("provider_worker_identity_invalid")
+                    if handle in mappings and mappings[handle] != thread:
+                        raise ValueError("provider_worker_identity_conflict")
+                    mappings[handle] = thread
         pending_spawn = None
-        inventory_pending = False
+        inventory_pending = None
         observed_until = started
         active, intervals = {}, []
         for line in stream:
@@ -66,7 +84,8 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
                 continue
             if payload.get("type") == "function_call" and payload.get("namespace") == "collaboration":
                 operation = payload.get("name")
-                inventory_pending = operation == "list_agents"
+                if operation == "list_agents":
+                    inventory_pending = payload.get("call_id") or True
                 if operation not in {"spawn_agent", "followup_task", "send_message"}:
                     continue
                 arguments = json.loads(payload["arguments"])
@@ -74,7 +93,7 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
                 if operation == "spawn_agent":
                     if pending_spawn is not None or not isinstance(arguments.get("task_name"), str):
                         raise ValueError("provider_spawn_identity_unresolved")
-                    pending_spawn = (arguments["task_name"], event)
+                    pending_spawn = (arguments["task_name"], event, payload.get("call_id"))
                     continue
                 target = arguments.get("target")
                 matches = [handle for handle in mappings if target in {handle, handle.rsplit("/", 1)[-1]}]
@@ -82,12 +101,23 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
                     raise ValueError("provider_dispatch_handle_unmapped")
                 handle = matches[0]
                 events.append({**event, "Provider handle": handle, "Thread ID": mappings[handle]})
-            elif payload.get("type") == "function_call_output" and inventory_pending:
-                raw = json.loads(payload["output"])
+            elif payload.get("type") == "function_call_output":
+                try:
+                    raw = json.loads(payload["output"])
+                except json.JSONDecodeError:
+                    raw = payload["output"]
+                call_id = payload.get("call_id")
+                if pending_spawn is not None and call_id == pending_spawn[2]:
+                    if not isinstance(raw, dict) or not raw.get("task_name"):
+                        failed_dispatches.append({**pending_spawn[1], "Task": pending_spawn[0],
+                                                  "Status": "failed"})
+                        pending_spawn = None
+                if not inventory_pending or inventory_pending not in {True, call_id}:
+                    continue
                 if isinstance(raw, dict) and isinstance(raw.get("agents"), list):
                     inventories.append({"Observed at": row["timestamp"], "Status source": "list_agents",
                                         "raw_response": raw})
-                inventory_pending = False
+                inventory_pending = None
     intervals.extend((start, observed_until) for start in active.values())
     merged = []
     for start, end in sorted(intervals):
@@ -101,8 +131,9 @@ def read_runtime_events(path: Path, parent_thread_id: str, started_at: str) -> d
             "timing": {"observed_until": observed_until.isoformat(), "elapsed_seconds": elapsed,
                        "worker_active_seconds": worker_seconds, "no_worker_active_seconds": elapsed - worker_seconds,
                        "open_worker_intervals": len(active)},
-            "provider_session": str(path.resolve()), "events": events,
-            "thread_mappings": mappings, "inventories": inventories}
+            "provider_session": str(path.resolve()), "events": events, "failed_dispatches": failed_dispatches,
+            "thread_mappings": mappings, "inventories": inventories,
+            "identity_sessions": [str(source.resolve()) for source in identity_sessions]}
 
 
 def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict) -> dict:
@@ -168,7 +199,7 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
         if contract.get("run_started_at") and saved["run_started_at"] != contract["run_started_at"]:
             raise ValueError("runtime_dispatch_run_start_mismatch")
         current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
-                                      saved["run_started_at"])
+                                      saved["run_started_at"], tuple(Path(value) for value in saved.get("identity_sessions", [])))
         if (saved["events"] != current["events"] or saved["thread_mappings"] != current["thread_mappings"]
                 or saved["inventories"] != current["inventories"]):
             raise ValueError("runtime_dispatch_ledger_stale")
@@ -188,6 +219,8 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider-session", type=Path, required=True)
+    parser.add_argument("--identity-session", type=Path, action="append", default=[],
+                        help="Exact earlier parent fragment; read identity events only, not analytical outputs")
     parser.add_argument("--parent-thread-id", required=True)
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--ledger", type=Path, required=True)
@@ -200,7 +233,8 @@ def main() -> int:
             (args.worker_session, args.observation, args.agent, args.trace)):
         parser.error("trace export requires --worker-session, --observation, --agent and --trace")
     try:
-        result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at)
+        result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at,
+                                     tuple(args.identity_session))
         if args.trace:
             if args.trace.resolve().parent != args.ledger.resolve().parent:
                 raise ValueError("worker_trace_outside_current_run")

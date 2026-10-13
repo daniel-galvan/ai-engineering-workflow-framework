@@ -170,6 +170,14 @@ description: >-
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
    sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
+   An ordinary continuation cannot reopen a completed Feature Delivery planning execution or bypass exhausted
+   finalization attempts. For explicitly authorized planning recovery, reconcile prior actual worker rows and fresh
+   Coordinator closure first, then pass `--continuation --planning-recovery` with
+   `--approval-reference <recovery authorization>`.
+   Preparation preserves the prior invocation under `runs/`, starts a new planning identity, and clears current
+   execution/closure rows. The archived retry counters remain intact. This is not implementation approval.
+   Supply accepted prior findings as named current inputs; recovery workers check their applicability and investigate
+   only changed inputs or concrete gaps. Do not repeat completed discovery merely because execution identity changed.
    On every follow-up in a selected playbook, read its current packet and saved decisions before choosing an action.
    A request to implement an existing plan, including after a terminal planning handoff, enters the re-entry path
    above; it must not silently invoke a generic single-agent implementation skill. Selecting the playbook requests its
@@ -298,6 +306,24 @@ description: >-
    explicitly requests continuation or recovery. Preserve template field
    names, use `Unknown` or `None` for unavailable values, and ask only for a business, scope, ownership, or approval
    decision that bounded discovery cannot resolve.
+   For Feature Delivery implementation planning, deliver each prepared analytical `worker_contract`, including the
+   context worker's `asset_inventory`, exact result fields and ID namespace. Use the prepared result merger after
+   guarded fan-in; preserve returned evidence IDs instead of retyping the narrative into the packet. Record the
+   observed provider handle, configured binding, completion and current status audit in Coordinator-owned rows.
+   Use the prepared runtime collector and the export procedure below for current provider evidence. Gather the
+   current ledger before downstream activation. If a reused worker was started in an earlier provider-file fragment,
+   pass that exact same-parent fragment as `--identity-session` to recover only its observed handle/UUID mapping;
+   never import old analytical output through this route. Refresh status after redispatch; completed historical rows
+   never stand in for current execution.
+   Before Documenter activation run the packaged guard. The ordinary planning guard checks required upstream results,
+   current provider audits and asset evidence references. Coordinator repairs provider/closure bookkeeping; owning
+   analysts repair their evidence; Documenter writes the handoff from those supplied facts. Never send provider
+   identity repair to a Documenter without the observed receipts. Use an exact supported unavailable marker such as
+   `Not exposed; provider observation unavailable`, without appending prose to configured model/effort values.
+   For a partial plan with pending decisions, keep `awaiting_input` and a Clarification Brief; retain an implementation
+   plan only with `status: Draft`, full structural tables and owned unresolved decisions. Do not label it ready.
+   Check runtime capacity before dispatch, choose either an existing compatible worker or a fresh worker, and record
+   cancellation if a superseded assignment is interrupted. Do not accept the cancelled result as current work.
 8a. For TechOps planning, the prepared worker contracts are operative instructions, not optional references. Include
    their complete `worker_contract` with each fresh assignment. Each analytical worker writes its assigned narrative
    and JSON result to the exact `output` and `result` paths; preserve the prepared ID namespace and upstream IDs.

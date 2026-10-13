@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge a prepared TechOps analytical result without retyping its evidence."""
+"""Merge a prepared TechOps or Feature Delivery analytical result without retyping evidence."""
 
 import argparse
 import json
@@ -15,6 +15,13 @@ WORKERS = {
     "solution_architect": ("fix-design", "FD"),
     "reviewer": ("planning-review", "PR"),
 }
+FEATURE_WORKERS = {
+    "current_state_investigator": ("feature-context", "FC"),
+    "dependency_analyst": ("impact-analysis", "IA"),
+    "repository_integrator": ("repository-integration", "RI"),
+    "solution_architect": ("feature-design", "FD"),
+    "reviewer": ("planning-review", "PR"),
+}
 TABLES = {"evidence": "Evidence ID", "claims": "Claim ID", "decisions": "Decision ID", "actions": "Action ID"}
 PREFIXES = {"evidence": "E", "claims": "CL", "decisions": "DE", "actions": "A"}
 
@@ -22,8 +29,9 @@ PREFIXES = {"evidence": "E", "claims": "CL", "decisions": "DE", "actions": "A"}
 def merge_result(packet_path: Path, agent: str) -> None:
     root = packet_path.parent.resolve()
     bindings = json.loads((root / "role_bindings.json").read_text())
-    if bindings.get("playbook") != "techops_issue_remediation" or agent not in WORKERS:
-        raise ValueError("techops_analytical_binding_required")
+    workers = FEATURE_WORKERS if bindings.get("playbook") == "feature_delivery" else WORKERS
+    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"} or agent not in workers:
+        raise ValueError("analytical_binding_required")
     contract = bindings["worker_contracts"][agent]
     result_path = Path(contract["result"])
     if result_path.resolve().parent != root:
@@ -34,7 +42,7 @@ def merge_result(packet_path: Path, agent: str) -> None:
         raise ValueError("techops_planning_packet_required")
     if result.get("run_id") != packet["identity"]["Run ID"]:
         raise ValueError("worker_result_run_mismatch")
-    worker, namespace = WORKERS[agent]
+    worker, namespace = workers[agent]
     summary = result["worker_result"]
     if summary.get("Worker") != worker or summary.get("Outcome") not in {"complete", "failed", "blocked"}:
         raise ValueError("worker_result_identity_or_outcome_invalid")
@@ -61,7 +69,7 @@ def merge_result(packet_path: Path, agent: str) -> None:
     packet["worker_results"] = [row for row in packet.get("worker_results", [])
                                 if row.get("Worker") and row["Worker"] != worker] + [summary]
     if "techops_checks" in result:
-        if agent != "solution_architect":
+        if agent != "solution_architect" or bindings.get("playbook") != "techops_issue_remediation":
             raise ValueError("techops_checks_owner_invalid")
         try:
             from validate_worker_runtime import techops_check_errors

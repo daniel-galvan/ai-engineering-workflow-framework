@@ -409,6 +409,7 @@ def _initial_packet(
         )
     packet["identity"].update({
         "Run ID": manifest["run_id"],
+        "Lifecycle": manifest.get("lifecycle", packet["identity"]["Lifecycle"]),
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
         "Plugin package / version": f"{plugin['name']} / {plugin['version']}",
         "Provider/runtime configuration": str(runtime_agents) if runtime_agents else "Not provided",
@@ -503,7 +504,7 @@ def _write_activation_packets(
         "current_state_investigator": worker_contracts.get("feature_asset_inventory"),
     }
     if (manifest.get("playbook") == "techops_issue_remediation"
-            or (manifest.get("playbook") == "feature_delivery" and manifest.get("lifecycle") == "remediation")):
+            or manifest.get("playbook") == "feature_delivery"):
         contract_by_agent.update(worker_contracts)
     packets: dict[str, dict[str, object]] = {}
     for agent, binding in manifest["bindings"].items():
@@ -588,20 +589,23 @@ def _prepare_run_inputs(
     return write_manifest(destination, source), destination
 
 
-def _reentry_source(artifact_root: Path, approval_reference: str | None) -> dict[str, object]:
+def _reentry_source(
+    artifact_root: Path, approval_reference: str | None, *, planning_recovery: bool = False,
+) -> dict[str, object]:
     """Check re-entry prerequisites before modifying any current-run artifact."""
     if (not approval_reference or approval_reference.strip().lower() in {"none", "unknown", "not provided"}
             or (approval_reference.strip().startswith("<") and approval_reference.strip().endswith(">"))):
         raise ValueError("approval_reference_required")
-    if not (artifact_root / "implementation_plan.md").is_file():
-        raise ValueError("remediation_approved_plan_unavailable")
-    try:
-        from review_evidence import applicability_errors
-    except ModuleNotFoundError:
-        from scripts.review_evidence import applicability_errors
-    plan_errors = applicability_errors((artifact_root / "implementation_plan.md").read_text())
-    if plan_errors:
-        raise ValueError("remediation_plan_evidence_required:" + ";".join(plan_errors))
+    if not planning_recovery:
+        if not (artifact_root / "implementation_plan.md").is_file():
+            raise ValueError("remediation_approved_plan_unavailable")
+        try:
+            from review_evidence import applicability_errors
+        except ModuleNotFoundError:
+            from scripts.review_evidence import applicability_errors
+        plan_errors = applicability_errors((artifact_root / "implementation_plan.md").read_text())
+        if plan_errors:
+            raise ValueError("remediation_plan_evidence_required:" + ";".join(plan_errors))
     try:
         prior = json.loads((artifact_root / "finalization_packet.json").read_text())
         closure = json.loads((artifact_root / "runtime_closure.json").read_text())
@@ -613,12 +617,18 @@ def _reentry_source(artifact_root: Path, approval_reference: str | None) -> dict
             from scripts.validate_worker_runtime import terminal_observation_errors
         if Path(str(prior["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem != "feature_delivery":
             raise ValueError("remediation_reentry_playbook_mismatch")
+        if not planning_recovery and prior["identity"].get("State") != "ready_for_implementation":
+            raise ValueError("remediation_requires_ready_plan")
+        if planning_recovery and prior["identity"].get("State") not in {
+                "awaiting_input", "ready_for_implementation", "completed", "blocked"}:
+            raise ValueError("planning_recovery_requires_terminal_invocation")
         if prior["identity"]["Lifecycle"] != "planning":
             raise ValueError("remediation_reentry_requires_planning_run")
         if prior["identity"]["Requested profile"] not in {"standard", "deep"}:
             raise ValueError("remediation_prior_profile_invalid")
         rows = closure["runtime_closure"]
-        if (not _runtime_closed(rows) or _planning_runtime_closure_errors(prior, rows)
+        closure_packet = {**prior, "identity": {**prior["identity"], "State": "awaiting_input"}}
+        if (not _runtime_closed(rows) or _planning_runtime_closure_errors(closure_packet, rows)
                 or any(row.get("Receipt owner") != "Coordinator" or not row.get("Closure evidence or blocker")
                        for row in rows)):
             raise ValueError("prior_worker_runtime_closure_required")
@@ -698,6 +708,7 @@ def prepare_run(
     success_criterion: str | None = None,
     remediation_reentry: bool = False,
     approval_reference: str | None = None,
+    planning_recovery: bool = False,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
@@ -709,8 +720,10 @@ def prepare_run(
         raise ValueError("continuation_cannot_archive_stale_run")
     if remediation_reentry and (not continuation or playbook != "feature_delivery"):
         raise ValueError("remediation_reentry_requires_feature_delivery_continuation")
-    if approval_reference and not remediation_reentry:
-        raise ValueError("approval_reference_requires_remediation_reentry")
+    if planning_recovery and (not continuation or playbook != "feature_delivery" or remediation_reentry):
+        raise ValueError("planning_recovery_requires_feature_delivery_continuation")
+    if approval_reference and not (remediation_reentry or planning_recovery):
+        raise ValueError("approval_reference_requires_reentry_or_recovery")
     goal_defaults_used = playbook in PLAYBOOK_DEFAULT_GOALS and (
         workflow_objective is None and requested_outcome is None
     )
@@ -761,7 +774,23 @@ def prepare_run(
     if playbook == "feature_delivery" and input_manifest is None:
         raise ValueError("run_input_manifest_required")
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
-    prior = _reentry_source(artifact_root, approval_reference) if remediation_reentry else None
+    prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery)
+             if remediation_reentry or planning_recovery else None)
+    if continuation and not prior:
+        existing_packet = artifact_root / "finalization_packet.json"
+        if playbook == "feature_delivery" and existing_packet.is_file():
+            identity = json.loads(existing_packet.read_text())["identity"]
+            if identity.get("Lifecycle") == "planning" and identity.get("Workflow outcome") == "completed":
+                raise ValueError("planning_recovery_required:terminal_execution")
+        failure_path = artifact_root / "finalization_failure.json"
+        if failure_path.is_file():
+            failure = json.loads(failure_path.read_text())
+            if not isinstance(failure, dict):
+                raise ValueError("finalization_receipt_invalid")
+            if failure.get("status") == "failed" and int(failure.get("attempt_count", 0)) >= 2:
+                raise ValueError("finalization_recovery_required:exhausted_attempts")
+    if planning_recovery and (workflow_objective, requested_outcome) != ("implementation_planning", "implementation_plan"):
+        raise ValueError("planning_recovery_requires_implementation_planning")
     if prior and goal_defaults_used:
         validated_supplied["inputs"] = [row for row in validated_supplied["inputs"] if row["Input ID"] not in {"RUN-GOAL-001", "RUN-GOAL-002"}]
     _validate_run_goal(
@@ -943,12 +972,41 @@ def prepare_run(
                 ),
             })
         manifest["worker_result_merger"] = str(ROOT / "scripts" / "merge_techops_result.py")
+    if playbook == "feature_delivery" and workflow_objective == "implementation_planning":
+        try:
+            from merge_techops_result import FEATURE_WORKERS
+        except ModuleNotFoundError:
+            from scripts.merge_techops_result import FEATURE_WORKERS
+        fields = {name: list(rows[0]) for name, rows in json.loads(
+            (ROOT / "templates/finalization_packet.json").read_text()).items()
+            if name in {"evidence", "claims", "decisions", "actions", "worker_results"}}
+        for agent, (worker, namespace) in FEATURE_WORKERS.items():
+            manifest["worker_contracts"][agent] = {
+                "worker": worker, "id_namespace": namespace,
+                "output": str(artifact_root / (worker.replace("-", "_") + ".md")),
+                "result": str(artifact_root / (worker.replace("-", "_") + "_result.json")),
+                "result_fields": fields,
+                "instructions": (
+                    "Write narrative to output and JSON to result with current run_id, worker_result, "
+                    "evidence/claims/decisions/actions using result_fields. Preserve upstream IDs; create new "
+                    "E/CL/DE/A-<id_namespace>-<number> IDs. Record exact asset evidence IDs in the envelope. "
+                    "Outcome is complete, failed or blocked. Coordinator owns provider receipts and merges this "
+                    "envelope before downstream activation. Do not edit the packet or historical result rows. "
+                    "Recovery reuses explicitly supplied prior findings after checking current applicability; "
+                    "repeat discovery only for a material changed input or unresolved gap."
+                ),
+            }
+        manifest["worker_contracts"]["current_state_investigator"]["asset_inventory"] = (
+            manifest["worker_contracts"]["feature_asset_inventory"])
+        manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
+    if playbook == "techops_issue_remediation" or (
+            playbook == "feature_delivery" and workflow_objective != "specification_assessment"):
         manifest["runtime_evidence"] = {
             "collector": str(ROOT / "scripts" / "worker_runtime_evidence.py"),
             "ledger": str(artifact_root / "runtime_dispatches.json"),
             "run_started_at": manifest["prepared_at"],
         }
-        if continuation and (artifact_root / "role_bindings.json").is_file():
+        if continuation and not prior and (artifact_root / "role_bindings.json").is_file():
             previous = json.loads((artifact_root / "role_bindings.json").read_text()).get("runtime_evidence", {})
             if previous.get("run_started_at"):
                 manifest["runtime_evidence"]["run_started_at"] = previous["run_started_at"]
@@ -974,34 +1032,40 @@ def prepare_run(
             packet["identity"].update({
                 "Requested profile": prior["identity"]["Requested profile"],
                 "Activated profile": "None", "Executed profile": "None", "Profile status": "requested",
-                "Lifecycle": "remediation", "State": "in_progress", "Workflow outcome": "in_progress",
+                "Lifecycle": "planning" if planning_recovery else "remediation",
+                "State": "in_progress", "Workflow outcome": "in_progress",
                 "Engineering state": "unknown", "Engineering outcome": "unknown",
             })
             for field in ("workers", "worker_results", "synchronization"):
                 packet[field] = []
             packet["runtime_audits"] = []
-            packet["reentry"] = {"Prior run ID": prior["identity"]["Run ID"],
-                                 "Prior artifacts": archived, "Approval reference": approval_reference,
-                                 "Approved plan": str(artifact_root / "implementation_plan.md"),
-                                 "Approved plan SHA256": hashlib.sha256(
-                                     (artifact_root / "implementation_plan.md").read_bytes()).hexdigest()}
-            packet["durable_artifacts"].append({
-                "Artifact": "Approved implementation plan", "Path": str(artifact_root / "implementation_plan.md"),
-                "Status": "Approved", "Purpose": "Preserved plan; delivery activation barrier still required",
-            })
+            provenance = {"Prior run ID": prior["identity"]["Run ID"],
+                          "Prior artifacts": archived, "Approval reference": approval_reference}
+            plan = artifact_root / "implementation_plan.md"
+            if not planning_recovery:
+                provenance.update({"Approved plan": str(plan),
+                                   "Approved plan SHA256": hashlib.sha256(plan.read_bytes()).hexdigest()})
+            packet["recovery" if planning_recovery else "reentry"] = provenance
+            if plan.is_file():
+                packet["durable_artifacts"].append({
+                    "Artifact": "Preserved draft plan" if planning_recovery else "Approved implementation plan",
+                    "Path": str(plan), "Status": "Draft" if planning_recovery else "Approved",
+                    "Purpose": "Preserved planning input; not implementation approval" if planning_recovery else
+                               "Preserved plan; delivery activation barrier still required",
+                })
             text = (ROOT / "templates" / "work_record.md").read_text()
             for field, value in packet["identity"].items():
                 text = re.sub(rf"(?m)^\|\s*{re.escape(field)}\s*\|[^\n]*$",
                               lambda match, field=field, value=value: f"| {field} | {value} |", text)
-            text += (f"\n## Remediation Re-entry\n\nPrior run: {prior['identity']['Run ID']}\n\n"
+            text += (f"\n## Lifecycle Recovery / Re-entry\n\nPrior run: {prior['identity']['Run ID']}\n\n"
                      f"Preserved history: {archived}\n\nApproval: {approval_reference}\n\n"
-                     "Approved plan retained. Delivery activation and evidence are pending.\n")
+                     "Prior work preserved. Current lifecycle activation and evidence are pending.\n")
             record.write_text(text)
             current_path = artifact_root / "CURRENT.md"
             if current_path.exists():
                 current_path.write_text(
-                    f"# Current Run\n\nRun: {packet['identity']['Run ID']}\n\nLifecycle: remediation\n\n"
-                    "State: in_progress; delivery activation pending.\n\n"
+                    f"# Current Run\n\nRun: {packet['identity']['Run ID']}\n\nLifecycle: {packet['identity']['Lifecycle']}\n\n"
+                    "State: in_progress; current lifecycle activation pending.\n\n"
                     "Use finalization_packet.json and work_record.md for current evidence.\n\n"
                     f"Prior state preserved in {archived}.\n"
                 )
@@ -1322,7 +1386,7 @@ def self_test() -> None:
             ASSET_MANIFEST_TEMPLATE
         )
         feature_bundle = json.loads(Path(feature_defaults["activation_packet_bundle"]["path"]).read_text())
-        assert feature_bundle["packets"]["current_state_investigator"]["worker_contract"]["output"].endswith(
+        assert feature_bundle["packets"]["current_state_investigator"]["worker_contract"]["asset_inventory"]["output"].endswith(
             "asset_manifest.json"
         )
         techops = prepare_run(execution, "ITEM-TECHOPS", "techops_issue_remediation", None, False,
@@ -1429,7 +1493,9 @@ def main() -> int:
     parser.add_argument("--continuation", action="store_true")
     parser.add_argument("--remediation-reentry", action="store_true",
                         help="Start a new Feature Delivery remediation lifecycle, preserving planning history")
-    parser.add_argument("--approval-reference", help="Explicit implementation approval for remediation re-entry")
+    parser.add_argument("--approval-reference", help="Explicit approval for implementation re-entry or planning recovery")
+    parser.add_argument("--planning-recovery", action="store_true",
+                        help="Preserve a closed planning invocation and start an explicitly authorized recovery")
     parser.add_argument("--archive-stale-run", action="store_true")
     parser.add_argument("--workflow-objective")
     parser.add_argument("--requested-outcome")
@@ -1466,6 +1532,7 @@ def main() -> int:
             args.success_criterion,
             args.remediation_reentry,
             args.approval_reference,
+            args.planning_recovery,
         )
     except ValueError as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

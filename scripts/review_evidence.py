@@ -64,7 +64,7 @@ def _heading_errors(text: str, headings: tuple[str, ...]) -> list[str]:
     ]
 
 
-def applicability_errors(text: str) -> list[str]:
+def applicability_errors(text: str, *, require_ready: bool = True) -> list[str]:
     heading = "# Behavior Applicability"
     errors = _heading_errors(text, (heading,))
     rows, row_errors = _rows(text, heading, PLAN_COLUMNS)
@@ -73,11 +73,29 @@ def applicability_errors(text: str) -> list[str]:
         disposition = row[4]
         if disposition not in {"required", "conditional", "deferred", "excluded", "unverified"}:
             errors.append(f"applicability row {index} has invalid disposition")
-        elif disposition == "unverified":
+        elif disposition == "unverified" and require_ready:
             errors.append(f"ready plan cannot contain unverified applicability row {index}")
         if any(row[column].strip("`").lower() in PLACEHOLDERS for column in (0, 1, 2, 3, 5)):
             errors.append(f"applicability row {index} requires authority, evidence, observed check and consequence")
     errors.extend(plan_design_errors(text))
+    return errors
+
+
+def draft_plan_errors(text: str) -> list[str]:
+    """A partial plan records useful work without granting full readiness or approval."""
+    errors = applicability_errors(text, require_ready=False)
+    if re.search(r"^\|\s*Plan status\s*\|\s*(?:Approved|Ready for implementation)\b", text, re.M | re.I):
+        errors.append("awaiting_input partial plan cannot claim approved or ready metadata")
+    if not re.search(r"^status:\s*Draft\s*$", text, re.M):
+        errors.append("awaiting_input partial plan requires status: Draft")
+    rows, row_errors = _rows(text, "# Open Questions and Decisions", (
+        "Question or decision", "Why it matters", "Owner", "Status", "Evidence refs",
+    ))
+    errors.extend(row_errors)
+    if any(row[index].strip("` ").lower() in PLACEHOLDERS for row in rows for index in (0, 1, 2, 4)):
+        errors.append("Draft partial plan decisions require concrete questions, owners and evidence")
+    if not rows or not any(row[3].lower() in {"pending", "open", "awaiting_input"} for row in rows):
+        errors.append("Draft partial plan requires an unresolved decision with an owner")
     return errors
 
 
