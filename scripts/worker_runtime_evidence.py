@@ -136,7 +136,7 @@ def read_runtime_events(
             "identity_sessions": [str(source.resolve()) for source in identity_sessions]}
 
 
-def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict) -> dict:
+def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict, *, run_id: str | None = None) -> dict:
     """Export tool activity only, using the exact parent mapping and fresh status receipt."""
     try:
         from validate_worker_runtime import terminal_observation_errors, trace_errors
@@ -176,6 +176,8 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
               "tool_trace": tool_trace,
               "events": [{"action": "fan_in", "provider_status": "completed", "guard_result": "allowed"}],
               "trace_retrieval": str(source.resolve()), "status_observation": observation}
+    if run_id is not None:
+        result["run_id"] = run_id
     errors = trace_errors(result, require_freshness=True)
     if errors:
         result["events"][0]["guard_result"] = "blocked"
@@ -238,11 +240,10 @@ def main() -> int:
         if args.trace:
             if args.trace.resolve().parent != args.ledger.resolve().parent:
                 raise ValueError("worker_trace_outside_current_run")
-            trace = export_worker_trace(result, args.worker_session, args.agent,
-                                        json.loads(args.observation.read_text()))
             packet_path = args.trace.parent / "finalization_packet.json"
-            if packet_path.is_file():
-                trace["run_id"] = json.loads(packet_path.read_text())["identity"]["Run ID"]
+            run_id = json.loads(packet_path.read_text())["identity"]["Run ID"] if packet_path.is_file() else None
+            trace = export_worker_trace(result, args.worker_session, args.agent,
+                                        json.loads(args.observation.read_text()), run_id=run_id)
             if args.trace.is_file():
                 saved = json.loads(args.trace.read_text())
                 if saved.get("audit", {}).get("status") == "rejected" and saved != trace:

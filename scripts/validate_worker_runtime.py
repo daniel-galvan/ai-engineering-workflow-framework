@@ -458,6 +458,35 @@ def _listing_outputs(trace: dict) -> set[tuple[str, ...]]:
     return outputs
 
 
+def _verified_dispatch_content(trace: dict) -> str | None:
+    """Authenticate the current prepared contract before exempting its metadata echo."""
+    try:
+        spawn = trace["spawn"]
+        path = Path(spawn["dispatch_file"]).resolve()
+        if any(pattern.search(str(path)) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS):
+            return None
+        content = path.read_text()
+        if hashlib.sha256(path.read_bytes()).hexdigest() != spawn["dispatch_file_sha256"]:
+            return None
+        root = path.parent
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        reference = bindings["activation_packet_bundle"]
+        bundle_path = Path(reference["path"]).resolve()
+        if bundle_path.parent != root or hashlib.sha256(bundle_path.read_bytes()).hexdigest() != reference["sha256"]:
+            return None
+        packet = json.loads(bundle_path.read_text())["packets"][spawn["agent"]]
+        current = json.loads((root / "finalization_packet.json").read_text())
+        if (Path(packet["finalization_packet"]).resolve() != root / "finalization_packet.json"
+                or packet["run_id"] != trace["run_id"]
+                or packet["run_id"] != current["identity"]["Run ID"]
+                or packet["agent"] != spawn["agent"]):
+            return None
+        assignment = json.loads(content.split("\nTyped assignment:\n", 1)[1])
+        return content if activation_message(packet, assignment) == content else None
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
+        return None
+
+
 def context_trace_errors(trace: dict[str, object]) -> list[str]:
     """Reject worker traces that reference unassigned memory or archived runs."""
     if not isinstance(trace, dict):
@@ -467,9 +496,14 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
     if declared in {"fail", "failed", "blocked"}:
         errors.append("context_conformance_failed")
     listings = _listing_outputs(trace)
+    dispatch_content = _verified_dispatch_content(trace)
     for path, value in _trace_strings(trace):
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
             if label == "archived_artifact" and any(path[:len(prefix)] == prefix for prefix in listings):
+                continue
+            # Required instruction output can contain preservation locators; archive operations still fail.
+            if (label == "archived_artifact" and value == dispatch_content
+                    and path[:1] == ("tool_trace",) and "output" in path[2:]):
                 continue
             if pattern.search(value):
                 errors.append(f"forbidden_context_reference:{label}")

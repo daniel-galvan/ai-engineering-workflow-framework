@@ -1713,9 +1713,16 @@ accounting; it must not reset the exhausted same-invocation correction budget.
 
 ### Guarded Activation Delivery and Repair
 
-A provider may deliver the complete guarded instructions through an immutable current-root dispatch file. The canonical
-launch message names its SHA256; the worker verifies and reads the full file before analysis. A short launch notice is
-not a replacement for the role contract. Modified instructions require a new file and a fresh guarded dispatch.
+A provider may deliver the complete guarded instructions through an immutable current-root dispatch file. The
+context audit permits an exact echo of that file in tool output only after verifying its hash, current Run ID, prepared
+bundle hash, and canonical contract plus typed assignment. Preservation locators inside this verified instruction output
+are metadata; archive read/write requests, extra archive output, and memory references remain subject to the
+context gate.
+The trace exporter MUST attach the current Run ID before auditing tool activity.
+
+The canonical launch message names its SHA256; the worker verifies and reads the full file before analysis. A short
+launch notice is not a replacement for the role contract. Modified instructions require a new file and a fresh
+guarded dispatch.
 
 A provider-proven shortened message rejects that result, not all previously accepted work. Preserve the trace and
 actual/expected message hashes, stop downstream dispatch, and reserve one repair for that bound role using the existing

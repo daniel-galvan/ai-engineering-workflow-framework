@@ -992,8 +992,11 @@ def prepare_run(
                 "result_fields": fields,
                 "instructions": (
                     "Write narrative to output and JSON to result with current run_id, worker_result, "
-                    "evidence/claims/decisions/actions using result_fields. Preserve upstream IDs; create new "
-                    "E/CL/DE/A-<id_namespace>-<number> IDs. Record exact asset evidence IDs in the envelope. "
+                    "evidence/claims/decisions/actions using result_fields. worker_result is one object using the exact "
+                    "worker_results fields (including capitalization), not an array or lowercase summary. "
+                    f"Its Worker value must be exactly {worker}. Reference existing upstream IDs without "
+                    "repeating their rows in these arrays; every emitted row must use this worker's "
+                    "E/CL/DE/A-<id_namespace>-<number> namespace. Record exact asset evidence IDs in references. "
                     "Outcome is complete, failed or blocked. Coordinator owns provider receipts and merges this "
                     "envelope before downstream activation. Do not edit the packet or historical result rows. "
                     "Recovery reuses explicitly supplied prior findings after checking current applicability; "

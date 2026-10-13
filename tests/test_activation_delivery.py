@@ -10,6 +10,7 @@ from pathlib import Path
 
 from scripts import prepare_run as prepare
 from scripts import validate_worker_runtime as runtime
+from scripts.worker_runtime_evidence import export_worker_trace
 
 
 ARCHIVE = ".thoughts/ITEM-1/runs/prior/notes.md"
@@ -67,6 +68,80 @@ class ActivationDelivery(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside_current_run"):
             runtime.dispatch_message(packet, "Full instructions", self.root / "outside.txt")
         self.assertFalse((self.root / "outside.txt").exists())
+
+    def instruction_trace(self, locator=ARCHIVE):
+        bundle_path = Path(self.bundle["path"])
+        bundle = json.loads(bundle_path.read_text())
+        packet = bundle["packets"]["current_state_investigator"]
+        packet["run_input_manifest"]["inputs"].append({
+            "Input ID": "REC-001", "Source or path": locator,
+            "Expected use": "Preserve previous records without reading them"})
+        bundle_path.write_text(json.dumps(bundle))
+        digest = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+        bindings_path = self.artifacts / "role_bindings.json"
+        bindings = json.loads(bindings_path.read_text())
+        bindings["activation_packet_bundle"]["sha256"] = digest
+        bindings_path.write_text(json.dumps(bindings))
+        assignment = self.root / "assignment.json"
+        assignment.write_text(json.dumps({"objective": "Verify current source findings"}))
+        dispatch = self.artifacts / "activation_context.txt"
+        result = self.command("--activation-packet-bundle", bundle_path,
+                              "--expected-agent", "current_state_investigator",
+                              "--expected-bundle-sha256", digest, "--assignment", assignment,
+                              "--dispatch-file", dispatch)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipt = json.loads(result.stdout)
+        ledger = {"thread_mappings": {HANDLE: CHILD}, "events": [
+            {"Provider handle": HANDLE, "Last dispatch at": DISPATCH}]}
+        observation = {"Provider handle": HANDLE, "Thread ID": CHILD, "Provider status": "completed",
+            "Last dispatch at": DISPATCH, "Observed at": "2026-10-12T20:02:00Z", "Status source": "read_thread",
+            "Latest turn started at": DISPATCH, "Latest turn status": "completed", "Thread status": "idle",
+            "Binding evidence": {"activation_packet_delivered": True,
+                "dispatch_file": str(dispatch), "dispatch_file_sha256": receipt["dispatch_file_sha256"]}}
+        source = self.root / "child.jsonl"
+        rows = [{"timestamp": DISPATCH, "type": "session_meta", "payload": {"id": CHILD}},
+            {"timestamp": "2026-10-12T20:01:00Z", "type": "response_item", "payload": {
+                "type": "custom_tool_call", "name": "exec", "call_id": "read-contract",
+                "input": f'const r = await tools.exec_command({{cmd:"cat {dispatch}"}}); text(r.output);'}},
+            {"timestamp": "2026-10-12T20:01:01Z", "type": "response_item", "payload": {
+                "type": "custom_tool_call_output", "call_id": "read-contract",
+                "output": [{"type": "input_text", "text": dispatch.read_text()}]}}]
+        source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        return export_worker_trace(ledger, source, "current_state_investigator", observation,
+                                   run_id=packet["run_id"])
+
+    def test_prepared_dispatch_export_and_audit_allow_preservation_metadata(self):
+        trace = self.instruction_trace()
+        self.assertEqual(trace["audit"], {"status": "passed", "errors": []})
+        self.assertEqual(runtime.trace_errors(trace, require_freshness=True), [])
+        for operation in (f"cat {ARCHIVE}", f"*** Add File: {ARCHIVE}", f"*** Delete File: {ARCHIVE}"):
+            with self.subTest(operation=operation):
+                changed = json.loads(json.dumps(trace))
+                changed["tool_trace"].append({"type": "custom_tool_call", "input": operation})
+                self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(changed))
+
+    def test_verified_instruction_output_never_exempts_memory_references(self):
+        trace = self.instruction_trace(ARCHIVE + " /Users/example/.codex/memories/notes.md")
+        self.assertIn("forbidden_context_reference:memory_directory", trace["audit"]["errors"])
+
+    def test_dispatch_metadata_exception_requires_exact_current_proof(self):
+        trace = self.instruction_trace()
+        for change in ("hash", "run", "content", "input", "extra-output", "bundle"):
+            with self.subTest(change=change):
+                changed = json.loads(json.dumps(trace))
+                if change == "hash":
+                    changed["spawn"]["dispatch_file_sha256"] = "0" * 64
+                elif change == "run":
+                    changed["run_id"] = "prior-run"
+                elif change == "content":
+                    changed["tool_trace"][1]["output"][0]["text"] += " altered"
+                elif change == "input":
+                    changed["tool_trace"][0]["input"] = changed["tool_trace"][1]["output"][0]["text"]
+                elif change == "extra-output":
+                    changed["tool_trace"].append({"output": ARCHIVE})
+                else:
+                    Path(self.bundle["path"]).write_text("{}")
+                self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(changed))
 
     def trace(self, command, output):
         return {"spawn": {"observed_agent_role": "dependency_analyst"}, "tool_trace": [

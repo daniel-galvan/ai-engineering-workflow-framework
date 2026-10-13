@@ -180,6 +180,8 @@ class PlanningRecovery(unittest.TestCase):
     def test_feature_result_merge_is_exact_idempotent_and_run_bound(self):
         bindings = json.loads(Path(self.prepared["role_binding_manifest"]).read_text())
         contract = bindings["worker_contracts"]["current_state_investigator"]
+        self.assertIn("Worker value must be exactly feature-context", contract["instructions"])
+        self.assertIn("without repeating their rows", contract["instructions"])
         result = {"run_id": self.packet["identity"]["Run ID"], "worker_result": {
             key: "Recorded" for key in contract["result_fields"]["worker_results"]}, "evidence": [{
                 key: "Observed" for key in contract["result_fields"]["evidence"]}]}
