@@ -8,6 +8,12 @@ import tempfile
 from pathlib import Path
 
 
+try:
+    from packet_schema import shape_errors
+except ModuleNotFoundError:
+    from scripts.packet_schema import shape_errors
+
+
 WORKERS = {
     "current_state_investigator": ("issue-evidence", "ISS"),
     "dependency_analyst": ("failure-path", "FP"),
@@ -28,10 +34,19 @@ PREFIXES = {"evidence": "E", "claims": "CL", "decisions": "DE", "actions": "A"}
 
 def merge_result(packet_path: Path, agent: str) -> None:
     root = packet_path.parent.resolve()
+    try:
+        from validate_worker_runtime import prepared_package_errors, _pending_rejections
+    except ModuleNotFoundError:
+        from scripts.validate_worker_runtime import prepared_package_errors, _pending_rejections
+    errors = prepared_package_errors(root)
+    if errors:
+        raise ValueError(";".join(errors))
     bindings = json.loads((root / "role_bindings.json").read_text())
     workers = FEATURE_WORKERS if bindings.get("playbook") == "feature_delivery" else WORKERS
     if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"} or agent not in workers:
         raise ValueError("analytical_binding_required")
+    if agent in _pending_rejections(root):
+        raise ValueError("worker_result_recovery_authorization_required:" + agent)
     contract = bindings["worker_contracts"][agent]
     result_path = Path(contract["result"])
     if result_path.resolve().parent != root:
@@ -48,7 +63,9 @@ def merge_result(packet_path: Path, agent: str) -> None:
         raise ValueError("worker_result_identity_or_outcome_invalid")
     template = json.loads((Path(__file__).resolve().parents[1] / "templates/finalization_packet.json").read_text())
     required = set(template["worker_results"][0])
-    if not required <= summary.keys() or any(not str(summary[key]).strip() for key in required):
+    if shape_errors(summary, template["worker_results"][0], "worker_result"):
+        raise ValueError("worker_result_summary_schema_invalid")
+    if any(not summary[key].strip() for key in required):
         raise ValueError("worker_result_summary_incomplete")
     for table, key in TABLES.items():
         incoming = result.get(table, [])
@@ -59,15 +76,38 @@ def merge_result(packet_path: Path, agent: str) -> None:
             if not isinstance(row, dict):
                 raise ValueError(f"worker_result_row_invalid:{table}")
             identity = row.get(key, "")
-            if (not set(template[table][0]) <= row.keys() or not isinstance(identity, str)
+            if (shape_errors(row, template[table][0], table) or not isinstance(identity, str)
                     or not re.fullmatch(rf"{PREFIXES[table]}-{namespace}-[A-Za-z0-9_-]+", identity)
                     or identity in ids):
                 raise ValueError(f"worker_result_row_invalid:{table}")
             ids.add(identity)
-        packet[table] = [row for row in packet.get(table, [])
-                         if row.get(key) and not row[key].startswith(f"{PREFIXES[table]}-{namespace}-")] + incoming
+        existing_rows = [row for row in packet.get(table, []) if row.get(key)]
+        existing = {row[key]: row for row in existing_rows}
+        if len(existing) != len(existing_rows):
+            raise ValueError(f"worker_result_existing_ids_duplicate:{table}")
+        for row in incoming:
+            if row[key] in existing and existing[row[key]] != row:
+                raise ValueError(f"worker_result_row_conflict:{row[key]}")
+            existing[row[key]] = row
+        packet[table] = list(existing.values())
     packet["worker_results"] = [row for row in packet.get("worker_results", [])
                                 if row.get("Worker") and row["Worker"] != worker] + [summary]
+    known_ids = {row[key] for table, key in TABLES.items() for row in packet.get(table, [])}
+    for rows in (packet["worker_results"], packet["claims"], packet["decisions"], packet["actions"]):
+        for row in rows:
+            for field, value in row.items():
+                if "ref" in field.lower() and isinstance(value, str):
+                    for reference in re.findall(r"\b(?:E|CL|DE|A)-[A-Za-z0-9_]+-[A-Za-z0-9_-]+", value):
+                        if reference not in known_ids:
+                            raise ValueError(f"worker_result_reference_unresolved:{reference}")
+    if contract.get("planning_disposition_required") or "plan_readiness" in result or "implementation_plan_action" in result:
+        pair = (result.get("plan_readiness"), result.get("implementation_plan_action"))
+        if (bindings.get("playbook") != "feature_delivery" or agent != "solution_architect"
+                or not all(isinstance(value, str) for value in pair)
+                or pair not in {("ready_for_implementation", "create"), ("awaiting_input", "create_draft"),
+                                ("awaiting_input", "omit")}):
+            raise ValueError("feature_planning_disposition_invalid")
+        packet["planning_disposition"] = {key: result[key] for key in ("plan_readiness", "implementation_plan_action")}
     if "techops_checks" in result:
         if agent != "solution_architect" or bindings.get("playbook") != "techops_issue_remediation":
             raise ValueError("techops_checks_owner_invalid")

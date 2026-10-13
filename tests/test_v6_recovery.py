@@ -151,6 +151,15 @@ class V6Recovery(unittest.TestCase):
     def test_corrected_turn_excludes_rejected_activity_and_can_merge_current_result(self):
         run = self.prepare()
         rejected_path = self.rejected_trace(run)
+        bundle = run["activation_packet_bundle"]
+        assignment = self.root / "corrected_assignment.json"
+        assignment.write_text(json.dumps({"objective": "Reverify the rejected evidence", "input_paths": []}))
+        guarded = self.command("validate_worker_runtime.py", "--activation-packet-bundle", bundle["path"],
+            "--expected-agent", "current_state_investigator", "--expected-bundle-sha256", bundle["sha256"],
+            "--assignment", assignment, "--dispatch-file", Path(run["artifact_root"]) / "activation_corrected.txt",
+            "--rejected-trace", rejected_path, "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH,
+            "--provider-status", "completed")
+        self.assertEqual(guarded.returncode, 0, guarded.stdout + guarded.stderr)
         rejected_bytes = rejected_path.read_bytes()
         parent = self.root / "parent.jsonl"
         dispatch = "2026-10-09T20:03:00Z"

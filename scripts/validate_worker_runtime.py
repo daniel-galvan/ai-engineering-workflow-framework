@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import ast
+import io
 import hashlib
 import json
 import re
 import shlex
 import tempfile
+import tokenize
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +22,7 @@ V41_CONTEXT_TRACE_FIXTURE = ROOT / "tests" / "fixtures" / "v41_sentry_context_tr
 ACTIVE_STATUSES = {"pending_init", "running", "in_progress", "awaiting_dependency"}
 TERMINAL_STATUSES = {"completed", "failed", "stopped", "interrupted", "cancelled"}
 DESTRUCTIVE_TRANSITIONS = {"interrupt", "close", "replace"}
+DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
 TRACE_METADATA_KEYS = {
     "description", "expected_errors", "source_task", "source_thread", "fixture", "schema_version",
 }
@@ -27,11 +31,76 @@ FORBIDDEN_CONTEXT_PATTERNS = (
     ("memory_directory", re.compile(r"(?i)(?:^|[/\\])\.codex[/\\]memories(?:$|[/\\])")),
     ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries(?:$|[/\\])")),
     ("archived_artifact", re.compile(r"(?i)(?:^|[\s/\\\"'])\.thoughts[/\\][^/\\]+[/\\]runs(?:$|[\s/\\\"'])")),
+    ("archived_artifact", re.compile(r"(?i)\.thoughts[/\\][^/\\\s]+(?:[_-]v[0-9]+|[_-]backup|[_-]archive)(?:$|[/\\\s])")),
     ("memory_citation", re.compile(r"(?i)<oai-mem-citation>")),
 )
 
 
-def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: str) -> list[str]:
+def prepared_package_errors(root: Path) -> list[str]:
+    """Reject execution from a different package than the prepared run."""
+    try:
+        manifest = json.loads((root / "role_bindings.json").read_text())
+        package = manifest.get("framework_package")
+        if package is None:
+            return []  # Legacy packets retain their existing validation path.
+        if (Path(package["root"]).resolve() != ROOT
+                or package["plugin_sha256"] != hashlib.sha256((ROOT / ".codex-plugin/plugin.json").read_bytes()).hexdigest()):
+            return ["prepared_framework_package_mismatch: prepare recovery from the selected package"]
+        return []
+    except (OSError, ValueError, TypeError, KeyError):
+        return ["prepared_framework_package_invalid"]
+
+
+def worker_binding(bindings: dict, worker: str) -> str:
+    if worker in bindings["bindings"]:
+        return worker
+    matches = [role for role, contract in bindings.get("worker_contracts", {}).items()
+               if isinstance(contract, dict) and contract.get("worker") == worker]
+    if not matches and DELIVERY_WORKERS.get(worker) in bindings["bindings"]:
+        return DELIVERY_WORKERS[worker]
+    if len(matches) != 1:
+        raise ValueError("worker_binding_identity_invalid")
+    return matches[0]
+
+
+def _pending_rejections(root: Path) -> dict:
+    ledger_path = root / "runtime_dispatches.json"
+    if not ledger_path.exists():
+        return {}
+    ledger = json.loads(ledger_path.read_text())
+    current = json.loads((root / "finalization_packet.json").read_text())["identity"]["Run ID"]
+    pending = ledger.get("rejected_results", {})
+    if not isinstance(pending, dict):
+        raise ValueError("worker_rejection_receipt_invalid")
+    for receipt in pending.values():
+        path = Path(receipt["trace"])
+        if (receipt["run_id"] != current or path.resolve().parent != root.resolve()
+                or hashlib.sha256(path.read_bytes()).hexdigest() != receipt["sha256"]):
+            raise ValueError("worker_rejection_receipt_invalid")
+    return pending
+
+
+def _recovery_errors(path: Path, role: str, handle: str, dispatch: str, provider_status: str) -> list[str]:
+    try:
+        trace = json.loads(path.read_text())
+        current = json.loads((path.parent / "finalization_packet.json").read_text())
+        bindings = json.loads((path.parent / "role_bindings.json").read_text())
+        if (trace.get("run_id") != current["identity"]["Run ID"]
+                or worker_binding(bindings, trace["spawn"]["agent"]) != role):
+            return ["rejected_result_current_binding_required"]
+        errors = rejected_result_errors(trace, handle, dispatch)
+        error = transition_error("replace", provider_status, rejected_result=not errors)
+        if error:
+            errors.append(error)
+        if role in current.get("activation_repairs", {}):
+            errors.append("activation_repair_limit_reached")
+        return errors
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+        return ["rejected_result_trace_invalid:" + str(error)]
+
+
+def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: str,
+                             *, rejected_trace_sha256: str | None = None) -> list[str]:
     if not path.is_file():
         return ["activation_packet_unavailable"]
     if hashlib.sha256(path.read_bytes()).hexdigest() != expected_sha256:
@@ -44,7 +113,22 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
     if not isinstance(packets, dict) or not isinstance(packets.get(expected_agent), dict):
         return ["activation_packet_agent_unavailable"]
     packet = packets[expected_agent]
-    errors: list[str] = []
+    errors: list[str] = prepared_package_errors(path.parent) if (path.parent / "role_bindings.json").is_file() else []
+    failure_path = path.parent / "finalization_failure.json"
+    if failure_path.is_file():
+        try:
+            failure = json.loads(failure_path.read_text())
+            if failure.get("status") == "failed" and (failure.get("stage") == "workflow"
+                    or int(failure.get("attempt_count", 0)) >= 2):
+                errors.append("worker_activation_requires_planning_recovery")
+        except (ValueError, TypeError):
+            errors.append("worker_activation_failure_receipt_invalid")
+    try:
+        for role, receipt in _pending_rejections(path.parent).items():
+            if role != expected_agent or receipt["sha256"] != rejected_trace_sha256:
+                errors.append("worker_activation_rejected_result_pending:" + role)
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        errors.append("worker_rejection_receipt_invalid:" + str(error))
     if packet.get("required_prefix") != "Coordinator initialization: complete":
         errors.append("activation_packet_prefix_invalid")
     if packet.get("agent") != expected_agent:
@@ -164,12 +248,38 @@ def dispatch_message(packet: dict, message: str, path: Path) -> str:
     if path.resolve().parent != root or path.name in {"finalization_packet.json", "work_record.md"}:
         raise ValueError("activation_dispatch_file_outside_current_run")
     digest = hashlib.sha256(message.encode()).hexdigest()
+    bindings_path = root / "role_bindings.json"
+    receipts_path = root / "activation_receipts.json"
+    receipts, receipt = None, None
+    if bindings_path.is_file():
+        bindings = json.loads(bindings_path.read_text())
+        receipts = json.loads(receipts_path.read_text()) if receipts_path.exists() else {}
+        receipt = {"sha256": digest, "run_id": packet["run_id"], "agent": packet["agent"],
+                   "bundle_sha256": bindings["activation_packet_bundle"]["sha256"]}
+        if path.name in receipts and any(receipts[path.name].get(key) != receipt[key]
+                                         for key in ("sha256", "run_id", "agent")):
+            raise ValueError("activation_dispatch_receipt_conflict")
     if path.exists():
         if path.read_text() != message:
             raise ValueError("activation_dispatch_file_conflict: use a new path for a corrected assignment")
     else:
         with path.open("x") as stream:
             stream.write(message)
+    if receipts is not None and path.name not in receipts:
+        receipts[path.name] = receipt
+        with tempfile.NamedTemporaryFile("w", dir=root, delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(receipts, stream, indent=2)
+            stream.write("\n")
+        try:
+            temporary.replace(receipts_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return dispatch_notice(packet, message, path)
+
+
+def dispatch_notice(packet: dict, message: str, path: Path) -> str:
+    digest = hashlib.sha256(message.encode()).hexdigest()
     return (packet["required_prefix"] + "\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
@@ -205,7 +315,7 @@ def delivery_start_errors(path: Path, implementer_handle: str, provider_status: 
         errors = applicability_errors(plan.read_text())
         if provider_status not in {"running", "in_progress"}:
             errors.append("active_implementer_required:expected running or in_progress; received " + provider_status)
-        roles = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
+        roles = DELIVERY_WORKERS
         handles = []
         for worker, role in roles.items():
             rows = [row for row in packet.get("workers", []) if row.get("Worker") == worker]
@@ -385,6 +495,14 @@ def _trace_strings(value: object, path: tuple[str, ...] = ()):
         for index, nested in enumerate(value):
             yield from _trace_strings(nested, (*path, str(index)))
     elif isinstance(value, str):
+        if path[:1] == ("tool_trace",) and "output" in path[2:]:
+            try:
+                decoded = json.loads(value)
+                if isinstance(decoded, (dict, list)):
+                    yield from _trace_strings(decoded, path)
+                    return
+            except ValueError:
+                pass
         yield path, value
 
 
@@ -474,12 +592,21 @@ def _verified_dispatch_content(trace: dict) -> str | None:
         bundle_path = Path(reference["path"]).resolve()
         if bundle_path.parent != root or hashlib.sha256(bundle_path.read_bytes()).hexdigest() != reference["sha256"]:
             return None
-        packet = json.loads(bundle_path.read_text())["packets"][spawn["agent"]]
+        role = worker_binding(bindings, spawn.get("binding_agent", spawn["agent"]))
+        packet = json.loads(bundle_path.read_text())["packets"][role]
+        receipts_path = root / "activation_receipts.json"
+        if receipts_path.exists():
+            receipt = json.loads(receipts_path.read_text()).get(path.name, {})
+            if (receipt.get("sha256") != spawn["dispatch_file_sha256"]
+                    or receipt.get("run_id") != trace["run_id"] or receipt.get("agent") != role):
+                return None
+            if receipt["bundle_sha256"] != reference["sha256"]:
+                packet = json.loads(content.split("\n", 2)[1])
         current = json.loads((root / "finalization_packet.json").read_text())
         if (Path(packet["finalization_packet"]).resolve() != root / "finalization_packet.json"
                 or packet["run_id"] != trace["run_id"]
                 or packet["run_id"] != current["identity"]["Run ID"]
-                or packet["agent"] != spawn["agent"]):
+                or packet["agent"] != role):
             return None
         assignment = json.loads(content.split("\nTyped assignment:\n", 1)[1])
         return content if activation_message(packet, assignment) == content else None
@@ -487,31 +614,301 @@ def _verified_dispatch_content(trace: dict) -> str | None:
         return None
 
 
+THOUGHT_PATH = re.compile(r"(?:/[A-Za-z0-9_.-]+)*/?\.thoughts/[^\s\"'<>`\\;,)}\]]+")
+
+
+def _authorized_read(row: dict, assigned: list[str]) -> bool:
+    arguments = row.get("arguments", {})
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError:
+            arguments = {}
+    command = arguments.get("cmd") if isinstance(arguments, dict) else None
+    if command is None and row.get("type") == "custom_tool_call":
+        command = row.get("input")
+    if isinstance(command, str) and "tools.exec_command" in command:
+        match = re.fullmatch(r"(?:text\()?await tools\.exec_command\((\{.*\})\)\)?;?", command.strip(), re.S)
+        if not match:
+            return False
+        try:
+            command = json.loads(match.group(1)).get("cmd")
+        except (ValueError, AttributeError):
+            return False
+    if not isinstance(command, str) or any(char in command for char in (";", "|", "&", ">", "<", "\n", "`", "$")):
+        return False
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    return bool(tokens and not any(token.startswith("--pre") for token in tokens)
+                and tokens[0] in {"cat", "head", "tail", "rg"}
+                and any(path in tokens for path in assigned))
+
+
+def _literal_argument(node: ast.AST):
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Dict):
+        return {(key.id if isinstance(key, ast.Name) else _literal_argument(key)): _literal_argument(value)
+                for key, value in zip(node.keys, node.values)}
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return [_literal_argument(value) for value in node.elts]
+    if isinstance(node, ast.Name) and node.id in {"true", "false", "null"}:
+        return {"true": True, "false": False, "null": None}[node.id]
+    raise ValueError("nonliteral tool argument")
+
+
+def _tool_operations(row: dict) -> list[tuple[str, dict]]:
+    """Read literal provider arguments; never evaluate orchestration source."""
+    if row.get("type") == "function_call" or row.get("tool") == "exec_command":
+        arguments = row.get("arguments", {})
+        try:
+            arguments = json.loads(arguments) if isinstance(arguments, str) else arguments
+            return [(row.get("name", row.get("tool", "")), arguments)] if isinstance(arguments, dict) else []
+        except ValueError:
+            return []
+    source = row.get("input")
+    if row.get("type") != "custom_tool_call" or not isinstance(source, str):
+        return []
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+        operations, index = [], 0
+        while index < len(tokens):
+            # JavaScript comments must not create operations from quoted examples.
+            if tokens[index].string == "//":
+                line = tokens[index].start[0]
+                while index < len(tokens) and tokens[index].start[0] == line:
+                    index += 1
+                continue
+            if tokens[index].string == "/" and index + 1 < len(tokens) and tokens[index + 1].string == "*":
+                index += 2
+                while index + 1 < len(tokens) and [v.string for v in tokens[index:index + 2]] != ["*", "/"]:
+                    index += 1
+                index += 2
+                continue
+            if tokens[index].type == tokenize.NAME and tokens[index].string in {"eval", "Function", "globalThis", "constructor"}:
+                return []
+            if (tokens[index].type == tokenize.NAME and tokens[index].string == "tools"
+                    and (index + 3 >= len(tokens) or tokens[index + 1].string != "."
+                         or tokens[index + 3].string != "(")):
+                return []
+            if (index + 3 < len(tokens) and tokens[index].type == tokenize.NAME
+                    and tokens[index].string == "tools" and tokens[index + 1].string == "."
+                    and tokens[index + 2].type == tokenize.NAME and tokens[index + 3].string == "("):
+                name, start, depth = tokens[index + 2].string, index + 4, 1
+                index = start
+                while index < len(tokens) and depth:
+                    if tokens[index].type == tokenize.OP:
+                        depth += (tokens[index].string == "(") - (tokens[index].string == ")")
+                    index += 1
+                if depth:
+                    return []
+                argument = tokenize.untokenize([(token.type, token.string) for token in tokens[start:index - 1]])
+                value = _literal_argument(ast.parse(argument, mode="eval").body)
+                if not isinstance(value, dict):
+                    return []
+                operations.append((name, value))
+                continue
+            if tokens[index].type == tokenize.ERRORTOKEN and tokens[index].string.strip():
+                return []
+            index += 1
+        return operations
+    except (ValueError, SyntaxError, TypeError, tokenize.TokenError, IndentationError):
+        return []
+
+
+def _python_read_targets(source: str) -> list[str]:
+    """Recognize the recorded JSON inspection form; other Python remains unaudited."""
+    tree = ast.parse(source)
+    targets, constants = [], {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(item.name != "json" or item.asname for item in node.names):
+            return []
+        if isinstance(node, (ast.ImportFrom, ast.FunctionDef, ast.ClassDef, ast.Lambda)):
+            return []
+        if isinstance(node, ast.Assign) and any(not isinstance(target, ast.Name)
+                or target.id in {"open", "json", "print"} for target in node.targets):
+            return []
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    constants[target.id] = node.value.value
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            if node.func.id == "open":
+                if len(node.args) != 1 or node.keywords:
+                    return []
+                argument = node.args[0]
+                path = argument.value if isinstance(argument, ast.Constant) else constants.get(
+                    argument.id if isinstance(argument, ast.Name) else "")
+                if not isinstance(path, str):
+                    return []
+                targets.append(path)
+            elif node.func.id not in {"print", "len", "isinstance", "str", "list", "type", "sorted"}:
+                return []
+        elif isinstance(node.func, ast.Attribute):
+            json_load = (isinstance(node.func.value, ast.Name) and node.func.value.id == "json"
+                         and node.func.attr in {"load", "dumps"})
+            if json_load and any(keyword.arg not in {"indent", "sort_keys", "ensure_ascii"}
+                                 or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords):
+                return []
+            if not json_load and node.func.attr not in {"keys", "items", "values", "get"}:
+                return []
+        else:
+            return []
+    return targets
+
+
+def _read_targets(command: str) -> list[str]:
+    if not isinstance(command, str):
+        return []
+    python = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*", command, re.S)
+    if python:
+        try:
+            return _python_read_targets(python[2])
+        except (SyntaxError, TypeError, ValueError):
+            return []
+    hashed_read = re.fullmatch(r"(?:sha256sum|shasum -a 256) ([^\s;&|<>]+) && cat \1", command)
+    if hashed_read:
+        return [hashed_read[1]]
+    if any(value in command for value in ("$(", "`", "<", ">", "|", "&")):
+        return []
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+        if tokens[:1] == ["for"]:
+            parts, part = [], []
+            for token in tokens:
+                if token == ";":
+                    parts.append(part)
+                    part = []
+                else:
+                    part.append(token)
+            parts.append(part)
+            if len(parts) != 4 or len(parts[0]) < 4 or parts[0][2] != "in":
+                return []
+            variable = "$" + parts[0][1]
+            if (len(parts[1]) != 4 or parts[1][:2] != ["do", "printf"] or parts[1][3] != variable
+                    or parts[2] != ["cat", variable] or parts[3] != ["done"]):
+                return []
+            return parts[0][3:]
+        if not tokens or ";" in tokens or "$" in command:
+            return []
+        if tokens[0] == "cat" and len(tokens) > 1 and all(not arg.startswith("-") for arg in tokens[1:]):
+            return tokens[1:]
+        if (len(tokens) > 3 and tokens[:2] == ["sed", "-n"]
+                and re.fullmatch(r"[0-9]+(?:,[0-9]+)?p", tokens[2])):
+            return tokens[3:]
+        return []
+    except ValueError:
+        return []
+
+
+def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -> set[tuple[str, ...]]:
+    if root is None:
+        return set()
+    calls, outputs = set(), set()
+    for index, row in enumerate(trace.get("tool_trace", [])):
+        if not isinstance(row, dict):
+            continue
+        operations = _tool_operations(row)
+        safe = bool(operations)
+        for name, arguments in operations:
+            if name == "mcp__codex_app__read_thread":
+                safe = safe and "codex://threads/" + str(arguments.get("threadId")) in assigned
+            elif name == "exec_command":
+                targets = _read_targets(arguments.get("cmd"))
+                cwd = Path(arguments.get("workdir", root.parent.parent))
+                resolved = [Path(target) if Path(target).is_absolute() else cwd / target for target in targets]
+                safe = safe and bool(targets) and all(
+                    (path.resolve().parent == root and path.is_file()
+                     and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()) or str(path) in assigned
+                    for path in resolved)
+            elif name not in {"mcp__codex_apps__atlassian_getjiraissue", "mcp__codex_apps__atlassian_executeread",
+                              "mcp__codex_apps__atlassian_discover", "mcp__codex_apps__atlassian_searchjiraissuesusingjql"}:
+                safe = False
+        if safe:
+            outputs.update({("tool_trace", str(index), "result"), ("tool_trace", str(index), "output")})
+            if row.get("call_id"):
+                calls.add(row["call_id"])
+        if row.get("type") in {"function_call_output", "custom_tool_call_output"} and row.get("call_id") in calls:
+            outputs.add(("tool_trace", str(index), "output"))
+    return outputs
+
+
+def observed_dispatch_binding(trace: dict, root: Path) -> dict:
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    role = worker_binding(bindings, trace["spawn"]["agent"])
+    for row in trace.get("tool_trace", []):
+        for name, arguments in _tool_operations(row):
+            if name != "exec_command":
+                continue
+            cwd = Path(arguments.get("workdir", bindings["execution_repository"]))
+            for target in _read_targets(arguments.get("cmd")):
+                path = Path(target) if Path(target).is_absolute() else cwd / target
+                path = path.resolve()
+                if path.parent != root.resolve() or not path.is_file():
+                    continue
+                proof = {"dispatch_file": str(path), "dispatch_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                         "binding_agent": role, "dispatch_proof_source": "provider_instruction_read"}
+                candidate = {**trace, "spawn": {**trace["spawn"], **proof}}
+                if _verified_dispatch_content(candidate):
+                    return proof
+    return {}
+
+
 def context_trace_errors(trace: dict[str, object]) -> list[str]:
-    """Reject worker traces that reference unassigned memory or archived runs."""
+    """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
     errors: list[str] = []
-    declared = str(trace.get("context_conformance", "")).strip().lower()
-    if declared in {"fail", "failed", "blocked"}:
+    if str(trace.get("context_conformance", "")).strip().lower() in {"fail", "failed", "blocked"}:
         errors.append("context_conformance_failed")
     listings = _listing_outputs(trace)
     dispatch_content = _verified_dispatch_content(trace)
+    assigned, root = [], None
+    if dispatch_content:
+        assignment = json.loads(dispatch_content.split("\nTyped assignment:\n", 1)[1])
+        assigned = list(assignment.get("input_paths", []))
+        packet = json.loads(dispatch_content.split("\n", 2)[1])
+        for row in packet.get("run_input_manifest", {}).get("inputs", []):
+            locator = str(row.get("Source or path", ""))
+            expected_use = str(row.get("Expected use", "")).lower()
+            if (re.fullmatch(r"codex://threads/[0-9a-fA-F-]{36}", locator)
+                    and not any(value in expected_use for value in ("do not read", "without reading", "preserve only"))):
+                assigned.append(locator)
+        root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
+    source_outputs = _read_output_prefixes(trace, assigned, root)
+    reads = {row.get("call_id") for row in trace.get("tool_trace", [])
+             if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
     for path, value in _trace_strings(trace):
+        if any(path[:len(prefix)] == prefix for prefix in source_outputs):
+            continue
+        candidate = value
+        output = path[:1] == ("tool_trace",) and "output" in path[2:]
+        if dispatch_content and output:
+            candidate = candidate.replace(dispatch_content, "")
+        listing = any(path[:len(prefix)] == prefix for prefix in listings)
+        row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
+        if _authorized_read(row, assigned) or (row.get("type") == "function_call_output" and row.get("call_id") in reads):
+            for source in assigned:
+                candidate = re.sub(r"(?<![\w./-])" + re.escape(source) + r"(?![\w./-])", "", candidate)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
-            if label == "archived_artifact" and any(path[:len(prefix)] == prefix for prefix in listings):
+            checked = value if label != "archived_artifact" else candidate
+            if label == "archived_artifact" and listing:
                 continue
-            # Required instruction output can contain preservation locators; archive operations still fail.
-            candidate = value
-            if (label == "archived_artifact" and value == dispatch_content
-                    and path[:1] == ("tool_trace",) and "output" in path[2:]):
-                continue
-            if (label == "archived_artifact" and dispatch_content and dispatch_content in value
-                    and path[:1] == ("tool_trace",) and "output" in path[2:]):
-                candidate = value.replace(dispatch_content, "")
-            if pattern.search(candidate):
+            if pattern.search(checked):
                 errors.append(f"forbidden_context_reference:{label}")
                 break
+        if root and not listing:
+            for reference in THOUGHT_PATH.findall(candidate):
+                relative = reference.split(".thoughts/", 1)[1]
+                if relative.split("/", 1)[0] != root.name or "/runs/" in relative:
+                    errors.append("forbidden_context_reference:archived_artifact")
     return list(dict.fromkeys(errors))
 
 
@@ -671,7 +1068,7 @@ def main() -> int:
         bool(value) for value in (
             args.trace,
             args.activation_packet_bundle or args.expected_agent or args.expected_bundle_sha256,
-            args.transition or (args.provider_status and not args.before_source_change),
+            args.transition or (args.provider_status and not (args.before_source_change or args.activation_packet_bundle)),
             args.before_source_change,
         )
     )
@@ -682,8 +1079,11 @@ def main() -> int:
     if args.require_freshness and not args.trace:
         parser.error("--require-freshness requires --trace")
     if any((args.rejected_trace, args.provider_handle, args.last_dispatch_at)) and (
-            args.transition != "replace" or not all((args.rejected_trace, args.provider_handle, args.last_dispatch_at))):
-        parser.error("rejected-result recovery requires replace, --rejected-trace, --provider-handle and --last-dispatch-at")
+            not (args.transition == "replace" or args.activation_packet_bundle)
+            or not all((args.rejected_trace, args.provider_handle, args.last_dispatch_at, args.provider_status))):
+        parser.error("recovery requires activation or replace, rejected trace, provider handle, dispatch and status")
+    if args.rejected_trace and args.activation_packet_bundle and not (args.assignment and args.dispatch_file):
+        parser.error("corrected activation requires --assignment and --dispatch-file")
     if args.dispatch_file and not args.assignment:
         parser.error("--dispatch-file requires --assignment in activation mode")
     if (args.assignment or args.activation_message or args.dispatch_file) and not args.activation_packet_bundle:
@@ -702,24 +1102,50 @@ def main() -> int:
             parser.error(
                 "--activation-packet-bundle, --expected-agent, and --expected-bundle-sha256 are required together"
             )
-        errors = activation_packet_errors(
-            args.activation_packet_bundle.resolve(), args.expected_agent, args.expected_bundle_sha256
-        )
+        errors = []
+        rejection_hash = None
+        if args.rejected_trace:
+            if args.rejected_trace.resolve().parent != args.activation_packet_bundle.resolve().parent:
+                errors.append("rejected_result_current_run_required")
+            else:
+                errors.extend(_recovery_errors(args.rejected_trace, args.expected_agent, args.provider_handle,
+                                               args.last_dispatch_at, args.provider_status))
+                if not errors:
+                    rejection_hash = hashlib.sha256(args.rejected_trace.read_bytes()).hexdigest()
+        if not errors:
+            errors = activation_packet_errors(args.activation_packet_bundle.resolve(), args.expected_agent,
+                                              args.expected_bundle_sha256, rejected_trace_sha256=rejection_hash)
         if not errors:
             bundle = json.loads(args.activation_packet_bundle.read_text())
             packet = bundle["packets"][args.expected_agent]
             if args.assignment:
                 try:
                     message = activation_message(packet, json.loads(args.assignment.read_text()))
+                    expected = dispatch_notice(packet, message, args.dispatch_file) if args.dispatch_file else message
+                    if args.activation_message and args.activation_message.read_text() != expected:
+                        raise ValueError("activation_message_mismatch")
                     if args.dispatch_file:
                         message = dispatch_message(packet, message, args.dispatch_file)
+                        if rejection_hash:
+                            current_path = args.activation_packet_bundle.parent / "finalization_packet.json"
+                            current = json.loads(current_path.read_text())
+                            current.setdefault("activation_repairs", {})[args.expected_agent] = {
+                                "Attempt": 1, "Provider handle": args.provider_handle,
+                                "Last dispatch at": args.last_dispatch_at, "Rejected trace SHA256": rejection_hash,
+                                "Corrected dispatch SHA256": hashlib.sha256(args.dispatch_file.read_bytes()).hexdigest()}
+                            with tempfile.NamedTemporaryFile("w", dir=current_path.parent, delete=False) as stream:
+                                temporary = Path(stream.name)
+                                json.dump(current, stream, indent=2)
+                                stream.write("\n")
+                            try:
+                                temporary.replace(current_path)
+                            finally:
+                                temporary.unlink(missing_ok=True)
+                            result["recovery_authorization"] = current["activation_repairs"][args.expected_agent]
                         result["dispatch_file"] = str(args.dispatch_file.resolve())
                         result["dispatch_file_sha256"] = hashlib.sha256(args.dispatch_file.read_bytes()).hexdigest()
-                    if args.activation_message and args.activation_message.read_text() != message:
-                        errors.append("activation_message_mismatch")
-                    else:
-                        result["activation_message"] = message
-                        result["activation_message_sha256"] = hashlib.sha256(message.encode()).hexdigest()
+                    result["activation_message"] = message
+                    result["activation_message_sha256"] = hashlib.sha256(message.encode()).hexdigest()
                 except (OSError, ValueError, TypeError) as error:
                     errors.append(f"activation_assignment_invalid:{error}")
             elif args.activation_message:

@@ -157,7 +157,8 @@ class PlanningRecovery(unittest.TestCase):
         current = json.loads(failure.read_text())
         self.assertEqual(current["attempt_count"], 2)
         self.assertEqual(current["first_attempt_at"], START)
-        self.assertIn("Specific earlier error", current["errors"])
+        self.assertIn("Specific earlier error", current["historical_errors"])
+        self.assertEqual(current["errors"], ["finalization_contract_failure"])
         with self.assertRaisesRegex(ValueError, "correction_limit_reached"):
             finalizer.finalize(self.packet_path, self.artifacts / "missing-closure.json",
                                self.artifacts / "work_record.md", pre_release=True)

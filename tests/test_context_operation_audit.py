@@ -1,0 +1,255 @@
+"""Recorded provider call shapes: historical data is not current tool activity."""
+
+import json
+import hashlib
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+from scripts import validate_worker_runtime as runtime
+from scripts import asset_manifest as assets
+from scripts import finalize_work_record as finalizer
+from scripts.merge_techops_result import merge_result
+from scripts.worker_runtime_evidence import export_worker_trace, read_runtime_events
+from tests import test_framework_corrections as fixtures
+from tests import test_activation_delivery as activation_fixtures
+
+
+SOURCE = "00000000-0000-0000-0000-000000000001"
+
+
+class ContextOperationAudit(unittest.TestCase):
+    setUp = fixtures.FrameworkCorrections.setUp
+    dispatch_trace = fixtures.FrameworkCorrections.dispatch_trace
+
+    def paired(self, source, output):
+        return [{"type": "custom_tool_call", "name": "functions.exec", "call_id": "read-1", "input": source},
+                {"type": "custom_tool_call_output", "call_id": "read-1", "output": output}]
+
+    def test_authorized_thread_output_does_not_execute_quoted_memory_commands(self):
+        trace = self.dispatch_trace(["codex://threads/" + SOURCE])
+        code = ('const [issue, thread] = await Promise.all(['
+                'tools.mcp__codex_apps__atlassian_getjiraissue({issueIdOrKey:"ITEM-1",view:"evidence"}),'
+                'tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '",turnLimit:10,includeOutputs:false})]);'
+                'text(JSON.stringify({issue,thread}));')
+        quoted = json.dumps({"thread": {"turns": [{"command": "cat /repo/.codex/memories/MEMORY.md"}]}})
+        trace["tool_trace"] = self.paired(code, [{"type": "text", "text": quoted}])
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"][0]["input"] = code.replace(SOURCE, "00000000-0000-0000-0000-000000000099")
+        self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                            for error in runtime.context_trace_errors(trace)))
+
+    def test_current_inventory_locators_do_not_mean_archived_files_were_read(self):
+        manifest = self.root / "asset_manifest.json"
+        inventory = {"assets": [{"locator": "/repo/.thoughts/ITEM-1_v1/runs/old/research.md"}]}
+        manifest.write_text(json.dumps(inventory))
+        trace = self.dispatch_trace([str(manifest)])
+        code = 'const r = await tools.exec_command({cmd:"cat ' + str(manifest) + '"}); text(r.output);'
+        trace["tool_trace"] = self.paired(code, json.dumps(inventory))
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"].append({"type": "custom_tool_call", "name": "functions.exec", "input":
+                                  'await tools.exec_command({cmd:"cat /repo/.thoughts/ITEM-1_v1/runs/old/research.md"})'})
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_python_inventory_inspection_is_data_but_writes_are_not_allowed(self):
+        manifest = self.root / "asset_manifest.json"
+        manifest.write_text('{}')
+        trace = self.dispatch_trace([])
+        command = ("python3 - <<'PY'\nimport json\np=json.load(open(" + repr(str(manifest))
+                   + "))\nprint(p.keys())\nprint('sources',json.dumps(p.get('sources',[]),indent=2))\nPY")
+        code = 'const r = await tools.exec_command(' + json.dumps({"cmd": command}) + '); text(r.output);'
+        trace["tool_trace"] = self.paired(code, "/repo/.thoughts/ITEM-1_v1/runs/old/research.md")
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        write = command.replace("print(p.keys())", "open('/repo/.thoughts/ITEM-1_v1/old.md', 'w')")
+        trace["tool_trace"][0]["input"] = 'await tools.exec_command(' + json.dumps({"cmd": write}) + ')'
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_serialized_instruction_output_keeps_its_exact_metadata_exception(self):
+        self.artifacts = self.root
+        self.bundle = self.run["activation_packet_bundle"]
+        self.dispatch_number = 0
+        self.command = lambda *args: subprocess.run(
+            [sys.executable, str(runtime.ROOT / "scripts/validate_worker_runtime.py"), *map(str, args)],
+            capture_output=True, text=True)
+        trace = activation_fixtures.ActivationDelivery.instruction_trace(self)
+        text = trace["tool_trace"][1]["output"][0]["text"]
+        trace["tool_trace"][1]["output"] = [{"type": "text", "text": json.dumps({
+            "output": "sha256 digest and filename\n" + text})}]
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+
+    def test_recorded_cat_loop_is_read_only_but_an_added_write_is_rejected(self):
+        manifest = self.root / "asset_manifest.json"
+        manifest.write_text('{}')
+        trace = self.dispatch_trace([str(manifest)])
+        cmd = "for f in " + str(manifest) + "; do printf '\\n===== %s =====\\n' \"$f\"; cat \"$f\"; done"
+        code = 'const r = await tools.exec_command(' + json.dumps({"cmd": cmd}) + '); text(r.output);'
+        trace["tool_trace"] = self.paired(code, "/repo/.thoughts/ITEM-1_v1/runs/old/research.md")
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"][0]["input"] = code.replace('cat \\"$f\\"', 'rm \\"$f\\"')
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_batch_with_an_actual_memory_read_is_never_exempt(self):
+        trace = self.dispatch_trace(["codex://threads/" + SOURCE])
+        code = ('await Promise.all([tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"}),'
+                'tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})]);')
+        trace["tool_trace"] = self.paired(code, "cat /repo/.codex/memories/MEMORY.md")
+        self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                            for error in runtime.context_trace_errors(trace)))
+
+    def test_logical_worker_name_authenticates_its_provider_role(self):
+        trace = self.dispatch_trace([])
+        trace["spawn"]["agent"] = "feature-context"
+        self.assertIsNotNone(runtime._verified_dispatch_content(trace))
+
+    def test_handoff_and_delivery_worker_names_resolve_their_provider_bindings(self):
+        bindings = json.loads((self.root / "role_bindings.json").read_text())
+        for worker, role in runtime.DELIVERY_WORKERS.items():
+            self.assertEqual(runtime.worker_binding(bindings, worker), role)
+        packet = json.loads((self.root / "worker_activation_packets.json").read_text())["packets"]["documenter"]
+        path = self.root / "activation_handoff.txt"
+        runtime.dispatch_message(packet, runtime.activation_message(packet, {"objective": "Write the validated handoff"}), path)
+        trace = {"run_id": self.run["run_id"], "spawn": {"agent": "handoff", "dispatch_file": str(path),
+            "dispatch_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}}
+        self.assertIsNotNone(runtime._verified_dispatch_content(trace))
+
+    def test_opaque_parent_launch_uses_observed_instruction_read_for_audit_proof(self):
+        trace = self.dispatch_trace(["codex://threads/" + SOURCE])
+        child = "00000000-0000-0000-0000-000000000002"
+        handle, dispatch = "/root/context", "2026-10-13T01:00:01Z"
+        notice = 'sha256sum ' + trace["spawn"]["dispatch_file"] + ' && cat ' + trace["spawn"]["dispatch_file"]
+        input_code = 'await tools.exec_command(' + json.dumps({"cmd": notice}) + ')'
+        quoted = json.dumps({"thread": {"command": "cat /repo/.codex/memories/MEMORY.md"}})
+        trace["tool_trace"] = [{"type": "custom_tool_call", "input": input_code}, *self.paired(
+            'await tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"})', quoted)]
+        source = self.repository / "child.jsonl"
+        source.write_text(json.dumps({"type": "session_meta", "payload": {"id": child}}) + "\n" + "".join(
+            json.dumps({"timestamp": "2026-10-13T01:00:02Z", "type": "response_item", "payload": row}) + "\n"
+            for row in trace["tool_trace"]))
+        ledger = {"events": [{"Provider handle": handle, "Last dispatch at": dispatch}],
+                  "thread_mappings": {handle: child}}
+        observation = {"Provider handle": handle, "Thread ID": child, "Provider status": "completed",
+            "Last dispatch at": dispatch, "Observed at": "2026-10-13T01:01:00Z", "Status source": "read_thread",
+            "Latest turn started at": dispatch, "Latest turn completed at": "2026-10-13T01:00:30Z",
+            "Latest turn status": "completed", "Thread status": "idle", "Binding evidence": {
+                "activation_packet_delivered": True, "observed_agent_role": "current_state_investigator"}}
+        exported = export_worker_trace(ledger, source, "feature-context", observation,
+                                       run_id=trace["run_id"], artifact_root=self.root)
+        self.assertEqual(exported["audit"], {"status": "passed", "errors": []})
+        self.assertEqual(exported["spawn"]["dispatch_proof_source"], "provider_instruction_read")
+        self.assertEqual(exported["spawn"]["dispatch_file_sha256"], trace["spawn"]["dispatch_file_sha256"])
+
+    def test_computed_tool_access_cannot_get_the_source_output_exception(self):
+        trace = self.dispatch_trace(["codex://threads/" + SOURCE])
+        code = ('await tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"}); '
+                'await tools["exec_command"]({cmd:"cat /repo/.codex/memories/MEMORY.md"})')
+        trace["tool_trace"] = self.paired(code, "/repo/.codex/memories/MEMORY.md")
+        self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                            for error in runtime.context_trace_errors(trace)))
+
+    def test_plain_parent_launch_retains_the_guarded_dispatch_identity(self):
+        trace = self.dispatch_trace([])
+        path = trace["spawn"]["dispatch_file"]
+        packet = json.loads((self.root / "worker_activation_packets.json").read_text())["packets"][
+            "current_state_investigator"]
+        notice = runtime.dispatch_message(packet, Path(path).read_text(), Path(path))
+        source = self.repository / "parent.jsonl"
+        rows = [
+            {"timestamp": "2026-10-13T01:00:00Z", "type": "session_meta", "payload": {"id": SOURCE}},
+            {"timestamp": "2026-10-13T01:00:01Z", "type": "response_item", "payload": {
+                "type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
+                "arguments": json.dumps({"task_name": "context", "message": notice})}},
+            {"timestamp": "2026-10-13T01:00:02Z", "type": "event_msg", "payload": {"item": {
+                "type": "SubAgentActivity", "kind": "started", "agent_path": "/root/context",
+                "agent_thread_id": "00000000-0000-0000-0000-000000000002"}}},
+        ]
+        source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        ledger = read_runtime_events(source, SOURCE, rows[0]["timestamp"])
+        self.assertEqual(ledger["events"][0]["Dispatch file"], path)
+        self.assertEqual(ledger["events"][0]["Dispatch SHA256"], trace["spawn"]["dispatch_file_sha256"])
+
+    def test_unmatched_and_unknown_outputs_remain_audited(self):
+        trace = self.dispatch_trace(["codex://threads/" + SOURCE])
+        trace["tool_trace"] = self.paired('text("tools.mcp__codex_app__read_thread({threadId:\\"' + SOURCE + '\\"})")',
+                                          "/repo/.codex/memories/MEMORY.md")
+        self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                            for error in runtime.context_trace_errors(trace)))
+
+        trace["tool_trace"][0]["input"] = 'await tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"})'
+        trace["tool_trace"][1]["call_id"] = "unmatched"
+        self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                            for error in runtime.context_trace_errors(trace)))
+
+    def test_continuity_sources_do_not_require_a_product_asset_inventory(self):
+        inputs = {"HIST-001": {"Input or artifact": "ITEM-1 prior workflow history",
+                              "Source or path": "codex://threads/" + SOURCE,
+                              "Authority": "User-supplied context", "Classification": "decision continuity"}}
+        self.assertEqual(assets._expected_asset_input_ids(inputs), set())
+        self.assertEqual(assets._expected_jira_input_ids(inputs, "ITEM-1"), set())
+        inputs["HIST-001"]["Asset source"] = True
+        self.assertEqual(assets._expected_asset_input_ids(inputs), {"HIST-001"})
+
+    def test_partial_draft_disposition_is_merged_and_required_at_handoff(self):
+        self.result["worker_result"]["Worker"] = "feature-design"
+        self.result["evidence"] = []
+        self.result.update({"plan_readiness": "awaiting_input", "implementation_plan_action": "create_draft"})
+        source = self.root / "feature_design_result.json"
+        source.write_text(json.dumps(self.result))
+        merge_result(self.packet_path, "solution_architect")
+        packet = json.loads(self.packet_path.read_text())
+        self.assertEqual(packet["planning_disposition"], {
+            "plan_readiness": "awaiting_input", "implementation_plan_action": "create_draft"})
+        packet["identity"].update({"State": "awaiting_input", "Requested profile": "standard",
+                                   "Activated profile": "standard", "Executed profile": "standard"})
+        self.assertIn("feature_partial_draft_plan_required", finalizer._feature_delivery_packet_contract_errors(packet))
+        self.result["implementation_plan_action"] = "create"
+        source.write_text(json.dumps(self.result))
+        saved = self.packet_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "feature_planning_disposition_invalid"):
+            merge_result(self.packet_path, "solution_architect")
+        self.assertEqual(self.packet_path.read_bytes(), saved)
+
+    def test_rejected_result_requires_one_combined_corrected_activation(self):
+        self.artifacts = self.root
+        path, trace = activation_fixtures.ActivationDelivery.rejected_trace(self)
+        (self.root / "runtime_dispatches.json").write_text(json.dumps({"rejected_results": {
+            "current_state_investigator": {"run_id": self.run["run_id"], "trace": str(path),
+                                          "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}}}))
+        assignment = self.repository / "corrected_assignment.json"
+        assignment.write_text(json.dumps({"objective": "Repair this rejected contribution", "input_paths": []}))
+        bundle = self.run["activation_packet_bundle"]
+        dispatch = self.root / "activation_corrected.txt"
+        command = [sys.executable, str(runtime.ROOT / "scripts/validate_worker_runtime.py"),
+            "--activation-packet-bundle", bundle["path"], "--expected-agent", "current_state_investigator",
+            "--expected-bundle-sha256", bundle["sha256"], "--assignment", str(assignment),
+            "--dispatch-file", str(dispatch)]
+        blocked = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(blocked.returncode, 2, blocked.stdout + blocked.stderr)
+        self.assertFalse(dispatch.exists())
+        recovery = ["--rejected-trace", str(path), "--provider-handle", activation_fixtures.HANDLE,
+                    "--last-dispatch-at", activation_fixtures.DISPATCH, "--provider-status", "completed"]
+        wrong = self.repository / "wrong_notice.txt"
+        wrong.write_text("Incomplete launch")
+        mismatch = subprocess.run(command + recovery + ["--activation-message", str(wrong)],
+                                  capture_output=True, text=True)
+        self.assertEqual(mismatch.returncode, 2)
+        self.assertFalse(dispatch.exists())
+        self.assertNotIn("activation_repairs", json.loads(self.packet_path.read_text()))
+        allowed = subprocess.run(command + recovery, capture_output=True, text=True)
+        self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
+        receipt = json.loads(allowed.stdout)
+        self.assertEqual(receipt["recovery_authorization"]["Corrected dispatch SHA256"],
+                         hashlib.sha256(dispatch.read_bytes()).hexdigest())
+        again = subprocess.run(command + recovery, capture_output=True, text=True)
+        self.assertEqual(again.returncode, 2)
+        self.assertIn("activation_repair_limit_reached", again.stdout)
+
+    def test_coordinator_reported_failure_does_not_claim_a_validator_found_it(self):
+        result = subprocess.run([sys.executable, str(finalizer.ROOT / "scripts/finalize_work_record.py"),
+            "--packet", str(self.packet_path), "--workflow-failure", "activation_sequence_nonconformant"],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertTrue(result.stdout.startswith("Workflow-framework handoff: failed; control failure reported by Coordinator"))
+        receipt = json.loads((self.root / "finalization_failure.json").read_text())
+        self.assertFalse(receipt["validation_performed"])
+        self.assertEqual(receipt["reported_by"], "Coordinator")

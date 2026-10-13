@@ -155,7 +155,7 @@ def _expected_jira_input_ids(expected_inputs: object, work_item: str) -> set[str
         return set()
     result = set()
     for input_id, row in expected_inputs.items():
-        if not isinstance(row, dict):
+        if not isinstance(row, dict) or str(row.get("Classification", "")).strip().lower() == "decision continuity":
             continue
         text = " ".join(str(row.get(field, "")) for field in ("Input or artifact", "Source or path"))
         if "jira" in text.lower() or "atlassian" in text.lower() or work_item in text:
@@ -175,7 +175,7 @@ def _expected_asset_input_ids(expected_inputs: object) -> set[str]:
 
 def _supplied_asset_reference(row: dict[str, object]) -> bool:
     """Do not let a directly supplied artifact bypass inventory by omitting its marker."""
-    if str(row.get("Classification", "")).strip().lower() in {"work item", "repository"}:
+    if str(row.get("Classification", "")).strip().lower() in {"work item", "repository", "decision continuity"}:
         return False
     locator = str(row.get("Source or path", "")).strip()
     direct = locator.startswith(("/", "https://", "http://", "codex://threads/"))

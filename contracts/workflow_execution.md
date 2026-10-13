@@ -246,12 +246,16 @@ files, folders, and URLs, as first-class current-run inputs. Before downstream p
 `feature-context` MUST create `asset_manifest.json` under the
 active run root. The manifest MUST contain one source row for the Jira attachment inventory, even when it is explicitly
 empty, and one row for each declared supporting source. The Jira source row may group associated issue attachments,
-but each attachment locator must identify its owning issue. Each supporting file, folder, or URL input MUST be marked
+but each attachment locator must identify its owning issue. Each supporting product/specification source MUST be marked
 `Asset source: true` in the current-run input manifest so source-to-manifest reconciliation is deterministic. A
 directory source MUST enumerate every file and symlink recursively, including hidden entries; an empty filtered search
 is not a complete inventory.
 Feature Delivery MUST use an explicit `run_inputs.json`; a generated-minimum input manifest cannot prove that all
 additional sources were declared.
+A user-named previous session or workflow backup used for decision history is `Classification: decision continuity`,
+not a product asset source by default. Preserve its Input ID and selected-source provenance in the continuity ledger.
+Do not inventory every historical receipt or trace. Register selected material product/specification assets separately;
+an explicit `Asset source: true` still requires inventory.
 
 Each discovered asset MUST have a stable locator, availability, observation, review method, review status, relevance,
 disposition, and evidence references. Available visual assets require visual inspection or rendered reading. A material
@@ -300,7 +304,10 @@ material that appears in an artifact, citation, claim, hypothesis, decision, or 
 evidence and remains quarantined; if it influences a worker result, fail `context_conformance`. Return a contaminated
 worker once with the same typed inputs and require removal or current-run reverification. A provider-completed task
 with a rejected result is eligible for one replacement when clean isolation requires it: use the worker-runtime
-guard's `replace` mode with its saved rejected trace, observed handle and latest dispatch. Preserve the rejected
+guard's activation mode with its saved rejected trace, observed handle, latest dispatch and fresh terminal status.
+Use `--rejected-trace`, `--provider-handle`, `--last-dispatch-at`, and `--provider-status` together with the activation
+bundle, corrected assignment and dispatch file. One command validates eligibility and emits the corrected launch;
+it records the single recovery authorization against that dispatch hash. Preserve the rejected
 evidence and run identity, and activate a fresh handle with the same guarded envelope and typed inputs. Completion
 alone never permits replacement; active tasks remain protected. Correction and replacement share one recovery
 attempt per rejected stage. If clean isolation cannot be
@@ -591,7 +598,7 @@ by the Orchestrator at fan-in.
 | `configuration_conformance` | Yes | Configured and provider-observed model/effort, or the exact unavailable/mismatch reason. |
 | `context_conformance` | Yes | `pass` only when the worker used assigned current-run context and no prohibited historical source. |
 | `plan_readiness`   | Conditional | Fix-design disposition: `ready_for_implementation` or `awaiting_input`. |
-| `implementation_plan_action` | Conditional | Fix-design instruction to `create` or `omit` the implementation plan. |
+| `implementation_plan_action` | Conditional | Fix-design instruction to `create`, `create_draft` where supported, or `omit` the implementation plan. |
 | `supported_remediation_boundary` | Conditional | Fix-design boundary supported by current-run evidence. |
 
 The worker does not know its provider handle unless the Coordinator explicitly supplies it. For ordinary worker
@@ -612,7 +619,8 @@ is checking a stated discrepancy. The envelope's `outcome` is a worker outcome; 
 `workflow_outcome` or `engineering_outcome`.
 
 The Coordinator MUST validate every terminal envelope before fan-in. For Fix Design,
-`ready_for_implementation` pairs only with `create`, and `awaiting_input` pairs only with `omit`. Return an invalid
+`ready_for_implementation` pairs only with `create`; `awaiting_input` pairs with `omit`, or `create_draft` for the
+supported Feature Delivery partial-plan path. Return an invalid
 enum or pair to the same worker. A selected playbook MAY name one packaged producer-format normalizer that runs before
 validation, records its changes, and converts only explicitly equivalent representations to canonical field types; that
 mechanical repair does not consume an analytical correction. Never semantically normalize, reinterpret, or silently
@@ -871,8 +879,11 @@ owner could answer it later.
 The Coordinator may reconcile envelopes and enforce gates, but MUST NOT change a technical worker's diagnosis, proposed
 boundary, or plan-readiness disposition. Return a disputed result to the owning worker or an independent Reviewer.
 The final artifact writer MUST follow the owning fix-design worker's `implementation_plan_action`. When readiness is
-`awaiting_input`, the action is `omit`; record a Clarification Brief and do not create a conditional implementation
-plan. Only `ready_for_implementation` permits `create`. A selected playbook MAY define deterministic rendering instead
+`awaiting_input`, record a Clarification Brief. The action is `omit` unless the selected playbook supports a partial
+Draft: Feature Delivery uses `create_draft` when confirmed independent work has a feasible scope, complete required
+planning tables, and owned unresolved decisions. It remains `awaiting_input` and unapproved; it does not select an
+unresolved design by inference. Only `ready_for_implementation` permits full-plan `create`.
+A selected playbook MAY define deterministic rendering instead
 of a Documenter for a specific terminal path; that renderer MUST copy the validated technical result without semantic
 reinterpretation.
 
@@ -1705,20 +1716,31 @@ Explicit planning recovery preserves the closed failed/completed invocation, inc
 starting a new planning execution identity in the same session. Reconcile actual prior workers and current provider
 closure before preparation. Historical executions are provenance, not current worker or runtime rows. Recover accepted
 findings as named inputs and reverify applicability; do not restart discovery without a material gap.
+Recovery archives use `archive_manifest.json`: each original relative path maps to a SHA256-verified snapshot.
+Distinct bytes are stored once in `runs/_objects/`; the packet, work record, failure receipt, and closure remain
+readable in the prior run folder, along with the published work-record snapshot. Resolve other files through the
+manifest, and assign specific snapshots
+before a worker reads them. A matching archive can be reused on retry; a conflicting archive must be preserved.
 
 An `awaiting_input` planning handoff may preserve a structurally validated partial Draft plan with owned unresolved
 decisions and its Clarification Brief. It grants neither full-ticket readiness nor implementation approval. Only a
-ready, explicitly approved plan may enter remediation. Failure publication preserves detailed prior errors and retry
-accounting; it must not reset the exhausted same-invocation correction budget.
+ready, explicitly approved plan may enter remediation. Failure publication records current `errors` separately from
+`historical_errors`, preserves retry accounting,
+and must not reset the exhausted same-invocation correction budget. Historical errors are previously reported;
+their presence alone does not establish a current blocker or prove resolution.
 
 ### Guarded Activation Delivery and Repair
 
 A provider may deliver the complete guarded instructions through an immutable current-root dispatch file. The
 context audit permits an exact echo of that file in tool output only after verifying its hash, current Run ID, prepared
-bundle hash, and canonical contract plus typed assignment. Preservation locators inside this verified instruction output
-are metadata; archive read/write requests, extra archive output, and memory references remain subject to the
-context gate.
-The trace exporter MUST attach the current Run ID before auditing tool activity.
+bundle hash, and canonical contract plus typed assignment. The immutable dispatch receipt retains the original
+binding across an ordinary supported rebind. Preservation locators inside verified instruction output are metadata.
+Only exact historical files explicitly assigned in `input_paths` may be read through supported read commands;
+unassigned archives, renamed backup folders, historical writes, and memory references remain subject to the gate.
+The trace exporter MUST attach the current Run ID and derive dispatch path/hash and binding role from the recorded
+parent launch. It pairs provider calls with their outputs. Quoted commands inside an authorized transcript and locators
+inside a current-run inventory are source data, not newly executed operations. Unknown or mixed unsafe operations do
+not receive the read-output exception; actual unassigned reads and historical writes remain rejected.
 
 The canonical launch message names its SHA256; the worker verifies and reads the full file before analysis. A short
 launch notice is not a replacement for the role contract. Modified instructions require a new file and a fresh
@@ -1730,5 +1752,10 @@ rejected-result guard. Only completed workers may be corrected or replaced. Audi
 another repair for the same role is blocked. Name-only file discovery does not constitute reading archived analysis.
 Unknown tool operations and actual archive content reads retain the context gate.
 
-A terminal workflow-failure receipt bound to the exact packet hash may establish the closed invocation for explicit
-planning recovery even when the provisional packet still says `in_progress`. Actual provider closure remains required.
+A terminal workflow-failure receipt binds an immutable packet snapshot and its Run ID. It may establish the closed
+invocation for explicit planning recovery after reconciliation changes the live packet. Actual provider closure remains
+required. Failed preparation or an exhausted invocation prohibits further dispatch until supported recovery succeeds.
+
+Analytical merging uses the same field schema as finalization. Empty tables preserve accepted rows. Repeated IDs must
+have identical contents; a corrected finding needs a new ID and an explicit supersession. References must resolve
+before fan-in replaces the packet. Never manually delete accepted evidence to make a merge pass.

@@ -119,7 +119,7 @@ class V5Handoff(unittest.TestCase):
                    "--workflow-failure", "activation_message_mismatch"]
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(result.returncode, 2, result.stderr)
-        for phrase in ("Workflow-framework validation: failed", "Workflow result:", "Engineering state:",
+        for phrase in ("Workflow-framework handoff: failed; control failure reported by Coordinator", "Workflow result:", "Engineering state:",
                        "What we established:", "Next action:", "Artifacts:", "Execution:", "Provenance:",
                        "two-record Save/reload", "Production behavior is unverified", "Add the two-record regression",
                        "activation_message_mismatch", "Not created", str(design)):

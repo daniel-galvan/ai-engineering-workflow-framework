@@ -15,7 +15,11 @@ description: >-
    `PLAYBOOK_CATALOG.md`, any playbook, contract, provider definition, template, validator, sibling `.thoughts` root,
    or plugin cache directory. Run:
    `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do
-   not construct or pass a separate framework-root argument.
+   not construct or pass a separate framework-root argument. Preflight also validates the shipped static library.
+   Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
+   Preparation binds that root and plugin identity; changing directories does not select another framework package.
+   Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
+   parent directory trees. Run gates separately, or use fail-fast command chaining; inspect each exit status.
    Pass `--declared-framework-revision <FULL-SHA>` when the prompt declares one, and pass
    `--declared-plugin-path <prompt-path>` only when the prompt contains an explicit versioned plugin path. A missing,
    stale, or different path is `plugin_revision_mismatch`; do not search another cache version or silently substitute
@@ -246,6 +250,10 @@ description: >-
    `Unknown; detection unavailable`, not an unsupported `None`.
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
+   Register a user-named prior session or backup used for decision history as `Classification: decision continuity`.
+   Keep its Input ID and selected-source provenance in the continuity ledger; do not expand every historical receipt,
+   trace or snapshot into a product asset. Register selected product/specification assets separately when material.
+   Supply an authorized session URI explicitly in the worker assignment's `input_paths` when a thread read is needed.
    Preparation also writes exact role envelopes to the direct-child `worker_activation_packets.json` bundle and records
    its path and hash in `role_bindings.json`. For each worker, run the manifest's `worker_runtime_guard` in activation
    mode with `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`
@@ -253,8 +261,12 @@ description: >-
    workers. A guard run after its worker started does not satisfy the activation barrier: stop further dispatch, record
    `activation_sequence_nonconformant`, set `profile_status: blocked` and `Workflow outcome: blocked`, and reconcile
    already-started workers without claiming the check passed. Preserve a ready plan as `Engineering outcome: plan_only`.
-   Use one guard invocation per mode; never combine activation arguments with `--transition`, `--provider-status`, or
-   `--trace`.
+   For a rejected analytical result, use one corrected activation command: include `--rejected-trace`,
+   `--provider-handle`, `--last-dispatch-at`, and the freshly observed terminal `--provider-status`, along with the
+   ordinary activation bundle, corrected assignment and a new dispatch file. This checks the one recovery allowance
+   and binds it to the emitted corrected launch. Never run an unguarded follow-up first or merge it as accepted
+   evidence.
+   Do not combine activation with `--transition` or `--trace`; status is permitted only for corrected activation.
    For Feature Delivery specification assessment, the Documenter activation guard also checks that analytical
    artifacts and a populated `feature_design.md` coverage table exist. Return pre-handoff errors to the owning worker
    for one bounded correction before retrying; do not start Documenter with an unchecked coverage mapping.
@@ -611,7 +623,9 @@ description: >-
    finalization-schema status, runtime-closure artifact status, and removal of obsolete finalization steps from the next
    action.
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
-   `plugin_revision_mismatch`; do not discover or switch to another installed package. A nonzero result is a handoff
+   `plugin_revision_mismatch`; use explicitly authorized recovery to prepare against a refreshed package. Historical
+   dispatch receipts retain their original binding; do not edit old dispatch files or manually rewrite role bindings.
+   A nonzero result is a handoff
    failure. On a deterministic Standard planning failure, stop with `finalization_contract_failure`; do not add a
    Documenter fallback or patch generated artifacts. Return Documenter-owned packet, path, table and rendering errors
    to the same Documenter. Dispatch timestamps, runtime-audit rows and provider closure receipts are Coordinator-owned:
@@ -647,7 +661,8 @@ description: >-
    Success and failure reports must contain only workflow content; omit unrelated skill tips, promotional banners,
    preambles and postscripts. A TechOps Workflow result is a plain-language work summary, never a readiness token.
    Save the proposed final response and compare its bytes with the emitted canonical report before sending it.
-   Run `cmp -s <canonical-response-file> <proposed-response-file>` and require exit zero.
+   Run `cmp -s <canonical-response-file> <proposed-response-file>` and require exit zero. The proposed response must
+   contain the actual outgoing answer; copying the canonical file to another path does not verify that answer.
    For failure, compare against `handoff_failure.md`; for success, use the emitted handoff block. A comparison failure
    requires copying the canonical report again, without adding content before or after it.
    Finalization passes only when the exit status is zero and the

@@ -159,6 +159,9 @@ artifact roots unless explicitly declared as the execution repository. When a de
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.
+For Feature Delivery implementation planning, copy the owning design's `awaiting_input/create_draft` disposition into
+a partial Draft plan with the required planning tables and owned unresolved decisions. Retain the Clarification Brief.
+Do not promote it to full readiness, approval or delivery. `awaiting_input/omit` still prohibits creating a plan.
 For Sentry planning, follow the owning Fix Design envelope exactly: create a plan only for
 `plan_readiness: ready_for_implementation` with
 `implementation_plan_action: create`; `awaiting_input` with `omit` prohibits a
@@ -290,7 +293,7 @@ Retain every terminal field required by the contract even when compacting. Recor
 finalization-schema result, and required artifact-set disposition from the finalized packet.
 Copy `state`, `engineering_state`, `workflow_outcome`, and `engineering_outcome` exactly and keep them distinct. Validate the
 required artifact set by name; matching counts alone do not pass finalization.
-Use `partially_solved` when no usable implementation plan exists; reserve `plan_only` for a run that produced one.
+Use `partially_solved` for an `awaiting_input` partial Draft or absent plan; reserve `plan_only` for a ready full plan.
 Use engineering state `understood` when behavior, first divergence, and material uncertainty are evidence-backed;
 reserve `unknown` for an unestablished problem or scope.
 

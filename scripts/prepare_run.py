@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -515,6 +516,7 @@ def _write_activation_packets(
             raise ValueError(f"provider_instructions_unavailable:{agent}")
         packet = {
             "schema_version": 1,
+            "framework_package": manifest["framework_package"],
             "required_prefix": "Coordinator initialization: complete",
             "agent": agent,
             "run_id": manifest["run_id"],
@@ -622,9 +624,19 @@ def _reentry_source(
         if planning_recovery and prior["identity"].get("State") not in {
                 "awaiting_input", "ready_for_implementation", "completed", "blocked"}:
             receipt = json.loads((artifact_root / "finalization_failure.json").read_text())
-            if (receipt.get("status") != "failed" or receipt.get("stage") != "workflow"
-                    or receipt.get("packet_sha256") != hashlib.sha256(
-                        (artifact_root / "finalization_packet.json").read_bytes()).hexdigest()):
+            proof_matches = receipt.get("packet_sha256") == hashlib.sha256(
+                (artifact_root / "finalization_packet.json").read_bytes()).hexdigest()
+            if receipt.get("packet_snapshot"):
+                snapshot = Path(receipt["packet_snapshot"]).resolve()
+                if snapshot.parent != artifact_root.resolve():
+                    raise ValueError("planning_recovery_requires_terminal_invocation")
+                frozen = snapshot.read_bytes()
+                frozen_packet = json.loads(frozen)
+                proof_matches = (hashlib.sha256(frozen).hexdigest() == receipt.get("snapshot_sha256")
+                                 and frozen_packet["identity"]["Run ID"] == receipt.get("run_id")
+                                 == prior["identity"]["Run ID"]
+                                 and frozen_packet["identity"]["Lifecycle"] == "planning")
+            if (receipt.get("status") != "failed" or receipt.get("stage") != "workflow" or not proof_matches):
                 raise ValueError("planning_recovery_requires_terminal_invocation")
         if prior["identity"]["Lifecycle"] != "planning":
             raise ValueError("remediation_reentry_requires_planning_run")
@@ -656,6 +668,10 @@ def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, ob
     else:
         provider_status = "bundled / resolved"
     return {
+        "framework_package": {
+            "root": str(ROOT.resolve()),
+            "plugin_sha256": hashlib.sha256((ROOT / ".codex-plugin/plugin.json").read_bytes()).hexdigest(),
+        },
         "baseline_id": _baseline_id(),
         "playbook": playbook,
         "provider_runtime_configuration": str(runtime_agents) if runtime_agents else "Not provided",
@@ -669,6 +685,60 @@ def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, ob
         },
         "bindings": {name: _agent_binding(name, runtime_agents) for name in names},
     }
+
+
+def _archive_recovery(artifact_root: Path, run_id: str) -> Path:
+    """Snapshot distinct bytes once; publish the run manifest atomically."""
+    runs = artifact_root / "runs"
+    runs.mkdir(exist_ok=True)
+    destination = runs / re.sub(r"[^A-Za-z0-9._-]", "_", run_id)
+    controls = {"finalization_packet.json", "work_record.md", "finalization_failure.json", "runtime_closure.json"}
+    record = artifact_root / "work_record.md"
+    if record.is_file():
+        controls.update(re.findall(r"finalization_snapshot\.[0-9a-f]{64}\.json", record.read_text()))
+    sources = sorted(path for entry in artifact_root.iterdir() if entry.name != "runs"
+                     for path in ([entry] if entry.is_file() else entry.rglob("*")) if path.is_file())
+    entries = []
+    for path in sources:
+        if not path.resolve().is_relative_to(artifact_root.resolve()):
+            raise ValueError("recovery_archive_source_outside_run")
+        relative = path.relative_to(artifact_root).as_posix()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        entries.append({"path": relative, "sha256": digest,
+                        "snapshot": relative if relative in controls else f"../_objects/{digest}"})
+    manifest = {"schema_version": 1, "run_id": run_id, "files": entries}
+    if destination.exists():
+        manifest_path = destination / "archive_manifest.json"
+        if manifest_path.is_file() and json.loads(manifest_path.read_text()) == manifest:
+            for entry in entries:
+                target = destination / entry["snapshot"]
+                if hashlib.sha256(target.read_bytes()).hexdigest() != entry["sha256"]:
+                    raise ValueError("recovery_archive_snapshot_conflict")
+            return destination
+        if any(destination.iterdir()):
+            raise ValueError("prior_run_archive_exists")
+        destination.rmdir()
+    staging = Path(tempfile.mkdtemp(prefix=".archive-", dir=runs))
+    try:
+        objects = runs / "_objects"
+        objects.mkdir(exist_ok=True)
+        for source, entry in zip(sources, entries):
+            data = source.read_bytes()
+            if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                raise ValueError("recovery_archive_source_changed")
+            target = staging / entry["path"] if entry["path"] in controls else objects / entry["sha256"]
+            if target.exists():
+                if target.read_bytes() != data:
+                    raise ValueError("recovery_archive_snapshot_conflict")
+            else:
+                with target.open("xb") as stream:
+                    stream.write(data)
+        (staging / "archive_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        staging.rename(destination)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    return destination
 
 
 def _archive_existing_run(artifact_root: Path, archive_stale_run: bool) -> str | None:
@@ -820,10 +890,7 @@ def prepare_run(
     artifact_root.mkdir(parents=True, exist_ok=True)
     archived = None if continuation else _archive_existing_run(artifact_root, archive_stale_run)
     if prior:
-        archived_path = artifact_root / "runs" / re.sub(r"[^A-Za-z0-9._-]", "_", prior["identity"]["Run ID"])
-        if archived_path.exists():
-            raise ValueError("prior_run_archive_exists")
-        shutil.copytree(artifact_root, archived_path, ignore=shutil.ignore_patterns("runs"))
+        archived_path = _archive_recovery(artifact_root, prior["identity"]["Run ID"])
         archived = str(archived_path)
         for name in ("pre_release_check.json", "finalization_failure.json", "runtime_closure.json", "run_budget.json"):
             (artifact_root / name).unlink(missing_ok=True)
@@ -1003,6 +1070,13 @@ def prepare_run(
                     "repeat discovery only for a material changed input or unresolved gap."
                 ),
             }
+        manifest["worker_contracts"]["solution_architect"]["planning_disposition_required"] = True
+        manifest["worker_contracts"]["solution_architect"]["instructions"] += (
+            " Return plan_readiness and implementation_plan_action. Use ready_for_implementation/create for a "
+            "complete supported plan; awaiting_input/create_draft when confirmed independent work has a feasible "
+            "partial Draft with owned unresolved decisions; awaiting_input/omit only when no supported partial "
+            "scope exists. A partial Draft preserves the Clarification Brief and does not approve implementation."
+        )
         manifest["worker_contracts"]["current_state_investigator"]["asset_inventory"] = (
             manifest["worker_contracts"]["feature_asset_inventory"])
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")

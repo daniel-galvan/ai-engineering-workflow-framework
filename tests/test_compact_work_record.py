@@ -113,6 +113,17 @@ class CompactWorkRecord(unittest.TestCase):
             (root / "runtime_closure.json").unlink()
             self.assertEqual(finalizer.expand_work_record(text, archive), finalizer.render(packet))
 
+    def test_recovery_archive_keeps_the_published_record_readable(self):
+        from scripts.prepare_run import _archive_recovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = self.packet(root)
+            _, text = self.publish_snapshot(root, packet)
+            (root / "work_record.md").write_text(text)
+            archive = _archive_recovery(root, packet["identity"]["Run ID"])
+            (root / "runtime_closure.json").unlink()
+            self.assertEqual(finalizer.expand_work_record(text, archive), finalizer.render(packet))
+
     def test_failed_candidate_snapshot_cannot_change_previous_record(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -54,14 +54,20 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
     )
 
 try:
-    from validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors
+    from validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors
 except ModuleNotFoundError:
-    from scripts.validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors
+    from scripts.validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors
 
 try:
     from worker_runtime_evidence import dispatch_audit_errors
 except ModuleNotFoundError:
     from scripts.worker_runtime_evidence import dispatch_audit_errors
+
+
+try:
+    from packet_schema import shape_errors as _shape_errors
+except ModuleNotFoundError:
+    from scripts.packet_schema import shape_errors as _shape_errors
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -394,28 +400,6 @@ def _append_unique_artifact(rows: list[dict[str, object]], row: dict[str, object
         rows.append(row)
 
 
-def _shape_errors(value: object, template: object, path: str) -> list[str]:
-    if isinstance(template, dict):
-        if not isinstance(value, dict):
-            return [f"{path} must be an object"]
-        errors = [f"{path}.{key} is missing" for key in template if key not in value]
-        for key in template.keys() & value.keys():
-            errors.extend(_shape_errors(value[key], template[key], f"{path}.{key}"))
-        return errors
-    if isinstance(template, list):
-        if not isinstance(value, list):
-            return [f"{path} must be a list"]
-        if template:
-            return [
-                error
-                for index, item in enumerate(value)
-                for error in _shape_errors(item, template[0], f"{path}[{index}]")
-            ]
-        return []
-    if not isinstance(value, type(template)):
-        return [f"{path} must be {type(template).__name__}"]
-    return []
-
 
 def _validate_shapes(packet: object, closure: object) -> None:
     errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
@@ -740,6 +724,22 @@ def _feature_delivery_packet_contract_errors(
         return []
 
     errors: list[str] = []
+    disposition = packet.get("planning_disposition")
+    if disposition is not None:
+        if (not isinstance(disposition, dict)
+                or not all(isinstance(disposition.get(key), str) for key in ("plan_readiness", "implementation_plan_action"))
+                or (disposition.get("plan_readiness"),
+                disposition.get("implementation_plan_action")) not in {
+                ("ready_for_implementation", "create"), ("awaiting_input", "create_draft"), ("awaiting_input", "omit")}):
+            errors.append("feature_planning_disposition_invalid")
+        elif not pre_handoff:
+            if disposition["plan_readiness"] != state:
+                errors.append("feature_planning_disposition_state_mismatch")
+            plan = Path(str(packet["finalization"]["Durable artifact root"])) / "implementation_plan.md"
+            if disposition["implementation_plan_action"] == "create_draft" and not plan.is_file():
+                errors.append("feature_partial_draft_plan_required")
+            if disposition["implementation_plan_action"] == "omit" and plan.exists():
+                errors.append("feature_omitted_plan_present")
     title = str(packet.get("work_item", {}).get("Title", "")).strip()
     if not title or title.lower().startswith("unknown"):
         errors.append("Feature Delivery finalization requires the recovered work-item title")
@@ -2161,6 +2161,7 @@ def _record_pre_release(
             if status == "failed" and attempts >= 2 else None
         ),
         "errors": errors,
+        "historical_errors": list(dict.fromkeys(previous.get("historical_errors", []) + previous.get("errors", []))),
     }
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
     return value
@@ -2182,6 +2183,7 @@ def _record_terminal_failure(
         "last_attempt_at": now,
         "shutdown_deadline": previous.get("shutdown_deadline"),
         "errors": errors,
+        "historical_errors": list(dict.fromkeys(previous.get("historical_errors", []) + previous.get("errors", []))),
     }
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
     return path
@@ -2549,6 +2551,9 @@ def finalize(
     framework_revision: str | None = None,
     framework_status: str | None = None,
 ) -> None:
+    package_errors = prepared_package_errors(packet_path.parent) if (packet_path.parent / "role_bindings.json").is_file() else []
+    if package_errors:
+        raise ValueError(";".join(package_errors))
     status_path, previous_status = _finalization_status(packet_path)
     pre_release = pre_release or check_only
     if pre_release and not check_only and previous_status.get("status") == "failed" and int(
@@ -4798,7 +4803,15 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
             "provenance": "Recorded, not verified: " + value("provenance", provenance),
         },
     }
-    return "Workflow-framework validation: failed\n" + render_handoff(provisional).removeprefix("```text\n").removesuffix("```")
+    _, receipt = _finalization_status(packet_path)
+    if receipt.get("validation_performed") is False:
+        provisional["handoff"]["workflow_result"] = "Workflow stopped on a Coordinator-reported control failure. " + (
+            "Provisional work summary: " + summary)
+        provisional["handoff"]["execution"] = provisional["handoff"]["execution"].replace(
+            "Terminal publication failed", "Validated terminal publication was not performed")
+    heading = ("Workflow-framework handoff: failed; control failure reported by Coordinator\n"
+               if receipt.get("validation_performed") is False else "Workflow-framework validation: failed\n")
+    return heading + render_handoff(provisional).removeprefix("```text\n").removesuffix("```")
 
 
 def main() -> int:
@@ -4831,8 +4844,23 @@ def main() -> int:
             packet_path = args.packet.resolve()
             # This receipt reports failure; it never certifies activation, readiness or runtime release.
             _, previous = _finalization_status(packet_path)
+            packet = json.loads(packet_path.read_text())
+            frozen = snapshot_bytes(packet)
+            snapshot = packet_path.parent / snapshot_name(packet)
+            if snapshot.exists() and snapshot.read_bytes() != frozen:
+                raise ValueError("workflow_failure_snapshot_conflict")
+            if not snapshot.exists():
+                with snapshot.open("xb") as stream:
+                    stream.write(frozen)
             receipt = {**previous, "schema_version": 1, "status": "failed", "stage": "workflow",
-                       "errors": list(dict.fromkeys(previous.get("errors", []) + [args.workflow_failure])), "runtime_closure": "unverified",
+                       "run_id": packet["identity"]["Run ID"],
+                       "reported_by": "Coordinator", "validation_performed": False,
+                       "packet_snapshot": str(snapshot),
+                       "snapshot_sha256": hashlib.sha256(frozen).hexdigest(),
+                       "errors": [args.workflow_failure],
+                       "historical_errors": list(dict.fromkeys(previous.get("historical_errors", [])
+                                                               + previous.get("errors", []))),
+                       "blocker_owner": "Coordinator", "runtime_closure": "unverified",
                        "observed_at": datetime.now(timezone.utc).isoformat(),
                        "packet_sha256": hashlib.sha256(packet_path.read_bytes()).hexdigest()}
             (packet_path.parent / FINALIZATION_STATUS_FILENAME).write_text(json.dumps(receipt, indent=2) + "\n")

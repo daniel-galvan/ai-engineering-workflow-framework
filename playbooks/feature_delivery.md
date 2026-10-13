@@ -9,7 +9,7 @@ exercise_status_standard_planning: exercised
 exercise_status_deep_planning: pending
 exercise_status_standard_remediation: exercised
 exercise_status_deep_remediation: pending
-validation_summary: prior exercise scope retained; tiered Jira retrieval not live-validated
+validation_summary: prior scope retained; continuity and partial Draft fixes locally checked, not live-validated
 owner: Engineering
 last_updated: 2026-10-08
 depends_on:
@@ -310,8 +310,10 @@ trace initiation, submission/payload, completion and recovery; atomic persistenc
 planning review challenges these assumptions, not only conformance with upstream conclusions.
 
 For a clarification-required run, design frames supported solutions and the smallest decision needed for readiness.
-When independent work has a feasible plan, Documenter may preserve a partial `status: Draft` implementation plan with
-complete applicability, design and dependency tables and owned unresolved decisions. Retain the Clarification Brief;
+When independent work has a feasible plan, feature-design returns `plan_readiness: awaiting_input` and
+`implementation_plan_action: create_draft`. Documenter preserves a partial `status: Draft` implementation plan with
+complete applicability, design and dependency tables and owned unresolved decisions. Use `omit` only when no supported
+partial scope exists. Retain the Clarification Brief;
 the workflow remains `awaiting_input`, and the draft grants neither full readiness nor implementation approval.
 
 The feature-design result must list the context and artifacts consumed,

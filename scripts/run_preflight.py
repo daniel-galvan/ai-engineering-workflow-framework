@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -145,6 +146,14 @@ def preflight(
             plugin_version=plugin_version or "unknown",
         )
 
+    validator = root / "scripts/validate_library.py"
+    if not validator.is_file():
+        return _result("blocked", "plugin_package_incomplete", framework_root=str(root))
+    validation = subprocess.run([sys.executable, str(validator)], cwd=root, capture_output=True, text=True)
+    if validation.returncode:
+        return _result("blocked", "framework_package_validation_failed", framework_root=str(root),
+                       detail=validation.stdout.strip() or validation.stderr.strip())
+
     return _result(
         "passed",
         None,
@@ -171,6 +180,8 @@ def self_test() -> None:
         (root / ".codex-plugin" / "plugin.json").write_text('{"name":"test","version":"0.0.1"}\n')
         skill = root / "skills" / "run" / "SKILL.md"
         skill.write_text("# run\n")
+        (root / "scripts").mkdir()
+        (root / "scripts/validate_library.py").write_text("print(\"Package valid\")\n")
         subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
         subprocess.run(["git", "-C", str(root), "config", "user.name", "preflight-test"], check=True)
         subprocess.run(["git", "-C", str(root), "config", "user.email", "preflight@example.invalid"], check=True)
@@ -207,6 +218,12 @@ def self_test() -> None:
         subprocess.run(["git", "-C", str(root), "commit", "-qm", "refresh plugin build"], check=True)
         refreshed = preflight(root)
         assert refreshed["status"] == "passed", refreshed
+        (root / "scripts/validate_library.py").write_text('raise SystemExit("Invalid package")\n')
+        (root / ".codex-plugin/plugin.json").write_text('{"name":"test","version":"0.0.1+codex.3"}\n')
+        _git_checked(root, "add", ".")
+        _git_checked(root, "commit", "-qm", "invalid package fixture")
+        invalid = preflight(root)
+        assert invalid["reason"] == "framework_package_validation_failed", invalid
 
     print("run_preflight self-test: passed")
 

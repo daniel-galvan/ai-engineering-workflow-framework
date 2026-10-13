@@ -152,8 +152,9 @@ Documenter after analytical fan-in unless the selected playbook defines a determ
 Sentry `ready_for_implementation/create`.
 
 Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
-the selected finalizer or Documenter: `awaiting_input` requires `omit`; only
-`ready_for_implementation` permits `create`.
+the selected finalizer or Documenter. Only `ready_for_implementation` permits full-plan `create`.
+For Feature Delivery implementation planning, `awaiting_input/create_draft` preserves feasible independent work and
+owned unresolved decisions without approval. Otherwise `awaiting_input/omit` produces a Clarification Brief.
 For Feature Delivery `specification_assessment`, record Playbook Selection
 `Primary goal` exactly as `Specification assessment`. Require the final
 `Workflow result` to be exactly `Ready for implementation`, `Ready with explicit
