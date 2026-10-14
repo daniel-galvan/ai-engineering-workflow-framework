@@ -72,7 +72,15 @@ description: >-
    not authorization to read local memory or historical artifacts. If memory is automatically injected or otherwise
    required, quarantine it completely; do not use, cite, summarize, or pass it to workers, and mark context conformance
    failed if it influences a result.
-   Before analytical fan-in, audit each provider tool trace when exposed with
+   Before analytical fan-in for Sentry, TechOps, or Feature Delivery, use the prepared `runtime_evidence.collector` and
+   `runtime_evidence.ledger` when declared. Extract dispatches from the verified current parent session and export the
+   exact child session with its fresh provider status observation. Use the canonical binding key as `--agent`, not a
+   stage label. Do not manually reconstruct a trace or inject delivery flags. The collector derives omitted dispatch
+   timestamps from its verified ledger and recognizes authenticated complete instruction reads. Missing export fields
+   or parser errors are collection failures; reconcile them once without repeating analysis or spending a worker
+   replacement. Preserve rejected traces and export reconciliation to a new path. If collection still fails, report the
+   framework blocker promptly rather than dispatching another analytical worker.
+   Audit each provider tool trace when exposed with
    `python3 <framework-root>/scripts/validate_worker_runtime.py --trace <current-run-trace.json>`.
    Treat `forbidden_context_reference:*` or `context_conformance_failed` as contamination and do not fan in that
    result. Before declaring a trace unavailable, try the provider thread-read/export operation for the exact child

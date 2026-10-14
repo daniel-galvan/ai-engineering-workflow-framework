@@ -120,7 +120,9 @@ class ContextOperationAudit(unittest.TestCase):
         notice = 'sha256sum ' + trace["spawn"]["dispatch_file"] + ' && cat ' + trace["spawn"]["dispatch_file"]
         input_code = 'await tools.exec_command(' + json.dumps({"cmd": notice}) + ')'
         quoted = json.dumps({"thread": {"command": "cat /repo/.codex/memories/MEMORY.md"}})
-        trace["tool_trace"] = [{"type": "custom_tool_call", "input": input_code}, *self.paired(
+        trace["tool_trace"] = [{"type": "custom_tool_call", "call_id": "instructions", "input": input_code},
+            {"type": "custom_tool_call_output", "call_id": "instructions",
+             "output": Path(trace["spawn"]["dispatch_file"]).read_text()}, *self.paired(
             'await tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"})', quoted)]
         source = self.repository / "child.jsonl"
         source.write_text(json.dumps({"type": "session_meta", "payload": {"id": child}}) + "\n" + "".join(
@@ -131,13 +133,133 @@ class ContextOperationAudit(unittest.TestCase):
         observation = {"Provider handle": handle, "Thread ID": child, "Provider status": "completed",
             "Last dispatch at": dispatch, "Observed at": "2026-10-13T01:01:00Z", "Status source": "read_thread",
             "Latest turn started at": dispatch, "Latest turn completed at": "2026-10-13T01:00:30Z",
-            "Latest turn status": "completed", "Thread status": "idle", "Binding evidence": {
-                "activation_packet_delivered": True, "observed_agent_role": "current_state_investigator"}}
+            "Latest turn status": "completed", "Thread status": "idle"}
+        observation.pop("Last dispatch at")
         exported = export_worker_trace(ledger, source, "feature-context", observation,
                                        run_id=trace["run_id"], artifact_root=self.root)
         self.assertEqual(exported["audit"], {"status": "passed", "errors": []})
         self.assertEqual(exported["spawn"]["dispatch_proof_source"], "provider_instruction_read")
         self.assertEqual(exported["spawn"]["dispatch_file_sha256"], trace["spawn"]["dispatch_file_sha256"])
+
+    def instruction_read_trace(self):
+        trace = self.dispatch_trace([])
+        content = Path(trace["spawn"]["dispatch_file"]).read_text()
+        trace["spawn"].pop("activation_packet_delivered", None)
+        trace["tool_trace"] = self.paired(
+            'const r = await tools.exec_command(' + json.dumps({"cmd": "cat " + trace["spawn"]["dispatch_file"]})
+            + '); text(r.output);', [{"type": "input_text", "text": content}])
+        return trace
+
+    def test_instruction_read_proves_binding_without_status_flags(self):
+        trace = self.instruction_read_trace()
+        self.assertEqual(runtime.trace_errors(trace), [])
+
+    def test_instruction_proof_rejects_missing_output_wrong_hash_and_wrong_run(self):
+        import copy
+        base = self.instruction_read_trace()
+        for failure in ("missing_output", "mismatched_call", "truncated_output", "wrong_hash", "wrong_run", "no_read"):
+            with self.subTest(failure=failure):
+                trace = copy.deepcopy(base)
+                if failure == "missing_output": trace["tool_trace"].pop()
+                elif failure == "mismatched_call": trace["tool_trace"][1]["call_id"] = "unmatched"
+                elif failure == "truncated_output": trace["tool_trace"][1]["output"] = "Coordinator initialization: complete"
+                elif failure == "wrong_hash": trace["spawn"]["dispatch_file_sha256"] = "0" * 64
+                elif failure == "wrong_run": trace["run_id"] = "other-run"
+                elif failure == "no_read": trace["tool_trace"][0]["input"] = 'text("contract read")'
+                self.assertIn("provider_binding_not_delivered", runtime.trace_errors(trace))
+
+    def test_ancestor_instructions_are_reads_not_historical_analysis(self):
+        for command in (
+            'cat .thoughts/AGENTS.md',
+            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then echo "--- $p"; cat "$p"; fi; done\npython3 - <<"PY"\nprint("current evidence")\nPY',
+            'for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done; if test -e .thoughts/ITEM-1/evidence.md; then echo yes; fi',
+        ):
+            with self.subTest(command=command):
+                trace = self.instruction_read_trace()
+                call = 'const r = await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + '); text(r.output);'
+                rows = self.paired(call, '--- .thoughts/AGENTS.md')
+                rows[0]["call_id"] = rows[1]["call_id"] = "ancestor"
+                trace["tool_trace"].extend(rows)
+                self.assertEqual(runtime.trace_errors(trace), [])
+
+    def test_instruction_exception_does_not_allow_writes_or_other_work_items(self):
+        for command in (
+            'cat .thoughts/OTHER/AGENTS.md',
+            'cat .thoughts/ITEM-1/runs/prior/AGENTS.md',
+            'echo changed > .thoughts/AGENTS.md',
+            'for f in .thoughts/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done; echo changed > .thoughts/AGENTS.md',
+        ):
+            with self.subTest(command=command):
+                trace = self.instruction_read_trace()
+                trace["tool_trace"].append({"type": "custom_tool_call", "input":
+                    'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'})
+                self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
+    def test_ancestor_instruction_symlink_cannot_reach_archived_analysis(self):
+        archive = self.root / "runs/prior/notes.md"
+        archive.parent.mkdir(parents=True)
+        archive.write_text("Archived analysis")
+        (self.root.parent / "AGENTS.md").symlink_to(archive)
+        trace = self.instruction_read_trace()
+        trace["tool_trace"].append({"type": "custom_tool_call", "input":
+            'await tools.exec_command(' + json.dumps({"cmd": "cat .thoughts/AGENTS.md", "workdir": str(self.repository)}) + ')'})
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
+    def test_sentry_preparation_declares_the_shared_collector(self):
+        run = fixtures.prepare.prepare_run(self.repository, "SENTRY-1", "sentry_issue_remediation", None, False,
+                                           input_manifest=self.inputs)
+        self.assertEqual(Path(run["runtime_evidence"]["collector"]).name, "worker_runtime_evidence.py")
+        self.assertEqual(Path(run["runtime_evidence"]["ledger"]), Path(run["artifact_root"]) / "runtime_dispatches.json")
+
+    def test_sentry_guard_provider_export_and_fan_in_without_injected_metadata(self):
+        from datetime import datetime, timedelta
+        run = fixtures.prepare.prepare_run(self.repository, "SENTRY-2", "sentry_issue_remediation", None, False,
+                                           input_manifest=self.inputs)
+        root = Path(run["artifact_root"])
+        role = "sentry_current_state_investigator"
+        bundle = run["activation_packet_bundle"]
+        assignment = root / "assignment.json"
+        assignment.write_text(json.dumps({"objective": "Collect the supplied occurrence", "input_paths": []}))
+        dispatch = root / "activation_evidence_topology.txt"
+        guarded = subprocess.run([sys.executable, run["worker_runtime_guard"], "--activation-packet-bundle", bundle["path"],
+            "--expected-agent", role, "--expected-bundle-sha256", bundle["sha256"], "--assignment", str(assignment),
+            "--dispatch-file", str(dispatch)], capture_output=True, text=True)
+        self.assertEqual(guarded.returncode, 0, guarded.stdout + guarded.stderr)
+        start = datetime.fromisoformat(run["runtime_evidence"]["run_started_at"].replace("Z", "+00:00"))
+        time = lambda seconds: (start + timedelta(seconds=seconds)).isoformat()
+        child = "00000000-0000-0000-0000-000000000002"
+        handle = "/root/evidence_topology"
+        parent = self.repository / "sentry-parent.jsonl"
+        parent.write_text("\n".join(json.dumps(row) for row in [
+            {"timestamp": time(0), "type": "session_meta", "payload": {"id": SOURCE}},
+            {"timestamp": time(1), "type": "response_item", "payload": {"type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
+             "arguments": json.dumps({"task_name": "evidence_topology", "agent_type": role, "message": "opaque"})}},
+            {"timestamp": time(1), "type": "event_msg", "payload": {"item": {"type": "SubAgentActivity",
+             "kind": "started", "agent_path": handle, "agent_thread_id": child}}},
+        ]) + "\n")
+        session = self.repository / "sentry-child.jsonl"
+        session.write_text("\n".join(json.dumps(row) for row in [
+            {"timestamp": time(1), "type": "session_meta", "payload": {"id": child}},
+            {"timestamp": time(2), "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+             "call_id": "instructions", "input": 'const r = await tools.exec_command(' + json.dumps({
+                 "cmd": "sha256sum " + str(dispatch) + " && cat " + str(dispatch)}) + '); text(r.output);'}},
+            {"timestamp": time(3), "type": "response_item", "payload": {"type": "custom_tool_call_output",
+             "call_id": "instructions", "output": [{"type": "input_text", "text": dispatch.read_text()}]}},
+        ]) + "\n")
+        observation = root / "status.json"
+        observation.write_text(json.dumps({"Provider handle": handle, "Thread ID": child, "Provider status": "idle",
+            "Observed at": time(30), "Status source": "read_thread", "Latest turn started at": time(1),
+            "Latest turn completed at": time(20), "Latest turn status": "completed", "Thread status": "idle"}))
+        trace_path = root / "trace.json"
+        result = subprocess.run([sys.executable, run["runtime_evidence"]["collector"], "--provider-session", str(parent),
+            "--parent-thread-id", SOURCE, "--started-at", time(0), "--ledger", run["runtime_evidence"]["ledger"],
+            "--worker-session", str(session), "--observation", str(observation), "--agent", role,
+            "--trace", str(trace_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        exported = json.loads(trace_path.read_text())
+        self.assertEqual(exported["audit"], {"status": "passed", "errors": []})
+        self.assertNotIn("activation_packet_delivered", exported["spawn"])
+        self.assertEqual(runtime.trace_errors(exported, require_freshness=True), [])
 
     def test_computed_tool_access_cannot_get_the_source_output_exception(self):
         trace = self.dispatch_trace(["codex://threads/" + SOURCE])

@@ -164,7 +164,8 @@ its mapped concrete operation is absent or an attempted in-scope operation fails
 A collaboration task handle is not a Codex thread UUID. Retain the exact spawn handle for collaboration operations;
 use thread-read tools only with a provider-returned or verified mapped UUID. When no mapping/export exists, record
 that specific capability absence once rather than repeatedly passing a task path to read_thread.
-For prepared TechOps runs, use `runtime_evidence.collector` to extract this run's provider events into
+For prepared Sentry, TechOps, and Feature Delivery runs that declare `runtime_evidence`, use
+`runtime_evidence.collector` to extract this run's provider events into
 `runtime_evidence.ledger`. Read only the verified current parent session, never memory or prior runs:
 
 ```bash
@@ -177,7 +178,14 @@ extracts exact spawn/follow-up/message timestamps, preserves live
 inventory responses unchanged and maps child UUIDs from `SubAgentActivity` metadata. Use those UUIDs for targeted
 `read_thread`/`wait_threads` calls when live inventory omits a child. A metadata mapping proves identity, not current
 completion. Sync after every dispatch and fresh inventory read; copy `Last dispatch at` from the latest matching
-event, never from an earlier clock sample. The finalizer compares audits with current provider events and rejects
+event, never from an earlier clock sample. Use the canonical binding key as the collector's `--agent` value, such as
+`sentry_current_state_investigator`; do not substitute a stage label. For child export, supply the current provider
+status observation without fabricated binding flags. The collector fills an omitted `Last dispatch at` from its verified
+ledger, rejects a conflicting value, and authenticates delivery through a paired read of the complete dispatch file.
+A missing or malformed export is a collection failure, not proof that the worker failed. Before replacement, reconcile
+metadata once through this collector without repeating analysis; preserve prior rejected traces and use a new trace
+path. If collection still fails, report the framework blocker promptly instead of starting another analytical worker.
+The finalizer compares audits with current provider events and rejects
 stale or edited ledgers. If this provider event route is unavailable, record that concrete capability failure once;
 do not substitute invented times, shortened messages labeled raw, or historical completion for fresh closure.
 

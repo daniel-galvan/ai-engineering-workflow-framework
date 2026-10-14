@@ -1080,7 +1080,7 @@ def prepare_run(
         manifest["worker_contracts"]["current_state_investigator"]["asset_inventory"] = (
             manifest["worker_contracts"]["feature_asset_inventory"])
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
-    if playbook == "techops_issue_remediation" or (
+    if playbook in {"techops_issue_remediation", "sentry_issue_remediation"} or (
             playbook == "feature_delivery" and workflow_objective != "specification_assessment"):
         manifest["runtime_evidence"] = {
             "collector": str(ROOT / "scripts" / "worker_runtime_evidence.py"),

@@ -97,9 +97,7 @@ class ActivationDelivery(unittest.TestCase):
             {"Provider handle": HANDLE, "Last dispatch at": DISPATCH}]}
         observation = {"Provider handle": HANDLE, "Thread ID": CHILD, "Provider status": "completed",
             "Last dispatch at": DISPATCH, "Observed at": "2026-10-12T20:02:00Z", "Status source": "read_thread",
-            "Latest turn started at": DISPATCH, "Latest turn status": "completed", "Thread status": "idle",
-            "Binding evidence": {"activation_packet_delivered": True,
-                "dispatch_file": str(dispatch), "dispatch_file_sha256": receipt["dispatch_file_sha256"]}}
+            "Latest turn started at": DISPATCH, "Latest turn status": "completed", "Thread status": "idle"}
         source = self.root / "child.jsonl"
         rows = [{"timestamp": DISPATCH, "type": "session_meta", "payload": {"id": CHILD}},
             {"timestamp": "2026-10-12T20:01:00Z", "type": "response_item", "payload": {
@@ -110,7 +108,7 @@ class ActivationDelivery(unittest.TestCase):
                 "output": [{"type": "input_text", "text": dispatch.read_text()}]}}]
         source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
         return export_worker_trace(ledger, source, "current_state_investigator", observation,
-                                   run_id=packet["run_id"])
+                                   run_id=packet["run_id"], artifact_root=self.artifacts)
 
     def test_prepared_dispatch_export_and_audit_allow_preservation_metadata(self):
         trace = self.instruction_trace()

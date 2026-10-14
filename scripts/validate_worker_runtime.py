@@ -856,9 +856,45 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
                 proof = {"dispatch_file": str(path), "dispatch_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                          "binding_agent": role, "dispatch_proof_source": "provider_instruction_read"}
                 candidate = {**trace, "spawn": {**trace["spawn"], **proof}}
-                if _verified_dispatch_content(candidate):
-                    return proof
+                content = _verified_dispatch_content(candidate)
+                if content and row.get("call_id"):
+                    for output in trace.get("tool_trace", []):
+                        if (output.get("type") in {"function_call_output", "custom_tool_call_output"}
+                                and output.get("call_id") == row["call_id"]
+                                and any(content in value for _, value in _trace_strings({"tool_trace": [output]}))):
+                            return proof
     return {}
+
+
+
+def _ancestor_instruction_reads(row: dict, root: Path) -> list[str]:
+    allowed = {parent / "AGENTS.md" for parent in (root, root.parent, root.parent.parent)}
+    reads = []
+    for name, arguments in _tool_operations(row):
+        if name != "exec_command":
+            continue
+        command = arguments.get("cmd", "")
+        if not isinstance(command, str):
+            continue
+        targets = _read_targets(command)
+        loop = re.match(
+            r'^for (?P<var>[A-Za-z_]\w*) in (?P<paths>[^;\n]+); do if '
+            r'(?:\[ -f "\$(?P=var)" \]|test -f "\$(?P=var)"); then '
+            r'echo "--- \$(?P=var)"; cat "\$(?P=var)"; fi; done(?=;|\n|$)', command)
+        if loop:
+            try:
+                targets = shlex.split(loop["paths"])
+            except ValueError:
+                continue
+        cwd = Path(arguments.get("workdir", root.parent.parent))
+        for target in targets:
+            if any(char in target for char in "$`*"):
+                continue
+            path = Path(target)
+            resolved = (path if path.is_absolute() else cwd / path).resolve()
+            if resolved in allowed:
+                reads.append(target)
+    return reads
 
 
 def context_trace_errors(trace: dict[str, object]) -> list[str]:
@@ -885,6 +921,9 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
     source_outputs = _read_output_prefixes(trace, assigned, root)
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
              if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
+    instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(row, root)
+                         for row in trace.get("tool_trace", []) if root and isinstance(row, dict) and row.get("call_id")
+                         and row.get("type") in {"function_call", "custom_tool_call"}}
     for path, value in _trace_strings(trace):
         if any(path[:len(prefix)] == prefix for prefix in source_outputs):
             continue
@@ -897,6 +936,11 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
         if _authorized_read(row, assigned) or (row.get("type") == "function_call_output" and row.get("call_id") in reads):
             for source in assigned:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(source) + r"(?![\w./-])", "", candidate)
+        if root:
+            instructions = (instruction_reads.get(row.get("call_id"), []) if output
+                            else _ancestor_instruction_reads(row, root))
+            for instruction in instructions:
+                candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
             checked = value if label != "archived_artifact" else candidate
             if label == "archived_artifact" and listing:
@@ -937,7 +981,16 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -
         errors.append("activation_message_mismatch")
     observed_role = spawn.get("observed_agent_role")
     observed_path = spawn.get("observed_agent_path")
-    if not observed_role and not observed_path and not spawn.get("activation_packet_delivered"):
+    delivered = bool(observed_role or observed_path or spawn.get("activation_packet_delivered"))
+    if not delivered and spawn.get("dispatch_file"):
+        try:
+            path = Path(spawn["dispatch_file"]).resolve()
+            proof = observed_dispatch_binding(trace, path.parent)
+            delivered = (proof.get("dispatch_file") == str(path)
+                         and proof.get("dispatch_file_sha256") == spawn.get("dispatch_file_sha256"))
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            pass
+    if not delivered:
         errors.append("provider_binding_not_delivered")
     for event in trace.get("events", []):
         if not isinstance(event, dict) or "action" not in event:

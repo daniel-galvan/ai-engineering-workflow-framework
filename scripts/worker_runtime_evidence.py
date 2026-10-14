@@ -179,6 +179,8 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     if ledger["thread_mappings"].get(handle) != thread:
         raise ValueError("worker_trace_thread_mismatch")
     dispatches = [row for row in ledger["events"] if row["Provider handle"] == handle]
+    if dispatches and "Last dispatch at" not in observation:
+        observation = {**observation, "Last dispatch at": dispatches[-1]["Last dispatch at"]}
     if not dispatches or observation.get("Last dispatch at") != dispatches[-1]["Last dispatch at"]:
         raise ValueError("worker_trace_dispatch_mismatch: received=" + str(observation.get("Last dispatch at"))
                          + "; expected=" + str(dispatches[-1]["Last dispatch at"] if dispatches else "no dispatch"))
