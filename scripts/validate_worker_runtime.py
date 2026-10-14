@@ -63,6 +63,36 @@ def worker_binding(bindings: dict, worker: str) -> str:
     return matches[0]
 
 
+def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thread: str | None = None) -> list[str]:
+    """Bind a prepared trace to the result slot being accepted."""
+    if not (root / "role_bindings.json").is_file():
+        return []  # Legacy records do not carry prepared worker identities.
+    try:
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        if not bindings.get("runtime_evidence"):
+            return []  # Legacy records retain their original acceptance contract.
+        current = json.loads((root / "finalization_packet.json").read_text())
+        spawn = trace["spawn"]
+        errors = []
+        if trace.get("run_id") != current["identity"]["Run ID"]:
+            errors.append("worker_trace_run_mismatch:" + worker)
+        if worker_binding(bindings, spawn["agent"]) != worker_binding(bindings, worker):
+            errors.append("worker_trace_role_mismatch:" + worker)
+        if spawn.get("provider_handle") != handle:
+            errors.append("worker_trace_handle_mismatch:" + worker)
+        if (not trace.get("thread_id") or spawn.get("thread_id") != trace["thread_id"]
+                or thread is not None and trace["thread_id"] != thread):
+            errors.append("worker_trace_thread_mismatch:" + worker)
+        observation = trace.get("status_observation", {})
+        if (observation.get("Provider handle") != handle or observation.get("Thread ID") != trace.get("thread_id")
+                or observation.get("Last dispatch at") != trace.get("last_dispatch_at")):
+            errors.append("worker_trace_observation_mismatch:" + worker)
+        errors.extend(terminal_observation_errors([observation], [handle]))
+        return errors
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        return ["worker_trace_identity_invalid:" + worker + ":" + str(error)]
+
+
 def _pending_rejections(root: Path) -> dict:
     ledger_path = root / "runtime_dispatches.json"
     if not ledger_path.exists():
@@ -824,9 +854,12 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 targets = _read_targets(arguments.get("cmd"))
                 cwd = Path(arguments.get("workdir", root.parent.parent))
                 resolved = [Path(target) if Path(target).is_absolute() else cwd / target for target in targets]
+                receipts = root / "activation_receipts.json"
+                instructions = json.loads(receipts.read_text()) if receipts.is_file() else {}
                 safe = safe and bool(targets) and all(
-                    (path.resolve().parent == root and path.is_file()
-                     and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()) or str(path) in assigned
+                    not (path.resolve().parent == root and path.name in instructions)
+                    and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()
+                    and ((path.resolve().parent == root and path.is_file()) or str(path) in assigned)
                     for path in resolved)
             elif name not in {"mcp__codex_apps__atlassian_getjiraissue", "mcp__codex_apps__atlassian_executeread",
                               "mcp__codex_apps__atlassian_discover", "mcp__codex_apps__atlassian_searchjiraissuesusingjql"}:
@@ -843,7 +876,7 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
 def observed_dispatch_binding(trace: dict, root: Path) -> dict:
     bindings = json.loads((root / "role_bindings.json").read_text())
     role = worker_binding(bindings, trace["spawn"]["agent"])
-    for row in trace.get("tool_trace", []):
+    for row in reversed(trace.get("tool_trace", [])):
         for name, arguments in _tool_operations(row):
             if name != "exec_command":
                 continue
@@ -851,7 +884,9 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
             for target in _read_targets(arguments.get("cmd")):
                 path = Path(target) if Path(target).is_absolute() else cwd / target
                 path = path.resolve()
-                if path.parent != root.resolve() or not path.is_file():
+                expected = trace["spawn"].get("dispatch_file")
+                if (path.parent != root.resolve() or not path.is_file()
+                        or expected and path != Path(expected).resolve()):
                     continue
                 proof = {"dispatch_file": str(path), "dispatch_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                          "binding_agent": role, "dispatch_proof_source": "provider_instruction_read"}
@@ -864,6 +899,25 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
                                 and any(content in value for _, value in _trace_strings({"tool_trace": [output]}))):
                             return proof
     return {}
+
+
+def _instruction_contents(trace: dict, root: Path | None) -> list[str]:
+    """Exempt authenticated instruction text, never extra provider output."""
+    if root is None:
+        return []
+    receipts = root / "activation_receipts.json"
+    contents = []
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    role = worker_binding(bindings, trace["spawn"]["agent"])
+    for name, receipt in json.loads(receipts.read_text()).items() if receipts.is_file() else []:
+        if receipt.get("agent") != role:
+            continue
+        candidate = {**trace, "spawn": {**trace["spawn"], "dispatch_file": str(root / name),
+            "dispatch_file_sha256": receipt.get("sha256"), "binding_agent": receipt.get("agent")}}
+        content = _verified_dispatch_content(candidate)
+        if content:
+            contents.append(content)
+    return contents
 
 
 
@@ -919,6 +973,7 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
                 assigned.append(locator)
         root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
     source_outputs = _read_output_prefixes(trace, assigned, root)
+    instruction_contents = _instruction_contents(trace, root)
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
              if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
     instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(row, root)
@@ -930,7 +985,8 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
         candidate = value
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
         if dispatch_content and output:
-            candidate = candidate.replace(dispatch_content, "")
+            for content in instruction_contents or [dispatch_content]:
+                candidate = candidate.replace(content, "")
         listing = any(path[:len(prefix)] == prefix for prefix in listings)
         row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
         if _authorized_read(row, assigned) or (row.get("type") == "function_call_output" and row.get("call_id") in reads):
@@ -982,12 +1038,19 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -
     observed_role = spawn.get("observed_agent_role")
     observed_path = spawn.get("observed_agent_path")
     delivered = bool(observed_role or observed_path or spawn.get("activation_packet_delivered"))
-    if not delivered and spawn.get("dispatch_file"):
+    if spawn.get("dispatch_file"):
+        delivered = False
         try:
             path = Path(spawn["dispatch_file"]).resolve()
             proof = observed_dispatch_binding(trace, path.parent)
             delivered = (proof.get("dispatch_file") == str(path)
                          and proof.get("dispatch_file_sha256") == spawn.get("dispatch_file_sha256"))
+            if observed_role and observed_role != spawn.get("binding_agent", spawn.get("agent")):
+                errors.append("provider_binding_role_mismatch")
+            if observed_path and delivered:
+                contract = json.loads(path.read_text().split("\n", 2)[1])
+                if Path(observed_path).resolve() != Path(contract["definition"]).resolve():
+                    errors.append("provider_binding_path_mismatch")
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             pass
     if not delivered:

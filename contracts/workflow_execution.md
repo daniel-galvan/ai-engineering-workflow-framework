@@ -301,8 +301,10 @@ The gate checks information flow; it does not require every worker to consume ev
 The Coordinator MUST also reconcile the worker's activity with its assigned context. Unassigned memory or historical
 material that appears in an artifact, citation, claim, hypothesis, decision, or result envelope fails
 `context_conformance`; that result MUST NOT enter fan-in. Automatically injected or otherwise required memory is not
-evidence and remains quarantined; if it influences a worker result, fail `context_conformance`. Return a contaminated
-worker once with the same typed inputs and require removal or current-run reverification. A provider-completed task
+evidence and remains quarantined; if it influences a worker result, fail `context_conformance`.
+A forbidden read in the provider trace requires a fresh worker: a same-worker correction cannot erase its context.
+For an output or envelope mistake without a forbidden read, return the same worker once for current-run reverification.
+A provider-completed task
 with a rejected result is eligible for one replacement when clean isolation requires it: use the worker-runtime
 guard's activation mode with its saved rejected trace, observed handle, latest dispatch and fresh terminal status.
 Use `--rejected-trace`, `--provider-handle`, `--last-dispatch-at`, and `--provider-status` together with the activation

@@ -136,9 +136,9 @@ def validate_sentry_artifacts(root: Path, *, allow_unreleased: bool = False) -> 
         except (json.JSONDecodeError, OSError):
             return
         closure_rows = closure.get("runtime_closure", [])
-        released = bool(closure_rows) and all(
+        runtime_closed = bool(closure_rows) and all(
             isinstance(row, dict)
-            and str(row.get("Runtime status", "")).strip().lower() == "released"
+            and str(row.get("Runtime status", "")).strip().lower() in {"released", "terminal"}
             and NO_ACTIVE_HANDLES.fullmatch(str(row.get("Remaining active handles", "")).strip())
             for row in closure_rows
         )
@@ -149,7 +149,7 @@ def validate_sentry_artifacts(root: Path, *, allow_unreleased: bool = False) -> 
             .lower()
             .startswith("passed")
         )
-        if released and terminal_packet:
+        if runtime_closed and terminal_packet:
             record = root / "work_record.md"
             if not record.is_file():
                 fail(f"{root}: released terminal artifact set requires work_record.md")

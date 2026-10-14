@@ -141,6 +141,7 @@ class V6Recovery(unittest.TestCase):
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
         rejected["run_id"] = json.loads(Path(run["finalization_packet"]).read_text())["identity"]["Run ID"]
         rejected["tool_trace"] = []
+        rejected["spawn"]["observed_agent_role"] = "current_state_investigator"
         rejected["audit"]["errors"] = runtime.trace_errors(rejected, require_freshness=True)
         trace.write_text(json.dumps(rejected))
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
@@ -148,7 +149,7 @@ class V6Recovery(unittest.TestCase):
         trace.write_text(json.dumps(rejected))
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
 
-    def test_corrected_turn_excludes_rejected_activity_and_can_merge_current_result(self):
+    def test_fresh_replacement_preserves_rejected_activity_and_can_merge_current_result(self):
         run = self.prepare()
         rejected_path = self.rejected_trace(run)
         bundle = run["activation_packet_bundle"]
@@ -163,19 +164,32 @@ class V6Recovery(unittest.TestCase):
         rejected_bytes = rejected_path.read_bytes()
         parent = self.root / "parent.jsonl"
         dispatch = "2026-10-09T20:03:00Z"
+        fresh_handle = "/root/evidence_retry"
+        fresh_child = "00000000-0000-0000-0000-000000000003"
         with parent.open("a") as stream:
             stream.write(json.dumps({"timestamp": dispatch, "type": "response_item", "payload": {
-                "type": "function_call", "namespace": "collaboration", "name": "followup_task",
-                "arguments": '{"target":"evidence","message":"Reverify current-run evidence"}'}}) + "\n")
-        child = self.root / "child.jsonl"
-        with child.open("a") as stream:
-            stream.write(json.dumps({"timestamp": "2026-10-09T20:03:30Z", "type": "response_item",
-                "payload": {"type": "custom_tool_call", "input": "rg -n symbol current-source"}}) + "\n")
+                "type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
+                "arguments": json.dumps({"task_name": "evidence_retry", "message": json.loads(guarded.stdout)["activation_message"]})}}) + "\n")
+            stream.write(json.dumps({"timestamp": dispatch, "type": "event_msg", "payload": {"item": {
+                "type": "SubAgentActivity", "kind": "started", "agent_path": fresh_handle,
+                "agent_thread_id": fresh_child}}}) + "\n")
+        child = self.root / "fresh_child.jsonl"
+        contract_path = Path(run["artifact_root"]) / "activation_corrected.txt"
+        child.write_text("\n".join(json.dumps(row) for row in [
+            {"timestamp": dispatch, "type": "session_meta", "payload": {"id": fresh_child}},
+            {"timestamp": "2026-10-09T20:03:30Z", "type": "response_item", "payload": {
+                "type": "custom_tool_call", "call_id": "contract", "input":
+                'await tools.exec_command(' + json.dumps({"cmd": "cat " + str(contract_path)}) + ')'}},
+            {"timestamp": "2026-10-09T20:03:31Z", "type": "response_item", "payload": {
+                "type": "custom_tool_call_output", "call_id": "contract", "output": contract_path.read_text()}}
+        ]) + "\n")
         root = rejected_path.parent
         observation_path = root / "observation.json"
         observation = json.loads(observation_path.read_text())
-        observation.update({"Last dispatch at": dispatch, "Latest turn started at": dispatch,
+        observation.update({"Provider handle": fresh_handle, "Thread ID": fresh_child,
+                            "Last dispatch at": dispatch, "Latest turn started at": dispatch,
                             "Observed at": "2026-10-09T20:04:00Z"})
+        observation.pop("Binding evidence")
         observation_path.write_text(json.dumps(observation))
         corrected_path = root / "corrected_issue_evidence_trace.json"
         exported = self.command("worker_runtime_evidence.py", "--provider-session", parent,
@@ -185,7 +199,7 @@ class V6Recovery(unittest.TestCase):
         self.assertEqual(exported.returncode, 0, exported.stdout + exported.stderr)
         corrected = json.loads(corrected_path.read_text())
         self.assertEqual(corrected["audit"]["status"], "passed")
-        self.assertEqual(len(corrected["tool_trace"]), 1)
+        self.assertEqual(len(corrected["tool_trace"]), 2)
         self.assertEqual(runtime.trace_errors(corrected, require_freshness=True), [])
         self.assertEqual(rejected_path.read_bytes(), rejected_bytes)
         overwrite = self.command("worker_runtime_evidence.py", "--provider-session", parent,

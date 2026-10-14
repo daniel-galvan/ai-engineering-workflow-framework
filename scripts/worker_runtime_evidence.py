@@ -63,6 +63,8 @@ def read_runtime_events(
         pending_spawn = None
         inventory_pending = None
         pending_followups = {}
+        spawn_calls = {}
+        observed_starts = {}
         observed_until = started
         active, intervals = {}, []
         for line in stream:
@@ -80,6 +82,7 @@ def read_runtime_events(
             if row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity":
                 handle = item.get("agent_path")
                 if item.get("kind") == "started":
+                    observed_starts[handle] = timestamp(row["timestamp"])
                     active.setdefault(handle, timestamp(row["timestamp"]))
                 elif item.get("kind") in {"completed", "interrupted", "stopped", "failed"} and handle in active:
                     intervals.append((active.pop(handle), timestamp(row["timestamp"])))
@@ -92,7 +95,10 @@ def read_runtime_events(
                     raise ValueError("provider_worker_identity_conflict")
                 mappings[handle] = thread
                 if pending_spawn is not None and handle.rsplit("/", 1)[-1] == pending_spawn[0]:
-                    events.append({**pending_spawn[1], "Provider handle": handle, "Thread ID": thread})
+                    resolved = {**pending_spawn[1], "Provider handle": handle, "Thread ID": thread}
+                    events.append(resolved)
+                    if pending_spawn[2]:
+                        spawn_calls[pending_spawn[2]] = (pending_spawn[0], resolved)
                     pending_spawn = None
             if row.get("type") != "response_item":
                 continue
@@ -117,6 +123,8 @@ def read_runtime_events(
                     if pending_spawn is not None or not isinstance(arguments.get("task_name"), str):
                         raise ValueError("provider_spawn_identity_unresolved")
                     pending_spawn = (arguments["task_name"], event, payload.get("call_id"))
+                    if payload.get("call_id"):
+                        spawn_calls[payload["call_id"]] = (arguments["task_name"], event)
                     continue
                 target = arguments.get("target")
                 matches = [handle for handle in mappings if target in {handle, handle.rsplit("/", 1)[-1]}]
@@ -124,26 +132,33 @@ def read_runtime_events(
                     raise ValueError("provider_dispatch_handle_unmapped")
                 handle = matches[0]
                 events.append({**event, "Provider handle": handle, "Thread ID": mappings[handle]})
+                if payload.get("call_id"):
+                    pending_followups[payload["call_id"]] = (handle, event, handle in active)
                 if operation == "followup_task":
-                    if payload.get("call_id"):
-                        pending_followups[payload["call_id"]] = (handle, event, handle in active)
                     active.setdefault(handle, timestamp(row["timestamp"]))
             elif payload.get("type") == "function_call_output":
                 raw = provider_json_value(payload["output"])
                 call_id = payload.get("call_id")
+                explicit_error = (
+                    isinstance(raw, dict) and bool(raw.get("error") or raw.get("isError")
+                                                  or raw.get("status") in ("failed", "error"))
+                    or isinstance(raw, str) and bool(re.match(
+                        r"^(?:Error[: ]|Failed[: ]|Worker unavailable$|agent path already exists$)", raw, re.I)))
                 if call_id in pending_followups:
                     handle, event, was_active = pending_followups.pop(call_id)
-                    if not isinstance(raw, dict) or raw.get("error") or raw.get("isError"):
-                        if not was_active:
+                    if explicit_error:
+                        if not was_active and observed_starts.get(handle, started) < timestamp(event["Last dispatch at"]):
                             active.pop(handle, None)
                         events = [row for row in events if not (row["Provider handle"] == handle
                                   and row["Last dispatch at"] == event["Last dispatch at"])]
                         failed_dispatches.append({**event, "Provider handle": handle, "Status": "failed"})
-                if pending_spawn is not None and call_id == pending_spawn[2]:
-                    if not isinstance(raw, dict) or not raw.get("task_name"):
-                        failed_dispatches.append({**pending_spawn[1], "Task": pending_spawn[0],
-                                                  "Status": "failed"})
-                        pending_spawn = None
+                if call_id in spawn_calls:
+                    task, event = spawn_calls.pop(call_id)
+                    if explicit_error:
+                        events = [value for value in events if value != event]
+                        failed_dispatches.append({**event, "Task": task, "Status": "failed"})
+                        if pending_spawn is not None and pending_spawn[2] == call_id:
+                            pending_spawn = None
                 if not inventory_pending or inventory_pending not in {True, call_id}:
                     continue
                 if isinstance(raw, dict) and isinstance(raw.get("agents"), list):
@@ -168,6 +183,18 @@ def read_runtime_events(
             "identity_sessions": [str(source.resolve()) for source in identity_sessions]}
 
 
+def latest_worker_dispatch(ledger: dict, handle: str) -> dict:
+    dispatches = [row for row in ledger["events"] if row.get("Provider handle") == handle]
+    if not dispatches:
+        raise ValueError("worker_trace_dispatch_unavailable:" + handle)
+    latest = max(dispatches, key=lambda row: timestamp(row["Last dispatch at"]))
+    if any(row.get("Provider handle") == handle
+           and timestamp(row["Last dispatch at"]) >= timestamp(latest["Last dispatch at"])
+           for row in ledger.get("failed_dispatches", [])):
+        raise ValueError("latest_worker_dispatch_failed:" + handle)
+    return latest
+
+
 def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict, *, run_id: str | None = None, artifact_root: Path | None = None) -> dict:
     """Export tool activity only, using the exact parent mapping and fresh status receipt."""
     try:
@@ -178,23 +205,26 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     handle = observation["Provider handle"]
     if ledger["thread_mappings"].get(handle) != thread:
         raise ValueError("worker_trace_thread_mismatch")
-    dispatches = [row for row in ledger["events"] if row["Provider handle"] == handle]
-    if dispatches and "Last dispatch at" not in observation:
-        observation = {**observation, "Last dispatch at": dispatches[-1]["Last dispatch at"]}
-    if not dispatches or observation.get("Last dispatch at") != dispatches[-1]["Last dispatch at"]:
+    dispatch = latest_worker_dispatch(ledger, handle)
+    dispatches = [row for row in ledger["events"] if row.get("Provider handle") == handle]
+    if "Last dispatch at" not in observation:
+        observation = {**observation, "Last dispatch at": dispatch["Last dispatch at"]}
+    if observation.get("Last dispatch at") != dispatch["Last dispatch at"]:
         raise ValueError("worker_trace_dispatch_mismatch: received=" + str(observation.get("Last dispatch at"))
-                         + "; expected=" + str(dispatches[-1]["Last dispatch at"] if dispatches else "no dispatch"))
+                         + "; expected=" + str(dispatch["Last dispatch at"]))
     errors = terminal_observation_errors([observation], [handle])
     if errors:
         raise ValueError(";".join(errors))
     tool_trace = []
+    # A correction cannot erase earlier binding reads or analytical activity in this run.
+    audit_started_at = min(timestamp(value["Last dispatch at"]) for value in dispatches)
     with source.open() as stream:
         first = json.loads(next(stream))
         if first.get("type") != "session_meta" or first.get("payload", {}).get("id") != thread:
             raise ValueError("worker_trace_session_mismatch")
         for line in stream:
             row = json.loads(line)
-            if timestamp(row["timestamp"]) < timestamp(dispatches[-1]["Last dispatch at"]):
+            if timestamp(row["timestamp"]) < audit_started_at:
                 continue
             if timestamp(row["timestamp"]) > timestamp(observation["Observed at"]):
                 continue
@@ -205,12 +235,18 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     binding = observation.get("Binding evidence", {})
     if not isinstance(binding, dict):
         raise ValueError("worker_trace_binding_evidence_invalid: expected JSON object, received " + type(binding).__name__)
-    dispatch = dispatches[-1]
+    if artifact_root is not None:
+        binding = {key: value for key, value in binding.items()
+                   if key != "activation_packet_delivered"}
+    contract_dispatch = next((value for value in reversed(dispatches) if value.get("Dispatch file")), {})
+    if contract_dispatch:
+        dispatch = {**dispatch, **{key: contract_dispatch[key] for key in
+                                  ("Dispatch file", "Dispatch SHA256", "Binding agent")}}
     if dispatch.get("Dispatch file"):
         binding = {**binding, "dispatch_file": dispatch["Dispatch file"],
                    "dispatch_file_sha256": dispatch["Dispatch SHA256"], "binding_agent": dispatch["Binding agent"]}
     result = {"schema_version": 1, "worker": agent, "thread_id": thread,
-              "last_dispatch_at": dispatches[-1]["Last dispatch at"],
+              "last_dispatch_at": dispatch["Last dispatch at"],
               "spawn": dict(binding, agent=agent, provider_handle=handle, thread_id=thread),
               "tool_trace": tool_trace,
               "events": [{"action": "fan_in", "provider_status": "completed", "guard_result": "allowed"}],
@@ -244,13 +280,14 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
         current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
                                       saved["run_started_at"], tuple(Path(value) for value in saved.get("identity_sessions", [])))
         if (saved["events"] != current["events"] or saved["thread_mappings"] != current["thread_mappings"]
-                or saved["inventories"] != current["inventories"]):
+                or saved["inventories"] != current["inventories"]
+                or saved.get("failed_dispatches", []) != current.get("failed_dispatches", [])):
             raise ValueError("runtime_dispatch_ledger_stale")
-        latest = {row["Provider handle"]: row["Last dispatch at"] for row in current["events"]}
         errors = []
         for audit in packet.get("runtime_audits", []):
             handle = audit.get("Provider handle")
-            if handle not in latest or audit.get("Last dispatch at") != latest[handle]:
+            latest = latest_worker_dispatch(current, handle)["Last dispatch at"]
+            if audit.get("Last dispatch at") != latest:
                 errors.append(f"runtime_audit_dispatch_mismatch:{audit.get('Worker')}")
             if audit.get("Thread ID") and audit["Thread ID"] != current["thread_mappings"].get(handle):
                 errors.append(f"runtime_audit_thread_mismatch:{audit.get('Worker')}")

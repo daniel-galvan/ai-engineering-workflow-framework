@@ -80,6 +80,13 @@ description: >-
    or parser errors are collection failures; reconcile them once without repeating analysis or spending a worker
    replacement. Preserve rejected traces and export reconciliation to a new path. If collection still fails, report the
    framework blocker promptly rather than dispatching another analytical worker.
+   Before redispatching a worker after an in-turn correction, check its provider trace for a corrected artifact write
+   after the message. Confirm that it satisfies the specific requested correction, validate it, and record the tool-call
+   identity, dispatch time, artifact hash, and validation result as `Dispatch consumption evidence`, with
+   `Dispatch consumed: true`. Obtain fresh terminal
+   status including `Latest turn completed at`; an earlier turn start is permitted only with this consumption proof.
+   Do not use completion time alone, or request a new turn solely to repair the start timestamp. Empty dispatch
+   acknowledgements remain unresolved; reconcile them with mapped child execution and fresh status, not another retry.
    Audit each provider tool trace when exposed with
    `python3 <framework-root>/scripts/validate_worker_runtime.py --trace <current-run-trace.json>`.
    Treat `forbidden_context_reference:*` or `context_conformance_failed` as contamination and do not fan in that
@@ -400,18 +407,25 @@ description: >-
    completed` using observed current status. Export tool activity through `worker_runtime_evidence.py` with its parent
    session, start and ledger flags, plus `--worker-session <exact-child-session> --observation <fresh-status-json>`
    `--agent <role> --trace <path>`. The observation is a JSON object with the status fields listed above.
-   `Binding evidence` must be a JSON object, such as `{"activation_packet_delivered": true}` when the Coordinator
-   observed delivery of the exact guarded message, or `{"observed_agent_role": "<provider-returned-role>"}`.
-   A prose string is invalid. Do not infer delivery from a prepared bundle.
-   The exporter checks parent/child identity, latest dispatch and fresh status and writes canonical `last_dispatch_at`,
-   `tool_trace`, `spawn` and fan-in events. Run `--trace <path> --require-freshness` before accepting it; never write an
-   ad hoc exporter or repair dispatch timestamps. Save each trace as a direct child of the active artifact root.
+   Optional `Binding evidence` must be a JSON object containing provider-observed role or path metadata.
+   Prepared runs require the authenticated activation instruction read and its paired provider output;
+   a delivery flag or prepared bundle alone does not prove delivery.
+   The exporter checks parent/child identity, the latest dispatch and fresh status. It writes canonical
+   `last_dispatch_at`, `tool_trace`, `spawn` and fan-in events.
+   Run `--trace <path> --require-freshness` before acceptance. Never write an ad hoc exporter or repair
+   dispatch timestamps.
+   Save each trace directly under the active artifact root.
+   It retains activity from the worker's first dispatch in this run, including binding reads and
+   pre-correction context violations. A later failed required dispatch blocks export and finalization;
+   an older completion cannot replace it.
    Keep a rejected trace: the exporter writes its `audit.status: rejected`, exact errors and blocked fan-in receipt
-   before returning exit 2. Do not merge that result. Return the same typed inputs once for correction and require
-   current-run reverification. Before redispatch, copy narrative and result files to `<stem>.rejected.<extension>` in
-   the active root; preserve the rejected trace under its original path. These audit files are not worker inputs.
-   Export and audit only the corrected turn to a new trace path using its fresh dispatch observation. If clean isolation
-   requires a fresh worker, validate replacement with `--transition replace --provider-status completed`
+   before returning exit 2. Do not merge that result. A forbidden trace read requires a fresh worker with the same
+   typed inputs; correction cannot erase the old worker's context. Output or envelope mistakes may use the same worker.
+   Before redispatch, copy narrative and result files to `<stem>.rejected.<extension>`
+   in the active root; preserve the rejected trace under its original path. These audit files are not worker inputs.
+   Export the worker's complete current-run activity to a new trace path using its fresh dispatch observation.
+   If clean isolation requires a fresh worker, validate replacement with
+   `--transition replace --provider-status completed`
    `--rejected-trace <saved-trace> --provider-handle <observed-handle> --last-dispatch-at <latest-dispatch>`.
    The trace must prove rejection of that handle's latest completed result. Completion alone does not authorize
    replacement, and an active worker cannot be replaced. Use a new provider handle, retain the rejected artifacts,
@@ -469,15 +483,18 @@ description: >-
    instead of implying independent context conformance. Coordinator Sentry reads before Evidence Topology activation
    are limited to the required source-access gate; subsequent raw evidence acquisition is worker-owned.
    When Standard Sentry Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, do not
-   activate a Documenter. Release every activated analytical handle, then run the manifest's
+   activate a Documenter. Collect a verified release receipt or fresh Terminal snapshot for every activated handle,
+   save `runtime_closure.json`, then run the manifest's
    `standard_planning_finalization.finalizer` (`scripts/finalize_sentry_planning.py`) exactly once with the artifact
    root, Evidence Topology handle, actual
    Coordinator model/effort, preflight framework revision/status, every relevant repository as
    `--repository 'ROLE=/absolute/path'`, and each conditional worker as
-   `--completed-worker 'WORKER=UUID'`. Include only conditional workers that actually activated; omit a skipped
+   `--completed-worker 'WORKER=HANDLE'`. Use the exact UUID or canonical task handle returned by the provider.
+   Include only conditional workers that actually activated; omit a skipped
    conditional worker and let the finalizer record its `not_applicable` decision. Provider-role aliases for the two
    implicit workers are accepted only when their handles match the implicit Evidence/Fix results. Pass
    `--provider-release-confirmed` only after every activated analytical release succeeds.
+   For a provider without release operations, the saved Terminal receipt supports finalization without that flag.
    Before any `interrupt_agent`, `close_agent`, or replacement, run the manifest's `worker_runtime_guard` in transition
    mode with the intended `--transition` and latest provider-observed `--provider-status`. Use one guard invocation per
    mode; never combine transition arguments with activation arguments or `--trace`. A blocked guard result is

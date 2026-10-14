@@ -235,10 +235,50 @@ class FrameworkCorrections(unittest.TestCase):
             event(9, "response_item", type="message", content=[])]
         source = self.repository / "provider.jsonl"
         source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        for error in ("Worker unavailable", {"error": "worker unavailable"}, {"isError": True}, {"status": "failed"}):
+            with self.subTest(error=error):
+                rows[4]["payload"]["output"] = error
+                source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+                ledger = read_runtime_events(source, parent, "2026-10-12T00:00:00Z")
+                self.assertEqual(ledger["timing"]["worker_active_seconds"], 2)
+                self.assertEqual(len(ledger["failed_dispatches"]), 1)
+                self.assertEqual(ledger["events"], [])
+
+    def test_empty_spawn_ack_waits_for_provider_identity(self):
+        parent, child = "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"
+        def event(second, kind, **payload):
+            return {"timestamp": f"2026-10-12T00:00:{second:02d}Z", "type": kind, "payload": payload}
+        rows = [event(0, "session_meta", id=parent),
+            event(1, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
+                  call_id="spawn", arguments=json.dumps({"task_name": "worker"})),
+            event(2, "response_item", type="function_call_output", call_id="spawn", output=""),
+            event(3, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                                      "agent_path": "/root/worker", "agent_thread_id": child})]
+        source = self.repository / "provider.jsonl"
+        source.write_text("".join(json.dumps(row) + "\n" for row in rows))
         ledger = read_runtime_events(source, parent, "2026-10-12T00:00:00Z")
-        self.assertEqual(ledger["timing"]["worker_active_seconds"], 2)
-        self.assertEqual(len(ledger["failed_dispatches"]), 1)
-        self.assertEqual(ledger["events"], [])
+        self.assertEqual(ledger["failed_dispatches"], [])
+        self.assertEqual(ledger["events"][0]["Last dispatch at"], rows[1]["timestamp"])
+        self.assertEqual(ledger["thread_mappings"]["/root/worker"], child)
+
+    def test_active_turn_correction_requires_consumption_and_fresh_completion(self):
+        import copy
+        handle = "/root/worker"
+        row = {"Provider handle": handle, "Thread ID": "00000000-0000-0000-0000-000000000002",
+            "Provider status": "idle", "Status source": "read_thread", "Thread status": "idle",
+            "Latest turn status": "completed", "Latest turn started at": "2026-10-12T00:00:01Z",
+            "Last dispatch at": "2026-10-12T00:00:05Z", "Latest turn completed at": "2026-10-12T00:00:09Z",
+            "Observed at": "2026-10-12T00:00:10Z", "Dispatch consumed": True,
+            "Dispatch consumption evidence": "Provider tool call writes corrected result after dispatch; result SHA256 verified"}
+        self.assertEqual(runtime.terminal_observation_errors([row], [handle]), [])
+        for failure in ("unconsumed", "missing_evidence", "stale_completion"):
+            with self.subTest(failure=failure):
+                changed = copy.deepcopy(row)
+                if failure == "unconsumed": changed["Dispatch consumed"] = False
+                elif failure == "missing_evidence": changed["Dispatch consumption evidence"] = ""
+                else: changed["Latest turn completed at"] = "2026-10-12T00:00:03Z"
+                self.assertIn("terminal_observation_latest_turn_stale:" + handle,
+                              runtime.terminal_observation_errors([changed], [handle]))
 
     def test_reused_worker_time_includes_followup_without_a_second_spawn(self):
         parent, child = "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"
@@ -248,7 +288,8 @@ class FrameworkCorrections(unittest.TestCase):
             "type": "SubAgentActivity", "kind": "started", "agent_path": "/root/worker", "agent_thread_id": child}),
             event(3, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": "/root/worker"}),
             event(5, "response_item", type="function_call", namespace="collaboration", name="followup_task",
-                  arguments=json.dumps({"target": "/root/worker"})),
+                  call_id="empty-ack", arguments=json.dumps({"target": "/root/worker"})),
+            event(6, "response_item", type="function_call_output", call_id="empty-ack", output=""),
             event(9, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": "/root/worker"})]
         source = self.repository / "provider.jsonl"
         source.write_text("".join(json.dumps(row) + "\n" for row in rows))

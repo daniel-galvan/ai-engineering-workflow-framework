@@ -23,9 +23,11 @@ try:
 except ModuleNotFoundError:  # Imported as scripts.finalize_sentry_planning from the repository root.
     from scripts.run_input_manifest import load_manifest
 try:
-    from validate_worker_runtime import trace_errors
+    from validate_worker_runtime import trace_errors, trace_identity_errors, terminal_observation_errors
+    from worker_runtime_evidence import dispatch_audit_errors
 except ModuleNotFoundError:  # Imported as scripts.finalize_sentry_planning from the repository root.
-    from scripts.validate_worker_runtime import trace_errors
+    from scripts.validate_worker_runtime import trace_errors, trace_identity_errors, terminal_observation_errors
+    from scripts.worker_runtime_evidence import dispatch_audit_errors
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -396,14 +398,18 @@ def _released_closure(path: Path, handles: list[str]) -> dict[str, object]:
     if path.is_file():
         closure = json.loads(path.read_text())
         rows = closure.get("runtime_closure", [])
-        completed = " ".join(str(row.get("Completed worker handles", "")) for row in rows if isinstance(row, dict))
+        completed = {handle.strip() for row in rows if isinstance(row, dict)
+                     for handle in re.split(r"[,;]", str(row.get("Completed worker handles", "")))}
         if rows and all(handle in completed for handle in handles) and all(
-            str(row.get("Runtime status", "")).lower() in {"released", "terminal"}
+            isinstance(row, dict) and str(row.get("Runtime status", "")).lower() in {"released", "terminal"}
             and str(row.get("Remaining active handles", "")).lower() in {"none", "0"}
-            for row in rows if isinstance(row, dict)
+            for row in rows
         ):
             return closure
         raise ValueError("existing runtime closure does not confirm every worker released or terminal")
+    bindings = path.parent / "role_bindings.json"
+    if bindings.is_file() and json.loads(bindings.read_text()).get("runtime_evidence"):
+        raise ValueError("prepared_runtime_closure_receipt_required")
     joined = "; ".join(handles)
     return {"runtime_closure": [{
         "Run or stage": "Standard Sentry planning",
@@ -426,7 +432,7 @@ def _completed_workers(
         canonical_worker = WORKER_SPEC_ALIASES.get(worker, worker)
         if not separator or canonical_worker not in WORKER_BINDINGS:
             raise ValueError(
-                "completed_worker must use a known WORKER=UUID: "
+                "completed_worker must use a known WORKER=HANDLE: "
                 + ", ".join(WORKER_BINDINGS)
             )
         if canonical_worker in {"evidence-topology", "fix-design"}:
@@ -439,22 +445,29 @@ def _completed_workers(
         workers[canonical_worker] = handle
     workers["fix-design"] = fix_handle
     for worker, handle in workers.items():
-        if not UUID_PATTERN.fullmatch(handle):
-            raise ValueError(f"{worker} result is missing its exact provider UUID handle")
+        if not isinstance(handle, str) or not (UUID_PATTERN.fullmatch(handle)
+                or re.fullmatch(r"/root(?:/[a-z0-9_]+)+", handle)):
+            raise ValueError(f"{worker} result is missing its exact provider handle")
     if len(set(workers.values())) != len(workers):
-        raise ValueError("completed workers must use distinct provider UUID handles")
+        raise ValueError("completed workers must use distinct provider handles")
     return workers
 
 
-def _trace_audit(completed_workers: dict[str, str], trace_specs: list[str]) -> dict[str, object]:
+def _trace_audit(completed_workers: dict[str, str], trace_specs: list[str],
+                 *, artifact_root: Path | None = None) -> dict[str, object]:
     """Validate supplied provider traces and report unavailable traces explicitly."""
-    if not trace_specs:
+    if artifact_root is None and trace_specs:
+        artifact_root = Path(trace_specs[0].partition("=")[2]).expanduser().resolve().parent
+    prepared = bool(artifact_root and (artifact_root / "role_bindings.json").is_file()
+                    and json.loads((artifact_root / "role_bindings.json").read_text()).get("runtime_evidence"))
+    if not trace_specs and not prepared:
         return {
             "status": "unavailable",
             "note": "provider trace audit unavailable; worker self-attestation not independently verified",
             "workers": {},
         }
     audited: dict[str, str] = {}
+    runtime_audits = []
     for spec in trace_specs:
         worker, separator, raw_path = spec.partition("=")
         worker = worker.strip()
@@ -465,11 +478,39 @@ def _trace_audit(completed_workers: dict[str, str], trace_specs: list[str]) -> d
             raise ValueError(f"duplicate worker trace: {worker}")
         if not path.is_file():
             raise ValueError(f"worker_trace_unavailable:{worker}:{path}")
-        errors = trace_errors(json.loads(path.read_text()))
+        if prepared and path.parent != artifact_root:
+            raise ValueError(f"worker_trace_outside_current_run:{worker}")
+        trace = json.loads(path.read_text())
+        errors = trace_errors(trace, require_freshness=prepared)
+        if prepared:
+            role = WORKER_BINDINGS.get(worker, (worker, ""))[0]
+            errors.extend(trace_identity_errors(trace, artifact_root, role, completed_workers[worker]))
+            runtime_audits.append({**trace.get("status_observation", {}), "Worker": worker,
+                                  "Provider handle": completed_workers[worker],
+                                  "Last dispatch at": trace.get("last_dispatch_at")})
         if errors:
             raise ValueError(f"worker_trace_audit_failed:{worker}:{','.join(errors)}")
         audited[worker] = "passed"
     missing = [worker for worker in completed_workers if worker not in audited]
+    if prepared:
+        closure_path = artifact_root / "runtime_closure.json"
+        closure = json.loads(closure_path.read_text()) if closure_path.is_file() else {}
+        observations = closure.get("terminal_observations", [])
+        if any(row.get("Runtime status", "").lower() == "terminal" for row in closure.get("runtime_closure", [])):
+            selected = [row for row in observations if row.get("Provider handle") in completed_workers.values()]
+            errors = terminal_observation_errors(selected, list(completed_workers.values()))
+            errors.extend(dispatch_audit_errors({"runtime_audits": selected}, artifact_root / "finalization_packet.json"))
+            if errors:
+                raise ValueError(";".join(errors))
+        for worker in missing:
+            observation = next((row for row in observations if row.get("Provider handle") == completed_workers[worker]), {})
+            errors = terminal_observation_errors([observation], [completed_workers[worker]])
+            if errors:
+                raise ValueError(";".join(errors))
+            runtime_audits.append({**observation, "Worker": worker, "Provider handle": completed_workers[worker]})
+        errors = dispatch_audit_errors({"runtime_audits": runtime_audits}, artifact_root / "finalization_packet.json")
+        if errors:
+            raise ValueError(";".join(errors))
     if missing:
         return {
             "status": "partial",
@@ -560,6 +601,7 @@ def _finalize_standard_sentry_in_place(
     repository_specs: list[str],
     completed_worker_specs: list[str] | None = None,
     worker_trace_specs: list[str] | None = None,
+    audit_root: Path | None = None,
 ) -> None:
     artifact_root = artifact_root.resolve()
     packet_path = artifact_root / "finalization_packet.json"
@@ -602,7 +644,11 @@ def _finalize_standard_sentry_in_place(
     completed_workers = _completed_workers(
         evidence_handle, fix_handle, completed_worker_specs or []
     )
-    trace_audit = _trace_audit(completed_workers, worker_trace_specs or [])
+    trace_audit = _trace_audit(completed_workers, worker_trace_specs or [], artifact_root=audit_root or artifact_root)
+    handles = list(completed_workers.values())
+    closure = _released_closure(closure_path, handles)
+    closure_state = "terminal" if any(row["Runtime status"].lower() == "terminal"
+                                      for row in closure["runtime_closure"]) else "released"
 
     repositories = _material_rows(packet.get("repositories"), "Repository role")
     if not repositories:
@@ -654,7 +700,7 @@ def _finalize_standard_sentry_in_place(
         or "Completed during initialization",
         "Durable artifact root": str(artifact_root),
         "Final reconciliation": (
-            "Passed; analytical fan-in complete and runtime released; " + str(trace_audit["note"])
+            f"Passed; analytical fan-in complete and runtime {closure_state}; " + str(trace_audit["note"])
         ),
         "Finalization schema": "Passed",
     })
@@ -767,7 +813,7 @@ def _finalize_standard_sentry_in_place(
         "Stage": "Standard analytical fan-in", "Workers launched": worker_names,
         "Launch mode / exception": "Dependency-ordered activation", "Worker outcomes": worker_outcomes,
         "Results summarized": f"Yes; canonical artifacts consumed; {trace_audit['note']}",
-        "Barrier status": f"Passed; runtime closure released; {trace_audit['note']}",
+        "Barrier status": f"Passed; runtime closure {closure_state}; {trace_audit['note']}",
     }]
     packet["evidence"] = [
         {"Evidence ID": "E-001", "Source": str(evidence_path),
@@ -855,8 +901,8 @@ def _finalize_standard_sentry_in_place(
          else "Approval-gated implementation design"},
         {"Artifact": "Finalization packet", "Path": str(packet_path), "Status": "Created",
          "Purpose": "Structured terminal input"},
-        {"Artifact": "Runtime closure", "Path": str(closure_path), "Status": "Released",
-         "Purpose": "Provider release receipt"},
+        {"Artifact": "Runtime closure", "Path": str(closure_path), "Status": closure_state.title(),
+         "Purpose": "Provider runtime closure receipt"},
         {"Artifact": "Work record", "Path": str(record_path), "Status": "Created",
          "Purpose": "Authoritative terminal handoff"},
     ]
@@ -893,7 +939,7 @@ def _finalize_standard_sentry_in_place(
             "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(clarification_path)],
             "execution": (
                 "standard/planning; analytical validation passed; deterministic clarification rendering passed; "
-                f"source changes none; runtime released; {trace_audit['note']}"
+                f"source changes none; runtime {closure_state}; {trace_audit['note']}"
             ),
             "provenance": (
                 f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
@@ -914,7 +960,7 @@ def _finalize_standard_sentry_in_place(
             "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(plan_path)],
             "execution": (
                 "standard/planning; analytical validation passed; deterministic rendering passed; "
-                f"source changes none; runtime released; {trace_audit['note']}"
+                f"source changes none; runtime {closure_state}; {trace_audit['note']}"
             ),
             "provenance": (
                 f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
@@ -922,8 +968,6 @@ def _finalize_standard_sentry_in_place(
             ),
         }
 
-    handles = list(completed_workers.values())
-    closure = _released_closure(closure_path, handles)
     closure_path.write_text(json.dumps(closure, indent=2) + "\n")
     packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     validation = subprocess.run(
@@ -1003,6 +1047,7 @@ def finalize_standard_sentry(
                 repository_specs=repository_specs,
                 completed_worker_specs=completed_worker_specs,
                 worker_trace_specs=worker_trace_specs,
+                audit_root=artifact_root,
             )
 
         stage_prefix = str(stage_root)
@@ -1063,6 +1108,61 @@ def finalize_standard_sentry(
 
 
 def self_test() -> None:
+    from datetime import timedelta
+    from validate_worker_runtime import activation_message, dispatch_message
+    from worker_runtime_evidence import read_runtime_events, export_worker_trace
+
+    def runtime_fixture(root: Path, workers: dict[str, str]) -> list[str]:
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        started = bindings["runtime_evidence"]["run_started_at"]
+        base = datetime.fromisoformat(started.replace("Z", "+00:00"))
+        parent_id = "00000000-0000-0000-0000-000000000001"
+        def event(second, kind, **payload):
+            return {"timestamp": (base + timedelta(seconds=second)).isoformat(), "type": kind, "payload": payload}
+        rows = [event(0, "session_meta", id=parent_id)]
+        observations, children = [], []
+        bundle = json.loads(Path(bindings["activation_packet_bundle"]["path"]).read_text())
+        for index, (worker, handle) in enumerate(workers.items(), 2):
+            role = WORKER_BINDINGS[worker][0]
+            child_id = f"00000000-0000-0000-0000-{index:012d}"
+            packet = bundle["packets"][role]
+            contract = root / f"activation_{worker}.txt"
+            notice = dispatch_message(packet, activation_message(packet, {"objective": "Synthetic worker receipt"}), contract)
+            rows.extend([event(index, "response_item", type="function_call", namespace="collaboration",
+                name="spawn_agent", arguments=json.dumps({"task_name": handle.rsplit("/", 1)[-1], "message": notice})),
+                event(index, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                                               "agent_path": handle, "agent_thread_id": child_id})])
+            child = root / f"{worker}.jsonl"
+            child.write_text("\n".join(json.dumps(row) for row in [event(index, "session_meta", id=child_id),
+                event(index + 1, "response_item", type="custom_tool_call", call_id="contract", name="exec",
+                      input='await tools.exec_command(' + json.dumps({"cmd": "cat " + str(contract)}) + ')'),
+                event(index + 2, "response_item", type="custom_tool_call_output", call_id="contract", output=contract.read_text())]) + "\n")
+            observations.append({"Provider handle": handle, "Thread ID": child_id, "Provider status": "completed",
+                "Last dispatch at": event(index, "unused")["timestamp"], "Observed at": event(20, "unused")["timestamp"],
+                "Status source": "read_thread", "Latest turn started at": event(index, "unused")["timestamp"],
+                "Latest turn completed at": event(10, "unused")["timestamp"], "Latest turn status": "completed", "Thread status": "idle"})
+            children.append((worker, role, child))
+        rows.extend(event(10, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": handle})
+                    for handle in workers.values())
+        parent = root / "parent.jsonl"
+        parent.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        ledger = read_runtime_events(parent, parent_id, started)
+        Path(bindings["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+        run_id = json.loads((root / "finalization_packet.json").read_text())["identity"]["Run ID"]
+        specs = []
+        for (worker, role, child), observation in zip(children, observations):
+            trace = export_worker_trace(ledger, child, role, observation, run_id=run_id, artifact_root=root)
+            assert trace["audit"]["status"] == "passed", trace["audit"]
+            path = root / f"{worker}.trace.json"
+            path.write_text(json.dumps(trace))
+            specs.append(worker + "=" + str(path))
+        (root / "runtime_closure.json").write_text(json.dumps({"runtime_closure": [{
+            "Run or stage": "planning", "Receipt owner": "Coordinator", "Runtime status": "Terminal",
+            "Completed worker handles": "; ".join(workers.values()), "Remaining active handles": "0",
+            "Closure evidence or blocker": "provider status snapshot " + event(20, "unused")["timestamp"] + ": "
+                + "; ".join(handle + "=completed" for handle in workers.values())}], "terminal_observations": observations}))
+        return specs
+
     fixture = json.loads(V34_FIXTURE.read_text())
     v36_fixture = json.loads(V36_FIXTURE.read_text())
     v37_v38_fixture = json.loads(V37_V38_FIXTURE.read_text())
@@ -1117,13 +1217,14 @@ def self_test() -> None:
         }))
         prepared = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
-             "--execution-repository", str(execution_repository), "--work-item", "ITEM-V34",
+             "--execution-repository", str(execution_repository), "--work-item", "ITEM-34",
              "--playbook", "sentry_issue_remediation", "--input-manifest", str(input_source)],
             capture_output=True, text=True, check=True,
         )
         artifact_root = Path(json.loads(prepared.stdout)["artifact_root"])
         (artifact_root / "normalized_evidence.md").write_text(fixture["normalized_evidence"])
         fixture_fix = json.loads(json.dumps(fixture["fix_design_result"]))
+        fixture_fix["worker_handle"] = "/root/fix_design"
         fixture_fix["inputs_consumed"] = [*fixture_fix["inputs_consumed"], "USER-001"]
         (artifact_root / "fix_design_result.json").write_text(
             json.dumps(fixture_fix, indent=2) + "\n"
@@ -1134,24 +1235,34 @@ def self_test() -> None:
             f"{row['worker']}={row['handle']}" for row in v36_fixture["conditional_workers"]
         ]
         alias_workers = _completed_workers(
-            "01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
+            "/root/evidence_topology",
             fixture_fix["worker_handle"],
             [
-                "sentry_current_state_investigator=01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
+                "sentry_current_state_investigator=/root/evidence_topology",
                 f"sentry_solution_architect={fixture_fix['worker_handle']}",
             ],
         )
         assert set(alias_workers) == {"evidence-topology", "fix-design"}
+        trace_specs = runtime_fixture(artifact_root, _completed_workers(
+            "/root/evidence_topology", fixture_fix["worker_handle"], completed_specs))
         finalize_standard_sentry(
             artifact_root,
-            evidence_handle="01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
+            evidence_handle="/root/evidence_topology",
             coordinator_model_effort="Not exposed / Not exposed",
             framework_revision=framework_revision,
             framework_status=framework_status,
             repository_specs=[f"Execution={execution_repository}"],
             completed_worker_specs=completed_specs,
+            worker_trace_specs=trace_specs,
         )
         plan_text = (artifact_root / "implementation_plan.md").read_text()
+        cli = subprocess.run([sys.executable, str(ROOT / "scripts/finalize_sentry_planning.py"),
+            "--artifact-root", str(artifact_root), "--evidence-handle", "/root/evidence_topology",
+            "--coordinator-model-effort", "Not exposed / Not exposed", "--framework-revision", framework_revision,
+            "--framework-status", framework_status, "--repository", f"Execution={execution_repository}",
+            *[arg for spec in completed_specs for arg in ("--completed-worker", spec)],
+            *[arg for spec in trace_specs for arg in ("--worker-trace", spec)]], capture_output=True, text=True)
+        assert cli.returncode == 0, cli.stdout + cli.stderr
         record_text = (artifact_root / "work_record.md").read_text()
         contract = fixture["fix_design_result"]["interface_contract"]
         assert "# Interface Contract\n\n| Surface | Request shape" in plan_text
@@ -1178,6 +1289,33 @@ def self_test() -> None:
         output_before_failure = {
             name: (artifact_root / name).read_bytes() for name in output_names
         }
+        parent_path = artifact_root / "parent.jsonl"
+        ledger_path = artifact_root / "runtime_dispatches.json"
+        parent_before, ledger_before = parent_path.read_bytes(), ledger_path.read_bytes()
+        ledger = json.loads(ledger_before)
+        stamp = datetime.fromisoformat(ledger["run_started_at"].replace("Z", "+00:00"))
+        def dispatch_event(second, **payload):
+            return {"timestamp": (stamp + timedelta(seconds=second)).isoformat(),
+                    "type": "response_item", "payload": payload}
+        with parent_path.open("a") as stream:
+            for row in (dispatch_event(21, type="function_call", namespace="collaboration", name="followup_task",
+                        call_id="failed-correction", arguments=json.dumps({"target": "/root/evidence_topology"})),
+                        dispatch_event(22, type="function_call_output", call_id="failed-correction",
+                        output=json.dumps({"error": "correction rejected"}))):
+                stream.write(json.dumps(row) + "\n")
+        ledger_path.write_text(json.dumps(read_runtime_events(parent_path, ledger["parent_thread_id"], ledger["run_started_at"])))
+        try:
+            finalize_standard_sentry(artifact_root, evidence_handle="/root/evidence_topology",
+                coordinator_model_effort="Not exposed / Not exposed", framework_revision=framework_revision,
+                framework_status=framework_status, repository_specs=[f"Execution={execution_repository}"],
+                completed_worker_specs=completed_specs, worker_trace_specs=trace_specs)
+        except ValueError as error:
+            assert "latest_worker_dispatch_failed" in str(error), error
+        else:
+            raise AssertionError("Sentry published an old trace after a failed required correction")
+        assert all((artifact_root / name).read_bytes() == content for name, content in output_before_failure.items())
+        parent_path.write_bytes(parent_before)
+        ledger_path.write_bytes(ledger_before)
         stale_record = record_text.replace(
             "| State | ready_for_implementation |", "| State | in_progress |", 1
         )
@@ -1201,12 +1339,13 @@ def self_test() -> None:
         try:
             finalize_standard_sentry(
                 artifact_root,
-                evidence_handle="01a04aba-22cf-7ed0-ba6c-fd794e83c54a",
+                evidence_handle="/root/evidence_topology",
                 coordinator_model_effort="gpt-5.6-luna / high",
                 framework_revision=framework_revision,
                 framework_status=framework_status,
                 repository_specs=[f"Execution={execution_repository}"],
                 completed_worker_specs=completed_specs,
+                worker_trace_specs=trace_specs,
             )
         except ValueError as error:
             assert v36_fixture["expected_identity_error"] in str(error)
@@ -1220,7 +1359,7 @@ def self_test() -> None:
 
         awaiting_prepared = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
-             "--execution-repository", str(execution_repository), "--work-item", "ITEM-V38",
+             "--execution-repository", str(execution_repository), "--work-item", "ITEM-38",
              "--playbook", "sentry_issue_remediation", "--input-manifest", str(input_source)],
             capture_output=True, text=True, check=True,
         )
@@ -1232,6 +1371,8 @@ def self_test() -> None:
             json.dumps(awaiting_fix, indent=2) + "\n"
         )
         (awaiting_root / "implementation_plan.md").write_text("stale plan must be removed\n")
+        awaiting_traces = runtime_fixture(awaiting_root, _completed_workers(
+            "01a05979-1001-7c41-8ad5-d5dfc636c252", awaiting_fix["worker_handle"], []))
         finalize_standard_sentry(
             awaiting_root,
             evidence_handle="01a05979-1001-7c41-8ad5-d5dfc636c252",
@@ -1239,6 +1380,7 @@ def self_test() -> None:
             framework_revision=framework_revision,
             framework_status=framework_status,
             repository_specs=[f"Execution={execution_repository}"],
+            worker_trace_specs=awaiting_traces,
         )
         awaiting_record = (awaiting_root / "work_record.md").read_text()
         awaiting_brief = (awaiting_root / "clarification_brief.md").read_text()
@@ -1264,7 +1406,7 @@ def main() -> int:
     parser.add_argument("--framework-status", choices=("clean", "dirty"))
     parser.add_argument("--provider-release-confirmed", action="store_true")
     parser.add_argument("--repository", action="append", default=[], metavar="ROLE=/ABSOLUTE/PATH")
-    parser.add_argument("--completed-worker", action="append", default=[], metavar="WORKER=UUID")
+    parser.add_argument("--completed-worker", action="append", default=[], metavar="WORKER=HANDLE")
     parser.add_argument("--worker-trace", action="append", default=[], metavar="WORKER=/ABSOLUTE/PATH")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -1272,11 +1414,13 @@ def main() -> int:
         self_test()
         return 0
     if not all((args.artifact_root, args.evidence_handle, args.coordinator_model_effort,
-                args.framework_revision, args.framework_status, args.provider_release_confirmed)):
+                args.framework_revision, args.framework_status)):
         parser.error(
             "--artifact-root, --evidence-handle, --coordinator-model-effort, --framework-revision, "
-            "--framework-status, and --provider-release-confirmed are required"
+            "and --framework-status are required"
         )
+    if not args.provider_release_confirmed and not (args.artifact_root / "runtime_closure.json").is_file():
+        parser.error("runtime_closure.json is required; --provider-release-confirmed applies only to explicit release")
     try:
         finalize_standard_sentry(
             args.artifact_root,

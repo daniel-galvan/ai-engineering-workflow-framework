@@ -54,9 +54,13 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
     )
 
 try:
-    from validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors
+    from validate_worker_runtime import (
+        terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors, trace_identity_errors,
+    )
 except ModuleNotFoundError:
-    from scripts.validate_worker_runtime import terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors
+    from scripts.validate_worker_runtime import (
+        terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors, trace_identity_errors,
+    )
 
 try:
     from worker_runtime_evidence import dispatch_audit_errors
@@ -2420,6 +2424,8 @@ def _worker_runtime_audit_errors(
             if not isinstance(trace.get("tool_trace"), list):
                 errors.append(f"worker_tool_trace_required:{worker}")
             errors.extend(trace_errors(trace, require_freshness=True))
+            errors.extend(trace_identity_errors(trace, packet_path.parent, worker,
+                                                row.get("Provider handle"), row.get("Thread ID")))
             if trace.get("last_dispatch_at") != row.get("Last dispatch at"):
                 errors.append(f"worker_trace_stale:{worker}")
             if not any(event.get("action") == "fan_in" and event.get("provider_status") == "completed"

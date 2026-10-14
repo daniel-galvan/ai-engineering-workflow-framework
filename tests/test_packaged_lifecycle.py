@@ -24,8 +24,10 @@ class PackagedLifecycle(unittest.TestCase):
             for args in (
                 ("scripts/run_preflight.py",),
                 ("scripts/prepare_run.py", "--self-test"),
+                ("scripts/finalize_sentry_planning.py", "--self-test"),
                 ("-m", "unittest", "tests.test_context_operation_audit", "tests.test_v6_recovery",
-                 "tests.test_planning_recovery", "tests.test_feature_delivery_continuation"),
+                 "tests.test_planning_recovery", "tests.test_feature_delivery_continuation",
+                 "tests.test_shared_runtime_acceptance"),
                 ("scripts/finalize_work_record.py", "--self-test"),
             ):
                 result = subprocess.run([sys.executable, *args], cwd=package, capture_output=True,

@@ -106,8 +106,19 @@ must show no active or pending thread and a completed latest turn started at or 
 correction delivered during an active turn, an earlier start is valid only with provider-observed `Latest turn
 completed at` at or after the dispatch, `Dispatch consumed: true`, and `Dispatch consumption evidence` identifying
 the accepted corrected result. A completion timestamp alone does not prove that a queued correction was consumed.
-Missing
-inventory entries, historical completion events and worker self-attestation alone do not establish terminal status. If
+Before requesting another turn, check for a provider-recorded corrected artifact write after the message and validate
+that result against the specific requested correction. Record its tool-call identity, dispatch relationship, artifact
+hash, and validation result as consumption
+evidence; then refresh the same worker's status. Do not redispatch merely because its turn started before the message.
+An empty or missing dispatch acknowledgement is unresolved, not an explicit provider failure. Preserve the attempted
+dispatch and require mapped child execution plus a fresh terminal observation before fan-in. Explicit provider errors
+remain failures; an empty acknowledgement or historical completion alone cannot authorize acceptance.
+Export all worker activity from its first dispatch in the current run, preserving authenticated binding reads and
+pre-correction context violations. Freshness still uses the latest dispatch. A failed required follow-up or message
+blocks export and finalization; a previous successful dispatch cannot substitute for it.
+Missing inventory entries, historical completion events and worker self-attestation alone do not establish
+terminal status.
+If
 no supported targeted read can verify a worker, retain the blocked receipt.
 
 Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
