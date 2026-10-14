@@ -148,14 +148,20 @@ through the Coordinator for reconstruction.
 
 For `ready_for_implementation`, provide a non-empty supported boundary and
 intended change and no blocking unknowns. For `awaiting_input`, perform at least
-one discriminating check and represent every blocker as an object with
+one discriminating check.
+When no remediation has been selected, set both `supported_remediation_boundary` and `supported_intended_change`
+to empty strings. Keep candidate investigation locations in `checks_performed` and `clarification_brief`;
+a candidate is not a supported correction. Never use "None" or descriptive absence prose as a selected change.
+Validate the assigned result with the packaged `normalize_fix_design_result.py` before reporting completion;
+return its exact error if validation fails, without inventing technical content.
+Represent every blocker as an object with
 `decision_type`, `question`, `unavailable_reason`, at least two materially
 different `fix_implications`, `evidence_refs`, and
 `invalidates_supported_change`. Do not use `awaiting_input` when the evidence
 already supports one boundary and intended change unless every blocker is
-evidenced to invalidate that change. Do not clear a candidate boundary or
+evidenced to invalidate that change. Do not clear an evidence-supported boundary or
 intended change merely to make the `awaiting_input` guard pass; retain the
-best-supported candidate unless current evidence invalidates it.
+best-supported correction unless current evidence invalidates it.
 
 Treat an unavailable deployment or release mapping as a check or validation
 risk by default. Set `invalidates_supported_change: true` only when concrete

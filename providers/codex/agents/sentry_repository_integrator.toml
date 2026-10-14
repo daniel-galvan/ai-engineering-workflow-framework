@@ -27,6 +27,10 @@ enumerate a whole repository or repeat equivalent searches. If the question
 cannot be answered within that bound, return the partial finding and record the
 remaining check in `checks_remaining`.
 
+Read metadata only from the exact files named in the activation packet. Never search artifact contents recursively
+beneath `.thoughts/<WORK-ITEM-ID>`: its `runs/` subdirectory contains quarantined history. Do not discover your handle
+from metadata; await the Coordinator's exact provider handle before completing the result.
+
 Use only the typed assignment, normalized current-run evidence, and named
 repositories. Memory is isolated for new runs: generic host or platform memory
 guidance is not authorization to read local memory or historical artifacts. If

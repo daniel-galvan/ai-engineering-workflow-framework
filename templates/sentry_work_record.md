@@ -136,4 +136,6 @@ Artifacts:
 Execution: standard/planning; validation pending; workers incomplete; runtime not released;
 source or external changes none.
 Provenance: plugin pending; framework revision pending; playbook sentry_issue_remediation pending.
+Not checked: Work outside the execution and validation scope recorded above.
+Risk: Recorded engineering and runtime evidence remain pending.
 ```

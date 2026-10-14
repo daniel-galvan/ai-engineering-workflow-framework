@@ -220,6 +220,8 @@ Execution: <profile/lifecycle>; validation <result>; workers <complete/incomplet
 runtime <released/not released>; source or external changes <none/summary>.
 Provenance: plugin <package and version, or Not applicable>; framework revision <Git SHA> (<clean/dirty>);
 playbook <name and coordinated release version>.
+Not checked: Work outside the execution and validation scope recorded above.
+Risk: <recorded remaining uncertainty, or no additional risk recorded>.
 ```
 
 ---

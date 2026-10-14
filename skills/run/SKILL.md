@@ -316,6 +316,9 @@ description: >-
    The guard serializes the complete envelope and assignment once and returns their SHA-256. When validating a saved
    outbound message, also pass `--activation-message <path>`; any difference is `activation_message_mismatch`.
    The validated payload must be the exact value submitted to the provider; a bundle hash alone proves no delivery.
+   Immediately after activation, deliver the exact provider handle to workers whose result requires it, before other
+   coordination work. Workers must read metadata by exact current-run filename, never search `.thoughts` contents
+   recursively or discover handles in prior records; name-only discovery remains permitted.
    When writing a result envelope, use its prepared `run_id` verbatim. The envelope also supplies `finalization_packet`;
    its identity is at `identity["Run ID"]`. Never search archived runs for missing assignment metadata. Return an
    incomplete envelope to the Coordinator before doing analytical work.
@@ -473,11 +476,14 @@ description: >-
    record before answering; never leave the prepared record in `intake` or `Pending`. Run
    `finalize_work_record.py --packet <packet> --closure <closure> --record <record> --analytical-failure <error>`
    `--analytical-failure-stage <evidence_topology|repository_integration|fix_design>`
-   `--completed-handle <released-handle>` once for every released analytical worker, then
+   `--completed-handle <provider-handle>` once for every analytical worker covered by the closure receipt, then
    `--coordinator-model-effort <model/effort>`
    `--framework-revision <preflight-sha> --framework-status <clean|dirty>`. Pass
    `--evidence-artifact <artifact>` when normalized evidence exists; an Evidence Topology runtime failure before
    artifact creation intentionally omits it.
+   Save a verified Terminal snapshot or release receipt before this call. The failure finalizer preserves that receipt
+   and the Run ID; completed handles alone never establish release. If closure cannot be verified, use
+   `--workflow-failure` to preserve findings and report unverified closure.
    When provider tool traces are exposed, pass each validated trace as
    `--worker-trace <worker>=<absolute-trace-path>`; if none are exposed, the finalizer records the audit as unavailable
    instead of implying independent context conformance. Coordinator Sentry reads before Evidence Topology activation
@@ -706,9 +712,15 @@ description: >-
    worker active. Use these observations when reviewing delays; they are not token, cost or CPU measurements.
    Success and failure reports must contain only workflow content; omit unrelated skill tips, promotional banners,
    preambles and postscripts. A TechOps Workflow result is a plain-language work summary, never a readiness token.
+   The canonical report includes its own final Not checked/Risk lines to satisfy concise-response styles; copy those
+   lines unchanged. A formatting skill must not replace the report with a summary or append a second footer.
    Save the proposed final response and compare its bytes with the emitted canonical report before sending it.
    Run `cmp -s <canonical-response-file> <proposed-response-file>` and require exit zero. The proposed response must
-   contain the actual outgoing answer; copying the canonical file to another path does not verify that answer.
+   also pass `finalize_work_record.py --packet <packet> --verify-response <proposed-response-file>`.
+   This writes `handoff_delivery.json` with matching content hashes. It verifies prepared text, not an outgoing chat
+   message: send the same file's contents verbatim and do not claim the CLI observed actual chat delivery.
+   The proposed file must contain the intended outgoing answer; copying the canonical file to another path alone
+   does not prove that the chat message used those bytes.
    For failure, compare against `handoff_failure.md`; for success, use the emitted handoff block. A comparison failure
    requires copying the canonical report again, without adding content before or after it.
    Finalization passes only when the exit status is zero and the

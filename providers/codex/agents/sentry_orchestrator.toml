@@ -280,20 +280,24 @@ reinterpret readiness, outcomes, evidence, boundaries, or intended changes.
 Return an invalid enum or readiness/action pair to the same worker.
 Send each analytical worker at most one aggregated schema or readiness correction.
 If its corrected terminal result still fails, stop with `analytical_contract_failure`,
-preserve the validation errors and artifacts, and release every handle; do not resume or replace that worker. Count a
+preserve the validation errors and artifacts, and close every handle; do not resume or replace that worker. Count a
 correction only after the worker returns a terminal response and the Coordinator reruns the failing validation. After
-release, mechanically finalize `finalization_packet.json`, `runtime_closure.json`, and `work_record.md`; never answer
+verified Terminal or release observation, mechanically finalize `finalization_packet.json`, `runtime_closure.json`,
+and `work_record.md`; never answer
 from an ad hoc blocked summary while the durable record remains pending. Use the packaged finalizer's
 `--analytical-failure`, `--analytical-failure-stage`, one `--completed-handle`
-for every released analytical worker, `--coordinator-model-effort`, `--framework-revision`,
+for every completed analytical worker, `--coordinator-model-effort`, `--framework-revision`,
 and `--framework-status` arguments, then copy its emitted handoff verbatim. Pass `--evidence-artifact` when normalized
 evidence exists; omit it only when Evidence Topology terminates before creating the artifact.
+The helper preserves the prepared Run ID and requires an existing verified closure receipt. A completed handle alone
+is not release evidence. If closure is unavailable, use `--workflow-failure` and preserve the unverified runtime state.
 Reject an `awaiting_input` blocker marked `invalidates_supported_change: true` when it lacks both non-empty
 `contradicting_evidence_refs` and at least one structured `observed_competing_boundaries` entry containing a boundary,
 an affirmative current-run observation, and evidence refs. Missing runtime confirmation, unavailable release mapping,
 and a merely possible code path are not observed competing boundaries; keep them in `checks_remaining`.
-After Fix Design returns either `awaiting_input/omit` or `ready_for_implementation/create`, release every activated
-analytical handle and invoke deterministic finalization. Require complete structured `plan` content only for
+After Fix Design returns either `awaiting_input/omit` or `ready_for_implementation/create`, save verified Terminal
+observations or release receipts for every activated analytical handle and invoke deterministic finalization.
+Require complete structured `plan` content only for
 `ready_for_implementation/create`. A nonzero result is
 `finalization_contract_failure`; preserve the exact error and artifacts instead of activating a Documenter fallback or
 patching generated content.
@@ -349,11 +353,15 @@ do not reconstruct it or resume a
 completed worker only to re-emit a result already written. When several workers are active, use
 one provider-supported multi-handle or event-driven wait with bounded backoff rather than alternating unscoped and
 per-handle polling.
-Update the runtime-closure row with the exact provider handle and provider
-release confirmation, then rerun the finalizer with `--emit-handoff`. Finalization passes only on exit status zero plus the first exact output line
+Update the runtime-closure row with the exact provider handle and verified Terminal observation or provider
+release confirmation, then rerun the packaged finalizer. Finalization passes only on exit status zero plus the first
+exact output line
 `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block verbatim as the final answer; it is
 rendered from the finalized work record, so never compose, shorten, or replace a second summary. If the block contains
 `Best current explanations:`, copy that complete section without omission or rewriting.
+The canonical report includes its own `Not checked:` and `Risk:` footer. Save the actual proposed response separately
+and run `finalize_work_record.py --packet <packet> --verify-response <proposed-response>` before sending it.
+This verifies prepared response bytes; the CLI cannot observe the actual outgoing chat message.
 Treat `finalization_packet.json` as the pre-release source snapshot,
 `runtime_closure.json` as the provider receipt, and rendered `work_record.md` as
 the authoritative terminal state. Do not reopen the Documenter only to rewrite
