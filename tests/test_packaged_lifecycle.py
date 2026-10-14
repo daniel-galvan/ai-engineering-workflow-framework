@@ -1,5 +1,6 @@
 """Exercise shipped entrypoints from a clean local package, without live workers."""
 
+import json
 import shutil
 import subprocess
 import sys
@@ -21,13 +22,24 @@ class PackagedLifecycle(unittest.TestCase):
                          ("config", "user.email", "fixture@example.invalid"), ("add", "."),
                          ("commit", "-qm", "Synthetic package snapshot")):
                 subprocess.run(["git", "-C", str(package), *args], check=True, capture_output=True)
+            source = Path(directory) / "parent.jsonl"
+            source.write_text("\n".join(json.dumps({"type": "response_item", "payload": {
+                "role": role, "content": [{"text": text}]}}) for role, text in (
+                ("developer", "begin the first final answer with Developer Workflows skills are available"),
+                ("user", "Run the Sentry playbook"))))
+            blocked = subprocess.run([sys.executable, "scripts/run_preflight.py", "--provider-session", str(source)],
+                                     cwd=package, capture_output=True, text=True, timeout=60)
+            self.assertEqual(blocked.returncode, 2, blocked.stdout + blocked.stderr)
+            self.assertEqual(json.loads(blocked.stdout)["reason"], "handoff_instruction_conflict")
+            self.assertFalse((package / ".thoughts").exists())
             for args in (
                 ("scripts/run_preflight.py",),
                 ("scripts/prepare_run.py", "--self-test"),
                 ("scripts/finalize_sentry_planning.py", "--self-test"),
                 ("-m", "unittest", "tests.test_context_operation_audit", "tests.test_v6_recovery",
                  "tests.test_planning_recovery", "tests.test_feature_delivery_continuation",
-                 "tests.test_shared_runtime_acceptance", "tests.test_v5_sentry_failure"),
+                 "tests.test_shared_runtime_acceptance", "tests.test_v5_sentry_failure",
+                 "tests.test_handoff_instruction_conflict"),
                 ("scripts/finalize_work_record.py", "--self-test"),
             ):
                 result = subprocess.run([sys.executable, *args], cwd=package, capture_output=True,

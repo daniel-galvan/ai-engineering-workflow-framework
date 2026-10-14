@@ -149,18 +149,47 @@ class V6Recovery(unittest.TestCase):
         trace.write_text(json.dumps(rejected))
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
 
+    def test_recovery_does_not_overwrite_a_different_rejected_output(self):
+        run = self.prepare()
+        rejected_path = self.rejected_trace(run)
+        bundle = run["activation_packet_bundle"]
+        packet = json.loads(Path(bundle["path"]).read_text())["packets"]["current_state_investigator"]
+        output = Path(packet["worker_contract"]["output"])
+        output.write_text("New rejected output")
+        archived = output.with_name(output.stem + ".rejected" + output.suffix)
+        archived.write_text("Earlier rejected output")
+        assignment = self.root / "correction.json"
+        assignment.write_text(json.dumps({"objective": "Reverify current evidence"}))
+        guarded = self.command("validate_worker_runtime.py", "--activation-packet-bundle", bundle["path"],
+            "--expected-agent", "current_state_investigator", "--expected-bundle-sha256", bundle["sha256"],
+            "--assignment", assignment, "--dispatch-file", Path(run["artifact_root"]) / "correction.txt",
+            "--rejected-trace", rejected_path, "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH,
+            "--provider-status", "completed")
+        self.assertEqual(guarded.returncode, 2)
+        self.assertIn("recovery_rejected_output_conflict", guarded.stdout)
+        self.assertEqual(output.read_text(), "New rejected output")
+        self.assertEqual(archived.read_text(), "Earlier rejected output")
+
     def test_fresh_replacement_preserves_rejected_activity_and_can_merge_current_result(self):
         run = self.prepare()
         rejected_path = self.rejected_trace(run)
         bundle = run["activation_packet_bundle"]
         assignment = self.root / "corrected_assignment.json"
         assignment.write_text(json.dumps({"objective": "Reverify the rejected evidence", "input_paths": []}))
+        envelope = json.loads(Path(bundle["path"]).read_text())["packets"]["current_state_investigator"]
+        outputs = [Path(envelope["worker_contract"][field]) for field in ("output", "result")]
+        for output in outputs:
+            output.write_text("Rejected analytical output")
         guarded = self.command("validate_worker_runtime.py", "--activation-packet-bundle", bundle["path"],
             "--expected-agent", "current_state_investigator", "--expected-bundle-sha256", bundle["sha256"],
             "--assignment", assignment, "--dispatch-file", Path(run["artifact_root"]) / "activation_corrected.txt",
             "--rejected-trace", rejected_path, "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH,
             "--provider-status", "completed")
         self.assertEqual(guarded.returncode, 0, guarded.stdout + guarded.stderr)
+        for output in outputs:
+            self.assertFalse(output.exists())
+            self.assertEqual(output.with_name(output.stem + ".rejected" + output.suffix).read_text(),
+                             "Rejected analytical output")
         rejected_bytes = rejected_path.read_bytes()
         parent = self.root / "parent.jsonl"
         dispatch = "2026-10-09T20:03:00Z"

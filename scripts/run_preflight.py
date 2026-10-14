@@ -228,10 +228,33 @@ def self_test() -> None:
     print("run_preflight self-test: passed")
 
 
+def handoff_instruction_conflict(source: Path) -> bool:
+    """Recognize the mandatory reminder that changed the recorded v6 handoff."""
+    developers, initial_request = [], None
+    with source.open() as stream:
+        for line in stream:
+            row = json.loads(line)
+            payload = row.get("payload", {})
+            if row.get("type") != "response_item":
+                continue
+            if payload.get("role") == "assistant" and payload.get("phase") in {"final", "final_answer"}:
+                return False  # The reminder applies only to the first final answer in this chat.
+            content = "\n".join(item.get("text", "") for item in payload.get("content", [])
+                                if isinstance(item, dict))
+            if payload.get("role") == "developer":
+                developers.append(content)
+            elif payload.get("role") == "user" and initial_request is None:
+                initial_request = content
+    return (not re.search(r"\$dev-workflows:[\w-]+", initial_request or "")
+            and any("begin the first final answer" in content and "Developer Workflows skills are available" in content
+                    for content in developers))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--declared-framework-revision")
     parser.add_argument("--declared-plugin-path", type=Path)
+    parser.add_argument("--provider-session", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -245,6 +268,13 @@ def main() -> int:
         declared_framework_revision=args.declared_framework_revision,
         declared_plugin_path=args.declared_plugin_path,
     )
+    if result["status"] == "passed" and args.provider_session:
+        try:
+            if handoff_instruction_conflict(args.provider_session):
+                result.update(status="blocked", reason="handoff_instruction_conflict",
+                              remediation="Disable the mandatory Developer Workflows reminder for this workflow task.")
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            result.update(status="blocked", reason="provider_instruction_read_failed", detail=str(error))
     result["preflight_elapsed_ms"] = str(round((time.perf_counter() - started) * 1000, 1))
     print(json.dumps(result, sort_keys=True))
     return EXIT_OK if result["status"] == "passed" else EXIT_BLOCKED

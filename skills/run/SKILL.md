@@ -16,6 +16,11 @@ description: >-
    or plugin cache directory. Run:
    `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do
    not construct or pass a separate framework-root argument. Preflight also validates the shipped static library.
+   Before invoking it, inspect the already-visible developer instructions for mandatory promotional text or other
+   additions to the final answer. A requirement such as the Developer Workflows reminder conflicts with the canonical
+   handoff. Stop with `handoff_instruction_conflict` before source access or preparation and identify the conflicting
+   plugin; do not claim the framework can override higher-priority instructions. When the provider exposes the exact
+   current parent session path, pass `--provider-session <path>` to preflight for its recorded reminder check.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
@@ -424,8 +429,10 @@ description: >-
    Keep a rejected trace: the exporter writes its `audit.status: rejected`, exact errors and blocked fan-in receipt
    before returning exit 2. Do not merge that result. A forbidden trace read requires a fresh worker with the same
    typed inputs; correction cannot erase the old worker's context. Output or envelope mistakes may use the same worker.
-   Before redispatch, copy narrative and result files to `<stem>.rejected.<extension>`
-   in the active root; preserve the rejected trace under its original path. These audit files are not worker inputs.
+   Before redispatch, move narrative and result files to `<stem>.rejected.<extension>`
+   in the active root; leave assigned output paths absent. The recovery activation guard quarantines the prepared
+   worker-contract output mechanically. Preserve the rejected trace under its original path. These audit files are
+   not worker inputs; a replacement must never read a rejected output left at its assigned path.
    Export the worker's complete current-run activity to a new trace path using its fresh dispatch observation.
    If clean isolation requires a fresh worker, validate replacement with
    `--transition replace --provider-status completed`

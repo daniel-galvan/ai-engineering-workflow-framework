@@ -803,6 +803,12 @@ def _read_targets(command: str) -> list[str]:
     hashed_read = re.fullmatch(r"(?:sha256sum|shasum -a 256) ([^\s;&|<>]+) && cat \1", command)
     if hashed_read:
         return [hashed_read[1]]
+    verified_read = re.fullmatch(
+        r'packet=([^\s;&|<>$`]+); actual=\$\(sha256sum "\$packet" \| cut -d \' \' -f 1\); '
+        r'if \[ "\$actual" != [0-9a-f]{64} \]; then printf \'SHA256_MISMATCH %s\\n\' "\$actual"; '
+        r'exit 2; fi; printf \'SHA256_OK %s\\n\' "\$actual"; cat "\$packet"', command)
+    if verified_read:
+        return [verified_read[1]]
     if any(value in command for value in ("$(", "`", "<", ">", "|", "&")):
         return []
     try:
@@ -934,7 +940,8 @@ def _ancestor_instruction_reads(row: dict, root: Path) -> list[str]:
         loop = re.match(
             r'^for (?P<var>[A-Za-z_]\w*) in (?P<paths>[^;\n]+); do if '
             r'(?:\[ -f "\$(?P=var)" \]|test -f "\$(?P=var)"); then '
-            r'echo "--- \$(?P=var)"; cat "\$(?P=var)"; fi; done(?=;|\n|$)', command)
+            r'(?:echo "--- \$(?P=var)"|printf \'\\n--- %s ---\\n\' "\$(?P=var)"); '
+            r'cat "\$(?P=var)"; fi; done(?=;|\n|$)', command)
         if loop:
             try:
                 targets = shlex.split(loop["paths"])
@@ -1243,6 +1250,21 @@ def main() -> int:
                     if args.dispatch_file:
                         message = dispatch_message(packet, message, args.dispatch_file)
                         if rejection_hash:
+                            quarantine = []
+                            contract = packet.get("worker_contract", {})
+                            for output in dict.fromkeys(contract.get(field) for field in ("output", "result")
+                                                        if contract.get(field)):
+                                target = Path(output)
+                                root = args.activation_packet_bundle.resolve().parent
+                                if target.resolve().parent != root or target.is_symlink():
+                                    raise ValueError("recovery_output_outside_current_run")
+                                if target.exists():
+                                    rejected = target.with_name(target.stem + ".rejected" + target.suffix)
+                                    if rejected.is_symlink() or rejected.exists() and rejected.read_bytes() != target.read_bytes():
+                                        raise ValueError("recovery_rejected_output_conflict")
+                                    quarantine.append((target, rejected))
+                            for target, rejected in quarantine:
+                                target.replace(rejected)
                             current_path = args.activation_packet_bundle.parent / "finalization_packet.json"
                             current = json.loads(current_path.read_text())
                             current.setdefault("activation_repairs", {})[args.expected_agent] = {

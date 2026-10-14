@@ -168,9 +168,24 @@ class ContextOperationAudit(unittest.TestCase):
                 elif failure == "no_read": trace["tool_trace"][0]["input"] = 'text("contract read")'
                 self.assertIn("provider_binding_not_delivered", runtime.trace_errors(trace))
 
+    def test_hash_checked_variable_instruction_read_proves_binding(self):
+        trace = self.instruction_read_trace()
+        path = trace["spawn"]["dispatch_file"]
+        digest = trace["spawn"]["dispatch_file_sha256"]
+        command = ('packet=' + path + '; actual=$(sha256sum "$packet" | cut -d \' \' -f 1); '
+                   'if [ "$actual" != ' + digest + ' ]; then printf \'SHA256_MISMATCH %s\\n\' "$actual"; '
+                   'exit 2; fi; printf \'SHA256_OK %s\\n\' "$actual"; cat "$packet"')
+        trace["tool_trace"][0]["input"] = 'await tools.exec_command(' + json.dumps({"cmd": command}) + ')'
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace["tool_trace"][0]["input"] = 'await tools.exec_command(' + json.dumps({
+            "cmd": command + '; cat .thoughts/ITEM-1/runs/prior/notes.md'}) + ')'
+        self.assertIn("provider_binding_not_delivered", runtime.trace_errors(trace))
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
             'cat .thoughts/AGENTS.md',
+            'for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$f" ]; then printf \'\\n--- %s ---\\n\' "$f"; cat "$f"; fi; done; if [ -e .thoughts/ITEM-1/normalized_evidence.md ]; then echo yes; fi',
             'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then echo "--- $p"; cat "$p"; fi; done\npython3 - <<"PY"\nprint("current evidence")\nPY',
             'for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done; if test -e .thoughts/ITEM-1/evidence.md; then echo yes; fi',
         ):
