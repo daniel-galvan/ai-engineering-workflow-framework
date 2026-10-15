@@ -15,6 +15,11 @@ assigned `normalized_evidence.md` file; do not edit source or any other durable
 artifact.
 Preserve material field names, values, and field-local extents instead of
 compressing them into a conclusion that downstream workers cannot verify.
+Preserve every prepared input's `Observed releases` value on a line containing its Input ID. Reconcile Sentry and
+supplied-log occurrences separately against the recorded checkout. For named Git releases, compare the inspected
+source paths when both commits are available; retain an explicit unavailable check otherwise. Client release identity
+does not establish the receiver's deployment. Keep UTC occurrence times and safe receiver-observable keys available
+for the clarification brief; exclude personal payloads and credentials.
 
 Before live Sentry queries, read every assigned current-run input whose
 classification is user context, supplied occurrence, or supporting artifact.

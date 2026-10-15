@@ -120,6 +120,7 @@ def read_runtime_events(
                     if notice and role:
                         event.update({"Dispatch file": notice[1], "Dispatch SHA256": notice[2], "Binding agent": role[1]})
                 if operation == "spawn_agent":
+                    event["Launch"] = {key: arguments.get(key) for key in ("model", "reasoning_effort", "fork_turns")}
                     if pending_spawn is not None or not isinstance(arguments.get("task_name"), str):
                         raise ValueError("provider_spawn_identity_unresolved")
                     pending_spawn = (arguments["task_name"], event, payload.get("call_id"))
@@ -195,6 +196,60 @@ def latest_worker_dispatch(ledger: dict, handle: str) -> dict:
     return latest
 
 
+def runtime_configurations(source: Path, thread: str, observed_at: str) -> list[dict]:
+    with source.open() as stream:
+        first = json.loads(next(stream))
+        if first.get("type") != "session_meta" or first.get("payload", {}).get("id") != thread:
+            raise ValueError("worker_trace_session_mismatch")
+        return [{"observed_at": row["timestamp"], "model": row["payload"].get("model"),
+                 "effort": row["payload"].get("effort")} for row in map(json.loads, stream)
+                if row.get("type") == "turn_context" and timestamp(row["timestamp"]) <= timestamp(observed_at)]
+
+
+def launch_binding_errors(trace: dict, root: Path, role: str, ledger: dict | None = None) -> list[str]:
+    """Check provider launch and child execution metadata, independently of instruction delivery."""
+    try:
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        try:
+            from validate_worker_runtime import worker_binding
+        except ModuleNotFoundError:
+            from scripts.validate_worker_runtime import worker_binding
+        role = worker_binding(bindings, role)
+        contract = bindings.get("runtime_evidence", {})
+        if not contract:
+            return []
+        if ledger is None:
+            saved = json.loads(Path(contract["ledger"]).read_text())
+            ledger = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
+                                         saved["run_started_at"], tuple(Path(p) for p in saved.get("identity_sessions", [])))
+        handle = trace["spawn"]["provider_handle"]
+        launches = [row for row in ledger["events"] if row.get("Provider handle") == handle
+                    and row.get("Operation") == "spawn_agent"]
+        if not launches:
+            return ["worker_launch_receipt_required:" + role] if contract.get("launch_binding_required") else []
+        launch = launches[0].get("Launch", {})
+        if not contract.get("launch_binding_required") and not any(launch.values()):
+            return []
+        expected = bindings["bindings"][role]
+        errors = []
+        if launch.get("fork_turns") != "none":
+            errors.append("worker_fresh_context_required:" + role)
+        if launch.get("model") != expected["model"]:
+            errors.append("worker_launch_model_mismatch:" + role)
+        if launch.get("reasoning_effort") != expected["effort"]:
+            errors.append("worker_launch_effort_mismatch:" + role)
+        observed = runtime_configurations(Path(trace["trace_retrieval"]), trace["thread_id"],
+                                          trace["status_observation"]["Observed at"])
+        if trace.get("launch") != launch or trace.get("runtime_configurations") != observed:
+            errors.append("worker_launch_receipt_mismatch:" + role)
+        for value in observed:
+            if value.get("model") != expected["model"] or value.get("effort") != expected["effort"]:
+                errors.append("worker_runtime_configuration_mismatch:" + role)
+        return list(dict.fromkeys(errors))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
+        return ["worker_launch_evidence_invalid:" + role + ":" + str(error)]
+
+
 def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict, *, run_id: str | None = None, artifact_root: Path | None = None) -> dict:
     """Export tool activity only, using the exact parent mapping and fresh status receipt."""
     try:
@@ -246,6 +301,8 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         binding = {**binding, "dispatch_file": dispatch["Dispatch file"],
                    "dispatch_file_sha256": dispatch["Dispatch SHA256"], "binding_agent": dispatch["Binding agent"]}
     result = {"schema_version": 1, "worker": agent, "thread_id": thread,
+              "launch": next((row.get("Launch", {}) for row in dispatches if row.get("Operation") == "spawn_agent"), {}),
+              "runtime_configurations": runtime_configurations(source, thread, observation["Observed at"]),
               "last_dispatch_at": dispatch["Last dispatch at"],
               "spawn": dict(binding, agent=agent, provider_handle=handle, thread_id=thread),
               "tool_trace": tool_trace,
@@ -255,6 +312,8 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         result["run_id"] = run_id
     if artifact_root is not None and not result["spawn"].get("dispatch_file"):
         result["spawn"].update(observed_dispatch_binding(result, artifact_root))
+    launch_errors = launch_binding_errors(result, artifact_root, agent, ledger) if artifact_root else []
+    result["launch_errors"] = launch_errors
     errors = trace_errors(result, require_freshness=True)
     if errors:
         result["events"][0]["guard_result"] = "blocked"
@@ -291,9 +350,51 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
                 errors.append(f"runtime_audit_dispatch_mismatch:{audit.get('Worker')}")
             if audit.get("Thread ID") and audit["Thread ID"] != current["thread_mappings"].get(handle):
                 errors.append(f"runtime_audit_thread_mismatch:{audit.get('Worker')}")
+            if contract.get("launch_binding_required") and audit.get("Worker"):
+                try:
+                    from validate_worker_runtime import worker_binding
+                except ModuleNotFoundError:
+                    from scripts.validate_worker_runtime import worker_binding
+                manifest = json.loads(bindings.read_text())
+                role = worker_binding(manifest, audit["Worker"])
+                expected = manifest["bindings"][role]
+                launch = next((row.get("Launch", {}) for row in current["events"]
+                    if row.get("Provider handle") == handle and row.get("Operation") == "spawn_agent"), {})
+                if (launch.get("fork_turns") != "none" or launch.get("model") != expected["model"]
+                        or launch.get("reasoning_effort") != expected["effort"]):
+                    errors.append("worker_launch_binding_mismatch:" + role)
         return errors
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
         return [f"runtime_dispatch_evidence_invalid:{error}"]
+
+
+def terminal_closure(ledger: dict) -> dict:
+    """Project the latest native inventory into the canonical Terminal receipt."""
+    try:
+        from validate_worker_runtime import terminal_observation_errors
+    except ModuleNotFoundError:
+        from scripts.validate_worker_runtime import terminal_observation_errors
+    if not ledger.get("inventories"):
+        raise ValueError("terminal_provider_inventory_required")
+    inventory = ledger["inventories"][-1]
+    agents = {row["agent_name"]: row["agent_status"] for row in inventory["raw_response"]["agents"]}
+    handles = sorted({row["Provider handle"] for row in ledger["events"]})
+    observations = []
+    for handle in handles:
+        status = agents.get(handle)
+        status = "completed" if isinstance(status, dict) and "completed" in status else status
+        observations.append({"Provider handle": handle, "Provider status": status,
+            "Thread ID": ledger["thread_mappings"][handle], "Status source": "list_agents",
+            "Last dispatch at": latest_worker_dispatch(ledger, handle)["Last dispatch at"],
+            "Observed at": inventory["Observed at"]})
+    errors = terminal_observation_errors(observations, handles)
+    if not handles or errors:
+        raise ValueError("terminal_inventory_unverified:" + ";".join(errors))
+    return {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
+        "Completed worker handles": "; ".join(handles), "Runtime status": "Terminal", "Remaining active handles": "0",
+        "Closure evidence or blocker": "provider status snapshot " + inventory["Observed at"] + ": "
+            + "; ".join(row["Provider handle"] + "=" + str(row["Provider status"]) for row in observations)}],
+        "terminal_observations": observations}
 
 
 def main() -> int:
@@ -308,20 +409,40 @@ def main() -> int:
     parser.add_argument("--observation", type=Path)
     parser.add_argument("--agent")
     parser.add_argument("--trace", type=Path)
+    parser.add_argument("--closure", type=Path, help="Build a Terminal receipt from the current native provider inventory")
     args = parser.parse_args()
+    if args.closure and any((args.worker_session, args.observation, args.agent, args.trace)):
+        parser.error("closure collection and trace export are separate modes")
     if any((args.worker_session, args.observation, args.agent, args.trace)) and not all(
             (args.worker_session, args.observation, args.agent, args.trace)):
         parser.error("trace export requires --worker-session, --observation, --agent and --trace")
     try:
         result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at,
                                      tuple(args.identity_session))
+        if args.ledger.exists():
+            pending = json.loads(args.ledger.read_text()).get("rejected_results", {})
+            if pending:
+                packet = json.loads((args.ledger.parent / "finalization_packet.json").read_text())
+                if any(row["run_id"] != packet["identity"]["Run ID"] for row in pending.values()):
+                    raise ValueError("worker_rejection_receipt_run_mismatch")
+                result["rejected_results"] = pending
+        if args.closure:
+            if args.closure.resolve().parent != args.ledger.resolve().parent:
+                raise ValueError("runtime_closure_outside_current_run")
+            receipt = terminal_closure(result)
+            args.closure.write_text(json.dumps(receipt, indent=2) + "\n")
         if args.trace:
             if args.trace.resolve().parent != args.ledger.resolve().parent:
                 raise ValueError("worker_trace_outside_current_run")
             packet_path = args.trace.parent / "finalization_packet.json"
             run_id = json.loads(packet_path.read_text())["identity"]["Run ID"] if packet_path.is_file() else None
+            observation = json.loads(args.observation.read_text())
+            if "terminal_observations" in observation:
+                with args.worker_session.open() as stream:
+                    thread = json.loads(next(stream))["payload"]["id"]
+                observation = next(row for row in observation["terminal_observations"] if row["Thread ID"] == thread)
             trace = export_worker_trace(result, args.worker_session, args.agent,
-                                        json.loads(args.observation.read_text()), run_id=run_id, artifact_root=args.trace.parent)
+                                        observation, run_id=run_id, artifact_root=args.trace.parent)
             if args.trace.is_file():
                 saved = json.loads(args.trace.read_text())
                 if saved.get("audit", {}).get("status") == "rejected" and saved != trace:

@@ -1956,6 +1956,13 @@ def render_compact(packet: dict[str, object]) -> str:
                 "Engineering outcome", "Current stage", "Internal owner", "Next-action owner", "User action", "Next action",
             )
             summary = {key: packet["identity"].get(key, "Not provided") for key in fields}
+            action = packet.get("handoff", {}).get("next_action", {})
+            for field, value in {"Current stage": packet["identity"].get("State"), "Internal owner": "Workflow Coordinator",
+                                 "Next-action owner": action.get("owner"), "Next action": action.get("action"),
+                                 "User action": action.get("action") if packet["identity"].get("State") == "awaiting_input"
+                                 else "None required by this handoff"}.items():
+                if summary.get(field) in {"", "Not provided", None} and value:
+                    summary[field] = value
             summary["Runtime status"] = ", ".join(
                 str(row["Runtime status"]) for row in packet["runtime_closure"]
             )
@@ -2027,7 +2034,12 @@ def render_handoff(packet: dict[str, object]) -> str:
     established = "".join(f"- {item}\n" for item in handoff["established"])
     risks = [str(row.get("Uncertainties / blockers", "")).strip() for row in packet.get("worker_results", [])
              if isinstance(row, dict) and str(row.get("Uncertainties / blockers", "")).strip().lower()
-             not in {"", "none", "not applicable"}]
+             not in {"", "none", "not applicable", "no provider handle exists because the worker was not activated."}]
+    risks = [value for value in risks if not re.fullmatch(
+        r"See (?:normalized_evidence\.md(?: and Fix Design checks remaining)?|blocking_unknowns and clarification_brief)"
+        r"(?:; provider trace audit passed)?", value, re.I)]
+    if packet["identity"].get("State") == "awaiting_input":
+        risks.insert(0, "Unresolved evidence or decisions in Next action still limit the requested outcome.")
     risk = "; ".join(dict.fromkeys(" ".join(value.split()) for value in risks)) or (
         "The requested engineering outcome remains unresolved."
         if packet["identity"]["Workflow outcome"] == "blocked" else "No additional risk recorded in this handoff.")
@@ -2723,6 +2735,8 @@ def finalize(
             temporary.replace(record_path)
             published = True
         if result:
+            if not pre_release and not check_only:
+                register_pending_delivery(packet_path, result.stdout.split("Workflow-framework validation: passed\n", 1)[1])
             # Keep the validator's canonical success line first on every publication route.
             print(result.stdout, end="")
             if blocked_runtime_snapshot:
@@ -4880,14 +4894,37 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     return heading + render_handoff(provisional).removeprefix("```text\n").removesuffix("```")
 
 
+def register_pending_delivery(packet_path: Path, report: str) -> None:
+    content = report.encode()
+    root = packet_path.parent
+    (root / "handoff_response.md").write_bytes(content)
+    record = root / "work_record.md"
+    receipt = {"status": "pending", "run_id": json.loads(packet_path.read_text()).get("identity", {}).get("Run ID", "Unavailable"),
+               "canonical_sha256": hashlib.sha256(content).hexdigest(),
+               "record_sha256": hashlib.sha256(record.read_bytes()).hexdigest() if record.is_file() else None,
+               "scope": "Prepared-response verification is required; actual chat delivery is not observable by this CLI"}
+    path = root / "handoff_delivery.json"
+    if path.is_file():
+        try:
+            previous = json.loads(path.read_text())
+        except ValueError:
+            previous = {}
+        previous = previous if isinstance(previous, dict) else {}
+        if previous.get("status") == "verified" and all(previous.get(key) == receipt[key]
+                for key in ("run_id", "canonical_sha256", "record_sha256")):
+            return
+    path.write_text(json.dumps(receipt, indent=2) + "\n")
+
+
 def _save_failure_handoff(packet_path: Path, report: str) -> None:
-    content = (report + "\n").encode()
+    content = (report.rstrip("\n") + "\n").encode()
     (packet_path.parent / "handoff_failure.md").write_bytes(content)
     status_path, status = _finalization_status(packet_path)
     if status.get("status") == "failed":
         status["handoff_sha256"] = hashlib.sha256(content).hexdigest()
         status["handoff_packet_sha256"] = hashlib.sha256(packet_path.read_bytes()).hexdigest()
         status_path.write_text(json.dumps(status, indent=2) + "\n")
+    register_pending_delivery(packet_path, content.decode())
 
 
 def main() -> int:
@@ -4908,8 +4945,13 @@ def main() -> int:
     parser.add_argument("--framework-status", choices=("clean", "dirty"))
     parser.add_argument("--evidence-artifact", type=Path)
     parser.add_argument("--verify-response", type=Path)
+    parser.add_argument("--publish-response", type=Path, help="Verify and emit the prepared response without rewriting it")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    if args.publish_response:
+        if args.verify_response:
+            parser.error("publish-response and verify-response are separate modes")
+        args.verify_response = args.publish_response
     if args.self_test:
         self_test()
         return 0
@@ -4922,7 +4964,7 @@ def main() -> int:
             _, status = _finalization_status(packet_path)
             if status.get("status") == "failed":
                 source = packet_path.parent / "handoff_failure.md"
-                if source.samefile(args.verify_response):
+                if source.samefile(args.verify_response) and not args.publish_response:
                     raise ValueError("handoff_response_self_comparison: provide the actual proposed response file")
                 canonical = source.read_bytes()
                 if hashlib.sha256(canonical).hexdigest() != status.get("handoff_sha256"):
@@ -4938,19 +4980,30 @@ def main() -> int:
                 current_id = json.loads(packet_path.read_text())["identity"]["Run ID"]
                 if not recorded_id or recorded_id[1].strip() != current_id:
                     raise ValueError("handoff_record_run_mismatch")
-                verified = subprocess.run([sys.executable, str(VALIDATOR), str(record), "--emit-handoff"],
+                validation_args = [sys.executable, str(VALIDATOR), str(record), "--emit-handoff"]
+                identity = json.loads(packet_path.read_text())["identity"]
+                if ("sentry_issue_remediation" in str(identity.get("Playbook / version", ""))
+                        and identity.get("Workflow outcome") == "completed"):
+                    validation_args.extend(["--sentry-artifacts", str(packet_path.parent)])
+                verified = subprocess.run(validation_args,
                                           capture_output=True, text=True, check=True)
                 canonical = verified.stdout.split("Workflow-framework validation: passed\n", 1)[1].encode()
             proposed = args.verify_response.read_bytes()
-            if proposed != canonical:
+            if proposed.removesuffix(b"\n") != canonical.removesuffix(b"\n"):
                 raise ValueError("handoff_response_mismatch: copy the complete canonical report without additions")
             receipt = {"status": "verified", "run_id": json.loads(packet_path.read_text())["identity"]["Run ID"],
                        "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
                        "proposed_sha256": hashlib.sha256(proposed).hexdigest(),
                        "proposed_response": str(args.verify_response.resolve()),
+                       "record_sha256": hashlib.sha256(record.read_bytes()).hexdigest() if
+                           (record := packet_path.parent / "work_record.md").is_file() else None,
+                       "comparison_policy": "Exact UTF-8 bytes with one optional terminal LF; internal whitespace is significant",
                        "scope": "prepared response bytes; actual chat delivery is not observable by this CLI"}
             (packet_path.parent / "handoff_delivery.json").write_text(json.dumps(receipt, indent=2) + "\n")
-            print(json.dumps(receipt, sort_keys=True))
+            if args.publish_response:
+                print(proposed.decode(), end="")
+            else:
+                print(json.dumps(receipt, sort_keys=True))
         except (OSError, ValueError, KeyError, TypeError, IndexError, subprocess.CalledProcessError) as error:
             (args.packet.parent / "handoff_delivery.json").unlink(missing_ok=True)
             print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

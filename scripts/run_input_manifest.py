@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import re
@@ -17,6 +18,113 @@ DEFAULT_PRECEDENCE_RULE = (
 )
 REQUIRED_INPUT_FIELDS = ("Input ID", "Input or artifact", "Source or path", "Authority", "Status")
 LOCAL_LINE_REFERENCE = re.compile(r"^(?P<path>/.*?)(?::\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)$")
+
+
+def _provider_text(value: object):
+    if isinstance(value, dict):
+        if value.get("isError") is True:
+            raise ValueError("sentry_source_observation_failed")
+        for key, item in value.items():
+            if key == "release" and isinstance(item, str):
+                yield "release: " + item
+            elif key == "release" and isinstance(item, dict) and isinstance(item.get("version"), str):
+                yield "release: " + item["version"]
+            yield from _provider_text(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _provider_text(item)
+    elif isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            yield value
+        else:
+            if isinstance(decoded, (dict, list)):
+                yield from _provider_text(decoded)
+            else:
+                yield value
+
+
+def retain_source_releases(manifest: dict, provider_session: Path | None) -> None:
+    """Carry observed releases into the hashed input manifest before worker summarization."""
+    live = [row for row in manifest["inputs"] if re.search(r"https://[^/]*sentry\.io/issues/\d+", str(row["Source or path"]))
+            and row.get("Evidence mode") != "supplied_occurrence"]
+    if live and provider_session is None:
+        raise ValueError("sentry_source_observation_requires_provider_session")
+    releases = {row["Input ID"]: set() for row in live}
+    if live:
+        calls = {}
+        observed_inputs = set()
+        with provider_session.open() as stream:
+            header = json.loads(next(stream))
+            if header.get("type") != "session_meta":
+                raise ValueError("source_observation_provider_session_invalid")
+            for line in stream:
+                event = json.loads(line)
+                payload = event.get("payload", {})
+                code = str(payload.get("input", payload.get("arguments", "")))
+                if payload.get("type") in {"function_call", "custom_tool_call"} and "scripts/run_preflight.py" in code:
+                    releases = {row["Input ID"]: set() for row in live}
+                    calls.clear()
+                    observed_inputs.clear()
+                source_name = str(payload.get("namespace", "") + payload.get("name", "")).lower()
+                source_read = (payload.get("type") == "function_call" and "sentry" in source_name
+                    and any(name in source_name for name in ("get_sentry_resource", "execute_sentry_tool"))) or (
+                    payload.get("type") == "custom_tool_call" and re.search(
+                        r"tools\.mcp__sentry__(?:get_sentry_resource|execute_sentry_tool)\(", code))
+                if source_read:
+                    selected = [row["Input ID"] for row in live if re.search(
+                        r"(?<!\d)" + re.search(r"/issues/(\d+)", row["Source or path"])[1] + r"(?!\d)", code)]
+                    calls[payload.get("call_id")] = selected or ([live[0]["Input ID"]] if len(live) == 1 else [])
+                if payload.get("type") in {"function_call_output", "custom_tool_call_output"} and payload.get("call_id") in calls:
+                    observed_inputs.update(calls[payload["call_id"]])
+                    for text in _provider_text(payload.get("output")):
+                        for input_id in calls[payload["call_id"]]:
+                            releases[input_id].update(re.findall(r"(?im)\brelease\**:\s*([A-Za-z0-9._+/-]{1,120})", text))
+        for row in live:
+            if row["Input ID"] not in observed_inputs:
+                raise ValueError("sentry_source_observation_unavailable:" + row["Input ID"])
+            row["Observed releases"] = sorted(releases[row["Input ID"]])
+            row["Release observation"] = ("Provider source read" if row["Observed releases"]
+                                          else "Not exposed by provider source read")
+    for row in manifest["inputs"]:
+        path = Path(str(row.get("path", "")))
+        if path.is_file() and path.suffix.lower() == ".csv":
+            observed = re.findall(r"Using release from debug info: ([0-9a-fA-F]{40})", path.read_text(errors="replace"))
+            if observed:
+                row["Observed releases"] = sorted(set(observed))
+                row["Release observation"] = "Supplied occurrence log"
+            occurrences = []
+            with path.open(newline="", encoding="utf-8-sig") as stream:
+                for entry in csv.DictReader(stream):
+                    try:
+                        # Exported log messages can contain literal newlines inside JSON strings.
+                        log = json.loads(entry.get("message", ""), strict=False)
+                    except ValueError:
+                        continue
+                    if not isinstance(log, dict) or not isinstance(log.get("workflow_item"), dict):
+                        continue
+                    item = log["workflow_item"]
+                    when = str(log.get("time", ""))
+                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T[\d:.]+Z", when):
+                        continue
+                    occurrence = {"UTC attempt": when}
+                    for key in ("organization_id", "asset_id", "referent_id"):
+                        value = str(item.get(key, ""))
+                        if re.fullmatch(r"[0-9a-fA-F-]{1,64}", value):
+                            occurrence[key] = value
+                    if occurrence not in occurrences:
+                        occurrences.append(occurrence)
+            if occurrences:
+                row["Occurrence correlation"] = occurrences
+
+
+def source_release_errors(text: str, manifest: dict) -> list[str]:
+    return ["source_release_dropped:" + str(row["Input ID"]) + ":" + str(release)
+            for row in manifest.get("inputs", []) for release in row.get("Observed releases", [])
+            if not any(re.search(r"(?<![\w-])" + re.escape(str(row["Input ID"])) + r"(?![\w-])", line)
+                       and re.search(r"(?<![\w.+/-])" + re.escape(str(release)) + r"(?![\w.+/-])", line)
+                       for line in text.splitlines())]
 
 
 def _text(value: object, field: str) -> str:

@@ -19,6 +19,7 @@ try:
         DEFAULT_PRECEDENCE_RULE,
         default_manifest,
         load_manifest,
+        retain_source_releases,
         merge_manifests,
         packet_metadata,
         write_manifest,
@@ -28,6 +29,7 @@ except ModuleNotFoundError:  # Imported as scripts.prepare_run from the reposito
         DEFAULT_PRECEDENCE_RULE,
         default_manifest,
         load_manifest,
+        retain_source_releases,
         merge_manifests,
         packet_metadata,
         write_manifest,
@@ -783,6 +785,7 @@ def prepare_run(
     remediation_reentry: bool = False,
     approval_reference: str | None = None,
     planning_recovery: bool = False,
+    provider_session: Path | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
@@ -848,6 +851,8 @@ def prepare_run(
     if playbook == "feature_delivery" and input_manifest is None:
         raise ValueError("run_input_manifest_required")
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
+    if playbook == "sentry_issue_remediation" and validated_supplied:
+        retain_source_releases(validated_supplied, provider_session)
     prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery)
              if remediation_reentry or planning_recovery else None)
     if continuation and not prior:
@@ -1083,6 +1088,7 @@ def prepare_run(
     if playbook in {"techops_issue_remediation", "sentry_issue_remediation"} or (
             playbook == "feature_delivery" and workflow_objective != "specification_assessment"):
         manifest["runtime_evidence"] = {
+            "launch_binding_required": True,
             "collector": str(ROOT / "scripts" / "worker_runtime_evidence.py"),
             "ledger": str(artifact_root / "runtime_dispatches.json"),
             "run_started_at": manifest["prepared_at"],
@@ -1571,6 +1577,7 @@ def main() -> int:
     parser.add_argument("--work-item")
     parser.add_argument("--playbook")
     parser.add_argument("--runtime-agents", type=Path)
+    parser.add_argument("--provider-session", type=Path, help="Exact current parent record for live Sentry source observations")
     parser.add_argument("--continuation", action="store_true")
     parser.add_argument("--remediation-reentry", action="store_true",
                         help="Start a new Feature Delivery remediation lifecycle, preserving planning history")
@@ -1614,8 +1621,9 @@ def main() -> int:
             args.remediation_reentry,
             args.approval_reference,
             args.planning_recovery,
+            args.provider_session,
         )
-    except ValueError as error:
+    except (OSError, ValueError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
         return 2
     print(json.dumps(result, sort_keys=True))

@@ -17,7 +17,9 @@ from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
-from finalize_work_record import expand_work_record, finalize, render_compact, snapshot_bytes, snapshot_name
+from finalize_work_record import (
+    expand_work_record, finalize, register_pending_delivery, render_compact, snapshot_bytes, snapshot_name,
+)
 try:
     from run_input_manifest import load_manifest
 except ModuleNotFoundError:  # Imported as scripts.finalize_sentry_planning from the repository root.
@@ -348,7 +350,7 @@ Residual uncertainty: {plan.get('residual_uncertainty', 'None recorded.')}
 """
 
 
-def render_clarification_brief(fix: dict[str, object]) -> str:
+def render_clarification_brief(fix: dict[str, object], run_inputs: dict | None = None) -> str:
     clarification = fix.get("clarification_brief")
     if not isinstance(clarification, dict):
         raise ValueError("awaiting_input requires a structured clarification_brief")
@@ -361,6 +363,13 @@ def render_clarification_brief(fix: dict[str, object]) -> str:
     for field in ("strongest_hypothesis", "recommendation", "plain_language_next_action"):
         if not isinstance(clarification.get(field), str) or not clarification[field].strip():
             raise ValueError(f"clarification_brief {field} must be a non-empty string")
+    correlation = []
+    for row in (run_inputs or {}).get("inputs", []):
+        for occurrence in row.get("Occurrence correlation", []):
+            correlation.append(str(row["Input ID"]) + ": " + "; ".join(f"{key}={value}" for key, value in occurrence.items()))
+    correlation_block = ("\n## Occurrence correlation\n\n" + _bullets(correlation)
+        + "\n\nThese keys describe the supplied occurrence. Confirm the receiver route and environment; "
+          "do not assume it is the same occurrence as the latest Sentry event.\n") if correlation else ""
     return f"""# Clarification Brief
 
 ## Confirmed current-run facts
@@ -382,16 +391,18 @@ def render_clarification_brief(fix: dict[str, object]) -> str:
 ## Smallest next action
 
 {clarification['plain_language_next_action']}
+{correlation_block}
 """
 
 
-def _binding(manifest: dict[str, object], agent: str) -> tuple[str, str]:
+def _binding(manifest: dict[str, object], agent: str, observed: dict | None = None) -> tuple[str, str]:
     value = manifest.get("bindings", {}).get(agent)
     if not isinstance(value, dict):
         raise ValueError(f"missing role binding: {agent}")
     model_effort = f"{value['model']} / {value['effort']}"
-    observed = f"Not exposed; explicit launch binding {value['model']} / {value['effort']}"
-    return model_effort, observed
+    actual = f"{observed['model']} / {observed['effort']}" if observed else (
+        f"Not exposed; configured binding {value['model']} / {value['effort']}")
+    return model_effort, actual
 
 
 def _released_closure(path: Path, handles: list[str]) -> dict[str, object]:
@@ -467,6 +478,7 @@ def _trace_audit(completed_workers: dict[str, str], trace_specs: list[str],
             "workers": {},
         }
     audited: dict[str, str] = {}
+    configurations = {}
     runtime_audits = []
     for spec in trace_specs:
         worker, separator, raw_path = spec.partition("=")
@@ -487,10 +499,11 @@ def _trace_audit(completed_workers: dict[str, str], trace_specs: list[str],
             errors.extend(trace_identity_errors(trace, artifact_root, role, completed_workers[worker]))
             runtime_audits.append({**trace.get("status_observation", {}), "Worker": worker,
                                   "Provider handle": completed_workers[worker],
-                                  "Last dispatch at": trace.get("last_dispatch_at")})
+                                  "Last dispatch at": trace.get("last_dispatch_at"), "Trace path": str(path)})
         if errors:
             raise ValueError(f"worker_trace_audit_failed:{worker}:{','.join(errors)}")
         audited[worker] = "passed"
+        configurations[worker] = next(iter(reversed(trace.get("runtime_configurations", []))), None)
     missing = [worker for worker in completed_workers if worker not in audited]
     if prepared:
         closure_path = artifact_root / "runtime_closure.json"
@@ -516,11 +529,15 @@ def _trace_audit(completed_workers: dict[str, str], trace_specs: list[str],
             "status": "partial",
             "note": "provider trace audit partial; unavailable for " + ", ".join(missing),
             "workers": audited,
+            "configurations": configurations,
+            "runtime_audits": runtime_audits,
         }
     return {
         "status": "passed",
         "note": "provider trace audit passed for every completed worker",
         "workers": audited,
+        "configurations": configurations,
+        "runtime_audits": runtime_audits,
     }
 
 
@@ -645,15 +662,21 @@ def _finalize_standard_sentry_in_place(
         evidence_handle, fix_handle, completed_worker_specs or []
     )
     trace_audit = _trace_audit(completed_workers, worker_trace_specs or [], artifact_root=audit_root or artifact_root)
+    packet["runtime_audits"] = trace_audit.get("runtime_audits", [])
     handles = list(completed_workers.values())
     closure = _released_closure(closure_path, handles)
     closure_state = "terminal" if any(row["Runtime status"].lower() == "terminal"
                                       for row in closure["runtime_closure"]) else "released"
 
     repositories = _material_rows(packet.get("repositories"), "Repository role")
-    if not repositories:
-        specs = repository_specs or [f"Execution={execution_repository}"]
-        repositories = [_repository_row(*_parse_repository(spec)) for spec in specs]
+    for spec in repository_specs or ([] if repositories else [f"Execution={execution_repository}"]):
+        role, path = _parse_repository(spec)
+        row = _repository_row(role, path)
+        existing = next((value for value in repositories if Path(value["Resolved path"]).resolve() == path.resolve()), None)
+        if existing is None:
+            repositories.append(row)
+        elif existing["Full revision"] != row["Full revision"] or existing["Clean status"] != row["Clean status"]:
+            raise ValueError("repository_baseline_changed:" + str(path))
 
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     work_item = str(packet["work_item"]["ID"])
@@ -706,7 +729,7 @@ def _finalize_standard_sentry_in_place(
     })
 
     bindings = {
-        worker: _binding(manifest, WORKER_BINDINGS[worker][0])
+        worker: _binding(manifest, WORKER_BINDINGS[worker][0], trace_audit.get("configurations", {}).get(worker))
         for worker in completed_workers
     }
     packet["workers"] = []
@@ -872,7 +895,7 @@ def _finalize_standard_sentry_in_place(
 
     if awaiting_input:
         plan_path.unlink(missing_ok=True)
-        clarification_path.write_text(render_clarification_brief(fix))
+        clarification_path.write_text(render_clarification_brief(fix, run_inputs))
     else:
         clarification_path.unlink(missing_ok=True)
         plan_path.write_text(render_plan(fix, packet, repositories))
@@ -913,15 +936,11 @@ def _finalize_standard_sentry_in_place(
         blockers = fix.get("blocking_unknowns", [])
         first_blocker = blockers[0] if isinstance(blockers, list) and blockers else {}
         question = str(first_blocker.get("question", "")).strip() if isinstance(first_blocker, dict) else ""
-        alternatives = clarification.get("feasible_options", []) if isinstance(clarification, dict) else []
         explanations = [{
             "explanation": str(clarification["strongest_hypothesis"]),
             "confidence": str(confidence.get("level", "medium")) if isinstance(confidence, dict) else "medium",
             "reason": str(confidence_basis),
         }]
-        explanations.extend({
-            "explanation": str(value), "confidence": "conditional", "reason": "Requires the named evidence."
-        } for value in alternatives[:2])
         packet["handoff"] = {
             "workflow_result": "Awaiting indispensable evidence",
             "implementation_plan": "omitted; Fix Design returned awaiting_input/omit",
@@ -1023,6 +1042,8 @@ def finalize_standard_sentry(
         "finalization_packet.json",
         "runtime_closure.json",
         "work_record.md",
+        "handoff_response.md",
+        "handoff_delivery.json",
     )
     with tempfile.TemporaryDirectory(prefix="workflow-sentry-stage-") as directory:
         stage_root = (Path(directory) / "artifacts").resolve()
@@ -1096,6 +1117,8 @@ def finalize_standard_sentry(
             )
             if validation.returncode:
                 raise ValueError(validation.stdout.strip() or validation.stderr.strip())
+            register_pending_delivery(artifact_root / "finalization_packet.json",
+                                      validation.stdout.split("Workflow-framework validation: passed\n", 1)[1])
         except Exception:
             for name, content in originals.items():
                 target = artifact_root / name
@@ -1129,7 +1152,8 @@ def self_test() -> None:
             contract = root / f"activation_{worker}.txt"
             notice = dispatch_message(packet, activation_message(packet, {"objective": "Synthetic worker receipt"}), contract)
             rows.extend([event(index, "response_item", type="function_call", namespace="collaboration",
-                name="spawn_agent", arguments=json.dumps({"task_name": handle.rsplit("/", 1)[-1], "message": notice})),
+                name="spawn_agent", arguments=json.dumps({"task_name": handle.rsplit("/", 1)[-1], "message": notice,
+                    "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"]})),
                 event(index, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
                                                "agent_path": handle, "agent_thread_id": child_id})])
             child = root / f"{worker}.jsonl"
@@ -1245,17 +1269,22 @@ def self_test() -> None:
         assert set(alias_workers) == {"evidence-topology", "fix-design"}
         trace_specs = runtime_fixture(artifact_root, _completed_workers(
             "/root/evidence_topology", fixture_fix["worker_handle"], completed_specs))
+        receiver = Path(directory) / "receiver"
+        _git(execution_repository, "clone", "--quiet", str(execution_repository), str(receiver))
         finalize_standard_sentry(
             artifact_root,
             evidence_handle="/root/evidence_topology",
             coordinator_model_effort="Not exposed / Not exposed",
             framework_revision=framework_revision,
             framework_status=framework_status,
-            repository_specs=[f"Execution={execution_repository}"],
+            repository_specs=[f"Execution={execution_repository}", f"Receiver={receiver}"],
             completed_worker_specs=completed_specs,
             worker_trace_specs=trace_specs,
         )
         plan_text = (artifact_root / "implementation_plan.md").read_text()
+        recorded = json.loads((artifact_root / "finalization_packet.json").read_text())
+        assert len(recorded["repositories"]) == 2
+        assert recorded["repositories"][1]["Full revision"] == _git(receiver, "rev-parse", "HEAD")
         cli = subprocess.run([sys.executable, str(ROOT / "scripts/finalize_sentry_planning.py"),
             "--artifact-root", str(artifact_root), "--evidence-handle", "/root/evidence_topology",
             "--coordinator-model-effort", "Not exposed / Not exposed", "--framework-revision", framework_revision,
@@ -1387,6 +1416,26 @@ def self_test() -> None:
         assert not (awaiting_root / "implementation_plan.md").exists()
         assert "# Clarification Brief" in awaiting_brief
         assert "## Smallest next action" in awaiting_brief
+        awaiting_packet = json.loads((awaiting_root / "finalization_packet.json").read_text())
+        assert len(awaiting_packet["handoff"]["best_current_explanations"]) == 1
+        assert "| Next action | Not provided |" not in awaiting_record
+        assert json.loads((awaiting_root / "handoff_delivery.json").read_text())["status"] == "pending"
+        response = subprocess.run([sys.executable, str(ROOT / "scripts/finalize_work_record.py"),
+            "--packet", str(awaiting_root / "finalization_packet.json"),
+            "--publish-response", str(awaiting_root / "handoff_response.md")], capture_output=True, text=True)
+        assert response.returncode == 0, response.stdout + response.stderr
+        assert response.stdout == (awaiting_root / "handoff_response.md").read_text()
+        assert json.loads((awaiting_root / "handoff_delivery.json").read_text())["status"] == "verified"
+        without_audits = dict(awaiting_packet, runtime_audits=[])
+        (awaiting_root / "finalization_packet.json").write_text(json.dumps(without_audits))
+        rejected = subprocess.run([sys.executable, str(ROOT / "scripts/validate_library.py"),
+            "--sentry-artifacts", str(awaiting_root)], capture_output=True, text=True)
+        assert rejected.returncode != 0 and "worker_runtime_audits_incomplete" in rejected.stdout
+        (awaiting_root / "finalization_packet.json").write_text(json.dumps(awaiting_packet))
+        correlated = render_clarification_brief(awaiting_fix, {"inputs": [{"Input ID": "IN-2",
+            "Occurrence correlation": [{"UTC attempt": "2026-10-14T01:02:03Z", "referent_id": "123"}]}]})
+        assert "IN-2: UTC attempt=2026-10-14T01:02:03Z; referent_id=123" in correlated
+        assert "do not assume it is the same occurrence" in correlated
         assert "| State | awaiting_input |" in awaiting_record
         assert "| Workflow outcome | completed |" in awaiting_record
         assert "| Engineering outcome | partially_solved |" in awaiting_record

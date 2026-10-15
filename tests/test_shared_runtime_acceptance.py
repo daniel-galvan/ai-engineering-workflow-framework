@@ -58,7 +58,8 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         handle = "/root/worker"
         parent_rows = [event(0, "session_meta", id=PARENT),
             event(1, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
-                  call_id="spawn", arguments=json.dumps({"task_name": "worker", "message": "opaque"})),
+                  call_id="spawn", arguments=json.dumps({"task_name": "worker", "message": "opaque",
+                    "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"]})),
             event(1, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
                                       "agent_path": handle, "agent_thread_id": CHILD}),
             event(2, "response_item", type="function_call_output", call_id="spawn", output=""),
@@ -302,7 +303,9 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             replacement = "/root/replacement"
             thread = "00000000-0000-0000-0000-000000000003"
             parent.extend([event(11, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
-                arguments=json.dumps({"task_name": "replacement", "message": "fresh assignment"})),
+                arguments=json.dumps({"task_name": "replacement", "message": "fresh assignment", "fork_turns": "none",
+                    "model": json.loads((root / "role_bindings.json").read_text())["bindings"][role]["model"],
+                    "reasoning_effort": json.loads((root / "role_bindings.json").read_text())["bindings"][role]["effort"]})),
                 event(12, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
                     "agent_path": replacement, "agent_thread_id": thread}),
                 event(17, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": replacement})])

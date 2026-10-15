@@ -259,7 +259,9 @@ class PlanningRecovery(unittest.TestCase):
             events.extend([
                 {"timestamp": dispatch, "type": "response_item", "payload": {"type": "function_call",
                     "namespace": "collaboration", "name": "spawn_agent",
-                    "arguments": json.dumps({"task_name": name})}},
+                    "arguments": json.dumps({"task_name": name, "fork_turns": "none",
+                        "model": bindings["bindings"][role]["model"],
+                        "reasoning_effort": bindings["bindings"][role]["effort"]})}},
                 {"timestamp": dispatch, "type": "event_msg", "payload": {"item": {
                     "type": "SubAgentActivity", "kind": "started", "agent_path": handle,
                     "agent_thread_id": thread}}},

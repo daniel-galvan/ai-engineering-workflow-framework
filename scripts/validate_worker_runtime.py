@@ -56,6 +56,10 @@ def worker_binding(bindings: dict, worker: str) -> str:
         return worker
     matches = [role for role, contract in bindings.get("worker_contracts", {}).items()
                if isinstance(contract, dict) and contract.get("worker") == worker]
+    sentry = {"evidence-topology": "sentry_current_state_investigator", "failure-topology": "sentry_dependency_analyst",
+              "repository-integration": "sentry_repository_integrator", "fix-design": "sentry_solution_architect"}
+    if not matches and bindings.get("playbook") == "sentry_issue_remediation" and sentry.get(worker) in bindings["bindings"]:
+        return sentry[worker]
     if not matches and DELIVERY_WORKERS.get(worker) in bindings["bindings"]:
         return DELIVERY_WORKERS[worker]
     if len(matches) != 1:
@@ -88,6 +92,11 @@ def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thr
                 or observation.get("Last dispatch at") != trace.get("last_dispatch_at")):
             errors.append("worker_trace_observation_mismatch:" + worker)
         errors.extend(terminal_observation_errors([observation], [handle]))
+        try:
+            from worker_runtime_evidence import launch_binding_errors
+        except ModuleNotFoundError:
+            from scripts.worker_runtime_evidence import launch_binding_errors
+        errors.extend(launch_binding_errors(trace, root, worker_binding(bindings, worker)))
         return errors
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         return ["worker_trace_identity_invalid:" + worker + ":" + str(error)]
@@ -1024,7 +1033,10 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -
         return ["tool_trace_invalid"]
     if not isinstance(trace.get("events", []), list):
         return ["runtime_event_invalid"]
-    errors: list[str] = []
+    launch_errors = trace.get("launch_errors", [])
+    if not isinstance(launch_errors, list) or any(not isinstance(error, str) for error in launch_errors):
+        return ["worker_launch_errors_invalid"]
+    errors: list[str] = list(launch_errors)
     spawn = trace.get("spawn", {})
     if not isinstance(spawn, dict):
         return ["spawn_trace_invalid"]

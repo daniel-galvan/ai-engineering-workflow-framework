@@ -36,13 +36,14 @@ from .work_records import (
     validate_work_record,
 )
 try:
-    from run_input_manifest import load_manifest
+    from run_input_manifest import load_manifest, source_release_errors
 except ModuleNotFoundError:
-    from scripts.run_input_manifest import load_manifest
+    from scripts.run_input_manifest import load_manifest, source_release_errors
 
 
 def validate_sentry_artifacts(root: Path, *, allow_unreleased: bool = False) -> None:
     errors: list[str] = []
+    run_inputs = {}
     packet_path = root / "finalization_packet.json"
     run_inputs_path = root / "run_inputs.json"
     packet: dict[str, object] = {}
@@ -95,6 +96,7 @@ def validate_sentry_artifacts(root: Path, *, allow_unreleased: bool = False) -> 
     else:
         evidence_text = evidence.read_text()
         errors.extend(sentry_contract_delta_errors(evidence_text))
+        errors.extend(source_release_errors(evidence_text, run_inputs))
         for marker in PROHIBITED_CONTEXT_MARKERS:
             if marker in evidence_text:
                 errors.append(f"normalized evidence contains prohibited context marker: {marker}")
@@ -150,6 +152,17 @@ def validate_sentry_artifacts(root: Path, *, allow_unreleased: bool = False) -> 
             .startswith("passed")
         )
         if runtime_closed and terminal_packet:
+            bindings_path = root / "role_bindings.json"
+            bindings = json.loads(bindings_path.read_text()) if bindings_path.is_file() else {}
+            if packet.get("runtime_audits") or bindings.get("runtime_evidence", {}).get("launch_binding_required"):
+                try:
+                    from finalize_work_record import _worker_runtime_audit_errors
+                except ModuleNotFoundError:
+                    from scripts.finalize_work_record import _worker_runtime_audit_errors
+                completed = {row["Worker"] for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"}
+                audit_errors = _worker_runtime_audit_errors(packet, packet_path, completed)
+                if audit_errors:
+                    fail(";".join(audit_errors))
             record = root / "work_record.md"
             if not record.is_file():
                 fail(f"{root}: released terminal artifact set requires work_record.md")
@@ -160,6 +173,9 @@ def validate_normalized_evidence(path: Path) -> None:
     if not path.is_file():
         fail(f"normalized evidence does not exist: {path}")
     errors = sentry_contract_delta_errors(path.read_text())
+    manifest_path = path.parent / "run_inputs.json"
+    if manifest_path.is_file():
+        errors.extend(source_release_errors(path.read_text(), load_manifest(manifest_path, explicit=False)))
     if errors:
         fail(f"{path}: " + "\nFAIL: ".join(errors))
 

@@ -93,7 +93,8 @@ class V6Recovery(unittest.TestCase):
         parent = self.root / "parent.jsonl"
         rows = [{"timestamp": START, "type": "session_meta", "payload": {"id": PARENT}},
                 {"timestamp": DISPATCH, "type": "response_item", "payload": {"type": "function_call",
-                 "namespace": "collaboration", "name": "spawn_agent", "arguments": '{"task_name":"evidence"}'}},
+                 "namespace": "collaboration", "name": "spawn_agent", "arguments": json.dumps({"task_name": "evidence",
+                    "fork_turns": "none", "model": "gpt-6-luna", "reasoning_effort": "high"})}},
                 {"timestamp": "2026-10-09T20:00:11Z", "type": "event_msg", "payload": {"item": {
                  "type": "SubAgentActivity", "kind": "started", "agent_path": HANDLE, "agent_thread_id": CHILD}}}]
         parent.write_text("".join(json.dumps(row) + "\n" for row in rows))
@@ -198,7 +199,8 @@ class V6Recovery(unittest.TestCase):
         with parent.open("a") as stream:
             stream.write(json.dumps({"timestamp": dispatch, "type": "response_item", "payload": {
                 "type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
-                "arguments": json.dumps({"task_name": "evidence_retry", "message": json.loads(guarded.stdout)["activation_message"]})}}) + "\n")
+                "arguments": json.dumps({"task_name": "evidence_retry", "message": json.loads(guarded.stdout)["activation_message"],
+                    "fork_turns": "none", "model": "gpt-6-luna", "reasoning_effort": "high"})}}) + "\n")
             stream.write(json.dumps({"timestamp": dispatch, "type": "event_msg", "payload": {"item": {
                 "type": "SubAgentActivity", "kind": "started", "agent_path": fresh_handle,
                 "agent_thread_id": fresh_child}}}) + "\n")

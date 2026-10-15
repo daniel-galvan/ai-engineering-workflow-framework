@@ -94,7 +94,8 @@ class ActivationDelivery(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         receipt = json.loads(result.stdout)
         ledger = {"thread_mappings": {HANDLE: CHILD}, "events": [
-            {"Provider handle": HANDLE, "Last dispatch at": DISPATCH}]}
+            {"Provider handle": HANDLE, "Last dispatch at": DISPATCH, "Operation": "spawn_agent",
+             "Launch": {"fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"]}}]}
         observation = {"Provider handle": HANDLE, "Thread ID": CHILD, "Provider status": "completed",
             "Last dispatch at": DISPATCH, "Observed at": "2026-10-12T20:02:00Z", "Status source": "read_thread",
             "Latest turn started at": DISPATCH, "Latest turn status": "completed", "Thread status": "idle"}

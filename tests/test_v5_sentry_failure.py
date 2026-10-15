@@ -131,6 +131,21 @@ class SentryFailureRegression(unittest.TestCase):
         self.assertEqual(self.command("--packet", self.packet, "--verify-response", proposed).returncode, 2)
         self.assertFalse((self.root / "handoff_delivery.json").exists())
 
+    def test_response_publication_verifies_and_emits_the_same_bytes(self):
+        self.command(*self.arguments())
+        receipt = self.root / "handoff_delivery.json"
+        self.assertEqual(json.loads(receipt.read_text())["status"], "pending")
+        canonical = self.root / "handoff_response.md"
+        published = self.command("--packet", self.packet, "--publish-response", canonical)
+        self.assertEqual(published.returncode, 0, published.stdout + published.stderr)
+        self.assertEqual(published.stdout.encode(), canonical.read_bytes())
+        self.assertEqual(json.loads(receipt.read_text())["status"], "verified")
+        proposed = self.root / "proposed.md"
+        proposed.write_bytes(canonical.read_bytes().removesuffix(b"\n"))
+        self.assertEqual(self.command("--packet", self.packet, "--verify-response", proposed).returncode, 0)
+        proposed.write_text(proposed.read_text().replace("- State:", " - State:"))
+        self.assertEqual(self.command("--packet", self.packet, "--verify-response", proposed).returncode, 2)
+
     def test_missing_closure_never_manufactures_release_or_changes_identity(self):
         before = self.packet.read_bytes()
         result = self.command(*self.arguments())

@@ -39,7 +39,7 @@ class PackagedLifecycle(unittest.TestCase):
                 ("-m", "unittest", "tests.test_context_operation_audit", "tests.test_v6_recovery",
                  "tests.test_planning_recovery", "tests.test_feature_delivery_continuation",
                  "tests.test_shared_runtime_acceptance", "tests.test_v5_sentry_failure",
-                 "tests.test_handoff_instruction_conflict"),
+                 "tests.test_handoff_instruction_conflict", "tests.test_v7_sentry_acceptance"),
                 ("scripts/finalize_work_record.py", "--self-test"),
             ):
                 result = subprocess.run([sys.executable, *args], cwd=package, capture_output=True,

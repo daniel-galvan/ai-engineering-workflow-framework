@@ -12,6 +12,9 @@ Use these sections:
    `Sentry identity: unresolved (no stable Sentry issue identifier supplied)`. A work-item key is not treated as a
    Sentry issue identifier.
 3. `## Source Register` — stable evidence IDs, exact source or path, observation, authority, and verification status.
+   Retain each input's `Observed releases` with its Input ID on the same line. Compare named source releases for the
+   inspected paths; separate the Sentry event from supplied-log occurrences and distinguish client revision identity
+   from receiver deployment mapping. Use the supplied occurrence's UTC times and safe identifiers for correlation.
 4. `## Confirmed Facts` — facts with evidence references; do not mix hypotheses into this section.
 5. `## Best Current Hypotheses` — each hypothesis, supporting and contradicting evidence, confidence, and limits.
 6. `## Topology` — emitter, comparison owner, baseline producer, deployed route owner, candidate divergence owner, and

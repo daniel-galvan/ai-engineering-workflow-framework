@@ -148,6 +148,12 @@ description: >-
    do not claim the supplied data belongs to the inaccessible issue. Pass the successful route and issue/event
    observations to Evidence Topology so it does not repeat the access probe. If live access fails later, stop further
    analysis and downstream activation, report `required_source_unavailable`, and close already-started workers.
+   For a live Sentry URL, pass the exact current parent record with `prepare_run.py --provider-session <path>`.
+   Preparation retains provider and supplied-log releases in the hashed input rows before summarization. Use name-only
+   discovery by current parent thread ID when the provider record path is not already exposed; never open another
+   thread's analytical history. An explicitly selected offline source uses `Evidence mode: supplied_occurrence` in its
+   input row. Preserve every `Observed releases` value with its Input ID in normalized evidence, compare named source
+   revisions for the inspected paths, and keep receiver deployment mapping distinct from client release identity.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
@@ -359,8 +365,13 @@ description: >-
    coordinator child; the default Codex path uses the active parent session and must record
    `Coordinator execution: active parent session; no dedicated Coordinator worker spawned`.
    The Coordinator is the only role that performs package preflight and run preparation. Activate every delegated
-   worker with `fork_context: false` or the provider-equivalent fresh-context option. Start its packet with
-   `Coordinator initialization: complete` and explicitly prohibit rerunning this skill, `run_preflight.py`, or
+   worker with `fork_context: false` or the provider-equivalent fresh-context option.
+   For Codex collaboration, use `fork_turns: "none"` and explicit `model` and `reasoning_effort` values from the
+   binding.
+   Reading role instructions cannot change an inherited runtime configuration. The native launch and exposed child
+   runtime metadata must match before fan-in; return a mismatch through the rejected-result recovery path.
+   Start its packet with `Coordinator initialization: complete` and explicitly prohibit rerunning this skill,
+   `run_preflight.py`, or
    `prepare_run.py`. Workers must use the current task's in-task `spawn_agent`/collaboration runtime. Never use
    `create_thread`, `fork_thread`, or `send_message_to_thread` for workers. Verify the in-task runtime before
    `prepare_run.py`; when unavailable, stop with `worker_runtime_unavailable` without creating user-owned tasks.
@@ -422,6 +433,10 @@ description: >-
    `last_dispatch_at`, `tool_trace`, `spawn` and fan-in events.
    Run `--trace <path> --require-freshness` before acceptance. Never write an ad hoc exporter or repair
    dispatch timestamps.
+   For the sequential Standard Sentry path, refresh `list_agents`, then run the same collector with its parent,
+   start and ledger arguments plus `--closure <artifact-root>/runtime_closure.json`. This derives canonical Terminal
+   observations from the native inventory. Export each worker with that file as `--observation`; the collector selects
+   the exact child thread row. Do not reconstruct closure prose or edit provider timestamps.
    Save each trace directly under the active artifact root.
    It retains activity from the worker's first dispatch in this run, including binding reads and
    pre-correction context violations. A later failed required dispatch blocks export and finalization;
@@ -721,11 +736,13 @@ description: >-
    preambles and postscripts. A TechOps Workflow result is a plain-language work summary, never a readiness token.
    The canonical report includes its own final Not checked/Risk lines to satisfy concise-response styles; copy those
    lines unchanged. A formatting skill must not replace the report with a summary or append a second footer.
-   Save the proposed final response and compare its bytes with the emitted canonical report before sending it.
-   Run `cmp -s <canonical-response-file> <proposed-response-file>` and require exit zero. The proposed response must
-   also pass `finalize_work_record.py --packet <packet> --verify-response <proposed-response-file>`.
-   This writes `handoff_delivery.json` with matching content hashes. It verifies prepared text, not an outgoing chat
-   message: send the same file's contents verbatim and do not claim the CLI observed actual chat delivery.
+   Finalization writes `handoff_response.md` and a `handoff_delivery.json` receipt with `status: pending`. Work-record
+   validation alone is not prepared-response verification. Complete delivery with
+   `finalize_work_record.py --packet <packet> --publish-response <artifact-root>/handoff_response.md`.
+   This validates and emits the prepared text directly and records `status: verified`; send that output unchanged.
+   Independent proposed-response files may use `--verify-response`. Only a single terminal LF is optional; internal
+   whitespace, labels and content must match. The receipt retains both byte hashes and the comparison policy.
+   This verifies prepared text; do not claim the CLI observed actual chat delivery.
    The proposed file must contain the intended outgoing answer; copying the canonical file to another path alone
    does not prove that the chat message used those bytes.
    For failure, compare against `handoff_failure.md`; for success, use the emitted handoff block. A comparison failure

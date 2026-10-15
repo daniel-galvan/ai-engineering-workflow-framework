@@ -128,7 +128,9 @@ class ContextOperationAudit(unittest.TestCase):
         source.write_text(json.dumps({"type": "session_meta", "payload": {"id": child}}) + "\n" + "".join(
             json.dumps({"timestamp": "2026-10-13T01:00:02Z", "type": "response_item", "payload": row}) + "\n"
             for row in trace["tool_trace"]))
-        ledger = {"events": [{"Provider handle": handle, "Last dispatch at": dispatch}],
+        binding = json.loads((self.root / "role_bindings.json").read_text())["bindings"]["current_state_investigator"]
+        ledger = {"events": [{"Provider handle": handle, "Last dispatch at": dispatch, "Operation": "spawn_agent",
+                  "Launch": {"model": binding["model"], "reasoning_effort": binding["effort"], "fork_turns": "none"}}],
                   "thread_mappings": {handle: child}}
         observation = {"Provider handle": handle, "Thread ID": child, "Provider status": "completed",
             "Last dispatch at": dispatch, "Observed at": "2026-10-13T01:01:00Z", "Status source": "read_thread",
@@ -248,7 +250,8 @@ class ContextOperationAudit(unittest.TestCase):
         parent.write_text("\n".join(json.dumps(row) for row in [
             {"timestamp": time(0), "type": "session_meta", "payload": {"id": SOURCE}},
             {"timestamp": time(1), "type": "response_item", "payload": {"type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
-             "arguments": json.dumps({"task_name": "evidence_topology", "agent_type": role, "message": "opaque"})}},
+             "arguments": json.dumps({"task_name": "evidence_topology", "agent_type": role, "message": "opaque",
+                 "model": "gpt-6-luna", "reasoning_effort": "high", "fork_turns": "none"})}},
             {"timestamp": time(1), "type": "event_msg", "payload": {"item": {"type": "SubAgentActivity",
              "kind": "started", "agent_path": handle, "agent_thread_id": child}}},
         ]) + "\n")
