@@ -211,14 +211,15 @@ class SentryFailureRegression(unittest.TestCase):
         root = fixture[1]
         Path(fixture[0]["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
         (root / "evidence_topology.trace.json").write_text(json.dumps(trace))
-        (root / "normalized_evidence.md").write_text("## Confirmed Facts\n\n- Synthetic rejection observed; cause unknown.\n")
+        normalized = json.loads((ROOT / "tests/fixtures/v37_v38_sentry_runtime_regressions.json").read_text())["normalized_evidence"]
+        (root / "normalized_evidence.md").write_text("## Confirmed Facts\n\n- Synthetic rejection observed; cause unknown.\n\n" + normalized)
         result = self.command("--packet", root / "finalization_packet.json", "--workflow-failure", "Closure unavailable")
         self.assertEqual(result.returncode, 2)
-        self.assertIn("Recorded evidence fact: Synthetic rejection observed; cause unknown", result.stdout)
+        self.assertIn("Provisional artifact statement (not verified worker output): Synthetic rejection observed; cause unknown", result.stdout)
         trace["run_id"] = "old-run"
         (root / "evidence_topology.trace.json").write_text(json.dumps(trace))
         result = self.command("--packet", root / "finalization_packet.json", "--workflow-failure", "Closure unavailable")
-        self.assertNotIn("Recorded evidence fact: Synthetic rejection observed", result.stdout)
+        self.assertNotIn("Provisional artifact statement (not verified worker output): Synthetic rejection observed", result.stdout)
 
 
 if __name__ == "__main__":

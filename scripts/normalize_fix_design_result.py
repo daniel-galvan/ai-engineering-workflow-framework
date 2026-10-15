@@ -8,13 +8,19 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
 
+try:
+    from validation.api import checked, validate_package
+    from validation.finalization import validate_sentry_artifacts
+except ModuleNotFoundError:
+    from scripts.validation.api import checked, validate_package
+    from scripts.validation.finalization import validate_sentry_artifacts
+
+
 ROOT = Path(__file__).resolve().parents[1]
-VALIDATOR = ROOT / "scripts" / "validate_library.py"
 ROLLOUT_TERMS = re.compile(r"\b(?:canary|consumer|deploy|producer|rollout)\w*\b", re.IGNORECASE)
 
 
@@ -159,15 +165,10 @@ def normalize_artifact_root(artifact_root: Path, backup: Path | None = None) -> 
         shutil.copyfile(evidence, candidate_root / evidence.name)
         candidate = candidate_root / design.name
         candidate.write_text(candidate_text)
-        completed = subprocess.run(
-            ["python3", str(VALIDATOR), "--sentry-artifacts", str(candidate_root)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode:
-            message = (completed.stdout + completed.stderr).strip()
-            raise ValueError(f"normalized candidate failed validation: {message}")
+        try:
+            checked(validate_sentry_artifacts, candidate_root)
+        except ValueError as error:
+            raise ValueError(f"normalized candidate failed validation: {error}") from error
     if changes:
         if backup:
             backup = backup.resolve()
@@ -215,6 +216,7 @@ def main() -> int:
     if not args.artifact_root:
         parser.error("--artifact-root is required")
     try:
+        checked(validate_package)
         result = normalize_artifact_root(args.artifact_root, args.backup)
     except (json.JSONDecodeError, OSError, ValueError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

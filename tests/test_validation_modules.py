@@ -133,15 +133,15 @@ with patch("pathlib.Path.rglob", side_effect=AssertionError("library scan on imp
                                           allow_unreleased=allowed)
                 artifacts.assert_called_with(Path("/tmp/artifacts").resolve(), allow_unreleased=allowed)
 
-    def test_cli_retains_missing_argument_failure(self):
+    def test_cli_reports_missing_argument_before_library_scan(self):
         from scripts import validate_library as cli
 
         output = io.StringIO()
-        with patch.object(cli, "validate_library"), contextlib.redirect_stdout(output), \
+        with patch.object(cli, "validate_library"), contextlib.redirect_stderr(output), \
              self.assertRaises(SystemExit) as error:
             cli.main(["--sentry-artifacts"])
-        self.assertEqual(error.exception.code, 1)
-        self.assertEqual(output.getvalue(), "FAIL: --sentry-artifacts requires one artifact-root path\n")
+        self.assertEqual(error.exception.code, 2)
+        self.assertIn("argument --sentry-artifacts: expected one argument", output.getvalue())
 
 
 if __name__ == "__main__":

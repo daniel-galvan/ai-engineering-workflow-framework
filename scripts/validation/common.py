@@ -10,6 +10,16 @@ except ModuleNotFoundError:
     from scripts.asset_manifest import ASSET_MANIFEST_FILENAME
 
 
+try:
+    from workflow_policy import FEATURE_ASSESSMENT_DISPOSITIONS, TECHNICAL_SPIKE_DISPOSITIONS, NO_ACTIVE_HANDLES
+except ModuleNotFoundError:
+    from scripts.workflow_policy import (
+        FEATURE_ASSESSMENT_DISPOSITIONS,
+        TECHNICAL_SPIKE_DISPOSITIONS,
+        NO_ACTIVE_HANDLES,
+    )
+
+
 ROOT = Path(__file__).resolve().parents[2]
 
 REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
@@ -59,9 +69,6 @@ STALE_FINALIZER_REFERENCE = (
     r"|(?:packaged\s+|Coordinator\s+)?finalizer\s+pending"
 )
 
-NO_ACTIVE_HANDLES = re.compile(
-    r"^(?:none|0)(?:\s+(?:observed|confirmed) after close request)?$", re.IGNORECASE
-)
 
 MODEL_BASELINE_ID = "codex-role-policy-gpt61-sol-luna-orchestrator-v20261001"
 
@@ -223,23 +230,6 @@ READINESS_ACTIONS = {
     "awaiting_input": "omit",
 }
 
-FEATURE_ASSESSMENT_DISPOSITIONS = {
-    "awaiting_input": {"Not ready for implementation"},
-    "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
-}
-
-TECHNICAL_SPIKE_DISPOSITIONS = {
-    "execute technical spike": {
-        "Question answered": "solved",
-        "Partially answered": "partially_solved",
-        "Inconclusive": "partially_solved",
-    },
-    "review technical spike": {
-        "Accepted": "solved",
-        "Changes required": "partially_solved",
-        "Inconclusive": "partially_solved",
-    },
-}
 
 BLOCKING_DECISION_TYPES = {
     "business",

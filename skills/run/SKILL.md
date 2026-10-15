@@ -104,9 +104,12 @@ description: >-
    repeat the same invalid identifier probe.
    If no trace can be obtained, record context conformance as `context-unverified` and do not imply an
    independently audited pass. For every run, persist the audit result or `context-unverified` in each worker result's
-   `Uncertainties / blockers` field before fan-in; self-attestation is not an audited pass. Pilot Standard Sentry and
-   TechOps planning may continue with a context-unverified result only after evidenced retrieval failure and when
-   every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation.
+   `Uncertainties / blockers` field before fan-in; self-attestation is not an audited pass.
+   For Sentry Fix Design, keep the typed `context_conformance: pass` field as worker self-attestation; record audit
+   uncertainty separately and never replace that field with `context-unverified` in an assignment.
+   Pilot Standard Sentry and TechOps planning may continue with a context-unverified result only after evidenced
+   retrieval failure and when every other contract gate passes; trace-unavailable evidence is never stronger than
+   self-attestation.
 5a. For Jira-backed Feature Delivery, before loading the full playbook, contracts, or template, select an available
    Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
    Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route. A resource
@@ -206,8 +209,9 @@ description: >-
       "Status":"Registered"}
    ]}
    ```
-   Run `scripts/prepare_run.py` with the execution repository, work item, selected playbook name, and an optional
-   verified runtime-agent directory (`--runtime-agents <path>`). Pass `--requested-outcome` and
+   Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
+   `--input-manifest <path>`. For live Sentry also pass `--provider-session <exact-current-parent-record>`.
+   An optional verified runtime-agent directory uses `--runtime-agents <path>`. Pass `--requested-outcome` and
    `--workflow-objective` only when the request explicitly supplied a complete compatible pair, including the named
    Feature Delivery assessment above. When the request omits both, omit both flags so preparation records the selected
    playbook defaults and provenance. For Technical Spike pass the validated `--primary-question <question>`; pass

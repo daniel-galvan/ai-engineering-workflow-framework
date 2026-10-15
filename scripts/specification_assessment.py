@@ -5,6 +5,12 @@ from __future__ import annotations
 import re
 
 
+try:
+    from validation.markdown import table_cells
+except ModuleNotFoundError:
+    from scripts.validation.markdown import table_cells
+
+
 REPORT_NAME = "specification_assessment.md"
 NO_PLAN_MESSAGE = "Not created; specification assessment produces specification_assessment.md"
 REQUIRED_HEADINGS = (
@@ -29,7 +35,7 @@ TEMPLATE_INSTRUCTION_MARKERS = (
 def _coverage_rows(text: str) -> list[list[str]]:
     section = re.search(r"^## Coverage\s*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
     rows = [] if section is None else [
-        [cell.strip() for cell in line.strip().strip("|").split("|")]
+        table_cells(line)
         for line in section.group(1).splitlines() if line.strip().startswith("|")
     ]
     if (len(rows) < 3 or len(rows[0]) != 7 or rows[0][0] != "Requirement / behavior"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import subprocess
+import sys
 from .common import (
     CODEX_AGENT_DIR,
     FINALIZATION_PACKET_TEMPLATE,
@@ -156,9 +157,9 @@ def validate_sentry_artifacts(root: Path, *, allow_unreleased: bool = False) -> 
             bindings = json.loads(bindings_path.read_text()) if bindings_path.is_file() else {}
             if packet.get("runtime_audits") or bindings.get("runtime_evidence", {}).get("launch_binding_required"):
                 try:
-                    from finalize_work_record import _worker_runtime_audit_errors
+                    from planning_contracts import _worker_runtime_audit_errors
                 except ModuleNotFoundError:
-                    from scripts.finalize_work_record import _worker_runtime_audit_errors
+                    from scripts.planning_contracts import _worker_runtime_audit_errors
                 completed = {row["Worker"] for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"}
                 audit_errors = _worker_runtime_audit_errors(packet, packet_path, completed)
                 if audit_errors:
@@ -192,7 +193,7 @@ def validate_finalization_definitions() -> None:
         fail("scripts/validate_worker_runtime.py is missing")
     else:
         worker_runtime_self_test = subprocess.run(
-            ["python3", str(WORKER_RUNTIME_GUARD), "--self-test"],
+            [sys.executable, str(WORKER_RUNTIME_GUARD), "--self-test"],
             capture_output=True,
             text=True,
             check=False,
@@ -212,7 +213,7 @@ def validate_finalization_definitions() -> None:
         fail("scripts/normalize_fix_design_result.py is missing")
     else:
         normalizer_self_test = subprocess.run(
-            ["python3", str(NORMALIZE_FIX_DESIGN_RESULT), "--self-test"],
+            [sys.executable, str(NORMALIZE_FIX_DESIGN_RESULT), "--self-test"],
             capture_output=True,
             text=True,
             check=False,

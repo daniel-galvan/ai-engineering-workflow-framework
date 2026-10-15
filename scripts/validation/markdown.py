@@ -9,7 +9,9 @@ MAX_MARKDOWN_PROSE_WIDTH = 120
 
 
 def table_cells(line: str) -> list[str]:
-    content = line.strip()[1:-1]
+    content = line.strip().removeprefix("|")
+    if content.endswith("|") and not content.endswith(r"\|"):
+        content = content[:-1]
     cells: list[str] = []
     current: list[str] = []
     index = 0

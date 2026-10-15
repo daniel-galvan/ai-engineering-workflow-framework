@@ -93,8 +93,24 @@ maturity, template consistency, provider-adapter coverage, and Codex policy/TOML
 `scripts/validate_library.py` is the CLI; `scripts/validation/library.py` coordinates library checks in their
 established fail-fast order. Rules live in `scripts/validation/`, grouped into front matter, Markdown, contracts,
 playbooks, roles, provider policy, templates, work records, and finalization. Shared constants and reference helpers
-live in `common.py` and `references.py`; the existing regression self-tests live in `self_tests.py`.
-Imports do not run validation.
+live in `common.py` and `references.py`. Synthetic self-test scenarios live in `tests/self_checks/`; the public
+`--self-test` entrypoints load them only when requested. Keep these tests in the shipped package.
+
+`scripts/planning_contracts.py` owns planning acceptance checks, `scripts/runtime_checks.py` owns runtime validation,
+and `scripts/provider_runtime.py` reads native provider observations. `scripts/work_record_format.py` renders the
+canonical records and handoffs; `scripts/finalize_work_record.py` owns publication and recovery.
+`scripts/workflow_policy.py` holds shared playbook policy. Imports do not run validation.
+
+Internal callers use `scripts/validation/api.py` to validate fresh artifacts in process. Publication still validates
+the package and prepared runtime bindings; artifact results are never cached. Run preparation snapshots supplied
+local files for every playbook, preserving immutable evidence while the original source files can change. Selected
+bytes are captured before archiving an existing run. Explicitly selected directories inside that run are staged and
+copied to the new input area before their references are updated; external directories remain at their selected paths.
+Grouped file inputs retain one hash per snapshot. Release extraction, input reconciliation, and asset inventory consume
+the same registered file locations. Grouped asset sources must account for every selected file or directory entry.
+Failure reports may preserve provisional artifact statements; a passing worker trace alone does not verify that the
+current artifact content belongs to that worker output.
+
 Add focused tests under `tests/` when changing rules; preserve CLI failure messages, check order, and finalization
 output. Both `python3 scripts/validate_library.py` and `python3 -m scripts.validate_library` support the same arguments.
 

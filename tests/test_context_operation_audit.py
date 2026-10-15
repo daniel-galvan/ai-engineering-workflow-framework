@@ -187,6 +187,9 @@ class ContextOperationAudit(unittest.TestCase):
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
             'cat .thoughts/AGENTS.md',
+            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do\nif [ -f "$p" ]; then\ncat "$p";\nfi;\ndone',
+            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then cat "$p"; fi; done\nif test -f .thoughts/ITEM-1/fix_design_result.json; then cat .thoughts/ITEM-1/fix_design_result.json; fi',
+            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done\npython3 - <<\'PY\'\nprint("current evidence")\nPY',
             'for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$f" ]; then printf \'\\n--- %s ---\\n\' "$f"; cat "$f"; fi; done; if [ -e .thoughts/ITEM-1/normalized_evidence.md ]; then echo yes; fi',
             'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then echo "--- $p"; cat "$p"; fi; done\npython3 - <<"PY"\nprint("current evidence")\nPY',
             'for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done; if test -e .thoughts/ITEM-1/evidence.md; then echo yes; fi',
@@ -204,6 +207,8 @@ class ContextOperationAudit(unittest.TestCase):
             'cat .thoughts/OTHER/AGENTS.md',
             'cat .thoughts/ITEM-1/runs/prior/AGENTS.md',
             'echo changed > .thoughts/AGENTS.md',
+            'for p in .thoughts/AGENTS.md; do if test -f "$p"; then cat "$p"; fi; done; cat .thoughts/ITEM-1/runs/prior/notes.md',
+            'for p in .thoughts/AGENTS.md; do if test -f "$p"; then cat "$p"; fi; done; echo changed > .thoughts/AGENTS.md',
             'for f in .thoughts/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done; echo changed > .thoughts/AGENTS.md',
         ):
             with self.subTest(command=command):
@@ -221,6 +226,23 @@ class ContextOperationAudit(unittest.TestCase):
         trace["tool_trace"].append({"type": "custom_tool_call", "input":
             'await tools.exec_command(' + json.dumps({"cmd": "cat .thoughts/AGENTS.md", "workdir": str(self.repository)}) + ')'})
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
+    def test_authenticated_ancestor_policy_text_is_not_an_archive_read(self):
+        policy = "# Instructions\nDo not read .thoughts/ITEM-1/runs/prior/notes.md.\n"
+        (self.root.parent / "AGENTS.md").write_text(policy)
+        trace = self.instruction_read_trace()
+        call = 'await tools.exec_command(' + json.dumps({"cmd": 'for p in .thoughts/AGENTS.md; do if test -f "$p"; then cat "$p"; fi; done',
+                                                        "workdir": str(self.repository)}) + ')'
+        rows = self.paired(call, policy)
+        rows[0]["call_id"] = rows[1]["call_id"] = "policy"
+        trace["tool_trace"].extend(rows)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        rows[1]["output"] += "\n.thoughts/ITEM-1/runs/prior/leaked.md"
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+        rows[1]["output"] = policy
+        trace["tool_trace"].append({"type": "custom_tool_call", "input":
+            'await tools.exec_command({cmd:"cat .thoughts/ITEM-1/runs/prior/notes.md"})'})
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
 
     def test_sentry_preparation_declares_the_shared_collector(self):
         run = fixtures.prepare.prepare_run(self.repository, "SENTRY-1", "sentry_issue_remediation", None, False,

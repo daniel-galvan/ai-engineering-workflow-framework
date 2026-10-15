@@ -129,6 +129,17 @@ class V7SentryAcceptance(unittest.TestCase):
         self.assertTrue(source_release_errors("IN-10 " + "a" * 40 + "\nIN-2 " + "b" * 40, inputs))
         self.assertEqual(source_release_errors("IN-1 " + "a" * 40 + "\nIN-2 " + "b" * 40, inputs), [])
 
+    def test_live_and_csv_releases_on_one_input_are_both_retained(self):
+        source, inputs = self.sources()
+        row = inputs["inputs"][0]
+        row["paths"] = [inputs["inputs"][1]["path"]]
+        inputs["inputs"] = [row]
+        retain_source_releases(inputs, source)
+        self.assertEqual(row["Observed releases"], ["a" * 40, "b" * 40])
+        self.assertEqual(row["Release observation"], "Provider source read and supplied occurrence log")
+        self.assertEqual(row["Occurrence correlation"][0]["organization_id"], "1")
+        self.assertEqual(len(source_release_errors("IN-1 " + "a" * 40, inputs)), 1)
+
     def test_missing_native_source_blocks_before_creating_a_run(self):
         _, inputs = self.sources()
         path = self.root / "inputs.json"

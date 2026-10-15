@@ -22,3 +22,11 @@ def frontmatter_value(path: Path, field: str) -> str | None:
         (line.split(":", 1)[1].strip() for line in frontmatter(path.read_text()) if line.startswith(prefix)),
         None,
     )
+
+
+def document_version(path: Path) -> str:
+    match = re.search(r"^version:\s*(\S+)\s*$", path.read_text(), re.MULTILINE)
+    if not match:
+        root = Path(__file__).resolve().parents[2]
+        raise ValueError(f"document_version_unavailable:{path.relative_to(root)}")
+    return match.group(1)

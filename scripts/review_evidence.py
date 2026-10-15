@@ -11,6 +11,12 @@ import tempfile
 from pathlib import Path
 
 
+try:
+    from validation.markdown import table_cells
+except ModuleNotFoundError:
+    from scripts.validation.markdown import table_cells
+
+
 PLAN_COLUMNS = (
     "Behavior", "Authority / condition", "Applicability evidence", "Counterexample check / result",
     "Disposition", "Planned action / exclusion",
@@ -43,7 +49,7 @@ def _section(text: str, heading: str) -> str:
 def _rows(text: str, heading: str, columns: tuple[str, ...]) -> tuple[list[list[str]], list[str]]:
     lines = [line.strip() for line in _section(text, heading).splitlines() if line.strip().startswith("|")]
     rows = [
-        [cell.strip().replace(r"\|", "|") for cell in re.split(r"(?<!\\)\|", line.strip("|"))]
+        table_cells(line)
         for line in lines
     ]
     if (len(rows) < 3 or tuple(rows[0]) != columns or len(rows[1]) != len(columns)

@@ -8,7 +8,7 @@
     "plan_readiness": "ready_for_implementation or awaiting_input",
     "implementation_plan_action": "create when ready_for_implementation; omit when awaiting_input",
     "inputs_consumed": "non-empty list of strings; include UPSTREAM-001 or the exact normalized_evidence.md path",
-    "context_conformance": "exact string: pass",
+    "context_conformance": "exact string: pass; worker self-attestation only, independent provider audit recorded separately",
     "configuration_conformance": "non-empty string",
     "checks_performed": "list",
     "checks_remaining": "list",

@@ -141,6 +141,9 @@ object containing the complete plan content; for `awaiting_input`,
 nested objects or invent a worker handle when the activation handle was supplied.
 If the result includes an optional `next_consumer`, use
 `deterministic_standard_finalizer` for either readiness result.
+The `context_conformance: pass` field is your self-attestation; it does not establish an independent provider audit.
+The Coordinator records its audit separately. Preserve the typed contract when assignment prose uses an audit label;
+do not put `context-unverified` in this field.
 For `awaiting_input`, include the Clarification Brief in the JSON object's canonical `clarification_brief` field; no
 Documenter will translate or reconstruct it. After writing the assigned JSON, return a
 short completion summary and the exact output path; do not relay the full JSON

@@ -258,9 +258,9 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
         )
     text = path.read_text()
     try:
-        from finalize_work_record import expand_work_record
+        from work_record_format import expand_work_record
     except ModuleNotFoundError:
-        from scripts.finalize_work_record import expand_work_record
+        from scripts.work_record_format import expand_work_record
     try:
         text = expand_work_record(text, path.parent)
     except (OSError, ValueError, KeyError, TypeError) as error:
@@ -635,9 +635,9 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
                 fail(f"{path}: published blocked record retains stale artifact status for {name}")
     if playbook_name == "techops_issue_remediation" and identity.get("Lifecycle") == "planning":
         try:
-            from finalize_work_record import _techops_planning_contract_errors
+            from planning_contracts import _techops_planning_contract_errors
         except ModuleNotFoundError:
-            from scripts.finalize_work_record import _techops_planning_contract_errors
+            from scripts.planning_contracts import _techops_planning_contract_errors
         for error in _techops_planning_contract_errors({
             "identity": identity, "worker_results": table_rows["# Worker Result Summary"],
             "evidence": markdown_table(text, "# Evidence"),

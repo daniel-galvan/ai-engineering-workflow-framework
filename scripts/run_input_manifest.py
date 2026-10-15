@@ -88,13 +88,12 @@ def retain_source_releases(manifest: dict, provider_session: Path | None) -> Non
             row["Release observation"] = ("Provider source read" if row["Observed releases"]
                                           else "Not exposed by provider source read")
     for row in manifest["inputs"]:
-        path = Path(str(row.get("path", "")))
-        if path.is_file() and path.suffix.lower() == ".csv":
-            observed = re.findall(r"Using release from debug info: ([0-9a-fA-F]{40})", path.read_text(errors="replace"))
-            if observed:
-                row["Observed releases"] = sorted(set(observed))
-                row["Release observation"] = "Supplied occurrence log"
-            occurrences = []
+        observed, occurrences = set(), []
+        for path in local_input_paths(row):
+            if not path.is_file() or path.suffix.lower() != ".csv":
+                continue
+            observed.update(re.findall(r"Using release from debug info: ([0-9a-fA-F]{40})",
+                                       path.read_text(errors="replace")))
             with path.open(newline="", encoding="utf-8-sig") as stream:
                 for entry in csv.DictReader(stream):
                     try:
@@ -115,8 +114,14 @@ def retain_source_releases(manifest: dict, provider_session: Path | None) -> Non
                             occurrence[key] = value
                     if occurrence not in occurrences:
                         occurrences.append(occurrence)
-            if occurrences:
-                row["Occurrence correlation"] = occurrences
+        if observed:
+            if row["Input ID"] in releases:
+                observed.update(row.get("Observed releases", []))
+            row["Observed releases"] = sorted(observed)
+            row["Release observation"] = ("Provider source read and supplied occurrence log"
+                                          if row["Input ID"] in releases else "Supplied occurrence log")
+        if occurrences:
+            row["Occurrence correlation"] = occurrences
 
 
 def source_release_errors(text: str, manifest: dict) -> list[str]:
@@ -157,6 +162,12 @@ def _absolute_paths(value: object) -> list[Path]:
     return [Path(item).expanduser().resolve() for item in raw_values]
 
 
+def local_input_paths(row: dict[str, object]) -> list[Path]:
+    """Read the registered file locations in either supported input representation."""
+    source = row.get("path") or row.get("paths")
+    return _absolute_paths(source) if source else []
+
+
 def _normalize_input(row: object, index: int) -> dict[str, object]:
     if not isinstance(row, dict):
         raise ValueError(f"run_input_manifest_input_{index}_invalid")
@@ -170,40 +181,42 @@ def _normalize_input(row: object, index: int) -> dict[str, object]:
         raise ValueError(f"run_input_manifest_asset_source_invalid:{input_id}")
     normalized.setdefault("Classification", "supporting current-run input")
     normalized.setdefault("Expected use", "Consume or explicitly disposition before finalization")
-    source_path = normalized.get("path")
+    source_path = normalized.get("path") or normalized.get("paths")
     if not source_path:
         candidate = str(normalized["Source or path"])
         if candidate.startswith("/") and not candidate.startswith("//"):
             source_path = candidate
     if source_path:
         paths = _absolute_paths(source_path)
-        if len(paths) == 1:
-            path = paths[0]
-            normalized["path"] = str(path)
-            normalized["availability"] = "available" if path.exists() else "unavailable"
+        if not paths:
+            paths = [Path(str(source_path)).expanduser().resolve()]
+        hashes = normalized.get("sha256_by_path", {})
+        if not isinstance(hashes, dict) or set(hashes) - {str(path) for path in paths}:
+            raise ValueError(f"run_input_manifest_file_hashes_invalid:{input_id}")
+        digests = {}
+        for path in paths:
+            expected = hashes.get(str(path), "")
+            if len(paths) == 1:
+                expected = normalized.get("sha256") or expected
+            expected = str(expected).strip()
+            if expected and not path.is_file():
+                raise ValueError(f"run_input_manifest_hashed_file_unavailable:{input_id}")
             if path.is_file():
                 digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                supplied_digest = str(normalized.get("sha256", "")).strip()
-                if supplied_digest and supplied_digest != digest:
+                if expected and expected != digest:
                     raise ValueError(f"run_input_manifest_hash_mismatch:{input_id}")
-                normalized["sha256"] = digest
-        elif len(paths) > 1:
+                digests[str(path)] = digest
+        normalized["availability"] = "available" if all(path.exists() for path in paths) else "unavailable"
+        if len(paths) == 1:
+            normalized["path"] = str(paths[0])
+            normalized.pop("paths", None)
+            normalized.pop("sha256_by_path", None)
+            if digests:
+                normalized["sha256"] = digests[str(paths[0])]
+        else:
             normalized.pop("path", None)
             normalized["paths"] = [str(path) for path in paths]
-            normalized["availability"] = (
-                "available" if all(path.exists() for path in paths) else "unavailable"
-            )
-        else:
-            # Preserve the legacy single-value behavior for a non-path source string.
-            path = Path(str(source_path)).expanduser().resolve()
-            normalized["path"] = str(path)
-            normalized["availability"] = "available" if path.exists() else "unavailable"
-            if path.is_file():
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                supplied_digest = str(normalized.get("sha256", "")).strip()
-                if supplied_digest and supplied_digest != digest:
-                    raise ValueError(f"run_input_manifest_hash_mismatch:{input_id}")
-                normalized["sha256"] = digest
+            normalized["sha256_by_path"] = digests
     return normalized
 
 

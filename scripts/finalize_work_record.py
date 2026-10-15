@@ -54,11 +54,11 @@ except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the
     )
 
 try:
-    from validate_worker_runtime import (
+    from runtime_checks import (
         terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors, trace_identity_errors,
     )
 except ModuleNotFoundError:
-    from scripts.validate_worker_runtime import (
+    from scripts.runtime_checks import (
         terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors, trace_identity_errors,
     )
 
@@ -74,167 +74,183 @@ except ModuleNotFoundError:
     from scripts.packet_schema import shape_errors as _shape_errors
 
 
+try:
+    from workflow_policy import (
+        PROMPT_TEMPLATES,
+        FEATURE_ASSESSMENT_DISPOSITIONS,
+        TECHNICAL_SPIKE_DISPOSITIONS,
+        NO_ACTIVE_HANDLES,
+    )
+except ModuleNotFoundError:
+    from scripts.workflow_policy import (
+        PROMPT_TEMPLATES,
+        FEATURE_ASSESSMENT_DISPOSITIONS,
+        TECHNICAL_SPIKE_DISPOSITIONS,
+        NO_ACTIVE_HANDLES,
+    )
+
+
+try:
+    from work_record_format import (
+        _feature_asset_manifest,
+        _explanation_text,
+        _artifact_link,
+        _relative_artifact_path,
+        _artifact_rows_for_record,
+        _feature_asset_section,
+        _cell,
+        _table,
+        _mapping_table,
+        _section,
+        _runtime_closed,
+        snapshot_bytes,
+        snapshot_name,
+        render_compact,
+        render_handoff,
+        render,
+        _material_rows,
+    )
+except ModuleNotFoundError:
+    from scripts.work_record_format import (
+        _feature_asset_manifest,
+        _explanation_text,
+        _artifact_link,
+        _relative_artifact_path,
+        _artifact_rows_for_record,
+        _feature_asset_section,
+        _cell,
+        _table,
+        _mapping_table,
+        _section,
+        _runtime_closed,
+        snapshot_bytes,
+        snapshot_name,
+        render_compact,
+        render_handoff,
+        render,
+        _material_rows,
+    )
+
+
+try:
+    from validation.frontmatter import document_version as _frontmatter_version
+except ModuleNotFoundError:
+    from scripts.validation.frontmatter import document_version as _frontmatter_version
+
+
+try:
+    from planning_contracts import (
+        _canonicalize_technical_spike_worker_ids,
+        _feature_assessment_reference_errors,
+        _feature_asset_artifact_path,
+        _feature_delivery_asset_contract_errors,
+        _feature_delivery_packet_contract_errors,
+        _feature_delivery_remediation_errors,
+        _feature_expected_inputs,
+        _planning_runtime_closure_errors,
+        _technical_spike_candidate_reference_errors,
+        _technical_spike_missing_workers,
+        _technical_spike_packet_contract_errors,
+        _technical_spike_packet_evidence_quality_errors,
+        _technical_spike_reasoning_graph_errors,
+        _technical_spike_report_artifact_errors,
+        _technical_spike_worker_contract_errors,
+        _techops_planning_contract_errors,
+        _worker_runtime_audit_errors,
+        feature_delivery_pre_handoff_errors,
+    )
+except ModuleNotFoundError:
+    from scripts.planning_contracts import (
+        _canonicalize_technical_spike_worker_ids,
+        _feature_assessment_reference_errors,
+        _feature_asset_artifact_path,
+        _feature_delivery_asset_contract_errors,
+        _feature_delivery_packet_contract_errors,
+        _feature_delivery_remediation_errors,
+        _feature_expected_inputs,
+        _planning_runtime_closure_errors,
+        _technical_spike_candidate_reference_errors,
+        _technical_spike_missing_workers,
+        _technical_spike_packet_contract_errors,
+        _technical_spike_packet_evidence_quality_errors,
+        _technical_spike_reasoning_graph_errors,
+        _technical_spike_report_artifact_errors,
+        _technical_spike_worker_contract_errors,
+        _techops_planning_contract_errors,
+        _worker_runtime_audit_errors,
+        feature_delivery_pre_handoff_errors,
+    )
+
+
+try:
+    from planning_contracts import (
+        REFERENCE_ID,
+        TECHNICAL_SPIKE_RANGE_REFERENCE,
+        TECHNICAL_SPIKE_PRIMARY_GOALS,
+        TECHNICAL_SPIKE_PROFILES,
+        TECHNICAL_SPIKE_REASONING_TABLES,
+        TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF,
+        TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY,
+        TECHNICAL_SPIKE_REQUIRED_WORKERS,
+        TECHNICAL_SPIKE_WORKER_ROLES,
+        FEATURE_DELIVERY_WORKER_ROLES,
+        FEATURE_DELIVERY_LEDGER_FIELDS,
+        FEATURE_DELIVERY_RESULT_FIELDS,
+        AGENT_ROLE_LABELS,
+        ROLE_AGENTS,
+    )
+except ModuleNotFoundError:
+    from scripts.planning_contracts import (
+        REFERENCE_ID,
+        TECHNICAL_SPIKE_RANGE_REFERENCE,
+        TECHNICAL_SPIKE_PRIMARY_GOALS,
+        TECHNICAL_SPIKE_PROFILES,
+        TECHNICAL_SPIKE_REASONING_TABLES,
+        TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF,
+        TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY,
+        TECHNICAL_SPIKE_REQUIRED_WORKERS,
+        TECHNICAL_SPIKE_WORKER_ROLES,
+        FEATURE_DELIVERY_WORKER_ROLES,
+        FEATURE_DELIVERY_LEDGER_FIELDS,
+        FEATURE_DELIVERY_RESULT_FIELDS,
+        AGENT_ROLE_LABELS,
+        ROLE_AGENTS,
+    )
+
+
+try:
+    from validation.api import checked, validate_package, record_validation_output
+    from validation.finalization import validate_normalized_evidence, validate_sentry_artifacts
+    from validation.playbooks import technical_spike_report_errors
+except ModuleNotFoundError:
+    from scripts.validation.api import checked, validate_package, record_validation_output
+    from scripts.validation.finalization import validate_normalized_evidence, validate_sentry_artifacts
+    from scripts.validation.playbooks import technical_spike_report_errors
+
+
+try:
+    from packet_schema import _validate_shapes, normalize_runtime_closure
+    from work_record_format import expand_work_record
+except ModuleNotFoundError:
+    from scripts.packet_schema import _validate_shapes, normalize_runtime_closure
+    from scripts.work_record_format import expand_work_record
+
+
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
 CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
-PROMPT_TEMPLATES = {
-    "feature_delivery": "feature_delivery_run_prompt.md",
-    "sentry_issue_remediation": "sentry_issue_run_prompt.md",
-    "technical_spike": "technical_spike_run_prompt.md",
-    "techops_issue_remediation": "techops_issue_run_prompt.md",
-    "vulnerability_investigation": "vulnerability_issue_run_prompt.md",
-}
 V22_FIXTURE = ROOT / "tests" / "fixtures" / "v22_sentry_planning.json"
 V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
 V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
 V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
 V34_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-REFERENCE_ID = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b")
-TECHNICAL_SPIKE_RANGE_REFERENCE = re.compile(
-    r"\b[A-Za-z][A-Za-z0-9_]*-\d+\s*(?:-|\.\.|[–—]|through|to)\s*"
-    r"(?:[A-Za-z][A-Za-z0-9_]*-)?\d+\b",
-    re.IGNORECASE,
-)
-FEATURE_ASSESSMENT_DISPOSITIONS = {
-    "awaiting_input": {"Not ready for implementation"},
-    "ready_for_implementation": {"Ready for implementation", "Ready with explicit follow-ups"},
-}
-TECHNICAL_SPIKE_DISPOSITIONS = {
-    "execute technical spike": {
-        "Question answered": "solved",
-        "Partially answered": "partially_solved",
-        "Inconclusive": "partially_solved",
-    },
-    "review technical spike": {
-        "Accepted": "solved",
-        "Changes required": "partially_solved",
-        "Inconclusive": "partially_solved",
-    },
-}
-TECHNICAL_SPIKE_PRIMARY_GOALS = {
-    "execute technical spike",
-    "review technical spike",
-}
-TECHNICAL_SPIKE_PROFILES = {"standard", "deep"}
-TECHNICAL_SPIKE_REASONING_TABLES = (
-    (
-        "evidence", "Evidence", "Evidence ID",
-        ("Evidence ID", "Source", "Summary", "Confidence", "Uncertainty", "Status"),
-    ),
-    (
-        "claims", "Claims", "Claim ID",
-        ("Claim ID", "Claim", "Evidence refs", "Confidence", "Uncertainty", "Status"),
-    ),
-    (
-        "decisions", "Decision Log", "Decision ID",
-        ("Decision ID", "Decision", "Claim refs", "Owner", "Status"),
-    ),
-    (
-        "actions", "Action Log", "Action ID",
-        ("Action ID", "Action", "Decision ref", "Owner", "Status"),
-    ),
-)
-TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF = "to be normalized"
-TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY = re.compile(
-    r"^current-run\s+(?:verified\s+)?(?:evidence\s+)?observation"
-    r"(?:\s+retained\s+in\s+(?:the\s+)?analytical\s+artifact)?\.?$",
-    re.IGNORECASE,
-)
-NO_ACTIVE_HANDLES = re.compile(
-    r"^(?:none|0)(?:\s+(?:observed|confirmed) after close request)?$", re.IGNORECASE
-)
-TECHNICAL_SPIKE_REQUIRED_WORKERS = {
-    ("standard", "execute technical spike"): {"spike-context", "spike-investigation", "handoff"},
-    ("deep", "execute technical spike"): {
-        "spike-context", "spike-investigation", "repository-integration", "spike-review", "handoff",
-    },
-    ("standard", "review technical spike"): {"spike-context", "spike-assessment", "handoff"},
-    ("deep", "review technical spike"): {
-        "spike-context", "spike-assessment", "repository-integration", "handoff",
-    },
-}
-TECHNICAL_SPIKE_WORKER_ROLES = {
-    ("standard", "execute technical spike"): {
-        "spike-context": "current_state_investigator",
-        "spike-investigation": "solution_architect",
-        "handoff": "documenter",
-    },
-    ("deep", "execute technical spike"): {
-        "spike-context": "current_state_investigator",
-        "spike-investigation": "solution_architect",
-        "repository-integration": "repository_integrator",
-        "spike-review": "reviewer",
-        "handoff": "documenter",
-    },
-    ("standard", "review technical spike"): {
-        "spike-context": "current_state_investigator",
-        "spike-assessment": "reviewer",
-        "handoff": "documenter",
-    },
-    ("deep", "review technical spike"): {
-        "spike-context": "current_state_investigator",
-        "spike-assessment": "reviewer",
-        "repository-integration": "repository_integrator",
-        "handoff": "documenter",
-    },
-}
-FEATURE_DELIVERY_WORKER_ROLES = {
-    ("standard", "planning"): {
-        "feature-context": "current_state_investigator",
-        "impact-analysis": "dependency_analyst",
-        "feature-design": "solution_architect",
-        "handoff": "documenter",
-    },
-    ("deep", "planning"): {
-        "feature-context": "current_state_investigator",
-        "impact-analysis": "dependency_analyst",
-        "repository-integration": "repository_integrator",
-        "feature-design": "solution_architect",
-        "planning-review": "reviewer",
-        "handoff": "documenter",
-    },
-}
-FEATURE_DELIVERY_LEDGER_FIELDS = (
-    "Assigned inputs",
-    "Mode",
-    "Depth",
-    "Skills",
-    "Tools",
-    "Capacity",
-    "Configured model/effort",
-    "Provider-observed model/effort",
-    "Usage",
-    "Depends on",
-    "Outcome",
-    "Confidence",
-)
-FEATURE_DELIVERY_RESULT_FIELDS = (
-    "Outcome",
-    "Confidence",
-    "Unique contribution",
-    "Evidence / claim refs",
-    "Uncertainties / blockers",
-    "Actual model/effort",
-    "Usage/credits",
-)
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)(?:\s*;.*)?$", re.IGNORECASE
 )
 UNAVAILABLE_COORDINATOR_MODEL_EFFORT = "Not exposed / Not exposed"
-AGENT_ROLE_LABELS = {
-    "orchestrator": "Orchestrator",
-    "current_state_investigator": "Current-State Investigator",
-    "dependency_analyst": "Dependency Analyst",
-    "repository_integrator": "Repository Integrator",
-    "solution_architect": "Solution Architect",
-    "reviewer": "Reviewer",
-    "implementer": "Implementer",
-    "tester": "Tester",
-    "documenter": "Documenter",
-}
 ROLE_LABELS = {
     **AGENT_ROLE_LABELS,
     "evidence-topology": "Evidence topology",
@@ -245,14 +261,6 @@ ROLE_LABELS = {
     "sentry_current_state_investigator": "Evidence topology",
     "sentry_solution_architect": "Fix design",
     "sentry_repository_integrator": "Repository integration",
-}
-ROLE_AGENTS = {
-    **{label: agent for agent, label in AGENT_ROLE_LABELS.items()},
-    "Current-State Investigator / Sentry Evidence": "current_state_investigator",
-    "Evidence topology": "sentry_current_state_investigator",
-    "Failure topology": "sentry_dependency_analyst",
-    "Repository integration": "sentry_repository_integrator",
-    "Fix design": "sentry_solution_architect",
 }
 FINALIZATION_STATUS_FILENAME = "finalization_failure.json"
 TECHOPS_STATE_RESULT_TOKENS = {
@@ -296,120 +304,12 @@ ANALYTICAL_FAILURE_STAGES = {
 }
 
 
-def _material_rows(value: object, identity_field: str) -> list[dict[str, object]]:
-    if not isinstance(value, list):
-        return []
-    rows = [row for row in value if isinstance(row, dict)]
-    return rows if any(str(row.get(identity_field, "")).strip() for row in rows) else []
-
-
-def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[str]:
-    specs = (
-        ("evidence", "Evidence ID", "evidence"),
-        ("claims", "Claim ID", "claim"),
-        ("decisions", "Decision ID", "decision"),
-        ("actions", "Action ID", "action"),
-    )
-    records: dict[str, dict[str, dict[str, object]]] = {}
-    errors: list[str] = []
-    for field, identity_field, label in specs:
-        rows = _material_rows(packet.get(field), identity_field)
-        ids = [str(row.get(identity_field, "")).strip() for row in rows]
-        for duplicate in sorted({value for value in ids if ids.count(value) > 1}):
-            errors.append(f"Technical Spike packet contains duplicate {label} {duplicate}")
-        records[field] = {str(row.get(identity_field, "")).strip(): row for row in rows}
-    if not all(records.values()):
-        return errors
-
-    evidence_used: set[str] = set()
-    claims_used: set[str] = set()
-    decisions_used: set[str] = set()
-    links = (
-        ("claims", "Evidence refs", "evidence", "evidence", evidence_used),
-        ("decisions", "Claim refs", "claims", "claim", claims_used),
-        ("actions", "Decision ref", "decisions", "decision", decisions_used),
-    )
-    for source, ref_field, target, target_label, used in links:
-        for source_id, row in records[source].items():
-            refs = set(REFERENCE_ID.findall(str(row.get(ref_field, ""))))
-            if source == "actions" and len(refs) != 1:
-                errors.append(f"Technical Spike packet {source_id} must reference exactly one decision")
-            elif not refs:
-                errors.append(f"Technical Spike packet {source_id} has no {target_label} refs")
-            for ref in refs:
-                if ref not in records[target]:
-                    errors.append(f"Technical Spike packet {source_id} references missing {target_label} {ref}")
-                else:
-                    used.add(ref)
-    for label, rows, used in (
-        ("evidence", records["evidence"], evidence_used),
-        ("claim", records["claims"], claims_used),
-        ("decision", records["decisions"], decisions_used),
-    ):
-        for orphan in sorted(set(rows) - used):
-            parent = {
-                "evidence": "a claim's Evidence refs",
-                "claim": "a decision's Claim refs",
-                "decision": "an action's Decision ref",
-            }[label]
-            errors.append(
-                f"Technical Spike packet contains orphaned {label} {orphan}; add {orphan} to {parent} "
-                f"or remove the {label} row and all report references"
-            )
-    return errors
-
-
-def _planning_runtime_closure_errors(
-    packet: dict[str, object], closure: list[dict[str, object]],
-) -> list[str]:
-    identity = packet.get("identity", {})
-    if not isinstance(identity, dict):
-        return []
-    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
-    state = str(identity.get("State", "")).strip().lower()
-    if not ((playbook == "technical_spike" and state == "completed") or
-            (playbook in {"feature_delivery", "techops_issue_remediation"}
-             and state in {"awaiting_input", "ready_for_implementation", "completed"})):
-        return []
-    if playbook == "technical_spike" and _technical_spike_missing_workers(packet):
-        return []
-    completed_workers = {
-        str(row.get("Worker", "")).strip().lower()
-        for row in packet.get("worker_results", [])
-        if isinstance(row, dict) and str(row.get("Outcome", "")).strip().lower() == "complete"
-    }
-    if not completed_workers or not _runtime_closed(closure):
-        return []
-    # ponytail: closure has no worker-to-handle mapping; count is the minimum gate until that schema exists.
-    released_handles = {
-        handle.strip().lower()
-        for row in closure
-        if isinstance(row, dict)
-        for handle in re.split(r",|;|<br\s*/?>", str(row.get("Completed worker handles", "")))
-        if handle.strip().lower() not in {"", "none", "unknown", "unavailable"}
-    }
-    if len(released_handles) < len(completed_workers):
-        workers = ", ".join(sorted(completed_workers))
-        return [
-            f"{playbook} runtime closure is incomplete: released "
-            f"provider handles released={len(released_handles)}; completed workers={len(completed_workers)} "
-            f"({workers}); include every completed worker handle in runtime_closure.json"
-        ]
-    return []
-
-
 def _append_unique_artifact(rows: list[dict[str, object]], row: dict[str, object]) -> None:
     path = str(row["Path"])
     if not any(str(existing.get("Path", "")) == path for existing in rows):
         rows.append(row)
 
 
-
-def _validate_shapes(packet: object, closure: object) -> None:
-    errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
-    errors.extend(_shape_errors(closure, json.loads(CLOSURE_TEMPLATE.read_text()), "closure"))
-    if errors:
-        raise ValueError("packet_schema_invalid: " + "; ".join(errors))
 
 
 def _normalize_model_effort(value: object) -> object:
@@ -422,650 +322,6 @@ def _normalize_coordinator_model_effort(value: object) -> object:
     if "not exposed" in text or "packet-input error" in text:
         return UNAVAILABLE_COORDINATOR_MODEL_EFFORT
     return _normalize_model_effort(value)
-
-
-def _technical_spike_missing_workers(packet: dict[str, object]) -> set[str]:
-    identity = packet.get("identity", {})
-    selection = packet.get("playbook_selection", {})
-    if not isinstance(identity, dict) or not isinstance(selection, dict):
-        return set()
-    required = TECHNICAL_SPIKE_REQUIRED_WORKERS.get((
-        str(identity.get("Executed profile", "")).strip().lower(),
-        str(selection.get("Primary goal", "")).strip().lower(),
-    ))
-    if not required:
-        return set()
-    complete = {
-        str(row.get("Worker", "")).strip().lower()
-        for row in packet.get("worker_results", [])
-        if isinstance(row, dict) and str(row.get("Outcome", "")).strip().lower() == "complete"
-    }
-    return required - complete
-
-
-def _technical_spike_worker_contract_errors(
-    packet: dict[str, object], *, publishing: bool = False,
-) -> list[str]:
-    identity = packet.get("identity", {})
-    selection = packet.get("playbook_selection", {})
-    if not isinstance(identity, dict) or not isinstance(selection, dict):
-        return []
-    contract = TECHNICAL_SPIKE_WORKER_ROLES.get((
-        str(identity.get("Executed profile", "")).strip().lower(),
-        str(selection.get("Primary goal", "")).strip().lower(),
-    ))
-    if not contract:
-        return []
-    rows_by_worker: dict[str, list[dict[str, object]]] = {}
-    results_by_worker: dict[str, list[dict[str, object]]] = {}
-    for row in packet.get("workers", []):
-        if isinstance(row, dict):
-            rows_by_worker.setdefault(str(row.get("Worker", "")).strip().lower(), []).append(row)
-    for row in packet.get("worker_results", []):
-        if isinstance(row, dict):
-            results_by_worker.setdefault(str(row.get("Worker", "")).strip().lower(), []).append(row)
-    errors = []
-    for worker, expected_role in contract.items():
-        if publishing and worker == "handoff":
-            continue
-        rows = rows_by_worker.get(worker, [])
-        if len(rows) > 1:
-            errors.append(f"Technical Spike worker {worker} must have exactly one execution-ledger row")
-        elif not rows:
-            errors.append(f"Technical Spike worker {worker} is missing its execution-ledger row")
-        else:
-            raw_role = str(rows[0].get("Role", "")).strip()
-            actual_role = ROLE_AGENTS.get(raw_role, raw_role.lower())
-            if actual_role != expected_role:
-                errors.append(
-                    f"Technical Spike worker {worker} requires role {expected_role}; received {actual_role or 'empty'}"
-                )
-        results = results_by_worker.get(worker, [])
-        if len(results) > 1:
-            errors.append(f"Technical Spike worker {worker} must have exactly one worker-result row")
-        elif not results:
-            errors.append(f"Technical Spike worker {worker} is missing its worker-result row")
-        if rows and results:
-            ledger_outcome = str(rows[0].get("Outcome", "")).strip().lower()
-            result_outcome = str(results[0].get("Outcome", "")).strip().lower()
-            if ledger_outcome != result_outcome:
-                errors.append(
-                    f"Technical Spike worker {worker} outcome mismatch: execution ledger is "
-                    f"{ledger_outcome or 'empty'}; worker result is {result_outcome or 'empty'}"
-                )
-    return errors
-
-
-def _feature_asset_manifest(packet: dict[str, object]) -> tuple[Path, dict[str, object] | None]:
-    finalization = packet.get("finalization", {})
-    root = finalization.get("Durable artifact root") if isinstance(finalization, dict) else None
-    root_path = Path(str(root)) if root else Path(".")
-    path = root_path / ASSET_MANIFEST_FILENAME
-    if not path.is_file():
-        return path, None
-    try:
-        value = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return path, None
-    return path, value if isinstance(value, dict) else None
-
-
-def _feature_asset_artifact_path(value: object, root: Path) -> Path | None:
-    text = str(value).strip()
-    if text.startswith("[") and "](" in text and text.endswith(")"):
-        text = text.split("](", 1)[1][:-1]
-    if not text:
-        return None
-    path = Path(text)
-    return path.resolve() if path.is_absolute() else (root / path).resolve()
-
-
-def _feature_expected_inputs(packet: dict[str, object], root: Path) -> tuple[dict[str, object], list[str]]:
-    packet_rows = {
-        str(row.get("Input ID")): row
-        for row in packet.get("inputs", [])
-        if isinstance(row, dict) and str(row.get("Input ID", "")).strip()
-    }
-    metadata = packet.get("run_input_manifest")
-    identity = packet.get("identity")
-    reference = metadata.get("path") if isinstance(metadata, dict) else None
-    if not reference and isinstance(identity, dict):
-        reference = identity.get("Run input manifest")
-    if not reference or str(reference).strip().lower() in {"none", "not applicable"}:
-        return packet_rows, ["Feature Delivery requires run_input_manifest metadata for asset source reconciliation"]
-    path = Path(str(reference))
-    path = path if path.is_absolute() else root / path
-    if not path.is_file():
-        return packet_rows, [f"Feature Delivery requires readable run_inputs.json for asset source reconciliation: {path}"]
-    expected_hash = metadata.get("sha256") if isinstance(metadata, dict) else None
-    if not expected_hash and isinstance(identity, dict):
-        expected_hash = identity.get("Run input manifest hash")
-    if not isinstance(expected_hash, str) or not expected_hash.strip():
-        return packet_rows, ["Feature Delivery requires the run_inputs.json content hash for asset source reconciliation"]
-    try:
-        actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError as error:
-        return packet_rows, [f"Feature Delivery cannot hash run_inputs.json for asset source reconciliation: {error}"]
-    if actual_hash != expected_hash:
-        return packet_rows, ["Feature Delivery run_inputs.json hash does not match finalization metadata"]
-    if isinstance(identity, dict) and identity.get("Run input manifest hash") not in {None, "", actual_hash}:
-        return packet_rows, ["Feature Delivery identity input hash does not match finalization metadata"]
-    try:
-        value = load_manifest(path, explicit=False)
-    except (OSError, ValueError) as error:
-        return packet_rows, [f"Feature Delivery cannot read run_inputs.json for asset source reconciliation: {error}"]
-    if value.get("status") != "explicit":
-        return packet_rows, ["Feature Delivery run_inputs.json must have status explicit for asset source reconciliation"]
-    expected_ids = metadata.get("input_ids") if isinstance(metadata, dict) else None
-    actual_ids = [str(row.get("Input ID")) for row in value["inputs"]]
-    if not isinstance(expected_ids, list) or [str(item) for item in expected_ids] != actual_ids:
-        return packet_rows, ["Feature Delivery run_inputs.json input IDs do not match finalization metadata"]
-    prepared_rows = {
-        str(row.get("Input ID")): row
-        for row in value["inputs"]
-        if isinstance(row, dict) and str(row.get("Input ID", "")).strip()
-    }
-    missing = sorted(set(prepared_rows) - set(packet_rows))
-    extra = sorted(set(packet_rows) - set(prepared_rows))
-    errors = []
-    for input_id in set(prepared_rows) & set(packet_rows):
-        for field in ("Source or path", "Authority", "Input or artifact", "path", "sha256"):
-            if packet_rows[input_id].get(field) != prepared_rows[input_id].get(field):
-                errors.append(f"Feature Delivery packet input {input_id} differs from run_inputs.json: {field}")
-    if missing:
-        errors.append("Feature Delivery finalization packet dropped run inputs: " + ", ".join(missing))
-    if extra:
-        errors.append("Feature Delivery finalization packet added undeclared run inputs: " + ", ".join(extra))
-    return prepared_rows, errors
-
-
-def _feature_delivery_asset_contract_errors(packet: dict[str, object]) -> list[str]:
-    identity = packet.get("identity", {})
-    if not isinstance(identity, dict):
-        return []
-    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
-    if playbook != "feature_delivery":
-        return []
-    lifecycle = str(identity.get("Lifecycle", "")).strip().lower()
-    state = str(identity.get("State", "")).strip().lower()
-    if not ((lifecycle == "planning" and state in {"ready_for_implementation", "awaiting_input", "completed"})
-            or (lifecycle == "remediation" and state in {"awaiting_input", "completed", "handoff", "blocked"})):
-        return []
-
-    errors: list[str] = []
-    manifest_path, manifest = _feature_asset_manifest(packet)
-    if manifest is None:
-        return [f"Feature Delivery requires a valid {ASSET_MANIFEST_FILENAME}: {manifest_path}"]
-    root = manifest_path.parent.resolve()
-    input_rows, input_errors = _feature_expected_inputs(packet, root)
-    errors.extend(input_errors)
-    evidence_ids = {
-        str(row.get("Evidence ID"))
-        for row in packet.get("evidence", [])
-        if isinstance(row, dict) and str(row.get("Evidence ID", "")).strip()
-    }
-    claim_evidence_ids = {
-        reference
-        for row in packet.get("claims", [])
-        if isinstance(row, dict)
-        for reference in REFERENCE_ID.findall(str(row.get("Evidence refs", "")))
-    }
-    errors.extend(validate_asset_manifest(
-        manifest,
-        work_item=str(packet.get("work_item", {}).get("ID", "")),
-        expected_input_ids=input_rows,
-        expected_inputs=input_rows,
-        expected_evidence_ids=evidence_ids,
-        material_claim_evidence_ids=claim_evidence_ids,
-        require_jira_source=True,
-        require_passed=state in {"ready_for_implementation", "completed"},
-    ))
-    design_path = root / "feature_design_result.json"
-    if design_path.is_file():
-        try:
-            design = json.loads(design_path.read_text())
-        except (OSError, json.JSONDecodeError) as error:
-            errors.append(f"Feature Delivery cannot read {design_path.name}: {error}")
-        else:
-            asset_gate = design.get("asset_gate", {}) if isinstance(design, dict) else {}
-            if isinstance(asset_gate, dict):
-                for field, manifest_field in (("asset_count", "assets"), ("source_count", "sources")):
-                    rows = manifest.get(manifest_field)
-                    if field in asset_gate and isinstance(rows, list) and asset_gate[field] != len(rows):
-                        errors.append(
-                            f"Feature Delivery {design_path.name} asset_gate.{field} "
-                            f"must equal asset_manifest.json {manifest_field} count "
-                            f"({len(rows)})"
-                        )
-    durable_paths = {
-        _feature_asset_artifact_path(row.get("Path"), root)
-        for row in packet.get("durable_artifacts", [])
-        if isinstance(row, dict)
-    }
-    if manifest_path.resolve() not in durable_paths:
-        errors.append("Feature Delivery finalization must register asset_manifest.json as a durable artifact")
-    handoff = packet.get("handoff", {})
-    handoff_paths = {
-        _feature_asset_artifact_path(value, root)
-        for value in handoff.get("artifacts", [])
-    } if isinstance(handoff, dict) and isinstance(handoff.get("artifacts"), list) else set()
-    if manifest_path.resolve() not in handoff_paths:
-        errors.append("Feature Delivery finalization must link asset_manifest.json in the Final Handoff")
-    selection = packet.get("playbook_selection", {})
-    assessment = isinstance(selection, dict) and str(selection.get("Primary goal", "")).strip().lower() == (
-        "specification assessment"
-    )
-    if assessment:
-        report_path = root / REPORT_NAME
-        design_path = root / "feature_design.md"
-        design_text = design_path.read_text() if design_path.is_file() else None
-        if design_text is None:
-            errors.append("Feature Delivery specification assessment requires reviewed feature_design.md")
-        if not report_path.is_file():
-            errors.append(f"Feature Delivery specification assessment requires {REPORT_NAME}")
-        else:
-            result = str(handoff.get("workflow_result", "")) if isinstance(handoff, dict) else ""
-            material_ids = tuple(
-                str(asset.get("asset_id", "")) for asset in manifest.get("assets", [])
-                if isinstance(asset, dict) and asset.get("relevance") == "material"
-            )
-            errors.extend(assessment_report_errors(
-                report_path.read_text(), result, material_ids, reviewed_coverage_text=design_text,
-            ))
-        if report_path.resolve() not in durable_paths:
-            errors.append(f"Feature Delivery finalization must register {REPORT_NAME}")
-        if report_path.resolve() not in handoff_paths:
-            errors.append(f"Feature Delivery finalization must link {REPORT_NAME} in the Final Handoff")
-        if (root / "implementation_plan.md").is_file():
-            errors.append("Feature Delivery specification assessment must not create implementation_plan.md")
-    elif state in {"ready_for_implementation", "completed"}:
-        plan_path = root / "implementation_plan.md"
-        if not plan_path.is_file():
-            errors.append(f"Feature Delivery {state} requires implementation_plan.md")
-        else:
-            errors.extend(asset_plan_errors(plan_path.read_text(), manifest))
-            errors.extend(applicability_errors(plan_path.read_text()))
-    elif state == "awaiting_input" and (root / "implementation_plan.md").is_file():
-        errors.extend(draft_plan_errors((root / "implementation_plan.md").read_text()))
-        errors.extend(asset_plan_errors((root / "implementation_plan.md").read_text(), manifest))
-        for name in ("implementation_plan.md", "clarification_brief.md"):
-            if (root / name).resolve() not in durable_paths or (root / name).resolve() not in handoff_paths:
-                errors.append(f"Partial planning handoff must register and link {name}")
-        if not (root / "clarification_brief.md").is_file():
-            errors.append("Draft partial plan requires clarification_brief.md")
-    return list(dict.fromkeys(errors))
-
-
-def _feature_delivery_packet_contract_errors(
-    packet: dict[str, object], *, pre_handoff: bool = False,
-) -> list[str]:
-    identity = packet.get("identity", {})
-    if not isinstance(identity, dict):
-        return []
-    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
-    if playbook != "feature_delivery":
-        return []
-    if str(identity.get("Lifecycle", "")).strip().lower() == "remediation":
-        root_value = packet.get("finalization", {}).get("Durable artifact root", "")
-        root = Path(str(root_value)).resolve()
-        registered = {
-            target for row in packet.get("durable_artifacts", [])
-            if isinstance(row, dict) and (target := _feature_asset_artifact_path(row.get("Path"), root)) is not None
-        }
-        linked = {
-            target for value in packet.get("handoff", {}).get("artifacts", [])
-            if (target := _feature_asset_artifact_path(value, root)) is not None
-        }
-        errors = completed_review_errors(identity, root, registered_paths=registered, handoff_paths=linked)
-        if identity.get("State") in {"handoff", "completed", "blocked", "awaiting_input"}:
-            errors.extend(_feature_delivery_remediation_errors(packet, root / "finalization_packet.json"))
-        return errors
-    if str(identity.get("Lifecycle", "")).strip().lower() != "planning":
-        return []
-
-    state = str(identity.get("State", "")).strip().lower()
-    if state not in {"ready_for_implementation", "awaiting_input", "completed"}:
-        return []
-
-    errors: list[str] = []
-    disposition = packet.get("planning_disposition")
-    if disposition is not None:
-        if (not isinstance(disposition, dict)
-                or not all(isinstance(disposition.get(key), str) for key in ("plan_readiness", "implementation_plan_action"))
-                or (disposition.get("plan_readiness"),
-                disposition.get("implementation_plan_action")) not in {
-                ("ready_for_implementation", "create"), ("awaiting_input", "create_draft"), ("awaiting_input", "omit")}):
-            errors.append("feature_planning_disposition_invalid")
-        elif not pre_handoff:
-            if disposition["plan_readiness"] != state:
-                errors.append("feature_planning_disposition_state_mismatch")
-            plan = Path(str(packet["finalization"]["Durable artifact root"])) / "implementation_plan.md"
-            if disposition["implementation_plan_action"] == "create_draft" and not plan.is_file():
-                errors.append("feature_partial_draft_plan_required")
-            if disposition["implementation_plan_action"] == "omit" and plan.exists():
-                errors.append("feature_omitted_plan_present")
-    title = str(packet.get("work_item", {}).get("Title", "")).strip()
-    if not title or title.lower().startswith("unknown"):
-        errors.append("Feature Delivery finalization requires the recovered work-item title")
-    profiles = [str(identity.get(field, "")).strip().lower() for field in (
-        "Requested profile", "Activated profile", "Executed profile",
-    )]
-    invalid_profiles = sorted({profile for profile in profiles if profile not in {"standard", "deep"}})
-    if invalid_profiles:
-        errors.append(
-            "Feature Delivery profiles must be standard or deep; received "
-            + ", ".join(invalid_profiles)
-        )
-        return errors
-    if len(set(profiles)) != 1:
-        errors.append("Feature Delivery Requested, Activated, and Executed profiles must match")
-    if str(identity.get("Profile status", "")).strip().lower() != "executed":
-        errors.append("Feature Delivery terminal planning requires Profile status executed")
-
-    expected_outcomes = {
-        "ready_for_implementation": (
-            "completed", "solved" if str(packet.get("playbook_selection", {}).get("Primary goal", "")).strip().lower()
-            == "specification assessment" else "plan_only"
-        ),
-        "awaiting_input": ("completed", "partially_solved"),
-    }.get(state)
-    if expected_outcomes:
-        workflow_outcome, engineering_outcome = expected_outcomes
-        if str(identity.get("Workflow outcome", "")).strip().lower() != workflow_outcome:
-            errors.append(
-                f"Feature Delivery {state} requires Workflow outcome {workflow_outcome}"
-            )
-        if str(identity.get("Engineering outcome", "")).strip().lower() != engineering_outcome:
-            errors.append(
-                f"Feature Delivery {state} requires Engineering outcome {engineering_outcome}"
-            )
-
-    profile = profiles[2]
-    contract = dict(FEATURE_DELIVERY_WORKER_ROLES[(profile, "planning")])
-    if pre_handoff:
-        contract.pop("handoff", None)
-    rows_by_worker: dict[str, list[dict[str, object]]] = {}
-    for row in packet.get("workers", []):
-        if isinstance(row, dict):
-            worker = str(row.get("Worker", "")).strip().lower()
-            if worker:
-                rows_by_worker.setdefault(worker, []).append(row)
-    result_rows_by_worker: dict[str, list[dict[str, object]]] = {}
-    for row in packet.get("worker_results", []):
-        if isinstance(row, dict):
-            worker = str(row.get("Worker", "")).strip().lower()
-            if worker:
-                result_rows_by_worker.setdefault(worker, []).append(row)
-    if profile == "standard" and (
-        "repository-integration" in rows_by_worker or "repository-integration" in result_rows_by_worker
-    ):
-        contract["repository-integration"] = "repository_integrator"
-
-    missing_ledgers = sorted(worker for worker in contract if not rows_by_worker.get(worker))
-    if missing_ledgers:
-        errors.append(
-            "Feature Delivery handoff requires execution-ledger rows for: "
-            + ", ".join(missing_ledgers)
-        )
-    missing_results = sorted(worker for worker in contract if not result_rows_by_worker.get(worker))
-    if missing_results:
-        errors.append(
-            "Feature Delivery handoff requires terminal results for: "
-            + ", ".join(missing_results)
-        )
-
-    for worker, expected_role in contract.items():
-        ledger_rows = rows_by_worker.get(worker, [])
-        if len(ledger_rows) > 1:
-            errors.append(f"Feature Delivery worker {worker} must have exactly one execution-ledger row")
-        if ledger_rows:
-            row = ledger_rows[0]
-            raw_role = str(row.get("Role", "")).strip()
-            actual_role = ROLE_AGENTS.get(raw_role, raw_role.lower())
-            if actual_role != expected_role:
-                errors.append(
-                    f"Feature Delivery worker {worker} requires role {expected_role}; "
-                    f"received {actual_role or 'empty'}"
-                )
-            missing_fields = [field for field in FEATURE_DELIVERY_LEDGER_FIELDS if not str(row.get(field, "")).strip()]
-            if missing_fields:
-                errors.append(
-                    f"Feature Delivery worker {worker} requires populated execution-ledger fields: "
-                    + ", ".join(missing_fields)
-                )
-            if str(row.get("Outcome", "")).strip().lower() != "complete":
-                errors.append(
-                    f"Feature Delivery worker {worker} ledger outcome must be complete; "
-                    f"received {row.get('Outcome', '') or 'empty'}"
-                )
-
-        result_rows = result_rows_by_worker.get(worker, [])
-        if len(result_rows) > 1:
-            errors.append(f"Feature Delivery worker {worker} must have exactly one worker-result row")
-        if result_rows:
-            result = result_rows[0]
-            missing_fields = [field for field in FEATURE_DELIVERY_RESULT_FIELDS if not str(result.get(field, "")).strip()]
-            if missing_fields:
-                errors.append(
-                    f"Feature Delivery worker {worker} requires populated worker-result fields: "
-                    + ", ".join(missing_fields)
-                )
-            if str(result.get("Outcome", "")).strip().lower() != "complete":
-                errors.append(
-                    f"Feature Delivery worker {worker} result outcome must be complete; "
-                    f"received {result.get('Outcome', '') or 'empty'}"
-                )
-            if ledger_rows and str(result.get("Outcome", "")).strip().lower() != str(
-                ledger_rows[0].get("Outcome", "")
-            ).strip().lower():
-                errors.append(f"Feature Delivery worker {worker} ledger/result outcomes must match")
-    bindings = root / "role_bindings.json" if (root := Path(str(
-        packet.get("finalization", {}).get("Durable artifact root", "")))).is_absolute() else None
-    if not pre_handoff and bindings and bindings.is_file():
-        if json.loads(bindings.read_text()).get("runtime_evidence"):
-            errors.extend(_worker_runtime_audit_errors(packet, root / "finalization_packet.json", {
-                row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"
-            }))
-    return errors
-
-
-def _feature_delivery_remediation_errors(
-    packet: dict[str, object], packet_path: Path, *, pre_handoff: bool = False,
-) -> list[str]:
-    """Validate Coordinator-owned delivery evidence, including partial validation results."""
-    identity = packet.get("identity", {})
-    errors = []
-    profiles = [identity.get(field) for field in ("Requested profile", "Activated profile", "Executed profile")]
-    if len(set(profiles)) != 1 or profiles[0] not in {"standard", "deep"}:
-        errors.append("feature_delivery_remediation_profiles_must_match")
-    if identity.get("Lifecycle") != "remediation" or identity.get("Profile status") != "executed":
-        errors.append("feature_delivery_remediation_state_required")
-    if identity.get("Engineering outcome") not in {"solved", "partially_solved", "blocked"}:
-        errors.append("feature_delivery_remediation_engineering_outcome_required")
-    if identity.get("State") not in {"handoff", "completed", "blocked", "awaiting_input"}:
-        errors.append("feature_delivery_remediation_handoff_state_required")
-    if identity.get("State") != "completed" and identity.get("Workflow outcome") == "completed":
-        errors.append("feature_delivery_remediation_nonterminal_workflow_completed")
-    roles = {"implement": "implementer", "review": "reviewer", "validate": "tester"}
-    if not pre_handoff:
-        roles["handoff"] = "documenter"
-    results = packet.get("worker_results", [])
-    workers = packet.get("workers", [])
-    for worker, role in roles.items():
-        ledgers = [row for row in workers if isinstance(row, dict) and row.get("Worker") == worker]
-        envelopes = [row for row in results if isinstance(row, dict) and row.get("Worker") == worker]
-        if len(ledgers) != 1 or len(envelopes) != 1:
-            errors.append(f"feature_delivery_terminal_worker_required:{worker}")
-            continue
-        ledger, result = ledgers[0], envelopes[0]
-        actual_role = ROLE_AGENTS.get(ledger.get("Role"), ledger.get("Role"))
-        if actual_role != role:
-            errors.append(f"feature_delivery_worker_role_mismatch:{worker}")
-        if any(not str(ledger.get(field, "")).strip() for field in FEATURE_DELIVERY_LEDGER_FIELDS):
-            errors.append(f"feature_delivery_worker_ledger_incomplete:{worker}")
-        if any(not str(result.get(field, "")).strip() for field in FEATURE_DELIVERY_RESULT_FIELDS):
-            errors.append(f"feature_delivery_worker_result_incomplete:{worker}")
-        if ledger.get("Outcome") != "complete" or result.get("Outcome") != "complete":
-            errors.append(f"feature_delivery_worker_not_complete:{worker}")
-        evidence_ids = {row.get("Evidence ID") for row in packet.get("evidence", []) if isinstance(row, dict)}
-        refs = set(re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(result.get("Evidence / claim refs", ""))))
-        if not refs or not refs <= evidence_ids:
-            errors.append(f"feature_delivery_worker_evidence_required:{worker}")
-    fan_in = [row for row in packet.get("synchronization", []) if isinstance(row, dict)
-              and row.get("Barrier status", "").lower() == "passed"
-              and {"implement", "review", "validate"} <= set(re.findall(
-                  r"[a-z][a-z-]+", str(row.get("Workers launched", ""))))
-              and str(row.get("Results summarized", "")).strip()]
-    if not fan_in:
-        errors.append("feature_delivery_coordinator_fan_in_required")
-    root = packet_path.parent
-    try:
-        errors.extend(plan_design_errors((root / "implementation_plan.md").read_text(),
-                                        require_complete=identity.get("Engineering outcome") == "solved"))
-    except OSError:
-        errors.append("feature_delivery_approved_plan_required")
-    try:
-        review_text = (root / "code_review.md").read_text()
-        errors.extend(review_report_errors(review_text, require_accepted=identity.get("State") != "blocked"))
-        errors.extend(plan_review_coverage_errors((root / "implementation_plan.md").read_text(), review_text))
-    except OSError:
-        review_text = ""
-        errors.append("feature_delivery_code_review_required")
-    try:
-        validation_text = (root / "validation_report.md").read_text()
-    except OSError:
-        validation_text = ""
-    if not validation_text.strip():
-        errors.append("feature_delivery_validation_report_required")
-    else:
-        execution_rows = [row for row in packet.get("repositories", []) if isinstance(row, dict)
-                          and str(row.get("Repository role", "")).lower() in {"execution", "execution repository"}]
-        if len(execution_rows) != 1 or not execution_rows[0].get("Resolved path"):
-            errors.append("feature_delivery_validation_execution_repository_required")
-        else:
-            errors.extend(validation_report_errors(validation_text, review_text,
-                                                   require_solved=identity.get("Engineering outcome") == "solved",
-                                                   expected_repository=Path(execution_rows[0]["Resolved path"]),
-                                                   require_accepted=identity.get("State") != "blocked"))
-    if not pre_handoff:
-        registered = {_feature_asset_artifact_path(row.get("Path"), root)
-                      for row in packet.get("durable_artifacts", []) if isinstance(row, dict)}
-        linked = {_feature_asset_artifact_path(value, root) for value in packet.get("handoff", {}).get("artifacts", [])}
-        for name in ("code_review.md", "validation_report.md"):
-            if (root / name).resolve() not in registered or (root / name).resolve() not in linked:
-                errors.append(f"feature_delivery_handoff_report_reference_required:{name}")
-    completed = {row.get("Worker") for row in results if isinstance(row, dict) and row.get("Outcome") == "complete"}
-    if pre_handoff:
-        completed.discard("handoff")
-        packet = {**packet, "runtime_audits": [row for row in packet.get("runtime_audits", [])
-                                               if isinstance(row, dict) and row.get("Worker") != "handoff"]}
-        handles = {row.get("Provider handle") for row in packet["runtime_audits"]}
-        packet["terminal_observations"] = [row for row in packet.get("terminal_observations", [])
-                                            if isinstance(row, dict) and row.get("Provider handle") in handles]
-    errors.extend(_worker_runtime_audit_errors(packet, packet_path, completed))
-    if identity.get("State") == "completed" and any(
-        "context-unverified" in str(row.get("Uncertainties / blockers", "")) for row in results
-    ):
-        errors.append("feature_delivery_context_unverified_prevents_completion")
-    return list(dict.fromkeys(errors))
-
-
-def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
-    """Reject incomplete assessment or remediation evidence before activating Documenter."""
-    try:
-        packet = json.loads(packet_path.read_text())
-    except (OSError, json.JSONDecodeError) as error:
-        return [f"Feature Delivery pre-handoff packet unavailable or invalid: {error}"]
-    if not isinstance(packet, dict):
-        return ["Feature Delivery pre-handoff packet must be an object"]
-    identity = packet.get("identity", {})
-    selection = packet.get("playbook_selection", {})
-    if not isinstance(identity, dict) or not isinstance(selection, dict):
-        return ["Feature Delivery pre-handoff identity or selection invalid"]
-    if Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower() != "feature_delivery":
-        return []
-    remediation = identity.get("Lifecycle") == "remediation"
-    planning = not remediation and str(selection.get("Primary goal", "")).strip().lower() == "implementation planning"
-    errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
-    if errors:
-        return errors
-    root = packet_path.parent.resolve()
-    if Path(str(packet["finalization"]["Durable artifact root"])).resolve() != root:
-        errors.append("Feature Delivery pre-handoff artifact root must match packet directory")
-        return errors
-    _, input_errors = _feature_expected_inputs(packet, root)
-    errors.extend(input_errors)
-    errors.extend(asset_gate_errors(
-        root / ASSET_MANIFEST_FILENAME, root / "run_inputs.json", str(packet["work_item"]["ID"]),
-    ))
-    if planning:
-        errors.extend(error.replace("Technical Spike", "Feature Delivery")
-                      for error in _technical_spike_reasoning_graph_errors(packet))
-        for name in ("feature_context.md", "impact_analysis.md", "feature_design.md"):
-            if not (root / name).is_file():
-                errors.append(f"Feature Delivery pre-handoff requires {name}")
-        candidate = json.loads(json.dumps(packet))
-        candidate["identity"].update({"State": "awaiting_input", "Workflow outcome": "completed",
-                                      "Engineering outcome": "partially_solved"})
-        errors.extend(_feature_delivery_packet_contract_errors(candidate, pre_handoff=True))
-        errors.extend(_worker_runtime_audit_errors(packet, packet_path, {
-            row.get("Worker") for row in packet.get("worker_results", [])
-            if row.get("Outcome") == "complete" and row.get("Worker") != "handoff"
-        }))
-        _, manifest = _feature_asset_manifest(packet)
-        if manifest:
-            errors.extend(validate_asset_manifest(manifest, expected_evidence_ids={
-                row.get("Evidence ID") for row in packet.get("evidence", [])
-            }))
-        return list(dict.fromkeys(errors))
-    if remediation:
-        errors.extend(_feature_delivery_remediation_errors(packet, packet_path, pre_handoff=True))
-        return list(dict.fromkeys(errors))
-    profile = str(identity.get("Requested profile", "")).strip().lower()
-    artifacts = ["feature_context.md", "impact_analysis.md", "feature_design.md"]
-    if profile == "deep":
-        artifacts.extend(["repository_integration.md", "planning_review.md"])
-    for name in artifacts:
-        path = root / name
-        if not path.is_file():
-            errors.append(f"Feature Delivery pre-handoff requires {name}")
-        elif name == "feature_design.md":
-            try:
-                design_text = path.read_text()
-                errors.extend(coverage_mapping_errors(design_text, name))
-                handoff = packet.get("handoff", {})
-                result = str(handoff.get("workflow_result", "")) if isinstance(handoff, dict) else ""
-                errors.extend(coverage_readiness_errors(design_text, result, name))
-            except OSError as error:
-                errors.append(f"Feature Delivery pre-handoff cannot read {name}: {error}")
-    errors.extend(_feature_assessment_reference_errors(packet))
-    return list(dict.fromkeys(errors))
-
-
-def _feature_assessment_reference_errors(packet: dict[str, object]) -> list[str]:
-    identity = packet.get("identity", {})
-    selection = packet.get("playbook_selection", {})
-    if (not isinstance(identity, dict) or not isinstance(selection, dict)
-            or Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
-            != "feature_delivery" or str(selection.get("Primary goal", "")).strip().lower()
-            != "specification assessment"):
-        return []
-    errors = []
-    for row in packet.get("durable_artifacts", []):
-        if (isinstance(row, dict) and "coverage" in str(row.get("Artifact", "")).lower()
-                and Path(str(row.get("Path", ""))).name == "work_record.md"):
-            errors.append("Feature Delivery coverage mapping cannot point to work_record.md; use feature_design.md")
-    for row in packet.get("evidence", []):
-        if (isinstance(row, dict) and re.search(
-            r"work_record\.md\s+(?:specification\s+)?coverage", str(row.get("Source", "")), re.IGNORECASE,
-        )):
-            errors.append("Feature Delivery evidence cannot cite a coverage section in rendered work_record.md")
-    handoff = packet.get("handoff", {})
-    if isinstance(handoff, dict) and re.search(
-        r"\bno\b[^.]{0,120}\bfinalizer invocation\b", str(handoff.get("execution", "")), re.IGNORECASE,
-    ):
-        errors.append("Feature Delivery handoff cannot claim no finalizer invocation after finalization")
-    return errors
 
 
 def _is_run_context_evidence(row: object) -> bool:
@@ -1109,204 +365,6 @@ def _normalize_prompt_identity(value: object) -> object:
     if conformance in {"conformant", "passed", "success"} or conformance.startswith("pass:"):
         parts[2] = "pass"
     return " / ".join(parts)
-
-
-def _technical_spike_packet_evidence_quality_errors(packet: dict[str, object]) -> list[str]:
-    errors = []
-    for index, row in enumerate(packet.get("evidence", [])):
-        if not isinstance(row, dict):
-            continue
-        summary = re.sub(r"\s+", " ", str(row.get("Summary", ""))).strip()
-        if TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY.fullmatch(summary):
-            evidence_id = str(row.get("Evidence ID", "row")).strip() or f"row {index + 1}"
-            errors.append(
-                f"Technical Spike packet Evidence {evidence_id} has a generic placeholder Summary; "
-                "preserve the source-specific observation"
-            )
-    return errors
-
-
-def _technical_spike_candidate_reference_errors(packet: dict[str, object]) -> list[str]:
-    references: list[tuple[str, object]] = []
-    for index, row in enumerate(packet.get("durable_artifacts", [])):
-        if isinstance(row, dict):
-            references.append((f"packet.durable_artifacts[{index}].Path", row.get("Path", "")))
-    handoff = packet.get("handoff", {})
-    if isinstance(handoff, dict):
-        for index, value in enumerate(handoff.get("artifacts", [])):
-            references.append((f"packet.handoff.artifacts[{index}]", value))
-
-    errors = []
-    for field, value in references:
-        text = str(value).strip()
-        if text.startswith("[") and "](" in text and text.endswith(")"):
-            text = text.split("](", 1)[1][:-1]
-        if Path(text).name == "spike_report.candidate.md":
-            errors.append(
-                "Technical Spike packet must reference published spike_report.md before candidate "
-                f"publication: {field}"
-            )
-    return errors
-
-
-def _technical_spike_report_artifact_errors(packet: dict[str, object], packet_path: Path) -> list[str]:
-    expected = (packet_path.parent / "spike_report.md").resolve()
-    for row in packet.get("durable_artifacts", []):
-        if not isinstance(row, dict):
-            continue
-        value = str(row.get("Path", "")).strip()
-        if value.startswith("[") and "](" in value and value.endswith(")"):
-            value = value.split("](", 1)[1][:-1]
-        if value:
-            path = Path(value)
-            if not path.is_absolute():
-                path = packet_path.parent / path
-            if path.resolve() == expected:
-                return []
-    return [
-        "Technical Spike packet must predeclare durable artifact spike_report.md before report publication"
-    ]
-
-
-def _technical_spike_packet_contract_errors(
-    packet: dict[str, object], *, pre_release: bool,
-) -> list[str]:
-    identity = packet.get("identity", {})
-    selection = packet.get("playbook_selection", {})
-    if not isinstance(identity, dict) or not isinstance(selection, dict):
-        return []
-    playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
-    if playbook != "technical_spike":
-        return []
-
-    errors: list[str] = []
-    primary_goal = str(selection.get("Primary goal", "")).strip().lower()
-    if primary_goal not in TECHNICAL_SPIKE_PRIMARY_GOALS:
-        errors.append(
-            "Technical Spike Primary goal must be Execute technical spike or Review technical spike"
-        )
-
-    state = str(identity.get("State", "")).strip().lower()
-    profiles = [
-        str(identity.get(field, "")).strip().lower()
-        for field in ("Requested profile", "Activated profile", "Executed profile")
-    ]
-    if state in {"handoff", "completed"}:
-        invalid_profiles = sorted({profile for profile in profiles if profile not in TECHNICAL_SPIKE_PROFILES})
-        if invalid_profiles:
-            errors.append(
-                "Technical Spike profiles must be standard or deep; received "
-                + ", ".join(invalid_profiles)
-            )
-        elif len(set(profiles)) != 1:
-            errors.append("Technical Spike Requested, Activated, and Executed profiles must match")
-
-        missing_tables = []
-        incomplete_rows = []
-        for field, label, identity_field, required_fields in TECHNICAL_SPIKE_REASONING_TABLES:
-            rows = _material_rows(packet.get(field), identity_field)
-            if not rows:
-                missing_tables.append(label)
-                continue
-            for index, row in enumerate(rows, start=1):
-                missing_fields = [name for name in required_fields if not str(row.get(name, "")).strip()]
-                if missing_fields:
-                    incomplete_rows.append(f"{label} row {index}: {', '.join(missing_fields)}")
-        if missing_tables:
-            errors.append(
-                "Technical Spike finalization packet requires populated rows for: "
-                + ", ".join(missing_tables)
-            )
-        if incomplete_rows:
-            errors.append(
-                "Technical Spike finalization packet contains incomplete reasoning rows: "
-                + "; ".join(incomplete_rows)
-            )
-        errors.extend(_technical_spike_packet_evidence_quality_errors(packet))
-        errors.extend(_technical_spike_reasoning_graph_errors(packet))
-        for row in packet.get("worker_results", []):
-            if not isinstance(row, dict):
-                continue
-            refs = str(row.get("Evidence / claim refs", "")).strip().lower()
-            if refs.startswith(TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF):
-                worker = str(row.get("Worker", "")).strip() or "row"
-                errors.append(
-                    f"Technical Spike worker result {worker} Evidence / claim refs must be finalized"
-                )
-            grouped = TECHNICAL_SPIKE_RANGE_REFERENCE.search(refs)
-            if grouped:
-                worker = str(row.get("Worker", "")).strip() or "row"
-                errors.append(
-                    f"Technical Spike worker result {worker} Evidence / claim refs must use exact IDs; "
-                    f"grouped/range reference {grouped.group(0)!r} is not allowed"
-                )
-
-        handoff = packet.get("handoff", {})
-        if isinstance(handoff, dict):
-            for field in ("established", "best_current_explanations"):
-                for index, item in enumerate(handoff.get(field, [])):
-                    grouped = TECHNICAL_SPIKE_RANGE_REFERENCE.search(str(item))
-                    if grouped:
-                        errors.append(
-                            f"Technical Spike handoff {field}[{index}] must use exact IDs; "
-                            f"grouped/range reference {grouped.group(0)!r} is not allowed"
-                        )
-
-    prompt_identity = str(identity.get("Prompt template / revision / conformance", "")).split(" / ", 2)
-    conformance = prompt_identity[2].strip().lower() if len(prompt_identity) == 3 else ""
-    if not re.fullmatch(r"(?:pass|fail|fail(?::|;).+)", conformance, re.IGNORECASE):
-        errors.append("Technical Spike prompt conformance must be pass or fail:<missing fields>")
-
-    workflow_outcome = str(identity.get("Workflow outcome", "")).strip().lower()
-    if pre_release and state == "handoff" and workflow_outcome == "completed":
-        errors.append(
-            "Technical Spike pre-release State handoff requires a non-completed Workflow outcome"
-        )
-
-    if primary_goal in TECHNICAL_SPIKE_PRIMARY_GOALS and state in {"handoff", "completed"}:
-        handoff = packet.get("handoff", {})
-        result = str(handoff.get("workflow_result", "") if isinstance(handoff, dict) else "").strip()
-        if result not in TECHNICAL_SPIKE_DISPOSITIONS[primary_goal]:
-            errors.append(
-                "Technical Spike handoff Workflow result must be exactly one of: "
-                + ", ".join(TECHNICAL_SPIKE_DISPOSITIONS[primary_goal])
-            )
-    return errors
-
-
-def _canonicalize_technical_spike_worker_ids(
-    packet: dict[str, object], manifest: dict[str, object],
-) -> None:
-    identity = packet.get("identity", {})
-    playbook = str(manifest.get("playbook", ""))
-    if isinstance(identity, dict):
-        playbook = playbook or Path(
-            str(identity.get("Playbook / version", "")).split(" / ", 1)[0]
-        ).stem
-    if playbook != "technical_spike":
-        return
-    # Accept only provider-form composites declared by the Technical Spike
-    # worker contract; arbitrary worker aliases remain validation errors.
-    aliases = {"documenter": "handoff"}
-    for worker_roles in TECHNICAL_SPIKE_WORKER_ROLES.values():
-        aliases.update({f"{worker}/{role}": worker for worker, role in worker_roles.items()})
-    for field in ("workers", "worker_results"):
-        rows = packet.get(field, [])
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            worker = str(row.get("Worker", "")).strip().lower()
-            if worker in aliases:
-                row["Worker"] = aliases[worker]
-
-
-def _frontmatter_version(path: Path) -> str:
-    match = re.search(r"^version:\s*(\S+)\s*$", path.read_text(), re.MULTILINE)
-    if not match:
-        raise ValueError(f"document_version_unavailable:{path.relative_to(ROOT)}")
-    return match.group(1)
 
 
 def _prepared_manifest(packet_path: Path | None) -> tuple[dict[str, object], Path | None]:
@@ -1423,17 +481,7 @@ def _normalize_packet(
     evidence = packet.get("evidence")
     if isinstance(evidence, list):
         packet["evidence"] = [row for row in evidence if not _is_run_context_evidence(row)]
-    for row in closure.get("runtime_closure", []):
-        if not isinstance(row, dict):
-            continue
-        handles = UUID_PATTERN.findall(str(row.get("Completed worker handles", "")))
-        if handles and str(row.get("Runtime status", "")).strip().lower() == "released":
-            row["Completed worker handles"] = ", ".join(dict.fromkeys(handles))
-            evidence = str(row.get("Closure evidence or blocker", ""))
-            if str(row.get("Runtime status", "")).strip().lower() == "released" and any(
-                handle.lower() not in evidence.lower() for handle in handles
-            ):
-                row["Closure evidence or blocker"] = f"{evidence.rstrip('.')} Completed handles: {', '.join(handles)}."
+    normalize_runtime_closure(closure)
     handoff = packet.get("handoff")
     if isinstance(handoff, dict):
         handoff["workflow_result"] = re.sub(
@@ -1636,158 +684,6 @@ def _validate_pre_release_state(packet: dict[str, object]) -> None:
         raise ValueError("Feature Delivery remediation pre-release must keep State handoff until finalizer succeeds")
 
 
-def _explanation_text(item: object) -> str:
-    if not isinstance(item, dict):
-        return str(item)
-    explanation = str(item.get("explanation", "")).strip()
-    confidence = str(item.get("confidence", "")).strip()
-    reason = str(item.get("reason", "")).strip()
-    if not explanation:
-        raise ValueError("structured handoff explanation is missing explanation")
-    if any("\n" in value for value in (explanation, confidence, reason)):
-        raise ValueError("structured handoff explanation fields must be single-line text")
-    suffix = "; ".join(part for part in (f"confidence: {confidence}" if confidence else "", reason) if part)
-    return f"{explanation} ({suffix})" if suffix else explanation
-
-
-def _artifact_link(item: object, artifact_root: object) -> str:
-    value = str(item).strip()
-    if value.startswith("[") and "](" in value and value.endswith(")"):
-        label, target = value.split("](", 1)
-        target = target[:-1]
-        if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", target):
-            return value
-        target = target.strip("<>")
-        path = Path(target)
-        if not path.is_absolute():
-            path = Path(str(artifact_root)) / path
-        destination = str(path.resolve())
-        return f"{label}](<{destination}>)" if " " in destination else f"{label}]({destination})"
-    path = Path(value)
-    if not path.is_absolute():
-        path = Path(str(artifact_root)) / path
-    destination = str(path.resolve())
-    return f"[{path.name}](<{destination}>)" if " " in destination else f"[{path.name}]({destination})"
-
-
-def _relative_artifact_path(value: object, artifact_root: object) -> str:
-    path = Path(str(value).strip())
-    root = Path(str(artifact_root)).resolve()
-    if not path.is_absolute():
-        path = root / path
-    try:
-        relative = path.resolve().relative_to(root)
-    except ValueError:
-        return str(path)
-    return f"./{relative}"
-
-
-def _artifact_rows_for_record(packet: dict[str, object]) -> list[dict[str, object]]:
-    root = packet["finalization"]["Durable artifact root"]
-    return [
-        {**row, "Path": _relative_artifact_path(row.get("Path", ""), root)}
-        for row in packet["durable_artifacts"]
-    ]
-
-
-def _feature_asset_section(packet: dict[str, object]) -> str:
-    path, manifest = _feature_asset_manifest(packet)
-    if manifest is None:
-        return f"Asset manifest unavailable: {path}. Terminal planning is prohibited."
-    root = path.parent.resolve()
-    sources = [
-        {
-            "Source ID": source.get("source_id", ""),
-            "Input ID": source.get("input_id", ""),
-            "Kind": source.get("kind", ""),
-            "Locator": source.get("locator", ""),
-            "Discovery": source.get("discovery_status", ""),
-            "Limitation": source.get("limitation", ""),
-            "Evidence refs": ", ".join(source.get("evidence_refs", [])),
-        }
-        for source in manifest.get("sources", [])
-        if isinstance(source, dict)
-    ]
-    assets = [
-        {
-            "Asset ID": asset.get("asset_id", ""),
-            "Source ID": asset.get("source_id", ""),
-            "Kind": asset.get("kind", ""),
-            "Locator": asset.get("locator", ""),
-            "Review": asset.get("review_status", ""),
-            "Method": asset.get("review_method", ""),
-            "Relevance": asset.get("relevance", ""),
-            "Observation / disposition": (
-                f"{asset.get('observation', '')} {asset.get('disposition', '')}"
-            ).strip(),
-            "Evidence refs": ", ".join(asset.get("evidence_refs", [])),
-        }
-        for asset in manifest.get("assets", [])
-        if isinstance(asset, dict)
-    ]
-    gate = manifest.get("gate", {})
-    gate_status = str(manifest.get("status", ""))
-    body = (
-        f"Manifest: [{path.name}]({_relative_artifact_path(path, root)})\n\n"
-        f"Asset gate: {gate_status}; inventory_complete={gate.get('inventory_complete')}; "
-        f"all_assets_accounted_for={gate.get('all_assets_accounted_for')}; "
-        f"all_available_assets_reviewed={gate.get('all_available_assets_reviewed')}; "
-        f"all_material_assets_linked={gate.get('all_material_assets_linked')}; "
-        f"reviewed_before_plan={gate.get('reviewed_before_plan')}.\n\n"
-        "Source inventory:\n"
-        + _table(("Source ID", "Input ID", "Kind", "Locator", "Discovery", "Limitation", "Evidence refs"), sources)
-    )
-    if assets:
-        body += (
-            "\n\nAsset review:\n"
-            + _table(
-                ("Asset ID", "Source ID", "Kind", "Locator", "Review", "Method", "Relevance",
-                 "Observation / disposition", "Evidence refs"),
-                assets,
-            )
-        )
-    else:
-        body += "\n\nAsset review: No individual assets; every declared source reported an explicit empty inventory."
-    return body
-
-
-def _cell(value: object) -> str:
-    return str(value).replace("|", "\\|").replace("\n", "<br>")
-
-
-def _table(headers: tuple[str, ...], rows: list[dict[str, object]]) -> str:
-    if not rows:
-        raise ValueError(f"missing_rows:{headers[0]}")
-    lines = [
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join("---" for _ in headers) + " |",
-    ]
-    for row in rows:
-        lines.append("| " + " | ".join(_cell(row.get(header, "")) for header in headers) + " |")
-    return "\n".join(lines)
-
-
-def _mapping_table(values: dict[str, object]) -> str:
-    visible = {
-        key: value
-        for key, value in values.items()
-        if not (key == "Evaluation run ID" and str(value).strip().lower() == "not applicable")
-    }
-    return _table(("Field", "Value"), [{"Field": key, "Value": value} for key, value in visible.items()])
-
-
-def _section(title: str, body: str) -> str:
-    return f"# {title}\n\n{body}\n"
-
-
-def _runtime_closed(rows: list[dict[str, object]]) -> bool:
-    return bool(rows) and all(
-        str(row.get("Runtime status", "")).strip().lower() in {"released", "terminal"}
-        and NO_ACTIVE_HANDLES.fullmatch(str(row.get("Remaining active handles", "")).strip())
-        for row in rows
-    )
-
-
 def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, object]]) -> None:
     packet["runtime_closure"] = closure
     # Finalization owns this field; a second copy in identity can contradict publication.
@@ -1929,231 +825,6 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
             )
 
 
-def snapshot_bytes(packet: dict[str, object]) -> bytes:
-    return (json.dumps(packet, indent=2) + "\n").encode()
-
-
-def snapshot_name(packet: dict[str, object]) -> str:
-    return f"finalization_snapshot.{hashlib.sha256(snapshot_bytes(packet)).hexdigest()}.json"
-
-
-def render_compact(packet: dict[str, object]) -> str:
-    """Project the validated packet into a resumable engineering record."""
-    operational = {
-        "Run Isolation and Finalization", "Worker Execution Ledger", "Worker Synchronization",
-        "Worker Runtime Closure", "Worker Terminal Observations", "Worker Runtime Audits",
-    }
-    sections = re.split(r"(?m)(?=^# )", render(packet))
-    result = []
-    for section in sections:
-        title = section.split("\n", 1)[0].removeprefix("# ")
-        if title in operational:
-            continue
-        if title == "Run and Evaluation Identity":
-            fields = (
-                "Run ID", "Playbook / version", "Framework commit / status", "Plugin package / version",
-                "Requested profile", "Executed profile", "Lifecycle", "State", "Engineering state", "Workflow outcome",
-                "Engineering outcome", "Current stage", "Internal owner", "Next-action owner", "User action", "Next action",
-            )
-            summary = {key: packet["identity"].get(key, "Not provided") for key in fields}
-            action = packet.get("handoff", {}).get("next_action", {})
-            for field, value in {"Current stage": packet["identity"].get("State"), "Internal owner": "Workflow Coordinator",
-                                 "Next-action owner": action.get("owner"), "Next action": action.get("action"),
-                                 "User action": action.get("action") if packet["identity"].get("State") == "awaiting_input"
-                                 else "None required by this handoff"}.items():
-                if summary.get(field) in {"", "Not provided", None} and value:
-                    summary[field] = value
-            summary["Runtime status"] = ", ".join(
-                str(row["Runtime status"]) for row in packet["runtime_closure"]
-            )
-            limitations = [str(row["Closure evidence or blocker"]) for row in packet["runtime_closure"]
-                           if str(row["Runtime status"]).lower() not in {"released", "terminal"}]
-            if limitations:
-                summary["Runtime limitation"] = "; ".join(limitations)
-            section = _section("Run Summary", _mapping_table(summary))
-        elif title == "Repository Evidence Eligibility":
-            section = _section("Repository Baseline", _table(
-                ("Repository role", "Declared path", "Full revision", "Evidence eligibility"), packet["repositories"]
-            ))
-        elif title == "Worker Result Summary":
-            section = _section(title, _table(
-                ("Worker", "Outcome", "Confidence", "Unique contribution", "Evidence / claim refs",
-                 "Uncertainties / blockers"), packet["worker_results"]
-            ))
-        elif title == "Asset Inventory and Review":
-            _, manifest = _feature_asset_manifest(packet)
-            status = manifest.get("status", "Unavailable") if manifest else "Unavailable"
-            section = _section(title, f"Manifest: [asset_manifest.json](asset_manifest.json)\n\nAsset gate: {status}.")
-        result.append(section.strip())
-    name = snapshot_name(packet)
-    result.insert(1, _section("Workflow Receipts", (
-        f"Operational details: [Workflow state snapshot]({name}).\n\n"
-        "This normalized finalization-packet snapshot preserves run identity, provider configuration, worker ledgers,\n"
-        "synchronization, finalization, and runtime observations. Linked source receipts remain required.\n\n"
-        f"<!-- workflow-state: {name} -->"
-    )).strip())
-    return "\n\n".join(result) + "\n"
-
-
-def expand_work_record(text: str, root: Path) -> str:
-    """Verify a compact projection, then feed its complete packet to legacy checks."""
-    match = re.search(r"<!-- workflow-state: (finalization_snapshot\.([0-9a-f]{64})\.json) -->", text)
-    if not match:
-        if "workflow-state:" in text or re.search(r"finalization_snapshot\.[0-9a-f]{64}\.json", text):
-            raise ValueError("compact work record requires a valid workflow-state snapshot reference")
-        return text
-    path = root / match.group(1)
-    if path.is_symlink():
-        raise ValueError("workflow-state snapshot must be a local regular file")
-    content = path.read_bytes()
-    if hashlib.sha256(content).hexdigest() != match.group(2):
-        raise ValueError("workflow-state snapshot hash mismatch")
-    packet = json.loads(content)
-    receipt_path = root / packet["runtime_receipt"]
-    if receipt_path.resolve().parent != root.resolve() or receipt_path.is_symlink():
-        raise ValueError("runtime closure receipt must be a local regular file")
-    receipt = json.loads(receipt_path.read_text())
-    _validate_shapes(packet, receipt)
-    _normalize_packet({}, receipt)
-    if (receipt.get("runtime_closure") != packet["runtime_closure"]
-            or receipt.get("terminal_observations", []) != packet.get("terminal_observations", [])):
-        raise ValueError("workflow-state snapshot conflicts with its runtime closure receipt")
-    if text != render_compact(packet):
-        raise ValueError("work record does not match its workflow-state snapshot; rerun the finalizer")
-    return render(packet)
-
-
-def render_handoff(packet: dict[str, object]) -> str:
-    handoff = packet["handoff"]
-    explanations = handoff.get("best_current_explanations", [])
-    explanation_block = ""
-    if explanations:
-        explanation_block = "\nBest current explanations:\n" + "".join(
-            f"- {_explanation_text(item)}\n" for item in explanations
-        )
-    established = "".join(f"- {item}\n" for item in handoff["established"])
-    risks = [str(row.get("Uncertainties / blockers", "")).strip() for row in packet.get("worker_results", [])
-             if isinstance(row, dict) and str(row.get("Uncertainties / blockers", "")).strip().lower()
-             not in {"", "none", "not applicable", "no provider handle exists because the worker was not activated."}]
-    risks = [value for value in risks if not re.fullmatch(
-        r"See (?:normalized_evidence\.md(?: and Fix Design checks remaining)?|blocking_unknowns and clarification_brief)"
-        r"(?:; provider trace audit passed)?", value, re.I)]
-    if packet["identity"].get("State") == "awaiting_input":
-        risks.insert(0, "Unresolved evidence or decisions in Next action still limit the requested outcome.")
-    risk = "; ".join(dict.fromkeys(" ".join(value.split()) for value in risks)) or (
-        "The requested engineering outcome remains unresolved."
-        if packet["identity"]["Workflow outcome"] == "blocked" else "No additional risk recorded in this handoff.")
-    artifacts = "".join(
-        f"- {_artifact_link(item, packet['finalization']['Durable artifact root'])}\n"
-        for item in handoff["artifacts"]
-    )
-    runtime = "not released" if packet["runtime_closure"] else "closure unverified"
-    if _runtime_closed(packet["runtime_closure"]):
-        runtime = "released" if all(
-            str(row.get("Runtime status", "")).lower() == "released" for row in packet["runtime_closure"]
-        ) else "terminal"
-    execution = str(handoff["execution"]).rstrip(" .;")
-    if not re.search(rf"\bruntime\s+{runtime}\b", execution, flags=re.IGNORECASE):
-        execution = f"{execution}; runtime {runtime}"
-    return f"""```text
-Workflow result: {handoff['workflow_result']}
-
-- State: {packet['identity']['State']}
-- Engineering state: {packet['identity']['Engineering state']}
-- Workflow outcome: {packet['identity']['Workflow outcome']}
-- Engineering outcome: {packet['identity']['Engineering outcome']}
-- Implementation plan: {handoff['implementation_plan']}
-
-What we established:
-{established}{explanation_block}
-Next action:
-- Owner: {handoff['next_action']['owner']}
-- Action: {handoff['next_action']['action']}
-- Complete when: {handoff['next_action']['complete_when']}
-
-Artifacts:
-{artifacts}
-Execution: {execution}.
-Provenance: {handoff['provenance']}
-Not checked: Work outside the execution and validation scope recorded above.
-Risk: {risk}
-```"""
-
-
-def render(packet: dict[str, object]) -> str:
-    handoff_text = render_handoff(packet)
-    sections = [
-        "# Engineering Work Record\n",
-        _section("Work Item", _mapping_table(packet["work_item"])),
-        _section("Playbook Selection", _table(
-            ("Primary evidence", "Primary goal", "Selected playbook", "Closest alternative", "Why this playbook"),
-            [packet["playbook_selection"]],
-        )),
-        _section("Input Register", _table(
-            ("Input ID", "Input or artifact", "Source or path", "Authority", "Status"), packet["inputs"]
-        )),
-        _section("Repository Evidence Eligibility", _table(
-            ("Repository role", "Declared path", "Resolved path", "Branch / detached", "Full revision", "Clean status",
-             "User-selected ref", "Release mapping", "Evidence eligibility"), packet["repositories"]
-        )),
-        _section("Run and Evaluation Identity", _mapping_table(packet["identity"])),
-        _section("Run Isolation and Finalization", _mapping_table(packet["finalization"])),
-        _section("Durable Artifacts", _table(
-            ("Artifact", "Path", "Status", "Purpose"), _artifact_rows_for_record(packet)
-        )),
-        _section("Worker Execution Ledger", _table(
-            ("Worker", "Role", "Assigned inputs", "Mode", "Depth", "Skills", "Tools", "Capacity",
-             "Configured model/effort", "Provider-observed model/effort", "Usage", "Depends on",
-             "Outcome", "Confidence"), packet["workers"]
-        )),
-        _section("Worker Synchronization", _table(
-            ("Stage", "Workers launched", "Launch mode / exception", "Worker outcomes", "Results summarized",
-             "Barrier status"), packet["synchronization"]
-        )),
-        _section("Worker Runtime Closure", _table(
-            ("Run or stage", "Receipt owner", "Completed worker handles", "Runtime status", "Remaining active handles",
-             "Closure evidence or blocker"), packet["runtime_closure"]
-        )),
-        _section("Worker Result Summary", _table(
-            ("Worker", "Outcome", "Confidence", "Unique contribution", "Evidence / claim refs",
-             "Uncertainties / blockers", "Actual model/effort", "Usage/credits"), packet["worker_results"]
-        )),
-        _section("Evidence", _table(
-            ("Evidence ID", "Source", "Summary", "Confidence", "Uncertainty", "Status"), packet["evidence"]
-        )),
-        _section("Claims", _table(
-            ("Claim ID", "Claim", "Evidence refs", "Confidence", "Uncertainty", "Status"), packet["claims"]
-        )),
-        _section("Decision Log", _table(
-            ("Decision ID", "Decision", "Claim refs", "Owner", "Status"), packet["decisions"]
-        )),
-        _section("Action Log", _table(
-            ("Action ID", "Action", "Decision ref", "Owner", "Status"), packet["actions"]
-        )),
-        _section("Final Handoff", handoff_text),
-    ]
-    playbook_name = Path(str(packet["identity"].get("Playbook / version", "")).split(" / ", 1)[0]).stem
-    if playbook_name == "feature_delivery":
-        sections.insert(4, _section("Asset Inventory and Review", _feature_asset_section(packet)))
-    for key, title, headers in (
-        ("terminal_observations", "Worker Terminal Observations", (
-            "Provider handle", "Provider status", "Last dispatch at", "Observed at", "Status source",
-            "Thread ID", "Latest turn started at", "Latest turn status",
-            "Thread status",
-        )),
-        ("techops_checks", "TechOps Planning Checks", (
-            "Check", "Status", "Evidence refs", "Detail", "Commit", "Patch evidence refs",
-            "Work item", "Work item evidence refs",
-        )),
-        ("runtime_audits", "Worker Runtime Audits", (
-            "Worker", "Provider handle", "Provider status", "Last dispatch at", "Observed at", "Status source",
-            "Thread ID", "Latest turn started at", "Latest turn status", "Trace path", "Trace retrieval",
-            "Thread status",
-        )),
-    ):
-        if packet.get(key):
-            sections.insert(-1, _section(title, _table(headers, packet[key])))
-    return "\n".join(sections)
 
 
 def _finalization_status(packet_path: Path) -> tuple[Path, dict[str, object]]:
@@ -2308,13 +979,6 @@ def _technical_spike_report_errors(
     report = report_path or packet_path.parent / "spike_report.md"
     if not report.is_file():
         return ["Technical Spike handoff requires spike_report.md"]
-    args = [
-        sys.executable, str(VALIDATOR),
-        "--technical-spike-report", str(report),
-        "--technical-spike-primary-goal", str(selection.get("Primary goal", "")),
-        "--technical-spike-profile", str(identity.get("Executed profile", "")),
-        "--technical-spike-workflow-result", str(packet.get("handoff", {}).get("workflow_result", "")),
-    ]
     manifest = packet.get("run_input_manifest")
     manifest_path = manifest.get("path") if isinstance(manifest, dict) else None
     if not manifest_path and isinstance(identity, dict):
@@ -2323,22 +987,25 @@ def _technical_spike_report_errors(
         manifest_path = Path(str(manifest_path))
         if not manifest_path.is_absolute():
             manifest_path = packet_path.parent / manifest_path
-        args.extend(("--technical-spike-input-manifest", str(manifest_path.resolve())))
+        manifest_path = manifest_path.resolve()
+    else:
+        manifest_path = None
+    revisions = []
     for row in packet.get("repositories", []):
         if not isinstance(row, dict):
             continue
         revision = str(row.get("Full revision", "")).strip()
         if re.fullmatch(r"[0-9a-fA-F]{40}", revision):
-            args.extend(("--technical-spike-expected-revision", revision))
-    if budget_status:
-        args.extend(("--technical-spike-budget-status", budget_status))
-    result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=False)
-    if result.returncode:
-        return [result.stdout.strip() or result.stderr.strip() or "technical_spike_report_validation_failed"]
-    return []
+            revisions.append(revision)
+    return technical_spike_report_errors(
+        report.read_text(), str(selection.get("Primary goal", "")),
+        str(identity.get("Executed profile", "")), str(packet.get("handoff", {}).get("workflow_result", "")),
+        budget_status, manifest_path, tuple(revisions),
+    )
 
 
 def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> None:
+    checked(validate_package)
     packet_path = packet_path.resolve()
     candidate_path = candidate_path.resolve()
     if candidate_path.parent != packet_path.parent or candidate_path.name != "spike_report.candidate.md":
@@ -2372,90 +1039,6 @@ def publish_technical_spike_report(packet_path: Path, candidate_path: Path) -> N
         raise ValueError("\n".join(errors))
     candidate_path.replace(packet_path.parent / "spike_report.md")
     print("Technical Spike artifact validation: passed")
-
-
-def _techops_planning_contract_errors(
-    packet: dict[str, object], packet_path: Path, *, pre_handoff: bool = False,
-) -> list[str]:
-    identity = packet.get("identity", {})
-    if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
-            != "techops_issue_remediation" or identity.get("Lifecycle") != "planning"):
-        return []
-    completed = {str(row.get("Worker")) for row in packet.get("worker_results", [])
-                 if row.get("Outcome") == "complete"}
-    ready_plan = identity.get("Engineering outcome") == "plan_only" or identity.get("State") == "ready_for_implementation"
-    if "fix-design" not in completed and not ready_plan:
-        return []  # Early source-access blocks have no design to accept.
-    errors = techops_check_errors(packet.get("techops_checks"), {
-        str(row.get("Evidence ID")) for row in packet.get("evidence", [])
-    })
-    if ready_plan:
-        required = {"issue-evidence", "failure-path", "fix-design"}
-        if not pre_handoff:
-            required.add("handoff")
-        if identity.get("Executed profile") == "deep":
-            required.update({"repository-integration", "planning-review"})
-        if not required <= completed:
-            errors.append("techops_planning_workers_incomplete")
-    errors.extend(_worker_runtime_audit_errors(packet, packet_path, completed))
-    return list(dict.fromkeys(errors))
-
-
-def _worker_runtime_audit_errors(
-    packet: dict[str, object], packet_path: Path, completed: set[str],
-) -> list[str]:
-    """Shared trace and fan-in proof for TechOps planning and Feature Delivery remediation."""
-    errors = []
-    audits = packet.get("runtime_audits", [])
-    if not isinstance(audits, list) or any(not isinstance(row, dict) for row in audits):
-        return ["worker_runtime_audits_invalid"]
-    if {row.get("Worker") for row in audits} != completed or len(audits) != len(completed):
-        errors.append("worker_runtime_audits_incomplete")
-    errors.extend(terminal_observation_errors(audits, [str(row.get("Provider handle")) for row in audits]))
-    errors.extend(dispatch_audit_errors(packet, packet_path))
-    observations = packet.get("terminal_observations", [])
-    if isinstance(observations, list) and observations:
-        dispatches = {row.get("Provider handle"): row.get("Last dispatch at") for row in audits}
-        if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):
-            errors.append("terminal_closure_worker_handle_mismatch")
-        for row in observations:
-            if isinstance(row, dict) and row.get("Last dispatch at") != dispatches.get(row.get("Provider handle")):
-                errors.append("terminal_closure_worker_audit_stale")
-    for row in audits:
-        worker = str(row.get("Worker", ""))
-        if row.get("Provider status") != "completed":
-            errors.append(f"fan_in_requires_completed_status:{worker}")
-        trace_path = str(row.get("Trace path", "")).strip()
-        if not trace_path:
-            retrieval = str(row.get("Trace retrieval", "")).strip()
-            result = next((item for item in packet.get("worker_results", []) if item.get("Worker") == worker), {})
-            if (not retrieval.startswith("unavailable:") or len(retrieval) <= len("unavailable:")
-                    or "context-unverified" not in str(result.get("Uncertainties / blockers", ""))):
-                errors.append(f"worker_trace_retrieval_evidence_required:{worker}")
-            continue
-        source = Path(trace_path)
-        source = source if source.is_absolute() else packet_path.parent / source
-        if source.resolve().parent != packet_path.parent.resolve():
-            errors.append(f"worker_trace_outside_current_run:{worker}")
-            continue
-        try:
-            trace = json.loads(source.read_text())
-            if not isinstance(trace, dict):
-                raise ValueError("trace must be an object")
-            if not isinstance(trace.get("tool_trace"), list):
-                errors.append(f"worker_tool_trace_required:{worker}")
-            errors.extend(trace_errors(trace, require_freshness=True))
-            errors.extend(trace_identity_errors(trace, packet_path.parent, worker,
-                                                row.get("Provider handle"), row.get("Thread ID")))
-            if trace.get("last_dispatch_at") != row.get("Last dispatch at"):
-                errors.append(f"worker_trace_stale:{worker}")
-            if not any(event.get("action") == "fan_in" and event.get("provider_status") == "completed"
-                       for event in trace.get("events", []) if isinstance(event, dict)):
-                errors.append(f"worker_fan_in_guard_receipt_required:{worker}")
-        except (OSError, ValueError, TypeError) as error:
-            errors.append(f"worker_trace_invalid:{worker}:{error}")
-    return list(dict.fromkeys(errors))
-
 
 
 def _prepare_blocked_runtime_snapshot(
@@ -2699,21 +1282,11 @@ def finalize(
     try:
         result = None
         if rendered:
-            validator_args = [sys.executable, str(VALIDATOR)]
-            if not pre_release:
-                validator_args.append("--emit-handoff")
-            if pre_release:
-                validator_args.append("--allow-unreleased")
-            validator_args.append(str(temporary))
-            result = subprocess.run(
-                validator_args,
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if result.returncode:
-                errors.append(result.stdout.strip() or result.stderr.strip() or "work_record_validation_failed")
+            try:
+                checked(validate_package)
+                result = record_validation_output(temporary, allow_unreleased=pre_release)
+            except ValueError as error:
+                errors.append(str(error))
         errors = list(dict.fromkeys(errors))
         if errors:
             if check_only:
@@ -2736,9 +1309,9 @@ def finalize(
             published = True
         if result:
             if not pre_release and not check_only:
-                register_pending_delivery(packet_path, result.stdout.split("Workflow-framework validation: passed\n", 1)[1])
+                register_pending_delivery(packet_path, result.split("Workflow-framework validation: passed\n", 1)[1])
             # Keep the validator's canonical success line first on every publication route.
-            print(result.stdout, end="")
+            print(result, end="")
             if blocked_runtime_snapshot:
                 label = _blocked_snapshot_label(packet)
                 print(f"{label} blocked work record: saved; runtime release unverified")
@@ -2988,1754 +1561,16 @@ def prepare_analytical_failure(
 
 
 def self_test() -> None:
-    sentry_playbook_version = re.search(
-        r"^version: (\S+)$",
-        (ROOT / "playbooks" / "sentry_issue_remediation.md").read_text(),
-        re.MULTILINE,
-    ).group(1)
-    sentry_prompt_version = re.search(
-        r"^version: (\S+)$",
-        (ROOT / "templates" / "sentry_issue_run_prompt.md").read_text(),
-        re.MULTILINE,
-    ).group(1)
-    technical_spike_version = re.search(
-        r"^version: (\S+)$", (ROOT / "playbooks" / "technical_spike.md").read_text(), re.MULTILINE,
-    ).group(1)
-    technical_spike_prompt_version = re.search(
-        r"^version: (\S+)$", (ROOT / "templates" / "technical_spike_run_prompt.md").read_text(), re.MULTILINE,
-    ).group(1)
-    packet = {
-        "work_item": {"ID": "ITEM-1", "Title": "Test", "Last Updated": "2026-08-27T00:00:00Z"},
-        "playbook_selection": {
-            "Primary evidence": "Failure report",
-            "Primary goal": "Controlled diagnosis",
-            "Selected playbook": "Sentry Issue Remediation",
-            "Closest alternative": "Incident diagnosis",
-            "Why this playbook": "Bounded production-error planning",
-        },
-        "inputs": [{"Input ID": "IN-001", "Input or artifact": "Failure report", "Source or path": "Current user",
-                    "Authority": "Supporting evidence", "Status": "Consumed"}],
-        "repositories": [{"Repository role": "Execution", "Declared path": "/tmp/repo", "Resolved path": "/tmp/repo",
-                          "Branch / detached": "main", "Full revision": "a" * 40, "Clean status": "Clean",
-                          "User-selected ref": "Yes", "Release mapping": "Unknown",
-                          "Evidence eligibility": "Accepted"}],
-        "identity": {
-            "Run ID": "run-001", "Evaluation run ID": "Not applicable",
-            "Playbook / version": f"playbooks/sentry_issue_remediation.md / {sentry_playbook_version}",
-            "Framework commit / status": f"{'a' * 40} / Clean", "Plugin package / version": "Not applicable",
-            "Provider/runtime configuration": "Not provided",
-            "Provider configuration source/status": "manual / resolved",
-            "Prompt template / revision / conformance": (
-                f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass"
-            ),
-            "Role-policy baseline ID": "Not applicable", "Role binding manifest": "Not applicable",
-            "Provider / model configuration": "Manual / Worker Execution Ledger",
-            "Coordinator model/effort": "Not applicable", "Requested profile": "standard",
-            "Activated profile": "None", "Executed profile": "None", "Profile status": "blocked",
-            "Lifecycle": "planning", "State": "blocked", "Engineering state": "unknown",
-            "Workflow outcome": "blocked", "Engineering outcome": "blocked",
-        },
-        "finalization": {"Concurrent-run decision": "Not applicable", "Active related run or work item": "None",
-                         "Related-run check": "Current task", "Durable artifact root": "/tmp/.thoughts/ITEM-1",
-                         "Final reconciliation": "Pending; runtime closure not yet reconciled", "Finalization schema": "Passed"},
-        "durable_artifacts": [
-            {"Artifact": "Work record", "Path": "work_record.md", "Status": "Created", "Purpose": "Terminal handoff"},
-            {"Artifact": "runtime_closure.json", "Path": "runtime_closure.json", "Status": "Pending", "Purpose": "Provider receipt"},
-        ],
-        "workers": [{"Worker": "Coordinator", "Role": "Orchestrator", "Assigned inputs": "IN-001",
-                     "Mode": "investigation", "Depth": "standard", "Skills": "workflow", "Tools": "local",
-                     "Capacity": "current task", "Configured model/effort": "active session",
-                     "Provider-observed model/effort": "Unknown", "Usage": "Unknown", "Depends on": "None",
-                     "Outcome": "complete", "Confidence": "High"}],
-        "synchronization": [{"Stage": "Initialization", "Workers launched": "None",
-                             "Launch mode / exception": "worker_runtime_unavailable", "Worker outcomes": "Not applicable",
-                             "Results summarized": "Yes", "Barrier status": "Passed; runtime closure pending/unknown"}],
-        "runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
-                             "Completed worker handles": "coordinator",
-                             "Runtime status": "Released", "Remaining active handles": "None",
-                             "Closure evidence or blocker": "provider release confirmation for coordinator"}],
-        "worker_results": [{"Worker": "Coordinator", "Outcome": "blocked", "Confidence": "High",
-                            "Unique contribution": "Stopped safely", "Evidence / claim refs": "E-001 / C-001",
-                            "Uncertainties / blockers": "Runtime closure pending Coordinator receipt", "Actual model/effort": "Unknown",
-                            "Usage/credits": "Unknown"}],
-        "evidence": [{"Evidence ID": "E-001", "Source": "runtime check", "Summary": "Runtime absent",
-                      "Confidence": "High", "Uncertainty": "None", "Status": "Verified"}],
-        "claims": [{"Claim ID": "C-001", "Claim": "Worker graph cannot start", "Evidence refs": "E-001",
-                    "Confidence": "High", "Uncertainty": "None", "Status": "Supported"}],
-        "decisions": [{"Decision ID": "D-001", "Decision": "Stop without task forks", "Claim refs": "C-001",
-                       "Owner": "Coordinator", "Status": "Applied"}],
-        "actions": [{"Action ID": "A-001", "Action": "Retry with in-task runtime", "Decision ref": "D-001",
-                     "Owner": "User", "Status": "Proposed"}],
-        "handoff": {"workflow_result": "Workflow result: Worker runtime unavailable", "implementation_plan": "omitted; run blocked",
-                    "established": ["No user-owned tasks were created."], "best_current_explanations": [{
-                        "explanation": "The in-task worker runtime was unavailable.",
-                        "confidence": "high",
-                        "reason": "The provider exposed no worker activation capability.",
-                    }], "next_action": {
-                        "owner": "User", "action": "Retry when in-task workers are available.",
-                        "complete_when": "The worker graph starts in the current task."},
-                    "artifacts": ["work_record.md"],
-                    "execution": "standard/planning; validation passed; workers not started; source changes none; runtime pending/unknown",
-                    "provenance": (
-                        f"plugin Not applicable; framework revision {'a' * 40} (clean); "
-                        f"playbook sentry_issue_remediation {sentry_playbook_version}."
-                    )},
-    }
-    v28 = json.loads(V28_STABILIZATION_FIXTURE.read_text())
-    normalization = v28["packet_normalization"]
-    normalization_packet = {
-        "identity": {
-            "Plugin package / version": normalization["plugin_before"],
-            "Prompt template / revision / conformance": normalization["prompt_before"],
-        },
-        "workers": [
-            {"Role": role, "Configured model/effort": "gpt-5.6-luna/high"}
-            for role in normalization["roles"]
-        ],
-    }
-    _normalize_packet(normalization_packet, {"runtime_closure": []})
-    assert normalization_packet["identity"]["Plugin package / version"] == normalization["plugin_after"]
-    assert (
-        normalization_packet["identity"]["Prompt template / revision / conformance"]
-        == normalization["prompt_after"]
-    )
-    assert [row["Role"] for row in normalization_packet["workers"]] == list(normalization["roles"].values())
-    budget_packet = {"durable_artifacts": [{"Artifact": "Run budget", "Status": "Active"}]}
-    _normalize_packet(budget_packet, {"runtime_closure": []}, budget_status="within_budget")
-    assert budget_packet["durable_artifacts"][0]["Status"] == "within_budget"
-    context_packet = {
-        "identity": {"Coordinator model/effort": "Packet-input error: active parent model/effort not exposed"},
-        "evidence": [{"Evidence ID": "E-001", "Source": "current user clean-run constraint"}],
-    }
-    _normalize_packet(context_packet, {"runtime_closure": []})
-    assert context_packet["identity"]["Coordinator model/effort"] == UNAVAILABLE_COORDINATOR_MODEL_EFFORT
-    assert context_packet["evidence"] == []
-
-    execution_packet = json.loads(json.dumps(packet))
-    execution_packet["handoff"]["execution"] = "Planning is read-only; Runtime closure is pending Coordinator."
-    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
-    assert "runtime closure is pending" not in execution_packet["handoff"]["execution"].lower()
-    assert "runtime released" in execution_packet["handoff"]["execution"].lower()
-    execution_packet["identity"]["State"] = "completed"
-    execution_packet["handoff"]["execution"] = (
-        "standard profile executed; Workflow outcome: incomplete; runtime released"
-    )
-    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
-    assert "workflow outcome: incomplete" not in execution_packet["handoff"]["execution"].lower()
-    assert "workflow outcome: completed" in execution_packet["handoff"]["execution"].lower()
-    execution_packet["handoff"]["execution"] = (
-        "State handoff; standard profile executed; workflow remains in_progress "
-        "pending Coordinator finalizer; runtime released"
-    )
-    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
-    assert "state handoff" not in execution_packet["handoff"]["execution"].lower()
-    assert "workflow remains in_progress" not in execution_packet["handoff"]["execution"].lower()
-    assert "terminal bookkeeping finalized" in execution_packet["handoff"]["execution"].lower()
-    execution_packet["handoff"]["execution"] = "standard profile executed; finalizer pending; runtime released"
-    _reconcile_runtime_state(execution_packet, execution_packet["runtime_closure"])
-    assert "finalizer pending" not in execution_packet["handoff"]["execution"].lower()
-    assert "finalization validation passed" in execution_packet["handoff"]["execution"].lower()
-
-    terminal_packet = json.loads(json.dumps(execution_packet))
-    terminal_packet["runtime_closure"][0].update({
-        "Completed worker handles": "/root/issue_evidence",
-        "Runtime status": "Terminal",
-        "Closure evidence or blocker": (
-            "provider status snapshot 2026-10-07T22:42:58Z: /root/issue_evidence=completed"
-        ),
-    })
-    _normalize_packet(terminal_packet, {"runtime_closure": terminal_packet["runtime_closure"]})
-    assert terminal_packet["runtime_closure"][0]["Completed worker handles"] == "/root/issue_evidence"
-    _reconcile_runtime_state(terminal_packet, terminal_packet["runtime_closure"])
-    assert "runtime released" not in terminal_packet["handoff"]["execution"].lower()
-    assert "runtime terminal" in terminal_packet["handoff"]["execution"].lower()
-    assert terminal_packet["durable_artifacts"][1]["Status"] == "Terminal"
-
-    with tempfile.TemporaryDirectory(prefix="workflow-finalize-") as directory:
-        root = Path(directory)
-        packet["finalization"]["Durable artifact root"] = str(root)
-        source = root / "packet.json"
-        closure = root / "runtime_closure.json"
-        record = root / "work_record.md"
-        source.write_text(json.dumps(packet))
-        closure.write_text(json.dumps({"runtime_closure": packet["runtime_closure"]}))
-        finalize(source, closure, record)
-        assert "Workflow result: Worker runtime unavailable" in record.read_text()
-        rendered = expand_work_record(record.read_text(), root)
-        assert "{'explanation':" not in rendered
-        assert "confidence: high" in rendered
-        assert f"[work_record.md]({record.resolve()})" in rendered
-        assert "| Work record | ./work_record.md |" in rendered
-        assert "Final reconciliation | Passed; runtime closure released with no active handles |" in rendered
-        assert "Finalization schema | Passed |" in rendered
-        assert "Workflow result: Workflow result:" not in rendered
-        assert "| Passed; runtime closure released |" in rendered
-        assert "Final reconciliation | Pending" not in rendered
-        assert "runtime pending" not in rendered.lower()
-        assert "runtime closure pending" not in rendered.lower()
-        assert "| runtime_closure.json |" in rendered
-        assert "| Released | Provider receipt |" in rendered
-        broken_record = root / "broken-work-record.md"
-        broken_record.write_text(
-            rendered
-            .replace("Workflow result: Worker runtime unavailable", "Workflow result:")
-            .replace(f"- [work_record.md]({record.resolve()})\n\nExecution:", "Execution:")
-        )
-        rejected = subprocess.run(
-            [sys.executable, str(VALIDATOR), str(broken_record)],
-            capture_output=True, text=True, check=False,
-        )
-        assert rejected.returncode != 0
-        assert "Final Handoff Workflow result must be populated" in rejected.stdout
-        assert "Final Handoff must link at least one artifact" in rejected.stdout
-        empty_handoff = json.loads(source.read_text())
-        empty_handoff["handoff"].update({
-            "workflow_result": "",
-            "implementation_plan": "",
-            "next_action": {"owner": "", "action": "", "complete_when": ""},
-            "artifacts": [],
-            "execution": "",
-            "provenance": "",
-        })
-        source.write_text(json.dumps(empty_handoff))
-        try:
-            finalize(source, closure, record)
-        except ValueError as error:
-            assert "packet.handoff.workflow_result must be a non-empty string" in str(error)
-        else:
-            raise AssertionError("finalization must reject an empty terminal handoff")
-        feature_version = _frontmatter_version(ROOT / "playbooks" / "feature_delivery.md")
-        feature_prompt_version = _frontmatter_version(ROOT / "templates" / "feature_delivery_run_prompt.md")
-        assessment = json.loads(json.dumps(packet))
-        assessment["playbook_selection"]["Primary goal"] = "Specification assessment"
-        assessment["identity"].update({
-            "Playbook / version": f"playbooks/feature_delivery.md / {feature_version}",
-            "Lifecycle": "planning",
-            "State": "awaiting_input",
-        })
-        assessment["handoff"]["provenance"] = (
-            f"plugin Not applicable; framework revision {'a' * 40} (clean); "
-            f"playbook feature_delivery {feature_version}."
-        )
-        assessment["handoff"]["workflow_result"] = "Plan created"
-        try:
-            _validate_handoff(assessment)
-        except ValueError as error:
-            assert "requires Workflow result exactly one of" in str(error)
-        else:
-            raise AssertionError("specification assessment must reject a non-disposition workflow result")
-        assessment["handoff"]["workflow_result"] = "Not ready for implementation"
-        assessment["handoff"]["implementation_plan"] = NO_PLAN_MESSAGE
-        _validate_handoff(assessment)
-        feature = json.loads(json.dumps(packet))
-        feature["playbook_selection"].update({
-            "Primary goal": "Implementation planning",
-            "Selected playbook": "Feature Delivery",
-        })
-        feature["identity"].update({
-            "Playbook / version": f"playbooks/feature_delivery.md / {feature_version}",
-            "Prompt template / revision / conformance": (
-                f"templates/feature_delivery_run_prompt.md / {feature_prompt_version} / pass"
-            ),
-            "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
-            "Profile status": "executed", "Lifecycle": "planning",
-            "State": "ready_for_implementation", "Workflow outcome": "completed",
-            "Engineering outcome": "plan_only",
-        })
-        feature["handoff"]["provenance"] = assessment["handoff"]["provenance"]
-
-        def feature_ledger(worker: str, role: str, depends_on: str) -> dict[str, str]:
-            return {
-                "Worker": worker, "Role": role, "Assigned inputs": "IN-001",
-                "Mode": "investigation", "Depth": "standard", "Skills": "assigned skills",
-                "Tools": "assigned tools", "Capacity": "current task",
-                "Configured model/effort": "gpt-5.6-luna / low",
-                "Provider-observed model/effort": "Not exposed; launch binding gpt-5.6-luna / low",
-                "Usage": "Not exposed", "Depends on": depends_on, "Outcome": "complete",
-                "Confidence": "High",
-            }
-
-        def feature_result(worker: str) -> dict[str, str]:
-            return {
-                "Worker": worker, "Outcome": "complete", "Confidence": "High",
-                "Unique contribution": f"Completed {worker} analysis.",
-                "Evidence / claim refs": "E-001 / C-001", "Uncertainties / blockers": "None",
-                "Actual model/effort": "Not exposed; launch binding gpt-5.6-luna / low",
-                "Usage/credits": "Not exposed",
-            }
-
-        feature["workers"] = [
-            feature_ledger("feature-context", "current_state_investigator", "None"),
-            feature_ledger("impact-analysis", "dependency_analyst", "feature-context"),
-            feature_ledger("feature-design", "solution_architect", "impact-analysis"),
-            feature_ledger("handoff", "documenter", "feature-design"),
-        ]
-        feature["worker_results"] = [feature_result(worker) for worker in (
-            "feature-context", "impact-analysis", "feature-design", "handoff",
-        )]
-        feature_root = root / "feature-assets"
-        feature_root.mkdir()
-        feature["finalization"]["Durable artifact root"] = str(feature_root)
-        feature["inputs"] = [{
-            "Input ID": "IN-001", "Input or artifact": "Work item ITEM-1", "Source or path": "Jira ITEM-1",
-            "Authority": "Current work item", "Status": "Consumed",
-        }]
-        run_inputs_path = feature_root / "run_inputs.json"
-        run_inputs_text = json.dumps({
-            "schema_version": 1, "status": "explicit", "inputs": feature["inputs"],
-        }) + "\n"
-        run_inputs_path.write_text(run_inputs_text)
-        feature["run_input_manifest"] = {
-            "path": str(run_inputs_path),
-            "sha256": hashlib.sha256(run_inputs_text.encode()).hexdigest(),
-            "input_ids": ["IN-001"],
-        }
-        (feature_root / ASSET_MANIFEST_FILENAME).write_text(json.dumps({
-            "schema_version": 1, "status": "passed", "work_item": "ITEM-1",
-            "sources": [{
-                "source_id": "SRC-JIRA", "input_id": "IN-001", "kind": "jira_issue_attachments",
-                "locator": "Jira ITEM-1 attachments", "requiredness": "required", "discovery_status": "empty",
-                "discovery_method": "read Jira attachment inventory",
-                "remote_link_inventory": {
-                    "status": "empty", "method": "read Jira remote links for ITEM-1", "locators": [],
-                },
-                "limitation": "Synthetic fixture has no Jira attachments.",
-                "asset_ids": [], "evidence_refs": ["E-001"],
-            }], "assets": [], "gate": {
-                "inventory_complete": True, "all_assets_accounted_for": True,
-                "all_available_assets_reviewed": True, "all_material_assets_linked": True,
-                "reviewed_before_plan": True, "unresolved_asset_ids": [], "blocking_source_ids": [],
-            },
-        }))
-        (feature_root / "implementation_plan.md").write_text(
-            "# Asset Baseline\n\nasset_manifest.json\n" + PLAN_FIXTURE
-        )
-        feature["durable_artifacts"].append({
-            "Artifact": "Asset manifest", "Path": str(feature_root / ASSET_MANIFEST_FILENAME),
-            "Status": "Passed", "Purpose": "Asset gate",
-        })
-        feature["handoff"]["artifacts"].append(str(feature_root / ASSET_MANIFEST_FILENAME))
-        assert _feature_delivery_packet_contract_errors(feature) == []
-        assert _feature_delivery_asset_contract_errors(feature) == []
-        plan_path = feature_root / "implementation_plan.md"
-        plan_path.write_text("# Asset Baseline\nasset_manifest.json\n")
-        assert any("Behavior Applicability" in error for error in _feature_delivery_asset_contract_errors(feature))
-        plan_path.write_text("# Asset Baseline\nasset_manifest.json\n" + PLAN_FIXTURE)
-        partial = json.loads(json.dumps(feature))
-        partial["identity"].update({"State": "awaiting_input", "Engineering outcome": "partially_solved",
-                                    "Run input manifest": str(run_inputs_path),
-                                    "Run input manifest hash": hashlib.sha256(run_inputs_path.read_bytes()).hexdigest()})
-        partial["handoff"].update({"workflow_result": "Independent plan saved; retry policy needs input",
-                                   "implementation_plan": "Draft partial plan; not ready or approved"})
-        draft = "---\nstatus: Draft\n---\n" + plan_path.read_text() + (
-            "\n# Open Questions and Decisions\n"
-            "| Question or decision | Why it matters | Owner | Status | Evidence refs |\n"
-            "| --- | --- | --- | --- | --- |\n"
-            "| Retry policy | Defines recovery | Issue owner | pending | E-001 |\n"
-        )
-        plan_path.write_text(draft)
-        brief = feature_root / "clarification_brief.md"
-        brief.write_text("# Clarification Brief\n\nIssue owner must select retry policy before implementation.\n")
-        partial["durable_artifacts"].extend([
-            {"Artifact": "Partial plan", "Path": str(plan_path), "Status": "Draft", "Purpose": "Independent work"},
-            {"Artifact": "Clarification brief", "Path": str(brief), "Status": "Open", "Purpose": "Owned decision"},
-        ])
-        partial["handoff"]["artifacts"].extend([str(plan_path), str(brief)])
-        partial_closure = feature_root / "runtime_closure.json"
-        partial_closure.write_text(json.dumps({"runtime_closure": [{
-            **packet["runtime_closure"][0], "Completed worker handles": "/root/context, /root/impact, /root/design, /root/handoff",
-            "Closure evidence or blocker": "Provider close confirmed /root/context, /root/impact, /root/design, /root/handoff",
-        }]}))
-        partial_packet = feature_root / "partial_packet.json"
-        partial_packet.write_text(json.dumps(partial))
-        partial_record = feature_root / "work_record.md"
-        finalize(partial_packet, partial_closure, partial_record, check_only=True)
-        finalize(partial_packet, partial_closure, partial_record, pre_release=True)
-        finalize(partial_packet, partial_closure, partial_record)
-        assert "| State | awaiting_input |" in partial_record.read_text()
-        assert "Independent plan saved" in partial_record.read_text()
-        plan_path.write_text("# Asset Baseline\nasset_manifest.json\n" + PLAN_FIXTURE)
-        delivery = json.loads(json.dumps(feature))
-        delivery["identity"].update({"Lifecycle": "remediation", "State": "completed"})
-        assert any("code_review.md" in error for error in _feature_delivery_packet_contract_errors(delivery))
-        review_path = feature_root / "code_review.md"
-        review_path.write_text(REVIEW_FIXTURE.replace("| verified |", "| defect |"))
-        assert any("defect" in error for error in _feature_delivery_packet_contract_errors(delivery))
-        review_path.write_text(REVIEW_FIXTURE)
-        assert any("register code_review.md" in error for error in _feature_delivery_packet_contract_errors(delivery))
-        delivery["durable_artifacts"].append({
-            "Artifact": "Code review", "Path": str(review_path), "Status": "Accepted", "Purpose": "Review evidence",
-        })
-        delivery["handoff"]["artifacts"].append(str(review_path))
-        delivery["identity"]["Engineering outcome"] = "solved"
-        delivery["workers"] = [feature_ledger(worker, role, "Approved delivery dependency") for worker, role in (
-            ("implement", "implementer"), ("review", "reviewer"), ("validate", "tester"), ("handoff", "documenter"),
-        )]
-        delivery["worker_results"] = [feature_result(worker) for worker in ("implement", "review", "validate", "handoff")]
-        delivery["synchronization"] = [{"Stage": "Delivery fan-in", "Workers launched": "implement, review, validate",
-                                        "Launch mode / exception": "Sequential delivery", "Worker outcomes": "complete",
-                                        "Barrier status": "Passed", "Results summarized": "Accepted review and validation"}]
-        delivery["runtime_audits"] = []
-        for worker in ("implement", "review", "validate", "handoff"):
-            trace_path = feature_root / f"{worker}_trace.json"
-            trace_path.write_text(json.dumps({"spawn": {"activation_packet_delivered": True}, "tool_trace": [],
-                                             "last_dispatch_at": "2026-10-07T23:40:00Z",
-                                             "events": [{"action": "fan_in", "provider_status": "completed"}]}))
-            delivery["runtime_audits"].append({"Worker": worker, "Provider handle": f"/root/{worker}",
-                                              "Provider status": "completed", "Last dispatch at": "2026-10-07T23:40:00Z",
-                                              "Observed at": "2026-10-07T23:50:00Z", "Status source": "list_agents",
-                                              "Trace path": str(trace_path)})
-        candidate_repo, candidate_review, candidate_validation = delivery_evidence_fixture(feature_root)
-        review_path.write_text(candidate_review)
-        delivery["repositories"] = [{**delivery["repositories"][0], "Resolved path": str(candidate_repo)}]
-        (feature_root / "validation_report.md").write_text(candidate_validation)
-        delivery["durable_artifacts"].append({"Artifact": "Validation report",
-                                             "Path": str(feature_root / "validation_report.md"),
-                                             "Status": "Partial", "Purpose": "Executed tests and unverified database validation"})
-        delivery["handoff"]["artifacts"].append(str(feature_root / "validation_report.md"))
-        assert _feature_delivery_packet_contract_errors(delivery) == []
-        missing_asset_feature = json.loads(json.dumps(feature))
-        missing_asset_feature["finalization"]["Durable artifact root"] = str(feature_root / "missing")
-        assert any(
-            "requires a valid asset_manifest.json" in error
-            for error in _feature_delivery_asset_contract_errors(missing_asset_feature)
-        )
-        incomplete_feature = json.loads(json.dumps(feature))
-        incomplete_feature["workers"] = incomplete_feature["workers"][-1:]
-        incomplete_feature["worker_results"] = incomplete_feature["worker_results"][-1:]
-        feature_errors = _feature_delivery_packet_contract_errors(incomplete_feature)
-        assert "Feature Delivery handoff requires execution-ledger rows for:" in "\n".join(feature_errors)
-        assert "feature-context" in "\n".join(feature_errors)
-        conditional_feature = json.loads(json.dumps(feature))
-        conditional_feature["workers"].insert(
-            2, feature_ledger("repository-integration", "repository_integrator", "feature-context")
-        )
-        conditional_feature["worker_results"].insert(2, feature_result("repository-integration"))
-        assert _feature_delivery_packet_contract_errors(conditional_feature) == []
-        assessment_feature = json.loads(json.dumps(feature))
-        assessment_feature["playbook_selection"]["Primary goal"] = "Specification assessment"
-        assessment_feature["identity"]["Engineering outcome"] = "solved"
-        assessment_feature["handoff"]["workflow_result"] = "Ready for implementation"
-        assessment_feature["handoff"]["implementation_plan"] = NO_PLAN_MESSAGE
-        report_path = feature_root / REPORT_NAME
-        assert "requires specification_assessment.md" in " ".join(
-            _feature_delivery_asset_contract_errors(assessment_feature)
-        )
-        (feature_root / "implementation_plan.md").unlink()
-        report_path.write_text(
-            "# Specification Assessment\n## Question and Result\nAssessed ITEM-1 against its Stories.\n"
-            "Workflow result: Ready for implementation\n## Source and Asset Baseline\n"
-            "ITEM-1 and asset_manifest.json reviewed.\n## Coverage\n"
-            "| Requirement / behavior | Story coverage | Evidence | Status | Test / dependency | Gap or follow-up | Owner |\n"
-            "| --- | --- | --- | --- | --- | --- | --- |\n"
-            "| Outcome | ITEM-2 | E-001 | Covered | Check ITEM-2 / ITEM-1 | None | Team |\n"
-            "## Gaps, Risks, and Decisions\nNo gaps.\n"
-            "## Disposition and Next Action\nProceed to planning.\n"
-        )
-        design_text = "## Coverage\n" + report_path.read_text().split("## Coverage\n", 1)[1].split(
-            "## Gaps", 1,
-        )[0]
-        (feature_root / "feature_design.md").write_text(design_text)
-        assessment_feature["durable_artifacts"].append({
-            "Artifact": "Specification assessment", "Path": str(report_path),
-            "Status": "Complete", "Purpose": "Readiness coverage",
-        })
-        assessment_feature["handoff"]["artifacts"].append(str(report_path))
-        assert _feature_delivery_packet_contract_errors(assessment_feature) == []
-        assert _feature_delivery_asset_contract_errors(assessment_feature) == []
-        changed_report = report_path.read_text().replace("| Covered |", "| Partial |")
-        report_path.write_text(changed_report)
-        assert "must match reviewed coverage" in " ".join(_feature_delivery_asset_contract_errors(assessment_feature))
-        report_path.write_text(changed_report.replace("| Partial |", "| Covered |"))
-        for name in ("feature_context.md", "impact_analysis.md"):
-            (feature_root / name).write_text(f"# {name}\n")
-        pre_handoff_path = feature_root / "finalization_packet.json"
-        pre_handoff_path.write_text(json.dumps(assessment_feature))
-        assert feature_delivery_pre_handoff_errors(pre_handoff_path) == []
-        (feature_root / "feature_design.md").write_text(design_text.replace("| Covered |", "| Partial |"))
-        assert "feature_design.md ready result requires covered requirements" in " ".join(
-            feature_delivery_pre_handoff_errors(pre_handoff_path)
-        )
-        (feature_root / "feature_design.md").write_text(design_text)
-        prepared_handoff = json.loads(json.dumps(assessment_feature))
-        prepared_handoff["identity"]["Requested profile"] = ""
-        pre_handoff_path.write_text(json.dumps(prepared_handoff))
-        assert feature_delivery_pre_handoff_errors(pre_handoff_path) == []
-        pre_handoff_path.write_text(json.dumps(assessment_feature))
-        (feature_root / "feature_design.md").write_text("## Coverage\n")
-        assert "feature_design.md requires a populated" in " ".join(
-            feature_delivery_pre_handoff_errors(pre_handoff_path)
-        )
-        (feature_root / "feature_design.md").write_text(design_text)
-        deep_handoff = json.loads(json.dumps(assessment_feature))
-        deep_handoff["identity"]["Requested profile"] = "deep"
-        pre_handoff_path.write_text(json.dumps(deep_handoff))
-        assert "planning_review.md" in " ".join(feature_delivery_pre_handoff_errors(pre_handoff_path))
-        pre_handoff_path.write_text(json.dumps(assessment_feature))
-        false_reference = json.loads(json.dumps(assessment_feature))
-        false_reference["durable_artifacts"].append({
-            "Artifact": "Specification coverage mapping", "Path": str(feature_root / "work_record.md"),
-            "Status": "Complete", "Purpose": "Coverage",
-        })
-        false_reference["evidence"][0]["Source"] = "work_record.md Specification Coverage Mapping"
-        false_reference["handoff"]["execution"] = "No finalizer invocation."
-        assert len(_feature_assessment_reference_errors(false_reference)) == 3
-        assessment_feature["identity"].update({"State": "awaiting_input", "Engineering outcome": "partially_solved"})
-        assessment_feature["handoff"]["workflow_result"] = "Not ready for implementation"
-        report_path.write_text(report_path.read_text().replace(
-            "Workflow result: Ready for implementation", "Workflow result: Not ready for implementation",
-        ))
-        assert _feature_delivery_packet_contract_errors(assessment_feature) == []
-        assert _feature_delivery_asset_contract_errors(assessment_feature) == []
-        false_release = [{
-            "Run or stage": "Feature Delivery assessment", "Receipt owner": "Coordinator",
-            "Completed worker handles": "None", "Runtime status": "Released",
-            "Remaining active handles": "None",
-            "Closure evidence or blocker": "Provider release confirmed by terminal results.",
-        }]
-        assert any("provider handles released=0" in error for error in
-                   _planning_runtime_closure_errors(assessment_feature, false_release))
-        blocked_assessment = json.loads(json.dumps(assessment_feature))
-        blocked_assessment["handoff"]["provenance"] = (
-            f"Feature Delivery {feature_version}; framework {'a' * 40}"
-        )
-        blocked_closure = {"runtime_closure": [{
-            "Run or stage": "Feature Delivery assessment", "Receipt owner": "Coordinator",
-            "Completed worker handles": "Unknown", "Runtime status": "Blocked",
-            "Remaining active handles": "Unknown",
-            "Closure evidence or blocker": "worker_runtime_release_unavailable: provider release not exposed",
-        }]}
-        _prepare_blocked_runtime_snapshot(blocked_assessment, blocked_closure, report_path, None)
-        assert blocked_assessment["identity"]["State"] == "blocked"
-        assert blocked_assessment["identity"]["Workflow outcome"] == "blocked"
-        assert blocked_assessment["identity"]["Engineering outcome"] == "partially_solved"
-        blocked_planning = json.loads(json.dumps(feature))
-        blocked_planning["handoff"]["workflow_result"] = "Implementation plan ready; no implementation performed."
-        (feature_root / "implementation_plan.md").write_text("# Asset Baseline\n\nasset_manifest.json\n" + PLAN_FIXTURE)
-        _prepare_blocked_runtime_snapshot(blocked_planning, blocked_closure, report_path, None)
-        assert blocked_planning["identity"]["State"] == "blocked"
-        assert blocked_planning["identity"]["Workflow outcome"] == "blocked"
-        assert blocked_planning["identity"]["Engineering outcome"] == "plan_only"
-        (feature_root / "implementation_plan.md").unlink()
-        assert assessment_feature["identity"]["State"] == "awaiting_input"
-        assessment_feature["handoff"]["provenance"] = (
-            f"Feature Delivery {feature_version}; framework {'a' * 40}"
-        )
-        assessment_packet = feature_root / "assessment_packet.json"
-        assessment_closure = feature_root / "runtime_closure.json"
-        assessment_record = feature_root / "assessment_work_record.md"
-        assessment_packet.write_text(json.dumps(assessment_feature))
-        assessment_closure.write_text(json.dumps(blocked_closure))
-        finalize(assessment_packet, assessment_closure, assessment_record, blocked_runtime_snapshot=True)
-        assert "State: blocked" in assessment_record.read_text()
-        assert "playbook feature_delivery" in assessment_record.read_text()
-        design_path = feature_root / "feature_design_result.json"
-        design_path.write_text(json.dumps({"asset_gate": {"asset_count": 1, "source_count": 1}}))
-        assert "asset_gate.asset_count must equal asset_manifest.json assets count (0)" in (
-            "\n".join(_feature_delivery_asset_contract_errors(assessment_feature))
-        )
-        design_path.write_text(json.dumps({"asset_gate": {"asset_count": 0, "source_count": 2}}))
-        assert "asset_gate.source_count must equal asset_manifest.json sources count (1)" in (
-            "\n".join(_feature_delivery_asset_contract_errors(assessment_feature))
-        )
-        design_path.write_text(json.dumps({"asset_gate": {"asset_count": 0, "source_count": 1}}))
-        assert _feature_delivery_asset_contract_errors(assessment_feature) == []
-        planning_plan = feature_root / "implementation_plan.md"
-        planning_plan.write_text("# Asset Baseline\n\nasset_manifest.json\n" + PLAN_FIXTURE)
-        planning_feature = json.loads(json.dumps(feature))
-        planning_feature["handoff"].update({
-            "workflow_result": "Implementation plan ready; no implementation performed.",
-            "implementation_plan": str(planning_plan),
-            "execution": "standard planning; workers complete; no source changes; runtime pending",
-        })
-        planning_feature["durable_artifacts"].append({
-            "Artifact": "Implementation plan", "Path": str(planning_plan),
-            "Status": "Ready for review", "Purpose": "Unapproved plan",
-        })
-        planning_feature["handoff"]["artifacts"].append(str(planning_plan))
-        planning_packet = feature_root / "planning_packet.json"
-        planning_record = feature_root / "planning_work_record.md"
-        planning_packet.write_text(json.dumps(planning_feature))
-        finalize(planning_packet, assessment_closure, planning_record, blocked_runtime_snapshot=True)
-        assert "| State | blocked |" in planning_record.read_text()
-        assert "| Workflow outcome | blocked |" in planning_record.read_text()
-        assert "| Engineering outcome | plan_only |" in planning_record.read_text()
-        assert planning_plan.is_file()
-        assert "| Finalization schema | Passed for blocked work record |" in expand_work_record(planning_record.read_text(), feature_root)
-        assert "| Unverified | Provider receipt |" in planning_record.read_text()
-        techops = json.loads(json.dumps(planning_feature))
-        techops["identity"]["Playbook / version"] = "playbooks/techops_issue_remediation.md / 0.5.2"
-        techops["worker_results"] = [
-            dict(techops["worker_results"][0], Worker=worker, Outcome="complete")
-            for worker in ("issue-evidence", "failure-path", "fix-design", "handoff")
-        ]
-        _prepare_blocked_runtime_snapshot(techops, blocked_closure, planning_record, None)
-        assert techops["identity"]["Workflow outcome"] == "blocked"
-        assert techops["identity"]["Engineering outcome"] == "plan_only"
-        # Exercise actual TechOps publication, not only the blocked-state preparer.
-        from contextlib import redirect_stdout
-        from io import StringIO
-        published_techops = json.loads(json.dumps(planning_feature))
-        published_techops["identity"].update({
-            "Playbook / version": f"playbooks/techops_issue_remediation.md / {_frontmatter_version(ROOT / 'playbooks/techops_issue_remediation.md')}",
-            "Prompt template / revision / conformance": f"templates/techops_issue_run_prompt.md / {_frontmatter_version(ROOT / 'templates/techops_issue_run_prompt.md')} / pass",
-            "Finalization schema": "Pending",
-        })
-        roles = {"issue-evidence": "current_state_investigator", "failure-path": "dependency_analyst",
-                 "repository-integration": "repository_integrator", "fix-design": "solution_architect", "handoff": "documenter"}
-        published_techops["workers"] = [feature_ledger(worker, role, "IN-001") for worker, role in roles.items()]
-        published_techops["worker_results"] = [feature_result(worker) for worker in roles]
-        published_techops["techops_checks"] = [
-            {"Check": name, "Status": "not_applicable" if name == "history_reconciliation" else "passed",
-             "Evidence refs": "E-001", "Detail": "Owning worker evidence; fixture has no history mismatch"}
-            for name in ("issue_scope", "history_reconciliation", "plan_dependencies", "regression_fixture")
-        ]
-        published_techops["runtime_audits"] = []
-        for worker in roles:
-            trace_path = feature_root / f"{worker}_trace.json"
-            trace_path.write_text(json.dumps({
-                "spawn": {"activation_packet_delivered": True}, "last_dispatch_at": "2026-10-07T23:40:00Z",
-                "events": [{"action": "fan_in", "provider_status": "completed"}],
-                "tool_trace": [{"tool": "exec_command", "arguments": {"cmd": "rg -n affected_symbol src"}}],
-            }))
-            published_techops["runtime_audits"].append({
-                "Worker": worker, "Provider handle": "/root/" + worker.replace("-", "_"),
-                "Provider status": "completed", "Last dispatch at": "2026-10-07T23:40:00Z",
-                "Observed at": "2026-10-07T23:53:10Z", "Status source": "list_agents",
-                "Trace path": str(trace_path), "Trace retrieval": "read_thread command ledger",
-            })
-        published_techops["handoff"]["execution"] = (
-            "standard planning; no source changes; awaiting Coordinator packet validation and packaged finalization"
-        )
-        techops_packet = feature_root / "techops_packet.json"
-        techops_record = feature_root / "techops_work_record.md"
-        techops_packet.write_text(json.dumps(published_techops))
-        captured = StringIO()
-        with redirect_stdout(captured):
-            finalize(techops_packet, assessment_closure, techops_record, blocked_runtime_snapshot=True)
-        assert captured.getvalue().splitlines()[0] == "Workflow-framework validation: passed"
-        assert "TechOps planning blocked work record: saved; runtime release unverified" in captured.getvalue()
-        assert "Feature Delivery implementation planning blocked work record" not in captured.getvalue()
-        assert expand_work_record(techops_record.read_text(), feature_root).count("| Finalization schema |") == 1
-        assert "awaiting Coordinator" not in techops_record.read_text()
-        from prepare_run import _agent_binding
-        bindings = {role: _agent_binding(role, None) for role in roles.values()}
-        baseline = re.search(r"^baseline_id: (\S+)$", (ROOT / "providers/codex/model_effort_policy.md").read_text(), re.MULTILINE)[1]
-        (feature_root / "role_bindings.json").write_text(json.dumps({
-            "playbook": "techops_issue_remediation", "baseline_id": baseline, "bindings": bindings,
-        }))
-        published_techops["identity"]["Coordinator model/effort"] = "gpt-6.1-sol / high"
-        for row in published_techops["workers"]:
-            binding = bindings[row["Role"]]
-            row["Configured model/effort"] = f"{binding['model']} / {binding['effort']}"
-            row["Provider-observed model/effort"] = row["Configured model/effort"]
-        techops_packet.write_text(json.dumps(published_techops))
-        finalize(techops_packet, assessment_closure, techops_record, pre_release=True)
-        assert (feature_root / "pre_release_check.json").is_file()
-        observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        terminal_rows = [{
-            "Provider handle": row["Provider handle"], "Provider status": "completed",
-            "Last dispatch at": row["Last dispatch at"], "Observed at": observed_at,
-            "Status source": "read_thread", "Thread ID": f"00000000-0000-0000-0000-{index:012d}",
-            "Latest turn started at": "2026-10-07T23:40:01Z", "Latest turn status": "completed",
-            "Thread status": "notLoaded",
-        } for index, row in enumerate(published_techops["runtime_audits"])]
-        terminal_closure = feature_root / "terminal_closure.json"
-        terminal_closure.write_text(json.dumps({
-            "runtime_closure": [{
-                "Run or stage": "TechOps planning", "Receipt owner": "Coordinator",
-                "Completed worker handles": "; ".join(row["Provider handle"] for row in terminal_rows),
-                "Runtime status": "Terminal", "Remaining active handles": "0",
-                "Closure evidence or blocker": "provider status snapshot " + observed_at + ": " +
-                    "; ".join(row["Provider handle"] + "=completed" for row in terminal_rows),
-            }], "terminal_observations": terminal_rows,
-        }))
-        with redirect_stdout(StringIO()):
-            finalize(techops_packet, terminal_closure, techops_record)
-        assert "| State | ready_for_implementation |" in techops_record.read_text()
-        assert "| Terminal | 0 |" in expand_work_record(techops_record.read_text(), feature_root)
-        assert "runtime terminal" in techops_record.read_text()
-        changed_packet = json.loads(techops_packet.read_text())
-        changed_packet["work_item"]["Title"] = "Updated after pre-release"
-        techops_packet.write_text(json.dumps(changed_packet))
-        try:
-            finalize(techops_packet, terminal_closure, techops_record)
-        except ValueError as error:
-            assert "terminal_closure_requires_current_passed_pre_release" in str(error)
-        else:
-            raise AssertionError("packet changes must invalidate pre-release")
-        (feature_root / "role_bindings.json").unlink()
-        delivery["identity"].update({"State": "handoff", "Workflow outcome": "in_progress",
-                                     "Engineering outcome": "partially_solved",
-                                     "Provider / model configuration": "Codex / Worker Execution Ledger"})
-        delivery["playbook_selection"]["Primary goal"] = "Feature implementation"
-        delivery["handoff"].update({"workflow_result": "Implementation reviewed; database validation unverified",
-                                    "implementation_plan": str(feature_root / "implementation_plan.md"),
-                                    "execution": "standard/remediation; source changed; local tests passed; database unverified; runtime pending"})
-        delivery_path = feature_root / "delivery_packet.json"
-        delivery_record = feature_root / "delivery_work_record.md"
-        delivery_bindings = {role: _agent_binding(role, None) for role in ("implementer", "reviewer", "tester", "documenter")}
-        (feature_root / "role_bindings.json").write_text(json.dumps({
-            "playbook": "feature_delivery", "baseline_id": baseline, "bindings": delivery_bindings,
-        }))
-        delivery["identity"]["Coordinator model/effort"] = "gpt-6.1-sol / high"
-        for row in delivery["workers"]:
-            binding = delivery_bindings[row["Role"]]
-            row["Configured model/effort"] = f"{binding['model']} / {binding['effort']}"
-            row["Provider-observed model/effort"] = row["Configured model/effort"]
-        delivery_path.write_text(json.dumps(delivery))
-        assert feature_delivery_pre_handoff_errors(delivery_path) == []
-        # A partial engineering result can still complete accurate workflow bookkeeping.
-        with redirect_stdout(StringIO()):
-            finalize(delivery_path, assessment_closure, delivery_record, pre_release=True)
-        delivery_terminal_rows = [{
-            "Provider handle": row["Provider handle"], "Provider status": "completed",
-            "Last dispatch at": row["Last dispatch at"], "Observed at": datetime.now(timezone.utc).isoformat(),
-            "Status source": "list_agents",
-        } for row in delivery["runtime_audits"]]
-        delivery_closure = feature_root / "delivery_closure.json"
-        delivery_closure.write_text(json.dumps({"runtime_closure": [{
-            "Run or stage": "Feature Delivery remediation", "Receipt owner": "Coordinator",
-            "Completed worker handles": "; ".join(row["Provider handle"] for row in delivery_terminal_rows),
-            "Runtime status": "Terminal", "Remaining active handles": "0",
-            "Closure evidence or blocker": "provider status snapshot " + delivery_terminal_rows[0]["Observed at"] + ": " +
-                "; ".join(row["Provider handle"] + "=completed" for row in delivery_terminal_rows),
-        }], "terminal_observations": delivery_terminal_rows}))
-        with redirect_stdout(StringIO()):
-            finalize(delivery_path, delivery_closure, delivery_record)
-        assert "| Engineering outcome | partially_solved |" in delivery_record.read_text()
-        assert "| Lifecycle | remediation |" in delivery_record.read_text()
-        valid_delivery_record = delivery_record.read_bytes()
-        stale_delivery_closure = json.loads(delivery_closure.read_text())
-        stale_delivery_closure["terminal_observations"][0]["Observed at"] = "2026-10-07T23:50:00Z"
-        delivery_closure.write_text(json.dumps(stale_delivery_closure))
-        try:
-            finalize(delivery_path, delivery_closure, delivery_record)
-        except ValueError as error:
-            assert "terminal_observation_predates_pre_release" in str(error)
-        else:
-            raise AssertionError("Feature Delivery accepted pre-release-old terminal status")
-        delivery["work_item"]["Title"] = "Changed after pre-release"
-        delivery_path.write_text(json.dumps(delivery))
-        try:
-            finalize(delivery_path, delivery_closure, delivery_record)
-        except ValueError as error:
-            assert "terminal_closure_requires_current_passed_pre_release" in str(error)
-        else:
-            raise AssertionError("Feature Delivery accepted a stale packet receipt")
-        assert delivery_record.read_bytes() == valid_delivery_record
-        # Provider release unavailability still permits an honest current blocked handoff.
-        with redirect_stdout(StringIO()):
-            finalize(delivery_path, assessment_closure, delivery_record, blocked_runtime_snapshot=True)
-        assert "| State | blocked |" in delivery_record.read_text()
-        assert "| Engineering outcome | partially_solved |" in delivery_record.read_text()
-        (feature_root / "role_bindings.json").unlink()
-        published_techops["runtime_audits"][0]["Trace path"] = "missing_trace.json"
-        assert any("worker_trace_invalid" in error for error in _techops_planning_contract_errors(published_techops, techops_packet))
-        incomplete_techops = json.loads(json.dumps(planning_feature))
-        incomplete_techops["identity"]["Playbook / version"] = techops["identity"]["Playbook / version"]
-        try:
-            _prepare_blocked_runtime_snapshot(incomplete_techops, blocked_closure, planning_record, None)
-        except ValueError as error:
-            assert "supported planning or remediation packet" in str(error)
-        else:
-            raise AssertionError("TechOps blocked snapshot accepted incomplete workers")
-        spike = json.loads(json.dumps(packet))
-        spike["playbook_selection"]["Primary goal"] = "Execute technical spike"
-        spike["identity"].update({
-            "Playbook / version": f"playbooks/technical_spike.md / {technical_spike_version}",
-            "Lifecycle": "planning",
-            "State": "completed",
-            "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
-            "Profile status": "executed",
-            "Workflow outcome": "completed",
-            "Engineering outcome": "solved",
-        })
-        spike["worker_results"].extend([
-            {"Worker": worker, "Outcome": "complete"}
-            for worker in ("spike-context", "spike-investigation", "handoff")
-        ])
-        spike["workers"].extend([
-            {"Worker": "spike-context", "Role": "current_state_investigator", "Tools": "work_item_read",
-             "Outcome": "complete"},
-            {"Worker": "spike-investigation", "Role": "solution_architect", "Tools": "mapped operations",
-             "Outcome": "complete"},
-            {"Worker": "handoff", "Role": "documenter", "Tools": "artifact_write", "Outcome": "complete"},
-        ])
-        spike["handoff"].update({
-            "workflow_result": "Question answered",
-            "implementation_plan": "Not created; Technical Spike produces spike_report.md",
-            "provenance": (
-                f"plugin Not applicable; framework revision {'a' * 40} (clean); "
-                f"playbook technical_spike {technical_spike_version}."
-            ),
-        })
-        _validate_handoff(spike)
-        mismatched_spike = json.loads(json.dumps(spike))
-        context_row = next(row for row in mismatched_spike["workers"] if row["Worker"] == "spike-context")
-        context_row["Outcome"] = "pending"
-        try:
-            _validate_handoff(mismatched_spike)
-        except ValueError as error:
-            assert "spike-context outcome mismatch" in str(error)
-        else:
-            raise AssertionError("Technical Spike must reject differing worker and ledger outcomes")
-        legacy_spike = json.loads(json.dumps(spike))
-        for row in legacy_spike["workers"]:
-            if row["Worker"] == "handoff":
-                row["Worker"] = "documenter"
-        for row in legacy_spike["worker_results"]:
-            if row["Worker"] == "handoff":
-                row["Worker"] = "documenter"
-        _canonicalize_technical_spike_worker_ids(legacy_spike, {"playbook": "technical_spike"})
-        _validate_handoff(legacy_spike)
-        composite_spike = json.loads(json.dumps(spike))
-        composite_ids = {
-            "Coordinator": "Coordinator",
-            "spike-context": "spike-context/current_state_investigator",
-            "spike-investigation": "spike-investigation/solution_architect",
-            "handoff": "handoff/documenter",
-        }
-        for field in ("workers", "worker_results"):
-            for row in composite_spike[field]:
-                row["Worker"] = composite_ids.get(row["Worker"], row["Worker"])
-        _canonicalize_technical_spike_worker_ids(composite_spike, {"playbook": "technical_spike"})
-        assert {row["Worker"] for row in composite_spike["workers"]} == set(composite_ids)
-        assert {row["Worker"] for row in composite_spike["worker_results"]} == set(composite_ids)
-        _validate_handoff(composite_spike)
-        wrong_role_spike = json.loads(json.dumps(spike))
-        next(row for row in wrong_role_spike["workers"] if row["Worker"] == "spike-investigation")["Role"] = (
-            "dependency_analyst"
-        )
-        try:
-            _validate_handoff(wrong_role_spike)
-        except ValueError as error:
-            assert "spike-investigation requires role solution_architect" in str(error)
-        else:
-            raise AssertionError("Technical Spike must reject an analytical role mismatch")
-        spike["handoff"]["workflow_result"] = "Accepted"
-        try:
-            _validate_handoff(spike)
-        except ValueError as error:
-            assert "requires Workflow result exactly one of" in str(error)
-        else:
-            raise AssertionError("execute_spike must reject review_spike dispositions")
-        spike_execution = root / "spike-execution"
-        spike_execution.mkdir()
-        spike_inputs = root / "spike-inputs.json"
-        spike_inputs.write_text(json.dumps({
-            "schema_version": 1,
-            "status": "explicit",
-            "precedence_rule": "Current user decisions govern current-run evidence and scope.",
-            "inputs": [{
-                "Input ID": "IN-001", "Input or artifact": "Existing Spike",
-                "Source or path": "Current user request", "Authority": "Review target",
-                "Classification": "Reference document", "Expected use": "Assess evidence",
-                "Status": "Registered",
-            }],
-        }))
-        prepared_spike = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
-             "--execution-repository", str(spike_execution), "--work-item", "SPIKE-1",
-             "--playbook", "technical_spike", "--input-manifest", str(spike_inputs),
-             "--started-at", "2099-09-07T12:00:00Z", "--timebox-minutes", "25",
-             "--primary-question", "Can the supplied evidence answer the Spike question?",
-             "--success-criterion", "An evidence-backed answer or explicit unknown is recorded."],
-            capture_output=True, text=True, check=True,
-        )
-        prepared_spike_data = json.loads(prepared_spike.stdout)
-        spike_root = Path(prepared_spike_data["artifact_root"])
-        spike_report = spike_root / "spike_report.md"
-        spike_report.write_text("""---
-title: Technical Spike Report
-version: test
-status: Pilot
-owner: Engineering
-last_updated: 2026-09-11T00:00:00Z
----
-
-# Technical Spike Report
-
-## Metadata
-| Field | Value |
-| --- | --- |
-| Work item | SPIKE-1 |
-| Objective | review_spike |
-| Primary question | Does existing evidence support implementation planning? |
-| Timebox or evidence budget | One bounded review |
-| Success criterion | Separate supported claims from unknowns |
-| Execution profile | deep |
-| Repositories and revisions | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
-| Review target | Existing Spike |
-| Comparison reference | Not applicable |
-
-## Scope and Non-goals
-Review only; no implementation plan.
-
-## Plain-Language Summary
-The existing Spike has an evidence gap. The current review identifies what is missing and what should be checked next.
-No implementation change is proposed by this report.
-
-## Integration Participants and Boundaries
-| Participant or technology | Role or boundary | Evidence refs | Evidence status or unknown |
-| --- | --- | --- | --- |
-| Not applicable | Not applicable | Not applicable | No material integration participants |
-
-## Method and Evidence
-| Evidence ID | Method or source | Observation | Status | Limitation |
-| --- | --- | --- | --- | --- |
-| E-001 | Repository trace | One material gap remains | Verified | Runtime not observed |
-
-## Direct Evidence
-| Evidence ID | Repository or source | Revision or version | File or artifact location | Observation | Status |
-| --- | --- | --- | --- | --- | --- |
-| E-001 | Execution repository | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | src/boundary.py:10 | One material gap remains | Verified |
-
-## Decision Context
-| Category | Statement or branch | Evidence refs | Owner or decision needed | Status |
-| --- | --- | --- | --- | --- |
-| Not applicable | No unresolved decision remains | None | None | Recorded |
-
-## Assessment Criteria
-| Criterion or domain | Evidence refs | Assessment | Gap or limitation | Required next evidence or decision |
-| --- | --- | --- | --- | --- |
-| Not applicable | Not applicable | No external assessment baseline declared | None | None |
-
-## Experiments and Checks
-| Hypothesis or review criterion | Observable seam | Command or method | Expected discriminating outcomes | Actual result | Disposition impact |
-| --- | --- | --- | --- | --- | --- |
-| Existing evidence is complete | Supplied Spike report boundary | Not run | Complete or incomplete | Not run; source review was sufficient (E-001) | Changes required |
-
-## Findings
-One material evidence gap remains (E-001).
-
-## Options and Tradeoffs
-| Option | Evidence | Benefits | Costs or risks | When to choose |
-| --- | --- | --- | --- | --- |
-| Revise Spike | E-001 | Closes evidence gap | Additional review | Before Feature Delivery |
-
-## Recommendation
-Revise the existing Spike (E-001).
-
-## Reference Comparison
-| Reference | Agreement | Difference or omission | Impact on recommendation |
-| --- | --- | --- | --- |
-| Not applicable | Not applicable | Not applicable | Not applicable |
-
-## Remaining Unknowns and Follow-up
-Runtime behavior remains unverified.
-
-## Disposition
-| Field | Value |
-| --- | --- |
-| Workflow result | Changes required |
-| Question or review conclusion | Existing evidence is incomplete |
-| Budget status | within_budget |
-| Feature Delivery handoff | Needs follow-up |
-""")
-        (spike_root / "run_budget.json").write_text(json.dumps({
-            "schema_version": 1,
-            "started_at": "2000-01-01T00:00:00Z",
-            "deadline_at": "2000-01-01T00:01:00Z",
-            "timebox_minutes": 1,
-            "status": "within_budget",
-        }, indent=2) + "\n")
-        preserved_budget_root = root / "preserved-budget"
-        preserved_budget_root.mkdir()
-        (preserved_budget_root / "run_budget.json").write_text(json.dumps({
-            "schema_version": 1,
-            "started_at": "2000-01-01T00:00:00Z",
-            "deadline_at": "2000-01-01T00:01:00Z",
-            "timebox_minutes": 1,
-            "status": "exhausted_with_useful_result",
-        }, indent=2) + "\n")
-        assert _update_run_budget(
-            preserved_budget_root / "finalization_packet.json"
-        ) == "exhausted_with_useful_result"
-        spike_packet_path = Path(prepared_spike_data["finalization_packet"])
-        spike_packet = json.loads(spike_packet_path.read_text())
-        spike_manifest = json.loads(Path(prepared_spike_data["role_binding_manifest"]).read_text())
-        spike_packet["work_item"].update({
-            "Title": "Review existing Spike", "Last Updated": "2026-09-07T00:00:00Z",
-        })
-        spike_packet["playbook_selection"].update({
-            "Primary evidence": "Existing Spike and repository evidence",
-            "Primary goal": "Review technical spike", "Selected playbook": "Technical Spike",
-            "Closest alternative": "Feature Delivery implementation planning",
-            "Why this playbook": "Primary goal is evidence review, not implementation planning",
-        })
-        spike_packet["repositories"] = [{
-            "Repository role": "Execution", "Declared path": str(spike_execution),
-            "Resolved path": str(spike_execution), "Branch / detached": "main",
-            "Full revision": "a" * 40, "Clean status": "Clean", "User-selected ref": "Yes",
-            "Release mapping": "Unknown", "Evidence eligibility": "Accepted",
-        }]
-        spike_packet["identity"].update({
-            "Run ID": "spike-review-001", "Framework commit / status": f"{'a' * 40} / Dirty",
-            "Plugin package / version": "corrupted / value",
-            "Provider configuration source/status": "corrupted",
-            "Prompt template / revision / conformance": (
-                f"templates/technical_spike_run_prompt.md / {technical_spike_prompt_version} / pass"
-            ),
-            "Coordinator model/effort": "gpt-5.6-luna / xhigh", "Requested profile": "deep",
-            "Activated profile": "deep", "Executed profile": "deep", "Profile status": "executed",
-            "Role-policy baseline ID": "corrupted", "Lifecycle": "planning", "State": "handoff",
-            "Engineering state": "understood",
-            "Workflow outcome": "in_progress", "Engineering outcome": "unknown",
-        })
-        spike_packet["finalization"].update({
-            "Concurrent-run decision": "new run", "Active related run or work item": "None",
-            "Related-run check": "Passed", "Final reconciliation": "Pending runtime release",
-            "Finalization schema": "Pending",
-        })
-        worker_specs = (
-            ("spike-context", "current_state_investigator"),
-            ("spike-assessment", "reviewer"),
-            ("repository-integration", "repository_integrator"),
-            ("handoff", "documenter"),
-        )
-        spike_packet["workers"] = []
-        spike_packet["worker_results"] = []
-        for worker, role in worker_specs:
-            binding = spike_manifest["bindings"][role]
-            configured = (
-                f"incorrect/none; expected {binding['model']}/{binding['effort']}; definition {binding['definition']}; "
-                f"sha {binding['definition_sha256']}"
-            )
-            spike_packet["workers"].append({
-                "Worker": worker, "Role": role, "Assigned inputs": "IN-001", "Mode": "delegated",
-                "Depth": "deep", "Skills": "technical spike review", "Tools": "mapped operations",
-                "Capacity": "Not exposed", "Configured model/effort": configured,
-                "Provider-observed model/effort": (
-                    f"Not exposed; configured binding {binding['model']}/{binding['effort']}"
-                ),
-                "Usage": "Not exposed", "Depends on": "prior stage", "Outcome": "complete",
-                "Confidence": "High",
-            })
-            if worker == "spike-context":
-                spike_packet["workers"][-1]["Tools"] = "work_item_read; mapped operations"
-            spike_packet["worker_results"].append({
-                "Worker": worker, "Outcome": "complete", "Confidence": "High",
-                "Unique contribution": f"Completed {worker}", "Evidence / claim refs": "E-001 / C-001",
-                "Uncertainties / blockers": "None", "Actual model/effort": "Not exposed",
-                "Usage/credits": "Not exposed",
-            })
-        spike_packet["synchronization"] = [{
-            "Stage": "Analytical fan-in", "Workers launched": "spike assessment and repository integration",
-            "Launch mode / exception": "Parallel after context", "Worker outcomes": "complete",
-            "Results summarized": "Yes", "Barrier status": "Pending runtime release",
-        }]
-        spike_packet["evidence"] = [{
-            "Evidence ID": "E-001", "Source": str(spike_report), "Summary": "Evidence gap found",
-            "Confidence": "High", "Uncertainty": "Runtime not observed", "Status": "Verified",
-        }]
-        spike_packet["claims"] = [{
-            "Claim ID": "C-001", "Claim": "Existing Spike needs revision", "Evidence refs": "E-001",
-            "Confidence": "High", "Uncertainty": "Runtime not observed", "Status": "Supported",
-        }]
-        spike_packet["decisions"] = [{
-            "Decision ID": "D-001", "Decision": "Require Spike revision", "Claim refs": "C-001",
-            "Owner": "Reviewer", "Status": "Applied",
-        }]
-        spike_packet["actions"] = [{
-            "Action ID": "A-001", "Action": "Revise existing Spike", "Decision ref": "D-001",
-            "Owner": "Work-item owner", "Status": "Proposed",
-        }]
-        spike_packet["durable_artifacts"].extend([
-            {"Artifact": "Spike report", "Path": str(spike_report), "Status": "Created",
-             "Purpose": "Technical Spike disposition and direct evidence"},
-            {"Artifact": "Runtime closure", "Path": str(spike_root / "runtime_closure.json"),
-             "Status": "Pending", "Purpose": "Provider receipt"},
-            {"Artifact": "Work record", "Path": str(spike_root / "work_record.md"),
-             "Status": "Pending", "Purpose": "Canonical terminal record"},
-        ])
-        spike_packet["handoff"] = {
-            "workflow_result": "Changes required",
-            "implementation_plan": "Not created; Technical Spike produces spike_report.md",
-            "established": ["Existing Spike needs revision before Feature Delivery."],
-            "best_current_explanations": [],
-            "next_action": {"owner": "Work-item owner", "action": "Revise existing Spike.",
-                            "complete_when": "Material evidence gap is closed."},
-            "artifacts": [str(spike_report), str(spike_root / "work_record.md")],
-            "execution": "deep/planning; validation passed; workers complete; state remains handoff pending packaged finalizer",
-            "provenance": (
-                f"plugin {spike_packet['identity']['Plugin package / version']}; framework revision "
-                f"{'a' * 40} (dirty); playbook technical_spike {technical_spike_version}."
-            ),
-        }
-        v15_packet = json.loads(json.dumps(spike_packet))
-        v15_packet["playbook_selection"]["Primary goal"] = "technical_answer"
-        v15_packet["identity"].update({
-            "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard",
-            "Prompt template / revision / conformance": (
-                f"templates/technical_spike_run_prompt.md / {technical_spike_prompt_version} / context-unverified"
-            ),
-            "State": "handoff", "Workflow outcome": "completed",
-        })
-        v15_packet["handoff"]["workflow_result"] = (
-            "Partially answered; State: handoff; Workflow outcome: completed; Engineering outcome: partially_solved"
-        )
-        v15_errors = _technical_spike_packet_contract_errors(v15_packet, pre_release=True)
-        assert "Technical Spike Primary goal must be Execute technical spike or Review technical spike" in v15_errors
-        assert "Technical Spike prompt conformance must be pass or fail:<missing fields>" in v15_errors
-        assert "Technical Spike pre-release State handoff requires a non-completed Workflow outcome" in v15_errors
-        v15_result_packet = json.loads(json.dumps(v15_packet))
-        v15_result_packet["playbook_selection"]["Primary goal"] = "Execute technical spike"
-        v15_result_errors = _technical_spike_packet_contract_errors(v15_result_packet, pre_release=True)
-        assert "Technical Spike handoff Workflow result must be exactly one of: Question answered, Partially answered, Inconclusive" in v15_result_errors
-        empty_reasoning_packet = json.loads(json.dumps(spike_packet))
-        empty_reasoning_packet.update({
-            "evidence": [{"Evidence ID": "", "Source": "", "Summary": "", "Confidence": "",
-                          "Uncertainty": "", "Status": ""}],
-            "claims": [{"Claim ID": "", "Claim": "", "Evidence refs": "", "Confidence": "",
-                        "Uncertainty": "", "Status": ""}],
-            "decisions": [{"Decision ID": "", "Decision": "", "Claim refs": "", "Owner": "",
-                           "Status": ""}],
-            "actions": [{"Action ID": "", "Action": "", "Decision ref": "", "Owner": "",
-                         "Status": ""}],
-        })
-        empty_reasoning_errors = _technical_spike_packet_contract_errors(
-            empty_reasoning_packet, pre_release=True
-        )
-        assert any(
-            "requires populated rows for: Evidence, Claims, Decision Log, Action Log" in error
-            for error in empty_reasoning_errors
-        )
-        partial_reasoning_packet = json.loads(json.dumps(spike_packet))
-        partial_reasoning_packet["claims"][0] = {
-            "Claim ID": "C-001", "Claim": "", "Evidence refs": "E-001",
-            "Confidence": "high", "Uncertainty": "None", "Status": "Supported",
-        }
-        partial_reasoning_errors = _technical_spike_packet_contract_errors(
-            partial_reasoning_packet, pre_release=True
-        )
-        assert any(
-            "incomplete reasoning rows: Claims row 1: Claim" in error
-            for error in partial_reasoning_errors
-        )
-        placeholder_worker_packet = json.loads(json.dumps(spike_packet))
-        placeholder_worker_packet["worker_results"][0]["Evidence / claim refs"] = (
-            "To be normalized by handoff into exact E-* rows"
-        )
-        placeholder_errors = _technical_spike_packet_contract_errors(
-            placeholder_worker_packet, pre_release=True
-        )
-        assert any(
-            "spike-context Evidence / claim refs must be finalized" in error
-            for error in placeholder_errors
-        )
-        grouped_packet = json.loads(json.dumps(spike_packet))
-        grouped_packet["worker_results"][0]["Evidence / claim refs"] = "E-001 through E-002 / C-001"
-        grouped_packet["handoff"]["established"][0] = "Existing Spike needs revision (E-001–E-002)."
-        grouped_errors = _technical_spike_packet_contract_errors(
-            grouped_packet, pre_release=True
-        )
-        assert any(
-            "worker result spike-context" in error and "grouped/range reference" in error
-            for error in grouped_errors
-        )
-        assert any(
-            "handoff established[0]" in error and "grouped/range reference" in error
-            for error in grouped_errors
-        )
-        orphan_packet = json.loads(json.dumps(spike_packet))
-        orphan_packet["evidence"].append({
-            "Evidence ID": "E-999", "Source": "orphaned source", "Summary": "Not used",
-            "Confidence": "High", "Uncertainty": "None", "Status": "Verified",
-        })
-        orphan_errors = _technical_spike_packet_contract_errors(orphan_packet, pre_release=True)
-        assert any(
-            "orphaned evidence E-999; add E-999 to a claim's Evidence refs" in error
-            for error in orphan_errors
-        )
-        generic_evidence_packet = json.loads(json.dumps(spike_packet))
-        generic_evidence_packet["evidence"][0]["Summary"] = (
-            "Current-run verified observation retained in analytical artifact."
-        )
-        assert any(
-            "generic placeholder Summary" in error
-            for error in _technical_spike_packet_contract_errors(generic_evidence_packet, pre_release=True)
-        )
-        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
-        spike_closure = spike_root / "runtime_closure.json"
-        spike_handles = [f"01a00000-0000-7000-8000-{index:012d}" for index in range(1, 5)]
-        spike_closure.write_text(json.dumps({"runtime_closure": [{
-            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
-            "Completed worker handles": ", ".join(spike_handles), "Runtime status": "Released",
-            "Remaining active handles": "None",
-            "Closure evidence or blocker": f"Provider release confirmed. Completed handles: {', '.join(spike_handles)}.",
-        }]}, indent=2) + "\n")
-        completed_spike_packet = json.loads(json.dumps(spike_packet))
-        completed_spike_packet["identity"]["State"] = "completed"
-        incomplete_closure_errors = _planning_runtime_closure_errors(
-            completed_spike_packet,
-            [{
-                "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
-                "Completed worker handles": spike_handles[0], "Runtime status": "Released",
-                "Remaining active handles": "None", "Closure evidence or blocker": "Provider release confirmed.",
-            }],
-        )
-        assert any(
-            "provider handles released=1; completed workers=4" in error
-            for error in incomplete_closure_errors
-        )
-        spike_record = spike_root / "work_record.md"
-        valid_spike_report = spike_report.read_text()
-        candidate = spike_root / "spike_report.candidate.md"
-        candidate.write_text(valid_spike_report)
-        spike_report.write_text("previous valid report\n")
-        unregistered_packet = json.loads(json.dumps(spike_packet))
-        unregistered_packet["durable_artifacts"] = [
-            row for row in unregistered_packet["durable_artifacts"]
-            if Path(str(row.get("Path", ""))).name != "spike_report.md"
-        ]
-        spike_packet_path.write_text(json.dumps(unregistered_packet, indent=2) + "\n")
-        try:
-            publish_technical_spike_report(spike_packet_path, candidate)
-        except ValueError as error:
-            assert "must predeclare durable artifact spike_report.md" in str(error)
-        else:
-            raise AssertionError("the report must be predeclared before publication")
-        assert candidate.exists()
-        assert spike_report.read_text() == "previous valid report\n"
-        stale_packet = json.loads(json.dumps(spike_packet))
-        for artifact in stale_packet["durable_artifacts"]:
-            if Path(str(artifact.get("Path", ""))).name == "spike_report.md":
-                artifact["Path"] = str(candidate)
-        stale_packet["handoff"]["artifacts"] = [
-            str(value).replace("spike_report.md", "spike_report.candidate.md")
-            for value in stale_packet["handoff"]["artifacts"]
-        ]
-        spike_packet_path.write_text(json.dumps(stale_packet, indent=2) + "\n")
-        try:
-            publish_technical_spike_report(spike_packet_path, candidate)
-        except ValueError as error:
-            assert "must reference published spike_report.md" in str(error)
-        else:
-            raise AssertionError("candidate references must be rejected before publication")
-        assert candidate.exists()
-        assert spike_report.read_text() == "previous valid report\n"
-        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
-        publish_technical_spike_report(spike_packet_path, candidate)
-        assert not candidate.exists()
-        valid_spike_report = spike_report.read_text()
-        publishing_packet = json.loads(json.dumps(spike_packet))
-        for field in ("workers", "worker_results"):
-            publishing_packet[field] = [
-                row for row in publishing_packet[field] if row["Worker"] != "handoff"
-            ]
-        spike_packet_path.write_text(json.dumps(publishing_packet, indent=2) + "\n")
-        candidate.write_text(valid_spike_report)
-        publish_technical_spike_report(spike_packet_path, candidate)
-        assert not candidate.exists()
-        try:
-            _validate_handoff(publishing_packet)
-        except ValueError as error:
-            assert "requires terminal results for: handoff" in str(error)
-        else:
-            raise AssertionError("pre-release must still require the completed Documenter")
-        publishing_packet["worker_results"] = [
-            row for row in publishing_packet["worker_results"] if row["Worker"] != "spike-context"
-        ]
-        spike_packet_path.write_text(json.dumps(publishing_packet, indent=2) + "\n")
-        candidate.write_text(valid_spike_report)
-        try:
-            publish_technical_spike_report(spike_packet_path, candidate)
-        except ValueError as error:
-            assert "requires terminal results for: spike-context" in str(error)
-        else:
-            raise AssertionError("report publication must require completed analytical workers")
-        candidate.unlink()
-        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
-        invalid_candidate = valid_spike_report.replace("## Findings", "## Missing Findings")
-        candidate.write_text(invalid_candidate)
-        try:
-            publish_technical_spike_report(spike_packet_path, candidate)
-        except ValueError as error:
-            assert "spike_report.md is missing ## Findings" in str(error)
-        else:
-            raise AssertionError("invalid candidate report must not be published")
-        assert spike_report.read_text() == valid_spike_report
-        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
-        candidate.unlink()
-        released_receipt = spike_closure.read_text()
-        spike_closure.write_text(json.dumps({"runtime_closure": [{
-            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
-            "Completed worker handles": "Unavailable", "Runtime status": "Blocked",
-            "Remaining active handles": "Unknown",
-            "Closure evidence or blocker": (
-                "worker_runtime_release_unavailable: no exact provider-returned closure handle or release receipt "
-                "was exposed for the completed workers. Provider traces were also unavailable."
-            ),
-        }]}, indent=2) + "\n")
-        spike_record.write_text("prepared template\n")
-        finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
-        blocked_record = spike_record.read_text()
-        blocked_receipt = spike_closure.read_text()
-        assert "| State | blocked |" in blocked_record
-        assert "| Workflow outcome | blocked |" in blocked_record
-        assert "| Blocked | Unknown |" in expand_work_record(blocked_record, spike_root)
-        assert "worker_runtime_release_unavailable" in blocked_record
-        assert "| State | handoff |" not in blocked_record
-        assert "state remains handoff" not in blocked_record.lower()
-        assert "workflow remains in_progress" not in blocked_record.lower()
-        assert json.loads(spike_packet_path.read_text())["identity"]["State"] == "handoff"
-        spike_closure.write_text(json.dumps({"runtime_closure": [{
-            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
-            "Completed worker handles": "Unavailable", "Runtime status": "Blocked",
-            "Remaining active handles": "Unknown",
-            "Closure evidence or blocker": "Provider release receipts unavailable for completed workers.",
-        }]}, indent=2) + "\n")
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
-        except ValueError as error:
-            assert "worker_runtime_release_unavailable" in str(error)
-        else:
-            raise AssertionError("a blocked receipt must identify the unavailable-release blocker")
-        assert spike_record.read_text() == blocked_record
-        assert (spike_root / FINALIZATION_STATUS_FILENAME).exists()
-        spike_closure.write_text(blocked_receipt)
-        finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
-        blocked_record = spike_record.read_text()
-        assert "| State | blocked |" in blocked_record
-        assert "| Blocked | Unknown |" in expand_work_record(blocked_record, spike_root)
-        assert "worker_runtime_release_unavailable" in blocked_record
-        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
-        spike_closure.write_text(released_receipt)
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
-        except ValueError as error:
-            assert "Coordinator-owned receipt with Runtime status Blocked" in str(error)
-        else:
-            raise AssertionError("a released receipt must not create a blocked snapshot")
-        assert spike_record.read_text() == blocked_record
-        unavailable_with_false_zero = {"runtime_closure": [{
-            "Run or stage": "Technical Spike", "Receipt owner": "Coordinator",
-            "Completed worker handles": "Unavailable", "Runtime status": "Blocked",
-            "Remaining active handles": "None",
-            "Closure evidence or blocker": "worker_runtime_release_unavailable: provider release unknown.",
-        }]}
-        spike_closure.write_text(json.dumps(unavailable_with_false_zero))
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, blocked_runtime_snapshot=True)
-        except ValueError as error:
-            assert "Coordinator-owned receipt with Runtime status Blocked" in str(error)
-        else:
-            raise AssertionError("unavailable release cannot claim zero active handles")
-        assert spike_record.read_text() == blocked_record
-        spike_closure.write_text(released_receipt)
-        spike_report.write_text(valid_spike_report.replace("## Direct Evidence", "## Missing Direct Evidence"))
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-        except ValueError as error:
-            assert "spike_report.md is missing ## Direct Evidence" in str(error)
-        else:
-            raise AssertionError("the first correction must expose report errors after terminal normalization")
-        spike_report.write_text(valid_spike_report)
-        finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
-        premature_spike = json.loads(spike_packet_path.read_text())
-        premature_spike["identity"]["State"] = "completed"
-        spike_packet_path.write_text(json.dumps(premature_spike, indent=2) + "\n")
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-        except ValueError as error:
-            assert "must keep State handoff" in str(error)
-        else:
-            raise AssertionError("pre-release finalization must own the terminal state transition")
-        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
-        finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
-        assert "| Budget status | exceeded_during_finalization |" in spike_report.read_text()
-        finalize(spike_packet_path, spike_closure, spike_record)
-        spike_rendered = expand_work_record(spike_record.read_text(), spike_root)
-        assert "Workflow result: Changes required" in spike_rendered
-        assert "| State | completed |" in spike_rendered
-        assert "| Workflow outcome | completed |" in spike_rendered
-        assert "| Engineering outcome | partially_solved |" in spike_rendered
-        assert "finalization validation passed" in spike_rendered
-        assert "state remains handoff" not in spike_rendered.lower()
-        assert "workflow remains in_progress" not in spike_rendered.lower()
-        assert "| Last Updated | 2026-09-07T00:00:00Z |" not in spike_rendered
-        assert re.search(
-            r"\| Timebox or evidence budget \|[^|]*1 minutes[^|]*\|",
-            spike_report.read_text(),
-        ), spike_report.read_text()
-        assert "| spike-context | Current-State Investigator |" in spike_rendered
-        context_binding = spike_manifest["bindings"]["current_state_investigator"]
-        assert f"{context_binding['model']} / {context_binding['effort']}" in spike_rendered
-        assert "| Role-policy baseline ID | corrupted |" not in spike_rendered
-        assert f"[spike_report.md]({spike_report.resolve()})" in spike_rendered
-        incomplete_terminal = json.loads(spike_packet_path.read_text())
-        incomplete_terminal["identity"].update({
-            "State": "completed", "Workflow outcome": "completed", "Engineering outcome": "partially_solved",
-        })
-        incomplete_terminal["worker_results"] = [
-            row for row in incomplete_terminal["worker_results"]
-            if row.get("Worker") != "handoff"
-        ]
-        spike_packet_path.write_text(json.dumps(incomplete_terminal, indent=2) + "\n")
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record)
-        except ValueError as error:
-            assert "requires terminal results for: handoff" in str(error)
-        else:
-            raise AssertionError("a Technical Spike cannot complete without the handoff worker")
-        terminal_failure = json.loads((spike_root / FINALIZATION_STATUS_FILENAME).read_text())
-        assert terminal_failure["phase"] == "terminal"
-        assert terminal_failure["terminal_failure"] is True
-        assert any("requires terminal results for: handoff" in error for error in terminal_failure["errors"])
-        blocked_profile = json.loads(json.dumps(spike_packet))
-        blocked_profile["identity"].update({
-            "State": "completed", "Workflow outcome": "completed", "Engineering outcome": "partially_solved",
-            "Profile status": "blocked", "Executed profile": "None",
-        })
-        spike_packet_path.write_text(json.dumps(blocked_profile, indent=2) + "\n")
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record)
-        except ValueError as error:
-            assert "Profile status executed and matching profiles" in str(error)
-        else:
-            raise AssertionError("a blocked profile cannot produce a completed Technical Spike")
-        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
-        malformed_spike = json.loads(spike_packet_path.read_text())
-        malformed_spike["workers"] = {}
-        spike_packet_path.write_text(json.dumps(malformed_spike, indent=2) + "\n")
-        status_before_check = (spike_root / FINALIZATION_STATUS_FILENAME).read_text()
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, check_only=True)
-        except ValueError as error:
-            assert "packet_precheck_failed:packet_schema_invalid" in str(error)
-        else:
-            raise AssertionError("packet precheck must reject malformed shapes")
-        assert (spike_root / FINALIZATION_STATUS_FILENAME).read_text() == status_before_check
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-        except ValueError as error:
-            assert "packet_schema_invalid" in str(error)
-        else:
-            raise AssertionError("malformed packet shape must fail pre-release")
-        shape_failure = json.loads((spike_root / FINALIZATION_STATUS_FILENAME).read_text())
-        assert shape_failure["attempt_count"] == 1
-        assert shape_failure["correction_allowed"] is True
-        spike_packet_path.write_text(json.dumps(spike_packet, indent=2) + "\n")
-        finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-        assert not (spike_root / FINALIZATION_STATUS_FILENAME).exists()
-        broken_spike = json.loads(spike_packet_path.read_text())
-        broken_spike["identity"].update({
-            "State": "handoff", "Workflow outcome": "in_progress",
-            "Engineering outcome": "partially_solved",
-        })
-        broken_spike["playbook_selection"]["Primary goal"] = "Create implementation plan"
-        broken_spike["identity"]["Framework commit / status"] = "malformed"
-        broken_spike["handoff"]["provenance"] = broken_spike["handoff"]["provenance"].replace(
-            "a" * 40, "malformed"
-        )
-        spike_packet_path.write_text(json.dumps(broken_spike, indent=2) + "\n")
-        for attempt in (1, 2):
-            try:
-                finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-            except ValueError as error:
-                assert "Technical Spike Primary goal must be" in str(error)
-                assert ("finalization_contract_failure:" in str(error)) == (attempt == 2)
-            else:
-                raise AssertionError("invalid corrected packet must fail pre-release")
-        failure_receipt = json.loads((spike_root / FINALIZATION_STATUS_FILENAME).read_text())
-        assert failure_receipt["attempt_count"] == 2
-        assert failure_receipt["correction_allowed"] is False
-        assert failure_receipt["shutdown_deadline"]
-        try:
-            finalize(spike_packet_path, spike_closure, spike_record, pre_release=True)
-        except ValueError as error:
-            assert "correction_limit_reached" in str(error)
-        else:
-            raise AssertionError("third pre-release attempt must stop before validation")
-        source.write_text(json.dumps(packet))
-        framework_revision = subprocess.run(
-            ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        finalize(
-            source, closure, record,
-            coordinator_model_effort="Not applicable",
-            framework_revision=framework_revision,
-            framework_status="dirty",
-        )
-        assert f"{framework_revision} / Dirty" in record.read_text()
-        source.write_text(json.dumps(packet))
-        pending = {"runtime_closure": [dict(packet["runtime_closure"][0], **{
-            "Runtime status": "Pending",
-            "Closure evidence or blocker": "provider release pending",
-        })]}
-        pending_closure = root / "pending_runtime_closure.json"
-        pending_closure.write_text(json.dumps(pending))
-        pre_release_record = root / "pre-release-work-record.md"
-        pre_release_record.write_text("existing record must remain untouched\n")
-        snapshots_before_check = set(root.glob("finalization_snapshot.*.json"))
-        finalize(source, pending_closure, pre_release_record, pre_release=True)
-        assert pre_release_record.read_text() == "existing record must remain untouched\n"
-        assert set(root.glob("finalization_snapshot.*.json")) == snapshots_before_check
-        awaiting = json.loads(source.read_text())
-        awaiting["identity"].update({
-            "Profile status": "executed",
-            "State": "awaiting_input",
-            "Workflow outcome": "completed",
-            "Engineering outcome": "partially_solved",
-        })
-        source.write_text(json.dumps(awaiting))
-        finalize(source, pending_closure, pre_release_record, pre_release=True)
-        assert pre_release_record.read_text() == "existing record must remain untouched\n"
-        assert set(root.glob("finalization_snapshot.*.json")) == snapshots_before_check
-        invalid_identity = json.loads(source.read_text())
-        invalid_identity["identity"]["Profile status"] = "passed"
-        source.write_text(json.dumps(invalid_identity))
-        try:
-            finalize(source, pending_closure, pre_release_record, pre_release=True)
-        except ValueError as error:
-            assert "invalid Profile status" in str(error)
-        else:
-            raise AssertionError("pre-release validation must reject invalid identity")
-        invalid_summary = json.loads(source.read_text())
-        invalid_summary["identity"]["Profile status"] = "blocked"
-        invalid_summary["handoff"]["established"] = ["C-001"]
-        source.write_text(json.dumps(invalid_summary))
-        try:
-            finalize(source, pending_closure, pre_release_record, pre_release=True)
-        except ValueError as error:
-            assert "expected a human-readable finding" in str(error)
-        else:
-            raise AssertionError("finalization must reject claim-ID-only summaries")
-        source.write_text(json.dumps(packet))
-        invalid = dict(packet)
-        invalid["evidence"] = []
-        source.write_text(json.dumps(invalid))
-        before = record.read_text()
-        try:
-            finalize(source, closure, record)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("invalid packet must fail")
-        assert record.read_text() == before
-
-        fixture = json.loads(
-            V22_FIXTURE.read_text()
-            .replace("__FRAMEWORK_ROOT__", str(ROOT))
-            .replace("__ARTIFACT_ROOT__", str(root))
-        )
-        try:
-            from prepare_run import resolve_bindings
-        except ModuleNotFoundError:
-            from scripts.prepare_run import resolve_bindings
-
-        current_bindings = resolve_bindings("sentry_issue_remediation", None)
-        fixture_bindings = fixture["files"]["role_bindings.json"]
-        fixture_bindings["baseline_id"] = current_bindings["baseline_id"]
-        for agent, binding in fixture_bindings["bindings"].items():
-            binding["model"] = current_bindings["bindings"][agent]["model"]
-            binding["effort"] = current_bindings["bindings"][agent]["effort"]
-        fixture_packet_data = fixture["files"]["finalization_packet.json"]
-        fixture["files"]["fix_design_result.json"]["plan"] = json.loads(
-            V34_FINALIZATION_FIXTURE.read_text()
-        )["fix_design_result"]["plan"]
-        fixture_packet_data["identity"]["Framework commit / status"] = f"{'a' * 40} Clean; preflight passed"
-        fixture_packet_data["identity"]["Playbook / version"] = (
-            f"Sentry Issue Remediation / {sentry_playbook_version}"
-        )
-        fixture_packet_data["identity"]["Prompt template / revision / conformance"] = (
-            f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass"
-        )
-        fixture_packet_data["identity"]["Coordinator model/effort"] = "gpt-6-luna/medium"
-        fixture_packet_data["handoff"]["workflow_result"] = "Workflow result: Ready for implementation"
-        fixture_packet_data["handoff"]["next_action"] = {
-            "owner": "Coordinator",
-            "action": "Run pre-release finalizer, create runtime closure receipt, and obtain implementation approval.",
-            "complete_when": "Final reconciliation and finalization schema are no longer Pending and implementation is approved.",
-        }
-        for worker in fixture_packet_data["workers"]:
-            worker["Configured model/effort"] = worker["Configured model/effort"].replace(" / ", "/")
-        fixture_closure_data = fixture["files"]["runtime_closure.json"]["runtime_closure"][0]
-        fixture_closure_data["Completed worker handles"] = (
-            "evidence 01a00000-0000-7000-8000-000000000001; "
-            "fix 01a00000-0000-7000-8000-000000000002; "
-            "documenter 01a00000-0000-7000-8000-000000000003"
-        )
-        for name, content in fixture["files"].items():
-            target = root / name
-            target.write_text(content if isinstance(content, str) else json.dumps(content, indent=2) + "\n")
-        fixture_packet = root / "finalization_packet.json"
-        fixture_closure = root / "runtime_closure.json"
-        fixture_record = root / "v22_work_record.md"
-        packet_before = fixture_packet.read_text()
-        finalize(fixture_packet, fixture_closure, fixture_record)
-        fixture_rendered = expand_work_record(fixture_record.read_text(), root)
-        assert "Workflow result: Ready for implementation" in fixture_rendered
-        assert f"templates/sentry_issue_run_prompt.md / {sentry_prompt_version} / pass" in fixture_rendered
-        assert f"{'a' * 40} / Clean" in fixture_rendered
-        assert f"playbooks/sentry_issue_remediation.md / {sentry_playbook_version}" in fixture_rendered
-        assert "gpt-6-luna / medium" in fixture_rendered
-        assert "evidence 01a00000" not in fixture_rendered
-        assert "runtime closure released" in fixture_rendered
-        assert "Workflow result: Workflow result:" not in fixture_rendered
-        assert "Finalization schema | Passed |" in fixture_rendered
-        assert "Action: obtain implementation approval." in fixture_rendered
-        assert "Work-record budget exception" not in fixture_rendered
-        assert fixture_packet.read_text() == packet_before
-
-        malformed = json.loads(fixture_packet.read_text())
-        del malformed["identity"]["State"]
-        del malformed["handoff"]["next_action"]
-        fixture_packet.write_text(json.dumps(malformed))
-        try:
-            finalize(fixture_packet, fixture_closure, fixture_record)
-        except ValueError as error:
-            message = str(error)
-            assert "packet.identity.State is missing" in message
-            assert "packet.handoff.next_action is missing" in message
-        else:
-            raise AssertionError("packet validation must report every structural error in one pass")
-    with tempfile.TemporaryDirectory(prefix="workflow-analytical-failure-") as directory:
-        execution_repository = Path(directory) / "repo"
-        execution_repository.mkdir()
-        subprocess.run(["git", "init", "-q", str(execution_repository)], check=True)
-        subprocess.run(["git", "-C", str(execution_repository), "config", "user.email", "test@example.com"], check=True)
-        subprocess.run(["git", "-C", str(execution_repository), "config", "user.name", "Test"], check=True)
-        (execution_repository / "README.md").write_text("fixture\n")
-        subprocess.run(["git", "-C", str(execution_repository), "add", "README.md"], check=True)
-        subprocess.run(["git", "-C", str(execution_repository), "commit", "-qm", "fixture"], check=True)
-        prepared = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
-             "--execution-repository", str(execution_repository), "--work-item", "ITEM-FAIL",
-             "--playbook", "sentry_issue_remediation"],
-            capture_output=True, text=True, check=True,
-        )
-        prepared_data = json.loads(prepared.stdout)
-        failure_root = Path(prepared_data["artifact_root"])
-        evidence = failure_root / "normalized_evidence.md"
-        evidence.write_text(json.loads(V29_CONTRACT_FAILURE_FIXTURE.read_text())["malformed_normalized_evidence"])
-        failure_packet = failure_root / "finalization_packet.json"
-        failure_closure = failure_root / "runtime_closure.json"
-        failure_record = failure_root / "work_record.md"
-        failure_closure.write_text(json.dumps({"runtime_closure": [{
-            "Run or stage": "Current run", "Receipt owner": "Coordinator", "Runtime status": "Released",
-            "Completed worker handles": "01a049e8-689e-7273-bd17-403d4d9a5022", "Remaining active handles": "None",
-            "Closure evidence or blocker": "Provider release confirmed. Completed handles: 01a049e8-689e-7273-bd17-403d4d9a5022."}]}))
-        framework_revision = subprocess.run(
-            ["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
-        ).stdout.strip()
-        prepare_analytical_failure(
-            failure_packet, failure_closure, failure_record,
-            reason="contract delta separator missing",
-            failure_stage="evidence_topology",
-            completed_handles=["01a049e8-689e-7273-bd17-403d4d9a5022"],
-            coordinator_model_effort="gpt-5.6-luna / xhigh", framework_revision=framework_revision,
-            framework_status="dirty", evidence_artifact=evidence,
-        )
-        failure_text = expand_work_record(failure_record.read_text(), failure_root)
-        assert "| State | blocked |" in failure_text
-        assert "| Profile status | blocked |" in failure_text
-        assert "| Runtime status |" in failure_text and "| Released | None |" in failure_text
-        assert "Workflow result: Planning stopped on analytical contract failure" in failure_text
-        assert "Workflow result: Pending" not in failure_text
-
-        prepared_without_artifact = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
-             "--execution-repository", str(execution_repository), "--work-item", "ITEM-NO-ARTIFACT",
-             "--playbook", "sentry_issue_remediation"],
-            capture_output=True, text=True, check=True,
-        )
-        missing_root = Path(json.loads(prepared_without_artifact.stdout)["artifact_root"])
-        missing_record = missing_root / "work_record.md"
-        (missing_root / "runtime_closure.json").write_text(json.dumps({"runtime_closure": [{
-            "Run or stage": "Current run", "Receipt owner": "Coordinator", "Runtime status": "Released",
-            "Completed worker handles": "None", "Remaining active handles": "None",
-            "Closure evidence or blocker": "Provider confirms no workers activated; runtime released. Completed handles: None."}]}))
-        prepare_analytical_failure(
-            missing_root / "finalization_packet.json", missing_root / "runtime_closure.json", missing_record,
-            reason="worker stopped before writing its assigned artifact",
-            failure_stage="evidence_topology", completed_handles=[],
-            coordinator_model_effort="gpt-5.6-luna / xhigh", framework_revision=framework_revision,
-            framework_status="dirty", evidence_artifact=None,
-        )
-        missing_text = missing_record.read_text()
-        assert "Workflow result: Planning stopped on analytical runtime failure" in missing_text
-        assert "Evidence Topology ended without producing its assigned normalized evidence artifact" in missing_text
-        assert "| Normalized evidence |" not in missing_text
-        assert "Worker runtime receipt" in missing_text
-
-        prepared_fix = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
-             "--execution-repository", str(execution_repository), "--work-item", "ITEM-FIX",
-             "--playbook", "sentry_issue_remediation"],
-            capture_output=True, text=True, check=True,
-        )
-        fix_root = Path(json.loads(prepared_fix.stdout)["artifact_root"])
-        fix_evidence = fix_root / "normalized_evidence.md"
-        fix_evidence.write_text(json.loads(V29_CONTRACT_FAILURE_FIXTURE.read_text())["valid_normalized_evidence"])
-        (fix_root / "fix_design_result.json").write_text(V31_FIX_DESIGN_FIXTURE.read_text())
-        fix_packet_path = fix_root / "finalization_packet.json"
-        fix_packet = json.loads(fix_packet_path.read_text())
-        fix_manifest = json.loads((fix_root / "role_bindings.json").read_text())["bindings"]
-        worker_specs = (
-            ("evidence-topology", "Evidence topology", "sentry_current_state_investigator"),
-            ("repository-integration", "Repository integration", "sentry_repository_integrator"),
-            ("fix-design", "Fix design", "sentry_solution_architect"),
-        )
-        fix_packet["workers"] = []
-        fix_packet["worker_results"] = []
-        for worker, role, agent in worker_specs:
-            model_effort = f"{fix_manifest[agent]['model']} / {fix_manifest[agent]['effort']}"
-            fix_packet["workers"].append({
-                "Worker": worker, "Role": role, "Assigned inputs": "IN-001",
-                "Mode": "investigation", "Depth": "standard", "Skills": "Bounded Sentry analysis",
-                "Tools": "Mapped provider operations", "Capacity": "one worker",
-                "Configured model/effort": model_effort, "Provider-observed model/effort": model_effort,
-                "Usage": "Provider telemetry unavailable", "Depends on": "Prior stage",
-                "Outcome": "complete", "Confidence": "High",
-            })
-            fix_packet["worker_results"].append({
-                "Worker": worker, "Outcome": "complete", "Confidence": "High",
-                "Unique contribution": f"Completed {role}", "Evidence / claim refs": "E-001 / C-001",
-                "Uncertainties / blockers": "None", "Actual model/effort": model_effort,
-                "Usage/credits": "Provider telemetry unavailable",
-            })
-        fix_packet["synchronization"] = [{
-            "Stage": "Analytical fan-in", "Workers launched": "all analytical workers",
-            "Launch mode / exception": "Dependency ordered", "Worker outcomes": "complete",
-            "Results summarized": "Yes", "Barrier status": "Pending Fix Design validation",
-        }]
-        fix_packet_path.write_text(json.dumps(fix_packet, indent=2) + "\n")
-        fix_handles = [
-            "01a04a1a-aa1d-7a62-9dde-f16dfac04be2",
-            "01a04a20-70f2-7d51-aad4-5e17acd9f7a1",
-            "01a04a25-9231-7531-a89d-0b1252f894fe",
-        ]
-        fix_closure = fix_root / "runtime_closure.json"
-        fix_closure.write_text(json.dumps({"runtime_closure": [{
-            "Run or stage": "Current run", "Receipt owner": "Coordinator",
-            "Completed worker handles": ", ".join(fix_handles), "Runtime status": "Released",
-            "Remaining active handles": "None",
-            "Closure evidence or blocker": f"Provider release confirmed. Completed handles: {', '.join(fix_handles)}.",
-        }]}, indent=2) + "\n")
-        fix_record = fix_root / "work_record.md"
-        prepare_analytical_failure(
-            fix_packet_path, fix_closure, fix_record,
-            reason="legacy validator required a literal normalized_evidence.md path",
-            failure_stage="fix_design", completed_handles=fix_handles,
-            coordinator_model_effort="gpt-5.6-luna / xhigh", framework_revision=framework_revision,
-            framework_status="dirty", evidence_artifact=fix_evidence,
-        )
-        fix_text = expand_work_record(fix_record.read_text(), fix_root)
-        assert "Normalized evidence passed and Fix Design returned" in fix_text
-        assert "normalized evidence failed validation" not in fix_text
-        assert "| repository-integration |" in fix_text
-        assert all(handle in fix_text for handle in fix_handles)
-    print("finalize_work_record self-test: passed")
-
+    try:
+        from self_check import run_self_check
+    except ModuleNotFoundError:
+        from scripts.self_check import run_self_check
+    run_self_check("finalize_work_record", "self_test")
 
 
 def failure_handoff(packet_path: Path, reason: str) -> str:
     """Report saved work provisionally without publishing or certifying a terminal record."""
+    packet_path = packet_path.resolve()
     try:
         packet = json.loads(packet_path.read_text())
     except (OSError, UnicodeError, json.JSONDecodeError):
@@ -4765,21 +1600,40 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     if re.sub(r"[_-]+", " ", summary.lower()) in TECHOPS_STATE_RESULT_TOKENS:
         summary = next(iter(items("established")), fallback_summary)
     established = ["Provisional saved findings follow; failed finalization has not validated these claims."] + items("established")
-    try:
-        root = packet_path.parent
-        trace = json.loads((root / "evidence_topology.trace.json").read_text())
-        identity_errors = trace_identity_errors(trace, root, "sentry_current_state_investigator",
-                                                trace["spawn"]["provider_handle"], trace.get("thread_id"))
-        dispatch_errors = dispatch_audit_errors({"runtime_audits": [trace.get("status_observation", {})]}, packet_path)
-        if (trace.get("run_id") == identity.get("Run ID") and trace.get("audit", {}).get("status") == "passed"
-                and not identity_errors and not dispatch_errors and not trace_errors(trace, require_freshness=True)):
+    root = packet_path.parent
+    audits = packet.get("runtime_audits", [])
+    audits = audits if isinstance(audits, list) else []
+    traces = [Path(row["Trace path"]) for row in audits
+              if isinstance(row, dict) and isinstance(row.get("Trace path"), str)]
+    traces.extend(sorted(root.glob("*trace*.json")))
+    for source in dict.fromkeys(traces):
+        source = source if source.is_absolute() else root / source
+        try:
+            if source.resolve().parent != root.resolve():
+                continue
+            trace = json.loads(source.read_text())
+            if not (root / "role_bindings.json").is_file():
+                continue
+            identity_errors = trace_identity_errors(trace, root, "sentry_current_state_investigator",
+                                                    trace["spawn"]["provider_handle"], trace.get("thread_id"))
+            dispatch_errors = dispatch_audit_errors({"runtime_audits": [trace.get("status_observation", {})]}, packet_path)
+            if (trace.get("run_id") != identity.get("Run ID") or trace.get("audit", {}).get("status") != "passed"
+                    or identity_errors or dispatch_errors or trace_errors(trace, require_freshness=True)):
+                continue
+            evidence = root / "normalized_evidence.md"
+            if evidence.resolve().parent != root.resolve():
+                continue
+            checked(validate_normalized_evidence, evidence)
             facts = re.search(r"^#{1,6} Confirmed Facts\s*\n(.*?)(?=^#{1,6} |\Z)",
-                              (root / "normalized_evidence.md").read_text(), re.M | re.S)
+                              evidence.read_text(), re.M | re.S)
             if facts:
-                established.extend("Recorded evidence fact: " + line[2:] for line in facts[1].splitlines()
+                established.extend("Provisional artifact statement (not verified worker output): " + line[2:] for line in facts[1].splitlines()
                                    if line.startswith("- ") and line[2:] not in established)
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        pass  # Unaccepted or unavailable source artifacts stay linked, never promoted to findings.
+                if summary == fallback_summary:
+                    summary = "Provisional evidence text is preserved; its attribution to the worker output is unverified."
+                break
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue  # Unaccepted artifacts remain linked below without promoting their contents.
     if not items("established"):
         for row in results:
             contribution = row.get("Unique contribution")
@@ -4815,10 +1669,9 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
             worker = contract.get("worker_id") or contract.get("worker")
             if worker and worker not in accepted:
                 missing.append(worker)
-            if not worker:
-                continue
             for field in ("output", "result"):
                 saved = Path(str(contract.get(field, "")))
+                saved = saved if saved.is_absolute() else root / saved
                 if saved.is_file() and saved.resolve().parent == root.resolve():
                     saved_paths.append(str(saved))
                     if worker not in accepted:
@@ -4827,7 +1680,8 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
             established.append("Prepared workers without an accepted result: " + ", ".join(dict.fromkeys(missing)))
     except (OSError, ValueError, TypeError, AttributeError):
         pass
-    for saved in root.glob("*trace*.json"):
+    for saved in traces + [root / "runtime_closure.json"]:
+        saved = saved if saved.is_absolute() else root / saved
         if saved.is_file() and saved.resolve().parent == root.resolve():
             saved_paths.append(str(saved))
     for saved in root.glob("*.rejected.*"):
@@ -4980,14 +1834,12 @@ def main() -> int:
                 current_id = json.loads(packet_path.read_text())["identity"]["Run ID"]
                 if not recorded_id or recorded_id[1].strip() != current_id:
                     raise ValueError("handoff_record_run_mismatch")
-                validation_args = [sys.executable, str(VALIDATOR), str(record), "--emit-handoff"]
+                checked(validate_package)
                 identity = json.loads(packet_path.read_text())["identity"]
                 if ("sentry_issue_remediation" in str(identity.get("Playbook / version", ""))
                         and identity.get("Workflow outcome") == "completed"):
-                    validation_args.extend(["--sentry-artifacts", str(packet_path.parent)])
-                verified = subprocess.run(validation_args,
-                                          capture_output=True, text=True, check=True)
-                canonical = verified.stdout.split("Workflow-framework validation: passed\n", 1)[1].encode()
+                    checked(validate_sentry_artifacts, packet_path.parent)
+                canonical = record_validation_output(record).split("Workflow-framework validation: passed\n", 1)[1].encode()
             proposed = args.verify_response.read_bytes()
             if proposed.removesuffix(b"\n") != canonical.removesuffix(b"\n"):
                 raise ValueError("handoff_response_mismatch: copy the complete canonical report without additions")

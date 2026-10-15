@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
-import sys
 
 if __package__:
     from .validation.common import ROOT, fail
@@ -25,68 +25,34 @@ else:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(description=__doc__)
+    for flag in ("emit-handoff", "allow-unreleased", "self-test"):
+        parser.add_argument("--" + flag, action="store_true")
+    for flag in ("sentry-artifacts", "normalized-evidence", "technical-spike-report",
+                 "technical-spike-input-manifest"):
+        parser.add_argument("--" + flag, type=lambda value: Path(value).resolve())
+    for flag in ("technical-spike-primary-goal", "technical-spike-profile",
+                 "technical-spike-workflow-result", "technical-spike-budget-status"):
+        parser.add_argument("--" + flag)
+    parser.add_argument("--technical-spike-expected-revision", action="append", default=[])
+    parser.add_argument("work_records", nargs="*", metavar="WORK_RECORD")
+    options = parser.parse_intermixed_args(argv)
+    emit_handoff = options.emit_handoff
+    allow_unreleased = options.allow_unreleased
+    artifact_root = options.sentry_artifacts
+    normalized_evidence = options.normalized_evidence
+    technical_spike_report = options.technical_spike_report
+    technical_spike_primary_goal = options.technical_spike_primary_goal
+    technical_spike_profile = options.technical_spike_profile
+    technical_spike_workflow_result = options.technical_spike_workflow_result
+    technical_spike_budget_status = options.technical_spike_budget_status
+    technical_spike_input_manifest = options.technical_spike_input_manifest
+    technical_spike_expected_revisions = options.technical_spike_expected_revision
+    arguments = options.work_records
     validate_library()
-    emit_handoff = "--emit-handoff" in argv
-    allow_unreleased = "--allow-unreleased" in argv
-    raw_arguments = list(argv)
-    artifact_root = None
-    normalized_evidence = None
-    technical_spike_report = None
-    technical_spike_primary_goal = None
-    technical_spike_profile = None
-    technical_spike_workflow_result = None
-    technical_spike_budget_status = None
-    technical_spike_input_manifest = None
-    technical_spike_expected_revisions: list[str] = []
-    if "--sentry-artifacts" in raw_arguments:
-        index = raw_arguments.index("--sentry-artifacts")
-        if index + 1 >= len(raw_arguments):
-            fail("--sentry-artifacts requires one artifact-root path")
-        artifact_root = Path(raw_arguments[index + 1]).resolve()
-        del raw_arguments[index:index + 2]
-    if "--normalized-evidence" in raw_arguments:
-        index = raw_arguments.index("--normalized-evidence")
-        if index + 1 >= len(raw_arguments):
-            fail("--normalized-evidence requires one artifact path")
-        normalized_evidence = Path(raw_arguments[index + 1]).resolve()
-        del raw_arguments[index:index + 2]
-    for flag, name in (
-        ("--technical-spike-report", "technical_spike_report"),
-        ("--technical-spike-primary-goal", "technical_spike_primary_goal"),
-        ("--technical-spike-profile", "technical_spike_profile"),
-        ("--technical-spike-workflow-result", "technical_spike_workflow_result"),
-        ("--technical-spike-budget-status", "technical_spike_budget_status"),
-        ("--technical-spike-input-manifest", "technical_spike_input_manifest"),
-    ):
-        if flag in raw_arguments:
-            index = raw_arguments.index(flag)
-            if index + 1 >= len(raw_arguments):
-                fail(f"{flag} requires one value")
-            value = raw_arguments[index + 1]
-            if name == "technical_spike_report":
-                technical_spike_report = Path(value).resolve()
-            elif name == "technical_spike_primary_goal":
-                technical_spike_primary_goal = value
-            elif name == "technical_spike_profile":
-                technical_spike_profile = value
-            elif name == "technical_spike_workflow_result":
-                technical_spike_workflow_result = value
-            elif name == "technical_spike_budget_status":
-                technical_spike_budget_status = value
-            else:
-                technical_spike_input_manifest = Path(value).resolve()
-            del raw_arguments[index:index + 2]
-    while "--technical-spike-expected-revision" in raw_arguments:
-        index = raw_arguments.index("--technical-spike-expected-revision")
-        if index + 1 >= len(raw_arguments):
-            fail("--technical-spike-expected-revision requires one value")
-        technical_spike_expected_revisions.append(raw_arguments[index + 1])
-        del raw_arguments[index:index + 2]
-    arguments = [value for value in raw_arguments if value not in {"--self-test", "--emit-handoff", "--allow-unreleased"}]
     if emit_handoff and len(arguments) != 1:
         fail("--emit-handoff requires exactly one terminal work record")
-    if "--self-test" in argv:
+    if options.self_test:
         self_test_reasoning_records()
     if artifact_root:
         validate_sentry_artifacts(artifact_root, allow_unreleased=allow_unreleased)
