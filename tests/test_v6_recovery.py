@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 from scripts import prepare_run as prepare
@@ -116,6 +117,12 @@ class V6Recovery(unittest.TestCase):
             "--trace", trace)
         self.assertEqual(exported.returncode, 2, exported.stdout + exported.stderr)
         self.assertIn("forbidden_context_reference:archived_artifact", exported.stdout)
+        violation = json.loads(exported.stdout)["context_violations"][0]
+        self.assertEqual(violation["error"], "forbidden_context_reference:archived_artifact")
+        self.assertEqual(violation["trace_path"], ["tool_trace", "0", "input"])
+        self.assertIn(".thoughts/ISSUE-1/runs", violation["reference"])
+        self.assertNotIn("command", violation)
+        self.assertEqual(json.loads(trace.read_text())["audit"]["context_violations"][0], violation)
         self.assertTrue((root / "runtime_dispatches.json").is_file())
         return trace
 
@@ -149,6 +156,68 @@ class V6Recovery(unittest.TestCase):
         rejected["audit"] = {"status": "passed", "errors": []}
         trace.write_text(json.dumps(rejected))
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
+
+    def test_prepared_worker_names_resolve_for_every_playbook(self):
+        for index, playbook in enumerate(sorted(prepare.PLAYBOOKS)):
+            with self.subTest(playbook=playbook):
+                run = prepare.prepare_run(self.root, "CASE-" + str(index), playbook, None, False,
+                    input_manifest=self.inputs,
+                    primary_question="Which boundary owns this behavior?" if playbook == "technical_spike" else None,
+                    started_at=datetime.now(UTC).isoformat() if playbook == "technical_spike" else None)
+                for role in run["bindings"]:
+                    self.assertEqual(runtime.worker_binding(run, role), role)
+                for role, contract in run.get("worker_contracts", {}).items():
+                    if not isinstance(contract, dict):
+                        continue
+                    worker = contract.get("worker") or contract.get("worker_id")
+                    if worker:
+                        bound = runtime.worker_binding(run, worker)
+                        self.assertIn(bound, run["bindings"])
+                        if role in run["bindings"]:
+                            self.assertEqual(bound, role)
+
+    def test_replacement_transition_resolves_logical_worker_roles(self):
+        run = self.prepare()
+        trace = self.rejected_trace(run)
+        value = json.loads(trace.read_text())
+        value["spawn"]["agent"] = "issue-evidence"
+        value["spawn"].pop("binding_agent", None)
+        value["audit"]["errors"] = runtime.trace_errors(value, require_freshness=True)
+        trace.write_text(json.dumps(value))
+        allowed = self.command("validate_worker_runtime.py", "--transition", "replace",
+            "--provider-status", "completed", "--rejected-trace", trace,
+            "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH)
+        self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
+
+    def test_replacement_transition_does_not_authorize_an_ordinary_activation(self):
+        run = self.prepare()
+        trace = self.rejected_trace(run)
+        bundle = run["activation_packet_bundle"]
+        transition = self.command("validate_worker_runtime.py", "--transition", "replace",
+            "--provider-status", "completed", "--rejected-trace", trace,
+            "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH)
+        self.assertEqual(transition.returncode, 0, transition.stdout + transition.stderr)
+        self.assertIn("corrected activation", json.loads(transition.stdout)["next_action"])
+        assignment = self.root / "retry.json"
+        assignment.write_text(json.dumps({"objective": "Reverify rejected evidence"}))
+        dispatch = Path(run["artifact_root"]) / "retry.txt"
+        activation = ["--activation-packet-bundle", bundle["path"], "--expected-agent", "current_state_investigator",
+            "--expected-bundle-sha256", bundle["sha256"], "--assignment", assignment, "--dispatch-file", dispatch]
+        blocked = self.command("validate_worker_runtime.py", *activation)
+        self.assertEqual(blocked.returncode, 2)
+        self.assertFalse(dispatch.exists())
+        guidance = json.loads(blocked.stdout)["recovery_required"]
+        self.assertEqual(guidance["rejected_trace"], str(trace.resolve()))
+        self.assertEqual(guidance["provider_handle"], HANDLE)
+        self.assertIn("--provider-status", guidance["required_options"])
+        corrected = self.command("validate_worker_runtime.py", *activation, "--rejected-trace", trace,
+            "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH, "--provider-status", "completed")
+        self.assertEqual(corrected.returncode, 0, corrected.stdout + corrected.stderr)
+        self.assertTrue(dispatch.is_file())
+        repeated = self.command("validate_worker_runtime.py", *activation, "--rejected-trace", trace,
+            "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH, "--provider-status", "completed")
+        self.assertEqual(repeated.returncode, 2)
+        self.assertIn("activation_repair_limit_reached", repeated.stdout)
 
     def test_recovery_does_not_overwrite_a_different_rejected_output(self):
         run = self.prepare()

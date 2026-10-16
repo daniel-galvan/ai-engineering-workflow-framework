@@ -339,7 +339,7 @@ def _trace_strings(value: object, path: tuple[str, ...] = ()):
     """Yield strings from provider tool activity, excluding fixture metadata."""
     if isinstance(value, dict):
         for key, nested in value.items():
-            if str(key) in TRACE_METADATA_KEYS:
+            if str(key) in TRACE_METADATA_KEYS or not path and key == "audit":
                 continue
             yield from _trace_strings(nested, (*path, str(key)))
     elif isinstance(value, list):
@@ -769,17 +769,52 @@ def _ancestor_instruction_reads(row: dict, root: Path) -> list[str]:
         command = arguments.get("cmd", "")
         if not isinstance(command, str):
             continue
-        targets = _read_targets(command)
-        loop = re.match(
-            r'^for (?P<var>[A-Za-z_]\w*) in (?P<paths>[^;\n]+);\s*do\s+if '
-            r'(?:\[ -f "\$(?P=var)" \]|test -f "\$(?P=var)");\s*then\s+'
-            r'(?:(?:echo "--- \$(?P=var)"|printf \'\\n--- %s ---\\n\' "\$(?P=var)");\s*)?'
-            r'cat "\$(?P=var)";\s*fi;\s*done(?=;|\n|$)', command)
-        if loop:
-            try:
-                targets = shlex.split(loop["paths"])
-            except ValueError:
-                continue
+        try:
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";\n")
+            lexer.whitespace_split = True
+            lexer.whitespace = " \t\r"
+            lexer.commenters = ""
+            statements, current = [], []
+            for token in lexer:
+                if token and all(char in ";\n" for char in token):
+                    if current:
+                        statements.append(current)
+                        current = []
+                else:
+                    current.append(token)
+            if current:
+                statements.append(current)
+        except ValueError:
+            continue
+        targets, index = [], 0
+        # Unknown shell syntax remains audited; consume only literal reads and instruction loops.
+        while index < len(statements):
+            statement = statements[index]
+            if len(statement) >= 4 and statement[0] == "for" and statement[2] == "in":
+                variable = "$" + statement[1]
+                end = next((i for i in range(index + 1, len(statements)) if statements[i] == ["done"]), None)
+                if end is None:
+                    break
+                tail = [token for part in statements[index + 1:end + 1] for token in part]
+                conditions = (["[", "-f", variable, "]"], ["test", "-f", variable])
+                suffix = ["cat", variable, "fi", "done"]
+                valid = False
+                for condition in conditions:
+                    prefix = ["do", "if", *condition, "then"]
+                    if tail[:len(prefix)] == prefix and tail[-len(suffix):] == suffix:
+                        marker = tail[len(prefix):-len(suffix)]
+                        valid = marker in ([], ["echo", "--- " + variable],
+                                           ["printf", "\\n--- %s ---\\n", variable])
+                if not valid or not re.fullmatch(r"[A-Za-z_]\w*", statement[1]):
+                    break
+                targets.extend(statement[3:])
+                index = end + 1
+            else:
+                selected = _read_targets(shlex.join(statement))
+                if not selected:
+                    break
+                targets.extend(selected)
+                index += 1
         cwd = Path(arguments.get("workdir", root.parent.parent))
         for target in targets:
             if any(char in target for char in "$`*"):
@@ -791,7 +826,7 @@ def _ancestor_instruction_reads(row: dict, root: Path) -> list[str]:
     return reads
 
 
-def context_trace_errors(trace: dict[str, object]) -> list[str]:
+def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
@@ -841,18 +876,26 @@ def context_trace_errors(trace: dict[str, object]) -> list[str]:
             checked = value if label != "archived_artifact" else candidate
             if label == "archived_artifact" and listing:
                 continue
-            if pattern.search(checked):
+            match = pattern.search(checked)
+            if match:
                 errors.append(f"forbidden_context_reference:{label}")
+                if details is not None:
+                    details.append({"error": errors[-1], "trace_path": list(path), "reference": match.group().strip()})
                 break
         if root and not listing:
             for reference in THOUGHT_PATH.findall(candidate):
                 relative = reference.split(".thoughts/", 1)[1]
                 if relative.split("/", 1)[0] != root.name or "/runs/" in relative:
                     errors.append("forbidden_context_reference:archived_artifact")
+                    if details is not None:
+                        detail = {"error": errors[-1], "trace_path": list(path), "reference": reference}
+                        if detail not in details:
+                            details.append(detail)
     return list(dict.fromkeys(errors))
 
 
-def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -> list[str]:
+def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
+                 context_details: list[dict] | None = None) -> list[str]:
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
     if not isinstance(trace.get("events", []), list):
@@ -911,7 +954,7 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False) -
     if isinstance(failure, dict) and failure.get("requested") and not failure.get("artifact_created"):
         if failure.get("evidence_artifact_required"):
             errors.append("analytical_failure_artifact_absent")
-    errors.extend(context_trace_errors(trace))
+    errors.extend(context_trace_errors(trace, details=context_details))
     return errors
 
 

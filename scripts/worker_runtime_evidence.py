@@ -97,11 +97,14 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         result["spawn"].update(observed_dispatch_binding(result, artifact_root))
     launch_errors = launch_binding_errors(result, artifact_root, agent, ledger) if artifact_root else []
     result["launch_errors"] = launch_errors
-    errors = trace_errors(result, require_freshness=True)
+    context_details = []
+    errors = trace_errors(result, require_freshness=True, context_details=context_details)
     if errors:
         result["events"][0]["guard_result"] = "blocked"
         errors = trace_errors(result, require_freshness=True)
     result["audit"] = {"status": "rejected" if errors else "passed", "errors": errors}
+    if context_details:
+        result["audit"]["context_violations"] = context_details
     return result
 
 
@@ -256,7 +259,8 @@ def main() -> int:
         args.ledger.write_text(json.dumps(result, indent=2) + "\n")
         if args.trace and trace["audit"]["errors"]:
             print(json.dumps({"status": "blocked", "errors": trace["audit"]["errors"],
-                              "trace": str(args.trace), "ledger": str(args.ledger)}))
+                              "trace": str(args.trace), "ledger": str(args.ledger),
+                              "context_violations": trace["audit"].get("context_violations", [])}))
             return 2
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}))

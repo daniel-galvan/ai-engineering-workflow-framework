@@ -186,6 +186,9 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
+            'cat AGENTS.md; for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; python3 normalizer.py --help',
+            'cat AGENTS.md\ncat .thoughts/AGENTS.md; cat .thoughts/ITEM-1/AGENTS.md',
+            'cat AGENTS.md; sed -n "1,20p" .thoughts/AGENTS.md',
             'cat .thoughts/AGENTS.md',
             'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do\nif [ -f "$p" ]; then\ncat "$p";\nfi;\ndone',
             'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then cat "$p"; fi; done\nif test -f .thoughts/ITEM-1/fix_design_result.json; then cat .thoughts/ITEM-1/fix_design_result.json; fi',
@@ -204,6 +207,10 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_instruction_exception_does_not_allow_writes_or_other_work_items(self):
         for command in (
+            'cat AGENTS.md; for p in .thoughts/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; cat .thoughts/ITEM-1/runs/prior/notes.md',
+            'cat AGENTS.md; for p in .thoughts/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; echo changed > .thoughts/AGENTS.md',
+            'cat AGENTS.md; echo "for p in .thoughts/AGENTS.md; do if [ -f \"$p\" ]; then cat \"$p\"; fi; done"; cat .thoughts/ITEM-1/runs/prior/notes.md',
+            'cd other; cat .thoughts/AGENTS.md',
             'cat .thoughts/OTHER/AGENTS.md',
             'cat .thoughts/ITEM-1/runs/prior/AGENTS.md',
             'echo changed > .thoughts/AGENTS.md',
@@ -216,6 +223,15 @@ class ContextOperationAudit(unittest.TestCase):
                 trace["tool_trace"].append({"type": "custom_tool_call", "input":
                     'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'})
                 self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
+    def test_audit_diagnostics_are_metadata_but_do_not_hide_actual_reads(self):
+        trace = self.instruction_read_trace()
+        reference = ".thoughts/ITEM-1/runs/prior/notes.md"
+        trace["audit"] = {"context_violations": [{"reference": reference}]}
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"].append({"type": "custom_tool_call", "input":
+            'await tools.exec_command(' + json.dumps({"cmd": "cat " + reference}) + ')'})
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
 
     def test_ancestor_instruction_symlink_cannot_reach_archived_analysis(self):
         archive = self.root / "runs/prior/notes.md"

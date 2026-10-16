@@ -208,16 +208,35 @@ class ActivationDelivery(unittest.TestCase):
 
     def test_one_completed_activation_repair_is_allowed_and_persisted(self):
         path, trace = self.rejected_trace()
-        args = ["--transition", "replace", "--provider-status", "completed", "--rejected-trace", path,
-                "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH]
-        allowed = self.command(*args)
+        recovery = ["--provider-status", "completed", "--rejected-trace", path,
+                    "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH]
+        allowed = self.command("--transition", "replace", *recovery)
         self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
+        self.assertNotIn("activation_repairs", json.loads(Path(self.run["finalization_packet"]).read_text()))
+        assignment = self.artifacts / "retry.json"
+        assignment.write_text(json.dumps({"objective": "Read complete guarded instructions"}))
+        bundle = self.run["activation_packet_bundle"]
+        activation = ["--activation-packet-bundle", bundle["path"], "--expected-agent", "current_state_investigator",
+            "--expected-bundle-sha256", bundle["sha256"], "--assignment", assignment,
+            "--dispatch-file", self.artifacts / "retry.txt", *recovery]
+        corrected = self.command(*activation)
+        self.assertEqual(corrected.returncode, 0, corrected.stdout + corrected.stderr)
         packet = json.loads(Path(self.run["finalization_packet"]).read_text())
         self.assertEqual(packet["activation_repairs"]["current_state_investigator"]["Attempt"], 1)
         self.assertEqual(json.loads(path.read_text()), trace)
-        blocked = self.command(*args)
+        blocked = self.command(*activation)
         self.assertEqual(blocked.returncode, 2)
         self.assertIn("activation_repair_limit_reached", blocked.stdout)
+
+    def test_rejected_activation_can_use_its_recorded_expected_role(self):
+        path, trace = self.rejected_trace()
+        trace["spawn"]["expected_agent"] = trace["spawn"].pop("agent")
+        trace["audit"]["errors"] = runtime.trace_errors(trace, require_freshness=True)
+        path.write_text(json.dumps(trace))
+        allowed = self.command("--transition", "replace", "--provider-status", "completed",
+            "--rejected-trace", path, "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH)
+        self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
+        self.assertNotIn("activation_repairs", json.loads(Path(self.run["finalization_packet"]).read_text()))
 
     def test_activation_repair_requires_real_mismatch_evidence_and_terminal_status(self):
         path, trace = self.rejected_trace()

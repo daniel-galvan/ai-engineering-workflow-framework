@@ -116,6 +116,12 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                                "Worker": role, "Trace path": str(trace_path)}
                         self.assertEqual(finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
                                          root / "finalization_packet.json", {role}), [])
+                        contract = run.get("worker_contracts", {}).get(role, {})
+                        worker = contract.get("worker") or contract.get("worker_id")
+                        if worker:
+                            row["Worker"] = worker
+                            self.assertEqual(finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
+                                             root / "finalization_packet.json", {worker}), [])
 
     def test_in_turn_correction_retains_pre_correction_context(self):
         with tempfile.TemporaryDirectory() as directory:

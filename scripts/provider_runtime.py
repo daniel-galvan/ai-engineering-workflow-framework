@@ -16,7 +16,8 @@ def worker_binding(bindings: dict, worker: str) -> str:
     if worker in bindings["bindings"]:
         return worker
     matches = [role for role, contract in bindings.get("worker_contracts", {}).items()
-               if isinstance(contract, dict) and contract.get("worker") == worker]
+               if role in bindings["bindings"] and isinstance(contract, dict)
+               and (contract.get("worker") or contract.get("worker_id")) == worker]
     sentry = {"evidence-topology": "sentry_current_state_investigator", "failure-topology": "sentry_dependency_analyst",
               "repository-integration": "sentry_repository_integrator", "fix-design": "sentry_solution_architect"}
     if not matches and bindings.get("playbook") == "sentry_issue_remediation" and sentry.get(worker) in bindings["bindings"]:

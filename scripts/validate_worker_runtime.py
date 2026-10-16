@@ -123,8 +123,9 @@ def _recovery_errors(path: Path, role: str, handle: str, dispatch: str, provider
         trace = json.loads(path.read_text())
         current = json.loads((path.parent / "finalization_packet.json").read_text())
         bindings = json.loads((path.parent / "role_bindings.json").read_text())
+        role = worker_binding(bindings, role)
         if (trace.get("run_id") != current["identity"]["Run ID"]
-                or worker_binding(bindings, trace["spawn"]["agent"]) != role):
+                or worker_binding(bindings, trace["spawn"].get("agent") or trace["spawn"].get("expected_agent")) != role):
             return ["rejected_result_current_binding_required"]
         errors = rejected_result_errors(trace, handle, dispatch)
         error = transition_error("replace", provider_status, rejected_result=not errors)
@@ -138,7 +139,8 @@ def _recovery_errors(path: Path, role: str, handle: str, dispatch: str, provider
 
 
 def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: str,
-                             *, rejected_trace_sha256: str | None = None) -> list[str]:
+                             *, rejected_trace_sha256: str | None = None,
+                             recovery_required: dict | None = None) -> list[str]:
     if not path.is_file():
         return ["activation_packet_unavailable"]
     if hashlib.sha256(path.read_bytes()).hexdigest() != expected_sha256:
@@ -165,6 +167,13 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         for role, receipt in _pending_rejections(path.parent).items():
             if role != expected_agent or receipt["sha256"] != rejected_trace_sha256:
                 errors.append("worker_activation_rejected_result_pending:" + role)
+                if recovery_required is not None and not recovery_required:
+                    recovery_required.update({
+                        "agent": role, "rejected_trace": receipt["trace"],
+                        "provider_handle": receipt["Provider handle"], "last_dispatch_at": receipt["Last dispatch at"],
+                        "required_options": ["--rejected-trace", "--provider-handle", "--last-dispatch-at", "--provider-status"],
+                        "next_action": "Run corrected activation with these options and a fresh terminal provider status.",
+                    })
     except (OSError, ValueError, TypeError, KeyError) as error:
         errors.append("worker_rejection_receipt_invalid:" + str(error))
     if packet.get("required_prefix") != "Coordinator initialization: complete":
@@ -406,7 +415,11 @@ def main() -> int:
         errors = delivery_start_errors(args.before_source_change.resolve(), args.implementer_handle, args.provider_status)
     elif args.trace:
         try:
-            errors = trace_errors(json.loads(args.trace.read_text()), require_freshness=args.require_freshness)
+            context_details = []
+            errors = trace_errors(json.loads(args.trace.read_text()), require_freshness=args.require_freshness,
+                                  context_details=context_details)
+            if context_details:
+                result["context_violations"] = context_details
         except (OSError, ValueError, TypeError) as error:
             errors = [f"tool_trace_invalid:{error}"]
     elif args.activation_packet_bundle or args.expected_agent or args.expected_bundle_sha256:
@@ -425,8 +438,11 @@ def main() -> int:
                 if not errors:
                     rejection_hash = hashlib.sha256(args.rejected_trace.read_bytes()).hexdigest()
         if not errors:
+            recovery_required = {}
             errors = activation_packet_errors(args.activation_packet_bundle.resolve(), args.expected_agent,
-                                              args.expected_bundle_sha256, rejected_trace_sha256=rejection_hash)
+                args.expected_bundle_sha256, rejected_trace_sha256=rejection_hash, recovery_required=recovery_required)
+            if recovery_required:
+                result["recovery_required"] = recovery_required
         if not errors:
             bundle = json.loads(args.activation_packet_bundle.read_text())
             packet = bundle["packets"][args.expected_agent]
@@ -499,25 +515,23 @@ def main() -> int:
                                  rejected_result=bool(args.rejected_trace) and not errors)
         if error:
             errors.append(error)
-        if not errors and args.rejected_trace and trace.get("spawn", {}).get("activation_message_conformance") == "failed":
-            try:
-                role = trace["spawn"].get("agent") or trace["spawn"].get("expected_agent")
-                bindings = json.loads((args.rejected_trace.parent / "role_bindings.json").read_text())
-                if not role or role not in bindings["bindings"]:
-                    raise ValueError("activation_repair_binding_required")
-                repairs = current.setdefault("activation_repairs", {})
-                if role in repairs:
-                    raise ValueError("activation_repair_limit_reached")
-                repairs[role] = {"Provider handle": args.provider_handle, "Last dispatch at": args.last_dispatch_at,
-                                 "Rejected trace": str(args.rejected_trace.resolve()), "Attempt": 1}
-                (args.rejected_trace.parent / "finalization_packet.json").write_text(json.dumps(current, indent=2) + "\n")
-                result["activation_repair"] = "reserved; preserve rejected output and dispatch the complete guarded assignment"
-            except (OSError, ValueError, KeyError, TypeError) as error:
-                errors.append(str(error))
+        if not errors and args.rejected_trace:
+            role = (trace["spawn"].get("binding_agent") or trace["spawn"].get("agent")
+                    or trace["spawn"].get("expected_agent"))
+            errors.extend(_recovery_errors(args.rejected_trace, role, args.provider_handle,
+                                           args.last_dispatch_at, args.provider_status))
+            if not errors:
+                result["next_action"] = (
+                    "Run corrected activation with --activation-packet-bundle, --expected-agent, "
+                    "--expected-bundle-sha256, --assignment, --dispatch-file and the same --rejected-trace, "
+                    "--provider-handle, --last-dispatch-at plus a fresh terminal --provider-status. "
+                    "This transition check does not consume the recovery attempt or authorize an ordinary activation."
+                )
     else:
         parser.error("choose --activation-packet-bundle, --transition, --trace, or --self-test")
     if errors:
-        print(json.dumps({"status": "blocked", "errors": errors}, sort_keys=True))
+        result.update(status="blocked", errors=errors)
+        print(json.dumps(result, sort_keys=True))
         return 2
     print(json.dumps(result, sort_keys=True))
     return 0

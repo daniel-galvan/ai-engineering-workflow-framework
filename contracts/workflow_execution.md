@@ -309,7 +309,10 @@ with a rejected result is eligible for one replacement when clean isolation requ
 guard's activation mode with its saved rejected trace, observed handle, latest dispatch and fresh terminal status.
 Use `--rejected-trace`, `--provider-handle`, `--last-dispatch-at`, and `--provider-status` together with the activation
 bundle, corrected assignment and dispatch file. One command validates eligibility and emits the corrected launch;
-it records the single recovery authorization against that dispatch hash. Preserve the rejected
+it records the single recovery authorization against that dispatch hash. A separate replacement-transition check
+is read-only eligibility validation; it does not consume the attempt or authorize ordinary activation. An activation
+blocked by missing recovery options remains eligible for the complete corrected-activation command.
+Preserve the rejected
 evidence and run identity, and activate a fresh handle with the same guarded envelope and typed inputs. Completion
 alone never permits replacement; active tasks remain protected. Correction and replacement share one recovery
 attempt per rejected stage. If clean isolation cannot be

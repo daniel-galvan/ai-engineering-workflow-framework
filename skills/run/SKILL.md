@@ -316,7 +316,22 @@ description: >-
    `--provider-handle`, `--last-dispatch-at`, and the freshly observed terminal `--provider-status`, along with the
    ordinary activation bundle, corrected assignment and a new dispatch file. This checks the one recovery allowance
    and binds it to the emitted corrected launch. Never run an unguarded follow-up first or merge it as accepted
-   evidence.
+   evidence. Use the same complete command for a same-worker correction and a fresh-worker replacement:
+
+   ```bash
+   python3 <packaged-framework-root>/scripts/validate_worker_runtime.py \
+     --activation-packet-bundle <bundle-path> --expected-agent <bound-role> \
+     --expected-bundle-sha256 <manifest-bundle-hash> \
+     --assignment <corrected-assignment.json> --dispatch-file <new-dispatch.txt> \
+     --rejected-trace <saved-rejected-trace.json> --provider-handle <observed-handle> \
+     --last-dispatch-at <latest-dispatch> --provider-status <fresh-terminal-status>
+   ```
+
+   An allowed `--transition replace` check establishes eligibility only. It does not consume the recovery attempt or
+   authorize an ordinary activation. Corrected activation records `activation_repairs` against the new dispatch hash.
+   If activation reports `worker_activation_rejected_result_pending`, use its `recovery_required` receipt to repeat
+   corrected activation with every required option and a fresh provider observation; the blocked call did not spend
+   the recovery attempt. Do not treat a missing recovery argument as exhaustion of the one permitted recovery.
    Do not combine activation with `--transition` or `--trace`; status is permitted only for corrected activation.
    For Feature Delivery specification assessment, the Documenter activation guard also checks that analytical
    artifacts and a populated `feature_design.md` coverage table exist. Return pre-handoff errors to the owning worker
@@ -343,10 +358,11 @@ description: >-
    provider-observed message SHA256 values and `activation_message_conformance: failed` in the canonical trace's
    Binding evidence. Obtain the actual submitted message through the exact worker's provider history; never invent a
    delivery receipt. Export and audit the latest completed result with the prepared collector. One activation repair
-   per bound role is permitted in this invocation: use `--transition replace` with the latest observed handle,
-   dispatch and rejected trace before correcting the same completed worker or starting a fresh replacement. The
-   guard reserves that role's repair in `activation_repairs`; another attempt is rejected. Send the complete guarded
-   assignment, audit the new turn, and merge only its accepted result. Never interrupt a running worker for repair.
+   per bound role is permitted in this invocation: use the complete corrected-activation command above with the
+   latest observed handle, dispatch, rejected trace and fresh terminal status for either correction or replacement.
+   Only corrected activation reserves that role's repair in `activation_repairs`; another attempt is rejected.
+   Send the emitted guarded assignment, audit the new turn, and merge only its accepted result.
+   Never interrupt a running worker for repair.
    A filename-only discovery result is not archived analysis consumption. The trace auditor excludes archive names
    from proven name-only listing outputs; commands that read archive contents and unknown tool shapes remain gated.
    If repair fails, evidence is unavailable, or the budget is exhausted, use the terminal failure route below. Do not
@@ -453,9 +469,10 @@ description: >-
    worker-contract output mechanically. Preserve the rejected trace under its original path. These audit files are
    not worker inputs; a replacement must never read a rejected output left at its assigned path.
    Export the worker's complete current-run activity to a new trace path using its fresh dispatch observation.
-   If clean isolation requires a fresh worker, validate replacement with
-   `--transition replace --provider-status completed`
-   `--rejected-trace <saved-trace> --provider-handle <observed-handle> --last-dispatch-at <latest-dispatch>`.
+   If clean isolation requires a fresh worker, use the complete corrected-activation command above, then launch
+   its emitted `activation_message` with a new handle. A separate transition check does not authorize that launch.
+   Inspect `audit.context_violations` for the exact offending operation and path before attributing a context failure;
+   a repository instruction file or a product directory containing the word archive is not historical evidence.
    The trace must prove rejection of that handle's latest completed result. Completion alone does not authorize
    replacement, and an active worker cannot be replaced. Use a new provider handle, retain the rejected artifacts,
    and keep the same run identity and typed inputs. Allow one recovery attempt total per rejected stage, whether
