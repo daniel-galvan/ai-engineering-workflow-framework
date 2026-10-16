@@ -63,9 +63,9 @@ except ModuleNotFoundError:
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PLAN_TEMPLATE = ROOT / "templates" / "implementation_plan.md"
-V34_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
-V36_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
-V37_V38_FIXTURE = ROOT / "tests" / "fixtures" / "v37_v38_sentry_runtime_regressions.json"
+V34_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_deterministic_finalization.json"
+V36_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_finalization_regression.json"
+V37_V38_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_runtime_regressions.json"
 WORKER_BINDINGS = {
     "evidence-topology": ("sentry_current_state_investigator", "Evidence topology"),
     "repository-integration": ("sentry_repository_integrator", "Repository integration"),

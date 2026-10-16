@@ -1624,7 +1624,7 @@ Runtime behavior remains unverified.
             target.write_text(content if isinstance(content, str) else json.dumps(content, indent=2) + "\n")
         fixture_packet = root / "finalization_packet.json"
         fixture_closure = root / "runtime_closure.json"
-        fixture_record = root / "v22_work_record.md"
+        fixture_record = root / "work_record.md"
         packet_before = fixture_packet.read_text()
         finalize(fixture_packet, fixture_closure, fixture_record)
         fixture_rendered = expand_work_record(fixture_record.read_text(), root)

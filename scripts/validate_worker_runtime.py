@@ -97,8 +97,8 @@ except ModuleNotFoundError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-V40_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v40_sentry_worker_runtime.json"
-V41_CONTEXT_TRACE_FIXTURE = ROOT / "tests" / "fixtures" / "v41_sentry_context_trace.json"
+V40_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_worker_runtime.json"
+V41_CONTEXT_TRACE_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_context_trace.json"
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
 
 

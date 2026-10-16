@@ -274,11 +274,11 @@ VALIDATOR = ROOT / "scripts" / "validate_library.py"
 PACKET_TEMPLATE = ROOT / "templates" / "finalization_packet.json"
 CLOSURE_TEMPLATE = ROOT / "templates" / "runtime_closure.json"
 PLUGIN_MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
-V22_FIXTURE = ROOT / "tests" / "fixtures" / "v22_sentry_planning.json"
-V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
-V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
-V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
-V34_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
+V22_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_planning.json"
+V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_stabilization.json"
+V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_contract_failure.json"
+V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_fix_design_contract.json"
+V34_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_deterministic_finalization.json"
 UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 MODEL_EFFORT_PATTERN = re.compile(
     r"^\s*(\S+)\s*/\s*(none|minimal|low|medium|high|xhigh|max|ultra)(?:\s*;.*)?$", re.IGNORECASE

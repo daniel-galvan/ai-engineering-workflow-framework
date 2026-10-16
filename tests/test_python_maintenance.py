@@ -156,7 +156,7 @@ class PythonMaintenance(unittest.TestCase):
             self.assertIn("--technical-spike-expected-revision", result.stdout)
 
     def test_internal_normalization_checks_fresh_artifacts_without_spawning_a_validator(self):
-        fixture = json.loads((ROOT / "tests/fixtures/v37_v38_sentry_runtime_regressions.json").read_text())
+        fixture = json.loads((ROOT / "tests/fixtures/sentry_runtime_regressions.json").read_text())
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             design = root / "fix_design_result.json"

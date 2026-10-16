@@ -36,10 +36,10 @@ class PackagedLifecycle(unittest.TestCase):
                 ("scripts/run_preflight.py",),
                 ("scripts/prepare_run.py", "--self-test"),
                 ("scripts/finalize_sentry_planning.py", "--self-test"),
-                ("-m", "unittest", "tests.test_context_operation_audit", "tests.test_v6_recovery",
+                ("-m", "unittest", "tests.test_context_operation_audit", "tests.test_recovery",
                  "tests.test_planning_recovery", "tests.test_feature_delivery_continuation",
-                 "tests.test_shared_runtime_acceptance", "tests.test_v5_sentry_failure",
-                 "tests.test_handoff_instruction_conflict", "tests.test_v7_sentry_acceptance", "tests.test_v8_sentry_handoff",
+                 "tests.test_shared_runtime_acceptance", "tests.test_sentry_failure",
+                 "tests.test_handoff_instruction_conflict", "tests.test_sentry_acceptance", "tests.test_sentry_handoff",
                  "tests.test_python_maintenance", "tests.test_validation_modules", "tests.test_review_regressions"),
                 ("scripts/finalize_work_record.py", "--self-test"),
             ):

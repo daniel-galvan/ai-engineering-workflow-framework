@@ -204,7 +204,7 @@ def validate_finalization_definitions() -> None:
                 + (worker_runtime_self_test.stdout + worker_runtime_self_test.stderr).strip()
             )
     if not V40_RUNTIME_FIXTURE.is_file():
-        fail("tests/fixtures/v40_sentry_worker_runtime.json is missing")
+        fail("tests/fixtures/sentry_worker_runtime.json is missing")
     if not FINALIZE_WORK_RECORD.is_file():
         fail("scripts/finalize_work_record.py is missing")
     if not FINALIZE_SENTRY_PLANNING.is_file():
@@ -276,7 +276,7 @@ def validate_finalization_definitions() -> None:
             if phrase not in normalized_evidence_contract:
                 fail(f"templates/sentry_normalized_evidence_contract.md is missing {phrase}")
     if not V36_SENTRY_FINALIZATION_FIXTURE.is_file():
-        fail("tests/fixtures/v36_sentry_finalization_regression.json is missing")
+        fail("tests/fixtures/sentry_finalization_regression.json is missing")
     else:
         v36_fixture = json.loads(V36_SENTRY_FINALIZATION_FIXTURE.read_text())
         valid_v36_fix = json.loads(json.dumps(v36_fixture["fix_design_result"]))

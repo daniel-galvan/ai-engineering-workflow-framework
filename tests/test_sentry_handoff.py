@@ -24,7 +24,7 @@ class V8SentryHandoff(unittest.TestCase):
         self.path.write_text(json.dumps(self.trace))
         self.packet_path = self.root / "finalization_packet.json"
         self.packet = json.loads(self.packet_path.read_text())
-        fixture_path = Path(__file__).parent / "fixtures/v37_v38_sentry_runtime_regressions.json"
+        fixture_path = Path(__file__).parent / "fixtures/sentry_runtime_regressions.json"
         evidence = "## Confirmed Facts\n\n- HTTP rejection observed; cause unknown.\n\n"
         evidence += json.loads(fixture_path.read_text())["normalized_evidence"]
         self.evidence = self.root / "normalized_evidence.md"
@@ -32,7 +32,7 @@ class V8SentryHandoff(unittest.TestCase):
 
     def test_self_attestation_remains_a_typed_result_field(self):
         from scripts.normalize_fix_design_result import normalize_artifact_root
-        fixture_path = Path(__file__).parent / "fixtures/v37_v38_sentry_runtime_regressions.json"
+        fixture_path = Path(__file__).parent / "fixtures/sentry_runtime_regressions.json"
         result = json.loads(fixture_path.read_text())["valid_awaiting_fix_design_result"]
         result["context_conformance"] = "context-unverified"
         target = self.root / "fix_design_result.json"

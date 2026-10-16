@@ -194,21 +194,21 @@ SENTRY_FIX_DESIGN_CONTRACT = ROOT / "templates" / "sentry_fix_design_result_cont
 
 SENTRY_NORMALIZED_EVIDENCE_CONTRACT = ROOT / "templates" / "sentry_normalized_evidence_contract.md"
 
-V36_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json"
+V36_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_finalization_regression.json"
 
-V34_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v34_sentry_deterministic_finalization.json"
+V34_SENTRY_FINALIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_deterministic_finalization.json"
 
-V37_V38_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v37_v38_sentry_runtime_regressions.json"
+V37_V38_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_runtime_regressions.json"
 
-V40_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "v40_sentry_worker_runtime.json"
+V40_RUNTIME_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_worker_runtime.json"
 
-V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "v28_sentry_stabilization.json"
+V28_STABILIZATION_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_stabilization.json"
 
-V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "v29_sentry_contract_failure.json"
+V29_CONTRACT_FAILURE_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_contract_failure.json"
 
-V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "v31_sentry_fix_design_contract.json"
+V31_FIX_DESIGN_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_fix_design_contract.json"
 
-V32_FIX_DESIGN_RECOVERY_FIXTURE = ROOT / "tests" / "fixtures" / "v32_sentry_fix_design_recovery.json"
+V32_FIX_DESIGN_RECOVERY_FIXTURE = ROOT / "tests" / "fixtures" / "sentry_fix_design_recovery.json"
 
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
 

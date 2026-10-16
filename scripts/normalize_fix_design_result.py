@@ -189,7 +189,7 @@ def normalize_artifact_root(artifact_root: Path, backup: Path | None = None) -> 
 
 
 def self_test() -> None:
-    fixture = json.loads((ROOT / "tests" / "fixtures" / "v32_sentry_fix_design_recovery.json").read_text())
+    fixture = json.loads((ROOT / "tests" / "fixtures" / "sentry_fix_design_recovery.json").read_text())
     normalized, changes = normalize_fix_design_result(fixture["malformed_fix_design_result"])
     assert changes == fixture["expected_changes"]
     assert normalized["inputs_consumed"] == fixture["expected_inputs_consumed"]
@@ -197,7 +197,7 @@ def self_test() -> None:
     contract = normalized["interface_contract"]
     assert isinstance(contract, dict)
     assert all(_nonempty_string(contract[field]) for field in fixture["expected_interface_fields"])
-    v36 = json.loads((ROOT / "tests" / "fixtures" / "v36_sentry_finalization_regression.json").read_text())
+    v36 = json.loads((ROOT / "tests" / "fixtures" / "sentry_finalization_regression.json").read_text())
     normalized_v36, changes_v36 = normalize_fix_design_result(v36["fix_design_result"])
     assert "string confidence converted to the canonical object" in changes_v36
     assert normalized_v36["confidence"] == v36["expected_confidence"]

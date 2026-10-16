@@ -17,7 +17,7 @@ from scripts.planning_contracts import _feature_expected_inputs
 from scripts.asset_manifest import validate_asset_manifest, _check_source_files
 from scripts.validation.markdown import table_cells
 from scripts.review_evidence import _rows
-from tests import test_v8_sentry_handoff as v8
+from tests import test_sentry_handoff as v8
 
 
 class ReviewRegressions(unittest.TestCase):

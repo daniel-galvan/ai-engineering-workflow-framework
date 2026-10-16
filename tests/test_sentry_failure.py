@@ -39,7 +39,7 @@ class SentryFailureRegression(unittest.TestCase):
         self.root = Path(self.run["artifact_root"])
         self.packet = self.root / "finalization_packet.json"
         self.closure = self.root / "runtime_closure.json"
-        fixture = json.loads((ROOT / "tests/fixtures/v37_v38_sentry_runtime_regressions.json").read_text())
+        fixture = json.loads((ROOT / "tests/fixtures/sentry_runtime_regressions.json").read_text())
         self.evidence = self.root / "normalized_evidence.md"
         self.evidence.write_text(fixture["normalized_evidence"] + "\n## Confirmed Facts\n\n- HTTP rejection is observed; its cause is unknown.\n")
         self.design = fixture["valid_awaiting_fix_design_result"]
@@ -214,7 +214,7 @@ class SentryFailureRegression(unittest.TestCase):
         root = fixture[1]
         Path(fixture[0]["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
         (root / "evidence_topology.trace.json").write_text(json.dumps(trace))
-        normalized = json.loads((ROOT / "tests/fixtures/v37_v38_sentry_runtime_regressions.json").read_text())["normalized_evidence"]
+        normalized = json.loads((ROOT / "tests/fixtures/sentry_runtime_regressions.json").read_text())["normalized_evidence"]
         (root / "normalized_evidence.md").write_text("## Confirmed Facts\n\n- Synthetic rejection observed; cause unknown.\n\n" + normalized)
         result = self.command("--packet", root / "finalization_packet.json", "--workflow-failure", "Closure unavailable")
         self.assertEqual(result.returncode, 2)

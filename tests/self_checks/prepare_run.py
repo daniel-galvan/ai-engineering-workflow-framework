@@ -113,7 +113,7 @@ def self_test() -> None:
         assert first["playbook"] == "sentry_issue_remediation"
         assert first["bindings"]["sentry_solution_architect"]["model"] == "gpt-6.1-sol"
         assert first["provider_tool_mapping"]["repository_read"] == "exec_command"
-        fixture = json.loads((ROOT / "tests" / "fixtures" / "v25_capability_mapping.json").read_text())
+        fixture = json.loads((ROOT / "tests" / "fixtures" / "capability_mapping.json").read_text())
         assert first["provider_tool_mapping"] == fixture["expected_codex_mapping"]
         assert first["provider_configuration_source_status"] == "bundled / resolved"
         assert Path(first["fix_design_result_contract"]).is_file()
