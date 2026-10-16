@@ -861,7 +861,7 @@ def _instruction_contents(trace: dict, root: Path | None) -> list[str]:
     return contents
 
 
-def _ancestor_instruction_reads(row: dict, root: Path) -> list[str]:
+def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool = False) -> list[str]:
     allowed = {parent / "AGENTS.md" for parent in (root, root.parent, root.parent.parent)}
     reads = []
     for name, arguments in _tool_operations(row):
@@ -899,7 +899,9 @@ def _ancestor_instruction_reads(row: dict, root: Path) -> list[str]:
                 tail = [token for part in statements[index + 1:end + 1] for token in part]
                 conditions = (["[", "-f", variable, "]"], ["test", "-f", variable])
                 suffix = ["cat", variable, "fi", "done"]
-                valid = False
+                valid = include_probes and any(
+                    tail == ["do", "if", *condition, "then", "printf", "%s\\n", variable, "fi", "done"]
+                    for condition in conditions)
                 for condition in conditions:
                     prefix = ["do", "if", *condition, "then"]
                     if tail[:len(prefix)] == prefix and tail[-len(suffix):] == suffix:
@@ -959,7 +961,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     instruction_contents = _instruction_contents(trace, root)
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
              if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
-    instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(row, root)
+    instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(row, root, include_probes=True)
                          for row in trace.get("tool_trace", []) if root and isinstance(row, dict) and row.get("call_id")
                          and row.get("type") in {"function_call", "custom_tool_call"}}
     for path, value in _trace_strings(trace):
@@ -982,7 +984,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(source) + r"(?![\w./-])", "", candidate)
         if root:
             instructions = (instruction_reads.get(row.get("call_id"), []) if output
-                            else _ancestor_instruction_reads(row, root))
+                            else _ancestor_instruction_reads(row, root, include_probes=True))
             for instruction in instructions:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:

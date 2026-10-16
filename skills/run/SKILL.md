@@ -82,7 +82,12 @@ description: >-
    Before analytical fan-in for Sentry, TechOps, or Feature Delivery, use the prepared `runtime_evidence.collector` and
    `runtime_evidence.ledger` when declared. Extract dispatches from the verified current parent session and export the
    exact child session with its fresh provider status observation. Use the canonical binding key as `--agent`, not a
-   stage label. Do not manually reconstruct a trace or inject delivery flags. The collector derives omitted dispatch
+   stage label. After the worker completes, call `list_agents`, then export with `--worker-session`, `--agent`, and
+   `--trace`, omitting `--observation`; the collector derives a timestamped receipt from that native inventory.
+   If the latest inventory omits this worker, use a fresh targeted read and supply `--observation` with `Observed at`
+   from the actual read, plus the required thread/turn fields. Never substitute turn completion time for observation
+   time. An incomplete targeted receipt can be reconciled from a fresh native inventory without reactivating a worker.
+   Do not manually reconstruct a trace or inject delivery flags. The collector derives omitted dispatch
    timestamps from its verified ledger and recognizes authenticated complete instruction reads. Missing export fields
    or parser errors are collection failures; reconcile them once without repeating analysis or spending a worker
    replacement. Preserve rejected traces and export reconciliation to a new path. If collection still fails, report the
@@ -774,6 +779,8 @@ description: >-
    validation alone is not prepared-response verification. Complete delivery with
    `finalize_work_record.py --packet <packet> --publish-response <artifact-root>/handoff_response.md`.
    This validates and emits the prepared text directly and records `status: verified`; send that output unchanged.
+   Include the first `Workflow-framework handoff:` line when emitted, even on failure; it is part of the report.
+   A verified prepared file is not proof that the final chat response retained that line or the remaining bytes.
    Independent proposed-response files may use `--verify-response`. Only a single terminal LF is optional; internal
    whitespace, labels and content must match. Do not introduce Markdown hard-break spaces.
    The receipt retains both byte hashes and the comparison policy.

@@ -123,6 +123,60 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                             self.assertEqual(finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
                                              root / "finalization_packet.json", {worker}), [])
 
+    def test_native_inventory_exports_selected_worker_without_manual_timestamps(self):
+        for playbook in CASES:
+            with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, playbook, CASES[playbook][0])
+                run, root, role, time, event, parent, _, _ = fixture
+                parent.extend([
+                    event(20, "response_item", type="function_call", namespace="collaboration", name="list_agents",
+                          call_id="inventory", arguments="{}"),
+                    event(21, "response_item", type="function_call_output", call_id="inventory", output=json.dumps({
+                        "agents": [{"agent_name": "/root/worker", "agent_status": {"completed": "Done"}},
+                                   {"agent_name": "/root/other", "agent_status": "running"}]}))])
+                _, ledger = self.export(fixture)
+                trace = export_worker_trace(ledger, root / "child.jsonl", role, run_id=run["run_id"], artifact_root=root)
+                self.assertEqual(trace["audit"], {"status": "passed", "errors": []})
+                self.assertEqual(trace["status_observation"]["Observed at"], time(21))
+                self.assertEqual(trace["status_observation"]["Status source"], "list_agents")
+                result = subprocess.run([sys.executable, str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                    "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                    "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", str(root / "ledger.json"),
+                    "--worker-session", str(root / "child.jsonl"), "--agent", role,
+                    "--trace", str(root / "native_trace.json")], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(json.loads((root / "native_trace.json").read_text())["audit"]["status"], "passed")
+
+    def test_native_inventory_never_uses_an_older_terminal_status(self):
+        for problem in ("absent", "missing", "active", "stale", "unmapped"):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory)
+                run, root, role, time, *_ = fixture
+                _, ledger = self.export(fixture)
+                completed = {"Observed at": time(20), "raw_response": {"agents": [
+                    {"agent_name": "/root/worker", "agent_status": {"completed": "Done"}}]}}
+                latest = json.loads(json.dumps(completed))
+                if problem == "missing": latest["raw_response"]["agents"] = []
+                if problem == "active": latest["raw_response"]["agents"][0]["agent_status"] = "running"
+                if problem == "stale": latest["Observed at"] = time(0)
+                ledger["inventories"] = [] if problem == "absent" else [completed, latest]
+                if problem == "unmapped": ledger["thread_mappings"] = {}
+                with self.assertRaises(ValueError):
+                    export_worker_trace(ledger, root / "child.jsonl", role, run_id=run["run_id"], artifact_root=root)
+
+    def test_explicit_incomplete_receipt_is_not_silently_repaired(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, role, time, *_ = fixture
+            _, ledger = self.export(fixture)
+            ledger["inventories"] = [{"Observed at": time(20), "raw_response": {"agents": [
+                {"agent_name": "/root/worker", "agent_status": {"completed": "Done"}}]}}]
+            observation = dict(fixture[-1])
+            del observation["Observed at"]
+            with self.assertRaisesRegex(ValueError, "terminal_observation_timestamp_invalid"):
+                export_worker_trace(ledger, root / "child.jsonl", role, observation,
+                                    run_id=run["run_id"], artifact_root=root)
+
     def test_ordinary_result_joins_spawn_handle_without_a_message(self):
         for playbook in CASES:
             with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:

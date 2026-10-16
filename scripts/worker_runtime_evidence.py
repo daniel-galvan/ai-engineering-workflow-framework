@@ -33,12 +33,19 @@ except ModuleNotFoundError:
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
-def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict, *, run_id: str | None = None, artifact_root: Path | None = None) -> dict:
+def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict | None = None, *, run_id: str | None = None, artifact_root: Path | None = None) -> dict:
     """Export tool activity only, using the exact parent mapping and fresh status receipt."""
     try:
         from runtime_checks import terminal_observation_errors, trace_errors, observed_dispatch_binding
     except ModuleNotFoundError:
         from scripts.runtime_checks import terminal_observation_errors, trace_errors, observed_dispatch_binding
+    if observation is None:
+        with source.open() as stream:
+            thread = json.loads(next(stream))["payload"]["id"]
+        handles = [handle for handle, child in ledger["thread_mappings"].items() if child == thread]
+        if len(handles) != 1:
+            raise ValueError("worker_trace_thread_mismatch")
+        observation = _native_terminal_observations(ledger, handles)[0]
     thread = observation["Thread ID"]
     handle = observation["Provider handle"]
     if ledger["thread_mappings"].get(handle) != thread:
@@ -154,8 +161,8 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
         return [f"runtime_dispatch_evidence_invalid:{error}"]
 
 
-def terminal_closure(ledger: dict) -> dict:
-    """Project the latest native inventory into the canonical Terminal receipt."""
+def _native_terminal_observations(ledger: dict, handles: list[str]) -> list[dict]:
+    """Use only the latest native inventory, preserving its observed timestamp."""
     try:
         from runtime_checks import terminal_observation_errors
     except ModuleNotFoundError:
@@ -164,7 +171,6 @@ def terminal_closure(ledger: dict) -> dict:
         raise ValueError("terminal_provider_inventory_required")
     inventory = ledger["inventories"][-1]
     agents = {row["agent_name"]: row["agent_status"] for row in inventory["raw_response"]["agents"]}
-    handles = sorted({row["Provider handle"] for row in ledger["events"]})
     observations = []
     for handle in handles:
         status = agents.get(handle)
@@ -176,6 +182,14 @@ def terminal_closure(ledger: dict) -> dict:
     errors = terminal_observation_errors(observations, handles)
     if not handles or errors:
         raise ValueError("terminal_inventory_unverified:" + ";".join(errors))
+    return observations
+
+
+def terminal_closure(ledger: dict) -> dict:
+    """Project the latest native inventory into the canonical Terminal receipt."""
+    handles = sorted({row["Provider handle"] for row in ledger["events"]})
+    observations = _native_terminal_observations(ledger, handles)
+    inventory = ledger["inventories"][-1]
     return {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
         "Completed worker handles": "; ".join(handles), "Runtime status": "Terminal", "Remaining active handles": "0",
         "Closure evidence or blocker": "provider status snapshot " + inventory["Observed at"] + ": "
@@ -192,7 +206,7 @@ def main() -> int:
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--worker-session", type=Path)
-    parser.add_argument("--observation", type=Path)
+    parser.add_argument("--observation", type=Path, help="Targeted receipt; omit to use the latest native inventory")
     parser.add_argument("--agent")
     parser.add_argument("--trace", type=Path)
     parser.add_argument("--closure", type=Path, help="Build a Terminal receipt from the current native provider inventory")
@@ -200,8 +214,8 @@ def main() -> int:
     if args.closure and any((args.worker_session, args.observation, args.agent, args.trace)):
         parser.error("closure collection and trace export are separate modes")
     if any((args.worker_session, args.observation, args.agent, args.trace)) and not all(
-            (args.worker_session, args.observation, args.agent, args.trace)):
-        parser.error("trace export requires --worker-session, --observation, --agent and --trace")
+            (args.worker_session, args.agent, args.trace)):
+        parser.error("trace export requires --worker-session, --agent and --trace")
     try:
         result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at,
                                      tuple(args.identity_session))
@@ -222,8 +236,8 @@ def main() -> int:
                 raise ValueError("worker_trace_outside_current_run")
             packet_path = args.trace.parent / "finalization_packet.json"
             run_id = json.loads(packet_path.read_text())["identity"]["Run ID"] if packet_path.is_file() else None
-            observation = json.loads(args.observation.read_text())
-            if "terminal_observations" in observation:
+            observation = json.loads(args.observation.read_text()) if args.observation else None
+            if observation is not None and "terminal_observations" in observation:
                 with args.worker_session.open() as stream:
                     thread = json.loads(next(stream))["payload"]["id"]
                 observation = next(row for row in observation["terminal_observations"] if row["Thread ID"] == thread)

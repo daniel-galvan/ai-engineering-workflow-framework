@@ -205,8 +205,13 @@ inventory responses unchanged and maps child UUIDs from `SubAgentActivity` metad
 `read_thread`/`wait_threads` calls when live inventory omits a child. A metadata mapping proves identity, not current
 completion. Sync after every dispatch and fresh inventory read; copy `Last dispatch at` from the latest matching
 event, never from an earlier clock sample. Use the canonical binding key as the collector's `--agent` value, such as
-`sentry_current_state_investigator`; do not substitute a stage label. For child export, supply the current provider
-status observation without fabricated binding flags. The collector fills an omitted `Last dispatch at` from its verified
+`sentry_current_state_investigator`; do not substitute a stage label. After completion, call `list_agents`, then export
+with `--worker-session`, `--agent`, and `--trace`, omitting `--observation`. The collector derives the selected worker's
+receipt and observation time from the latest native inventory, even when other workers are still active. It rejects a
+missing, active, or stale selected worker; it never falls back to an older inventory. When the worker is omitted, use
+`--observation` with a fresh targeted read, including `Observed at` from that actual read and the required thread/turn
+fields. Do not use turn completion time as observation time or fabricate binding flags.
+ The collector fills an omitted `Last dispatch at` from its verified
 ledger, rejects a conflicting value, and authenticates delivery through a paired read of the complete dispatch file.
 A missing or malformed export is a collection failure, not proof that the worker failed. Before replacement, reconcile
 metadata once through this collector without repeating analysis; preserve prior rejected traces and use a new trace

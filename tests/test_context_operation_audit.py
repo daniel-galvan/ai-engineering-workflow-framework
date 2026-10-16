@@ -315,6 +315,20 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("provider_binding_not_delivered", runtime.trace_errors(trace))
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
 
+    def test_ancestor_filename_probe_is_not_an_archive_read(self):
+        for directory in ("", str(self.repository) + "/"):
+            trace = self.instruction_read_trace()
+            command = (f'for f in {directory}AGENTS.md {directory}.thoughts/AGENTS.md '
+                       f'{directory}.thoughts/ITEM-1/AGENTS.md; do if [ -f "$f" ]; '
+                       'then printf "%s\\n" "$f"; fi; done')
+            call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
+            rows = self.paired(call, directory + '.thoughts/AGENTS.md')
+            rows[0]["call_id"] = rows[1]["call_id"] = "probe"
+            self.assertEqual(runtime._ancestor_instruction_reads(rows[0], self.root), [])
+            self.assertTrue(runtime._ancestor_instruction_reads(rows[0], self.root, include_probes=True))
+            trace["tool_trace"].extend(rows)
+            self.assertEqual(runtime.trace_errors(trace), [])
+
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
             'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
@@ -340,6 +354,9 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_instruction_exception_does_not_allow_writes_or_other_work_items(self):
         for command in (
+            'for f in .thoughts/AGENTS.md; do if [ -f "$f" ]; then printf "%n" "$f"; fi; done',
+            'for f in .thoughts/OTHER/AGENTS.md; do if [ -f "$f" ]; then printf "%s\\n" "$f"; fi; done',
+            'for f in .thoughts/AGENTS.md; do if [ -f "$f" ]; then printf "%s\\n" "$f"; fi; done; cat .thoughts/ITEM-1/runs/prior/notes.md',
             'for p in .thoughts/AGENTS.md; do if test -f "$p"; then printf -v p changed; cat "$p"; fi; done',
             'for p in .thoughts/AGENTS.md; do if test -f "$p"; then printf x; p=changed; cat "$p"; fi; done',
             'for p in .thoughts/AGENTS.md; do if test -f "$p"; then printf "%n" p; cat "$p"; fi; done',
