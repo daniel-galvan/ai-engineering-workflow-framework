@@ -181,6 +181,12 @@ its mapped concrete operation is absent or an attempted in-scope operation fails
 
 ## Worker Identity and Correction Observations
 
+For ordinary results, the Coordinator joins the provider-returned spawn handle during fan-in. Do not send a
+post-spawn message solely to supply that handle or request one from the worker. A missing worker-authored
+handle is not a correction condition. Preserve the explicit Sentry Fix Design handle-delivery protocol when
+its durable artifact requires the supplied handle. Every later message remains a dispatch requiring fresh
+consumption evidence; do not ignore it or roll its timestamp back to the spawn.
+
 A collaboration task handle is not a Codex thread UUID. Retain the exact spawn handle for collaboration operations;
 use thread-read tools only with a provider-returned or verified mapped UUID. When no mapping/export exists, record
 that specific capability absence once rather than repeatedly passing a task path to read_thread.

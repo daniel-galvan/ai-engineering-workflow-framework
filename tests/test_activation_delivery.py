@@ -50,6 +50,19 @@ class ActivationDelivery(unittest.TestCase):
                     self.assertIn("do not search unassigned runs/ archives", policy)
                     self.assertIn(policy, runtime.activation_message(packet, {"objective": "Inspect assigned source"}))
 
+    def test_every_role_receives_coordinator_owned_handle_policy(self):
+        for index, playbook in enumerate(("feature_delivery", "techops_issue_remediation", "sentry_issue_remediation")):
+            run = prepare.prepare_run(self.root, f"IDENTITY-{index}", playbook, None, False,
+                                      input_manifest=self.root / "inputs.json")
+            packets = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"]
+            for agent, packet in packets.items():
+                with self.subTest(playbook=playbook, agent=agent):
+                    message = runtime.activation_message(packet, {"objective": "Inspect assigned inputs"})
+                    self.assertIn("Do not send a post-spawn message solely to supply that handle", message)
+                    self.assertIn("A missing worker-authored handle is not a correction condition", message)
+                    self.assertIn("explicit Sentry Fix Design handle-delivery protocol", message)
+                    self.assertIn("Every later message remains a dispatch requiring fresh consumption evidence", message)
+
     def test_compact_message_preserves_the_complete_hashed_contract(self):
         assignment = {"objective": "Reverify supplied findings only", "input_paths": []}
         source = self.root / "assignment.json"

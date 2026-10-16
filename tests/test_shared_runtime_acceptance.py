@@ -123,6 +123,29 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                             self.assertEqual(finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
                                              root / "finalization_packet.json", {worker}), [])
 
+    def test_ordinary_result_joins_spawn_handle_without_a_message(self):
+        for playbook in CASES:
+            with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, playbook, CASES[playbook][0])
+                _, _, _, time, _, parent, _, status = fixture
+                del parent[5:]
+                status["Latest turn started at"] = time(1)
+                trace, ledger = self.export(fixture)
+                self.assertEqual(len(ledger["events"]), 1)
+                self.assertEqual(trace["last_dispatch_at"], time(1))
+                self.assertEqual(trace["spawn"]["provider_handle"], "/root/worker")
+                self.assertEqual(trace["audit"], {"status": "passed", "errors": []})
+
+    def test_unconsumed_handle_message_does_not_reuse_spawn_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation")
+            _, _, _, time, _, parent, _, status = fixture
+            parent[5]["payload"].update(name="send_message", arguments=json.dumps({
+                "target": "/root/worker", "message": "Your provider handle is /root/worker"}))
+            status["Latest turn started at"] = time(1)
+            with self.assertRaisesRegex(ValueError, "terminal_observation_latest_turn_stale"):
+                self.export(fixture)
+
     def test_in_turn_correction_retains_pre_correction_context(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory)

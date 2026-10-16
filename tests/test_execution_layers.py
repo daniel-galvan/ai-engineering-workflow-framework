@@ -40,6 +40,14 @@ class ExecutionLayers(unittest.TestCase):
             self.assertIn("followup_task", text)
             self.assertIn("does not start an idle worker", text)
 
+    def test_ordinary_handle_join_does_not_create_a_post_spawn_dispatch(self):
+        for path in ("providers/codex.md", "skills/run/SKILL.md"):
+            text = " ".join((ROOT / path).read_text().split())
+            with self.subTest(path=path):
+                self.assertIn("Do not send a post-spawn message solely to supply that handle", text)
+                self.assertIn("Every later message remains a dispatch requiring fresh consumption evidence", text)
+                self.assertIn("explicit Sentry Fix Design", text)
+
     def test_jira_owns_source_coverage_and_failures_and_sentry_owns_acquisition(self):
         jira = (ROOT / "integrations/jira.md").read_text()
         for policy in ("## Feature Delivery Source-Access Gate", "at most one distinct configured Jira connector",

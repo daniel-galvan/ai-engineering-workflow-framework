@@ -538,7 +538,14 @@ def _write_activation_packets(
                 "audited as names only. Use exact assigned artifact paths; do not search unassigned runs/ archives."
             ),
             "worker_contract": contract_by_agent.get(agent),
-            "developer_instructions": developer_instructions.strip(),
+            "developer_instructions": developer_instructions.strip() + (
+                "\n\nFor ordinary results, the Coordinator joins the provider-returned spawn handle during fan-in. "
+                "Do not send a post-spawn message solely to supply that handle or request one from the worker. "
+                "A missing worker-authored handle is not a correction condition. Preserve the explicit Sentry Fix "
+                "Design handle-delivery protocol when its durable artifact requires the supplied handle. "
+                "Every later message remains a dispatch requiring fresh consumption evidence; do not ignore it "
+                "or roll its timestamp back to the spawn."
+            ),
         }
         packets[agent] = packet
     path = artifact_root / "worker_activation_packets.json"

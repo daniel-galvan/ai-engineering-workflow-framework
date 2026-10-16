@@ -406,9 +406,11 @@ description: >-
    `send_message` only delivers a message; it does not start an idle worker. Use it for steering an active turn,
    then verify consumption. After an idle-worker correction, verify a new turn actually started before waiting
    for its result; keep the guarded activation message and refresh the dispatch ledger.
-   Join each provider-returned handle to its ordinary result envelope during fan-in. Do not return a worker result for
-   correction merely because the worker could not self-report a handle it was never given. Keep the explicit Fix Design
-   handle-delivery protocol because that durable Sentry artifact validates the supplied handle.
+   Join each provider-returned handle to its ordinary result envelope during fan-in. Do not send a post-spawn message
+   solely to supply that handle or request one from the worker. A missing worker-authored handle is not a correction
+   condition. Every later message remains a dispatch requiring fresh consumption evidence; do not ignore it or roll
+   its timestamp back to the spawn. Preserve the explicit Sentry Fix Design handle-delivery protocol because that
+   durable artifact validates the supplied handle.
 8. Keep the prepared `work_record.md` skeleton unchanged until deterministic finalization on every path. Populate
    `finalization_packet.json` from supplied and discoverable context; only `finalize_work_record.py` writes the
    terminal record. When the prompt requires current-run-only evidence, do not read memory, historical `.thoughts`
