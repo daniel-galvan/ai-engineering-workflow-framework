@@ -743,6 +743,9 @@ description: >-
    Documenter fallback or patch generated artifacts. Return Documenter-owned packet, path, table and rendering errors
    to the same Documenter. Dispatch timestamps, runtime-audit rows and provider closure receipts are Coordinator-owned:
    reconcile them from fresh provider evidence without redispatching Documenter solely to rewrite runtime bookkeeping.
+   The finalizer also refreshes handoff provenance from the prepared identity. A continuation package change alone
+   requires no Documenter follow-up. If a substantive correction requires reactivation, use the guarded activation
+   protocol and prove the worker read the complete current binding before accepting its new result.
    A substantive handoff correction still requires its owning worker and invalidates the affected observations.
    Return errors naming Fix
    Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning

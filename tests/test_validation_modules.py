@@ -15,12 +15,28 @@ from scripts.validation import common
 from scripts.validation.contracts import jira_adapter_contract_errors, work_item_read_contract_errors
 from scripts.validation.frontmatter import SEMVER, frontmatter, frontmatter_value
 from scripts.validation.markdown import fenced_section, markdown_errors, markdown_table, table_cells
-from scripts.validation.work_records import validate_work_record
+from scripts.validation.work_records import input_provenance_errors, validate_work_record
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ValidationModules(unittest.TestCase):
+    def test_user_continuation_can_reference_worker_results(self):
+        row = {"Input or artifact": "Continue using accepted worker results; collect closure for every worker",
+               "Source or path": "Current user request", "Authority": "Authoritative user request"}
+        self.assertEqual(input_provenance_errors(row), [])
+
+    def test_worker_outputs_cannot_be_attributed_to_user(self):
+        for description, authority in (("Normalized evidence", "Evidence worker output"),
+                                       ("Worker result", "Current-run evidence"),
+                                       ("Worker-produced artifacts", "Evidence"),
+                                       ("Worker result", "User")):
+            row = {"Input or artifact": description, "Source or path": "Current user request",
+                   "Authority": authority}
+            self.assertTrue(input_provenance_errors(row))
+            row["Source or path"] = "/root/evidence / result.json"
+            self.assertEqual(input_provenance_errors(row), [])
+
     def test_frontmatter_and_semantic_version_parsing(self):
         self.assertEqual(frontmatter("---\nversion: 0.5.1\n---\nBody"), ["version: 0.5.1"])
         self.assertEqual(frontmatter("---\nversion: 0.5.1"), [])

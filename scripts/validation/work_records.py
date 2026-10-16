@@ -74,6 +74,18 @@ except ModuleNotFoundError:
     from scripts.specification_assessment import NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors
 
 
+def input_provenance_errors(row: dict[str, str]) -> list[str]:
+    description = row.get("Input or artifact", "").lower()
+    authority = row.get("Authority", "").lower()
+    user_authority = bool(re.search(r"\buser\b", authority)) and "worker" not in authority
+    worker_output = "worker" in authority or bool(re.match(
+        r"worker(?:[- ]produced)?\s+(?:output|result|artifact|evidence)s?\b", description.strip()
+    )) or ("worker" in description and not user_authority)
+    if worker_output and _mentions_user_source(row.get("Source or path", "")):
+        return ["worker-produced inputs must cite the provider worker/result handle, not the user"]
+    return []
+
+
 def _feature_record_expected_inputs(
     text: str, identity: dict[str, str], root: Path,
 ) -> tuple[dict[str, dict[str, str]], list[str]]:
@@ -825,8 +837,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
             for error in sentry_contract_delta_errors(evidence_text):
                 fail(f"{path}: {error}")
     for row in markdown_table(text, "# Input Register"):
-        if "worker" in row.get("Input or artifact", "").lower() and _mentions_user_source(row.get("Source or path", "")):
-            fail(f"{path}: worker-produced inputs must cite the provider worker/result handle, not the user")
+        for error in input_provenance_errors(row):
+            fail(f"{path}: {error}")
     for row in markdown_table(text, "# Evidence"):
         if "preflight" in " ".join(row.values()).lower() and _mentions_user_source(row.get("Source", "")):
             fail(f"{path}: preflight evidence must cite the Coordinator/provider observation, not the user")

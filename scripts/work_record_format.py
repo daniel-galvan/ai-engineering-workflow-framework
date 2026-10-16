@@ -282,10 +282,12 @@ def render_handoff(packet: dict[str, object]) -> str:
     risk = "; ".join(dict.fromkeys(" ".join(value.split()) for value in risks)) or (
         "The requested engineering outcome remains unresolved."
         if packet["identity"]["Workflow outcome"] == "blocked" else "No additional risk recorded in this handoff.")
-    artifacts = "".join(
-        f"- {_artifact_link(item, packet['finalization']['Durable artifact root'])}\n"
-        for item in handoff["artifacts"]
-    )
+    artifact_links = {}
+    for item in handoff["artifacts"]:
+        link = _artifact_link(item, packet["finalization"]["Durable artifact root"])
+        destination = link.rsplit("](", 1)[1][:-1].strip("<>")
+        artifact_links.setdefault(destination, link)
+    artifacts = "".join(f"- {link}\n" for link in artifact_links.values())
     runtime = "not released" if packet["runtime_closure"] else "closure unverified"
     if _runtime_closed(packet["runtime_closure"]):
         runtime = "released" if all(

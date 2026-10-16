@@ -17,6 +17,35 @@ import validate_worker_runtime as runtime
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_continuation_provenance_refresh_requires_no_worker(self):
+        packet = {"identity": {"Plugin package / version": "ai-engineering-workflows / refreshed",
+                              "Framework commit / status": "new-revision / Clean",
+                              "Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.3"},
+                  "handoff": {"provenance": "old package", "implementation_plan": "implementation_plan.md"},
+                  "worker_results": [{"Worker": "fix-design", "Outcome": "complete"}]}
+        results = copy.deepcopy(packet["worker_results"])
+        finalizer._normalize_packet(packet, {"runtime_closure": []})
+        self.assertEqual(packet["handoff"]["provenance"],
+                         "plugin ai-engineering-workflows refreshed; framework revision new-revision (clean); "
+                         "playbook techops_issue_remediation 0.5.3.")
+        self.assertEqual(packet["handoff"]["implementation_plan"], "implementation_plan.md")
+        self.assertEqual(packet["worker_results"], results)
+
+    def test_handoff_lists_each_artifact_destination_once(self):
+        packet = {"identity": {"State": "blocked", "Engineering state": "unknown",
+                              "Workflow outcome": "blocked", "Engineering outcome": "blocked"},
+                  "runtime_closure": [], "finalization": {"Durable artifact root": "/tmp/run"},
+                  "handoff": {"workflow_result": "Blocked", "implementation_plan": "Not created",
+                              "established": [], "best_current_explanations": [],
+                              "next_action": {"owner": "Coordinator", "action": "Recover", "complete_when": "Validated"},
+                              "artifacts": ["[Repository integration](repository_integration.md)",
+                                            "/tmp/run/repository_integration.md", "work_record.md"],
+                              "execution": "planning", "provenance": "current package"}}
+        response = finalizer.render_handoff(packet)
+        self.assertEqual(response.count(f"({Path('/tmp/run/repository_integration.md').resolve()})"), 1)
+        self.assertIn("[Repository integration]", response)
+        self.assertIn(f"[work_record.md]({Path('/tmp/run/work_record.md').resolve()})", response)
+
     def test_targeted_terminal_reads_cover_omitted_workers(self):
         observations = [{
             "Provider handle": f"/root/{worker}", "Provider status": "completed",

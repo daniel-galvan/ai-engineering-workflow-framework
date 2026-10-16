@@ -284,7 +284,10 @@ For Feature Delivery remediation re-entry, use prepare_run.py --continuation --r
 approval reference and input manifest. Preserve the prior lifecycle history and profile; use the new current packet.
 Before Documenter activation, populate delivery terminal results, review/validation reports, fan-in, runtime_audits,
 and current input/asset provenance. When Documenter requests missing Coordinator-owned values, supply them and resume
-that same handle in this run. An unavailable validation environment still requires an accurate partial/blocked handoff.
+that same handle in this run. The finalizer refreshes handoff provenance from the prepared identity; do not reactivate
+Documenter solely for a continuation package change or Coordinator-owned runtime bookkeeping. Substantive corrections
+still require guarded reactivation and complete current binding delivery before accepting the new result.
+An unavailable validation environment still requires an accurate partial/blocked handoff.
 Run the packaged check-packet and pre-release sequence before fresh native Terminal observations; never fabricate
 release receipts. Keep CURRENT.md and plan progress aligned with actual delivery results without reopening decisions.
 Every close/release instruction below uses the applicable provider route. When no close operation exists,
