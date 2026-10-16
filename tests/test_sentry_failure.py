@@ -146,6 +146,29 @@ class SentryFailureRegression(unittest.TestCase):
         proposed.write_text(proposed.read_text().replace("- State:", " - State:"))
         self.assertEqual(self.command("--packet", self.packet, "--verify-response", proposed).returncode, 2)
 
+    def test_publication_records_required_presentation_without_changing_artifacts(self):
+        self.command(*self.arguments())
+        canonical = (self.root / "handoff_response.md").read_bytes()
+        packet = self.packet.read_bytes()
+        prefix, suffix, outgoing = (self.root / name for name in ("prefix.txt", "suffix.txt", "outgoing.md"))
+        prefix.write_text("Required banner\n\n")
+        suffix.write_text("\nNot checked: production.\nRisk: live behavior unverified.\n")
+        outgoing.write_bytes(prefix.read_bytes() + canonical + suffix.read_bytes())
+        args = ("--packet", self.packet, "--publish-response", outgoing,
+                "--presentation-prefix", prefix, "--presentation-suffix", suffix)
+        result = self.command(*args)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.encode(), outgoing.read_bytes())
+        receipt = json.loads((self.root / "handoff_delivery.json").read_text())
+        self.assertEqual(receipt["presentation_prefix"], prefix.read_text())
+        self.assertEqual(receipt["presentation_suffix"], suffix.read_text())
+        self.assertEqual(receipt["status"], "verified")
+        self.assertEqual(self.packet.read_bytes(), packet)
+        self.assertEqual((self.root / "handoff_response.md").read_bytes(), canonical)
+        outgoing.write_bytes(prefix.read_bytes() + canonical.replace(b"Workflow result:", b"Changed result:") + suffix.read_bytes())
+        self.assertEqual(self.command(*args).returncode, 2)
+        self.assertFalse((self.root / "handoff_delivery.json").exists())
+
     def test_response_verification_rejects_silent_evidence_identifier_correction(self):
         packet = json.loads(self.packet.read_text())
         packet["handoff"]["established"].append("Recorded evidence reference: DE-FD-1")

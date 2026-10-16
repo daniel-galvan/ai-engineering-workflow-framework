@@ -1814,6 +1814,13 @@ def _save_failure_handoff(packet_path: Path, report: str) -> None:
     register_pending_delivery(packet_path, content.decode())
 
 
+def verify_presentation(canonical: bytes, proposed: bytes, prefix: bytes = b"", suffix: bytes = b"") -> None:
+    """Keep canonical content exact while permitting explicitly recorded surrounding text."""
+    expected = prefix + canonical + suffix
+    if proposed.removesuffix(b"\n") != expected.removesuffix(b"\n"):
+        raise ValueError("handoff_response_mismatch: preserve the canonical report and declared surrounding text exactly")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path)
@@ -1833,12 +1840,16 @@ def main() -> int:
     parser.add_argument("--evidence-artifact", type=Path)
     parser.add_argument("--verify-response", type=Path)
     parser.add_argument("--publish-response", type=Path, help="Verify and emit the prepared response without rewriting it")
+    parser.add_argument("--presentation-prefix", type=Path, help="UTF-8 text required before the canonical report")
+    parser.add_argument("--presentation-suffix", type=Path, help="UTF-8 text required after the canonical report")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.publish_response:
         if args.verify_response:
             parser.error("publish-response and verify-response are separate modes")
         args.verify_response = args.publish_response
+    if (args.presentation_prefix or args.presentation_suffix) and not args.verify_response:
+        parser.error("presentation text requires --verify-response or --publish-response")
     if args.self_test:
         self_test()
         return 0
@@ -1879,15 +1890,20 @@ def main() -> int:
                     checked(validate_sentry_artifacts, packet_path.parent)
                 canonical = record_validation_output(record).split("Workflow-framework validation: passed\n", 1)[1].encode()
             proposed = args.verify_response.read_bytes()
-            if proposed.removesuffix(b"\n") != canonical.removesuffix(b"\n"):
-                raise ValueError("handoff_response_mismatch: copy the complete canonical report without additions")
+            prefix = args.presentation_prefix.read_bytes() if args.presentation_prefix else b""
+            suffix = args.presentation_suffix.read_bytes() if args.presentation_suffix else b""
+            prefix.decode("utf-8")
+            suffix.decode("utf-8")
+            verify_presentation(canonical, proposed, prefix, suffix)
             receipt = {"status": "verified", "run_id": json.loads(packet_path.read_text())["identity"]["Run ID"],
                        "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
+                       "presentation_prefix": prefix.decode("utf-8"),
+                       "presentation_suffix": suffix.decode("utf-8"),
                        "proposed_sha256": hashlib.sha256(proposed).hexdigest(),
                        "proposed_response": str(args.verify_response.resolve()),
                        "record_sha256": hashlib.sha256(record.read_bytes()).hexdigest() if
                            (record := packet_path.parent / "work_record.md").is_file() else None,
-                       "comparison_policy": "Exact UTF-8 bytes with one optional terminal LF; internal whitespace is significant",
+                       "comparison_policy": "Exact UTF-8 canonical report plus declared prefix/suffix with one optional terminal LF; internal whitespace is significant",
                        "scope": "prepared response bytes; actual chat delivery is not observable by this CLI"}
             (packet_path.parent / "handoff_delivery.json").write_text(json.dumps(receipt, indent=2) + "\n")
             if args.publish_response:

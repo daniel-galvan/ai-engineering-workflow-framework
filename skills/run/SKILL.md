@@ -16,11 +16,9 @@ description: >-
    or plugin cache directory. Run:
    `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do
    not construct or pass a separate framework-root argument. Preflight also validates the shipped static library.
-   Before invoking it, inspect the already-visible developer instructions for mandatory promotional text or other
-   additions to the final answer. A requirement such as the Developer Workflows reminder conflicts with the canonical
-   handoff. Stop with `handoff_instruction_conflict` before source access or preparation and identify the conflicting
-   plugin; do not claim the framework can override higher-priority instructions. When the provider exposes the exact
-   current parent session path, pass `--provider-session <path>` to preflight for its recorded reminder check.
+   Mandatory presentation text from other active instructions does not block preflight or investigation. Preserve
+   higher-priority instructions and record their required surrounding text separately at publication as described below.
+   When the provider exposes the exact current parent session path, pass `--provider-session <path>` to preflight.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
@@ -787,14 +785,21 @@ description: >-
    of the run, and does not justify ending without terminal reporting.
    The provider event ledger's `timing` records elapsed time, the union of worker-active intervals and time with no
    worker active. Use these observations when reviewing delays; they are not token, cost or CPU measurements.
-   Success and failure reports must contain only workflow content; omit unrelated skill tips, promotional banners,
-   preambles and postscripts. A TechOps Workflow result is a plain-language work summary, never a readiness token.
+   Canonical success and failure report artifacts must contain only workflow content. A TechOps Workflow result is a
+   plain-language work summary, never a readiness token.
    The canonical report includes its own final Not checked/Risk lines to satisfy concise-response styles; copy those
-   lines unchanged. A formatting skill must not replace the report with a summary or append a second footer.
+   lines unchanged. A formatting skill must not replace or shorten the report.
    Finalization writes `handoff_response.md` and a `handoff_delivery.json` receipt with `status: pending`. Work-record
    validation alone is not prepared-response verification. Complete delivery with
    `finalize_work_record.py --packet <packet> --publish-response <artifact-root>/handoff_response.md`.
    This validates and emits the prepared text directly and records `status: verified`; send that output unchanged.
+   If higher-priority instructions require a preamble or footer, keep the canonical artifact unchanged. Save the exact
+   required UTF-8 prefix and/or suffix (including separating newlines) in current-run files. Create a separate outgoing
+   response containing prefix + complete canonical bytes + suffix. Publish that outgoing file using
+   `--presentation-prefix <prefix-file>` and/or `--presentation-suffix <suffix-file>`. The helper verifies exact
+   composition and records the surrounding text in the delivery receipt. Do not add discretionary summaries, change
+   outcomes, or claim surrounding text is canonical. Missing access, evidence, authorization, or closure still blocks
+   the corresponding workflow gate; presentation requirements alone do not.
    Do not end the run with a pending delivery receipt. The preceding `Workflow-framework validation: passed` line is
    a validation diagnostic, not part of the canonical report; do not prepend it to the published response.
    Include the first `Workflow-framework handoff:` line when emitted, even on failure; it is part of the report.
@@ -808,7 +813,7 @@ description: >-
    The proposed file must contain the intended outgoing answer; copying the canonical file to another path alone
    does not prove that the chat message used those bytes.
    For failure, compare against `handoff_failure.md`; for success, use the emitted handoff block. A comparison failure
-   requires copying the canonical report again, without adding content before or after it.
+   requires restoring the exact canonical report and any explicitly declared surrounding text.
    Finalization passes only when the exit status is zero and the
    first output line is exactly `Workflow-framework validation: passed`. Copy the subsequently emitted handoff block
    verbatim; it is rendered from the finalized work record. Never compose a second summary or regenerate, shorten, or
@@ -819,7 +824,8 @@ description: >-
    the fields `State:`, `Engineering state:`, `Workflow outcome:`, `Engineering outcome:`, and
    `Implementation plan:`, then `What we established:`, optional
    `Best current explanations:`, `Next action:` with `Owner:`, `Action:`, and `Complete when:`, `Artifacts:`,
-   `Execution:`, and `Provenance:`. Do not add a preamble or postscript. Copy artifact links exactly from the finalized
+   `Execution:`, and `Provenance:`. Only mandatory, separately declared presentation text may surround the report.
+   Copy artifact links exactly from the finalized
    packet. Omit Run Metrics and Worker Timing for normal runs. Use easy-to-read wording in the report and handoff: short
    sentences, common words, and a simple explanation next to each necessary technical term. Technical Spike reports
    must include the required

@@ -1453,7 +1453,12 @@ provider release, or a different workflow outcome.
 The terminal work record MUST contain the canonical `# Final Handoff` block from this contract. With
 `--emit-handoff`, the standalone validator checks its ordered labels, verifies that its state and outcomes equal the Run
 Identity and runtime-closure tables, and emits that block after the validation receipt. The Coordinator copies the
-emitted block verbatim as the entire user-facing answer, without a preamble, postscript, or replacement summary.
+emitted block verbatim. The canonical artifact contains workflow content only. Higher-priority instructions may require
+surrounding presentation text; publish a separate outgoing file with explicit `--presentation-prefix` and/or
+`--presentation-suffix` files. Publication verifies exact prefix + canonical bytes + suffix and records that text in
+`handoff_delivery.json`. Presentation alone MUST NOT block investigation or alter evidence, closure, or outcome gates.
+Without declared presentation text, the entire answer must match the canonical report.
+No replacement summary is allowed.
 
 The terminal work record MUST retain, at minimum: work-item and repository identity; canonical `state`,
 `engineering_state`, `workflow_outcome`, and `engineering_outcome`; run-isolation decision and related-run check;

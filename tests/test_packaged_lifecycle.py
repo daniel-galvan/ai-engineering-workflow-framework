@@ -29,8 +29,9 @@ class PackagedLifecycle(unittest.TestCase):
                 ("user", "Run the Sentry playbook"))))
             blocked = subprocess.run([sys.executable, "scripts/run_preflight.py", "--provider-session", str(source)],
                                      cwd=package, capture_output=True, text=True, timeout=60)
-            self.assertEqual(blocked.returncode, 2, blocked.stdout + blocked.stderr)
-            self.assertEqual(json.loads(blocked.stdout)["reason"], "handoff_instruction_conflict")
+            self.assertEqual(blocked.returncode, 0, blocked.stdout + blocked.stderr)
+            self.assertEqual(json.loads(blocked.stdout)["status"], "passed")
+            self.assertIn("presentation_notice", json.loads(blocked.stdout))
             self.assertFalse((package / ".thoughts").exists())
             for args in (
                 ("scripts/run_preflight.py",),

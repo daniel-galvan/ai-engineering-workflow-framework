@@ -228,8 +228,8 @@ def self_test() -> None:
     print("run_preflight self-test: passed")
 
 
-def handoff_instruction_conflict(source: Path) -> bool:
-    """Recognize the mandatory reminder that changed the recorded v6 handoff."""
+def mandatory_presentation_notice(source: Path) -> bool:
+    """Recognize a recorded reminder that needs a separate presentation prefix."""
     developers, initial_request = [], None
     with source.open() as stream:
         for line in stream:
@@ -270,9 +270,8 @@ def main() -> int:
     )
     if result["status"] == "passed" and args.provider_session:
         try:
-            if handoff_instruction_conflict(args.provider_session):
-                result.update(status="blocked", reason="handoff_instruction_conflict",
-                              remediation="Disable the mandatory Developer Workflows reminder for this workflow task.")
+            if mandatory_presentation_notice(args.provider_session):
+                result["presentation_notice"] = "Mandatory surrounding text must be recorded separately at publication."
         except (OSError, ValueError, TypeError, AttributeError) as error:
             result.update(status="blocked", reason="provider_instruction_read_failed", detail=str(error))
     result["preflight_elapsed_ms"] = str(round((time.perf_counter() - started) * 1000, 1))
