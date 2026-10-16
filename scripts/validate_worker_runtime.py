@@ -447,6 +447,9 @@ def main() -> int:
         if not errors:
             bundle = json.loads(args.activation_packet_bundle.read_text())
             packet = bundle["packets"][args.expected_agent]
+            result["launch_arguments"] = {
+                "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"],
+            }
             if args.assignment:
                 try:
                     message = activation_message(packet, json.loads(args.assignment.read_text()))

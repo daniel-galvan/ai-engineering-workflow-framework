@@ -36,6 +36,20 @@ class ActivationDelivery(unittest.TestCase):
         return subprocess.run([sys.executable, str(runtime.ROOT / "scripts/validate_worker_runtime.py"),
                                *map(str, args)], capture_output=True, text=True)
 
+    def test_every_playbook_delivers_bounded_repository_instruction_lookup(self):
+        for index, playbook in enumerate(("feature_delivery", "techops_issue_remediation", "sentry_issue_remediation")):
+            run = prepare.prepare_run(self.root, f"SCOPE-{index}", playbook, None, False,
+                                      input_manifest=self.root / "inputs.json")
+            packets = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"]
+            for agent, packet in packets.items():
+                with self.subTest(playbook=playbook, agent=agent):
+                    policy = packet["repository_instructions"]
+                    self.assertIn("ancestors up to the assigned repository root", policy)
+                    self.assertIn("Do not recursively search parent directory trees", policy)
+                    self.assertIn("Run filename discovery in a separate tool result from content reads or searches", policy)
+                    self.assertIn("do not search unassigned runs/ archives", policy)
+                    self.assertIn(policy, runtime.activation_message(packet, {"objective": "Inspect assigned source"}))
+
     def test_compact_message_preserves_the_complete_hashed_contract(self):
         assignment = {"objective": "Reverify supplied findings only", "input_paths": []}
         source = self.root / "assignment.json"
@@ -48,6 +62,9 @@ class ActivationDelivery(unittest.TestCase):
         receipt = json.loads(result.stdout)
         self.assertLess(len(receipt["activation_message"]), 1200)
         packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["current_state_investigator"]
+        self.assertEqual(receipt["launch_arguments"], {
+            "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"],
+        })
         self.assertEqual(dispatch.read_text(), runtime.activation_message(packet, assignment))
         self.assertEqual(receipt["dispatch_file_sha256"], hashlib.sha256(dispatch.read_bytes()).hexdigest())
         self.assertIn(receipt["dispatch_file_sha256"], receipt["activation_message"])

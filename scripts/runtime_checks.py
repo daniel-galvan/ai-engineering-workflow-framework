@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import shlex
+import subprocess
 import tempfile
 import tokenize
 from datetime import datetime
@@ -403,10 +404,10 @@ def _listing_command(command: object) -> bool:
 
 def _listing_read_prefix(command: str, cwd: Path) -> str | None:
     """Separate a final listing from literal reads without exempting the read content."""
-    if not isinstance(command, str) or any(char in command for char in "$`<>|"):
+    if not isinstance(command, str) or any(char in command for char in "$`<>"):
         return None
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&")
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
         lexer.whitespace_split = True
         lexer.commenters = ""
         parts, current = [], []
@@ -423,15 +424,58 @@ def _listing_read_prefix(command: str, cwd: Path) -> str | None:
             return None
         prefix = ""
         for part in parts[:-1]:
+            limit = None
+            if "|" in part:
+                split = part.index("|")
+                pipe = part[split + 1:]
+                if (part.count("|") != 1 or len(pipe) != 2 or pipe[0] != "head"
+                        or not re.fullmatch(r"-[1-9][0-9]{0,3}", pipe[1])):
+                    return None
+                limit = int(pipe[1][1:])
+                part = part[:split]
+            content = ""
             targets = _read_targets(shlex.join(part))
             if targets:
                 for target in targets:
                     path = Path(target)
                     path = path if path.is_absolute() else cwd / path
                     if (any(pattern.search(str(path.resolve())) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)
-                            or not path.is_file() or path.stat().st_size + len(prefix) > 262144):
+                            or not path.is_file() or path.stat().st_size + len(prefix) + len(content) > 262144):
                         return None
-                    prefix += path.read_text()
+                    text = path.read_text()
+                    if part[:2] == ["sed", "-n"]:
+                        bounds = [int(value) for value in part[2][:-1].split(",")]
+                        if min(bounds) < 1 or bounds[-1] < bounds[0]:
+                            return None
+                        text = "".join(text.splitlines(keepends=True)[bounds[0] - 1:bounds[-1]])
+                    content += text
+            elif len(part) >= 4 and part[:2] == ["rg", "-n"]:
+                if part[2].startswith("-"):
+                    return None
+                checked, size = 0, len(prefix)
+                for target in part[3:]:
+                    path = Path(target)
+                    path = path if path.is_absolute() else cwd / path
+                    for source in path.rglob("*") if path.is_dir() else [path]:
+                        checked += 1
+                        if (checked > 256 or not source.resolve().is_relative_to(cwd.resolve())
+                                or any(pattern.search(str(source.resolve())) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)
+                                or source.is_symlink()):
+                            return None
+                        if source.is_file():
+                            size += source.stat().st_size
+                        elif not source.is_dir():
+                            return None
+                        if size > 262144:
+                            return None
+                # Reproduce only bounded literal searches, never provider shell code or rg options.
+                with tempfile.TemporaryFile() as output:
+                    result = subprocess.run(["rg", "--no-config", "-n", "--", *part[2:]], cwd=cwd,
+                                            stdout=output, stderr=subprocess.DEVNULL, timeout=2)
+                    if result.returncode not in {0, 1} or output.tell() > 262144:
+                        return None
+                    output.seek(0)
+                    content = output.read().decode()
             elif len(part) >= 2 and part[0] == "printf":
                 format_string = part[1]
                 if (not re.fullmatch(r"(?:[^%]|%s|%%)*", format_string)
@@ -439,11 +483,14 @@ def _listing_read_prefix(command: str, cwd: Path) -> str | None:
                     return None
                 format_string = re.sub(r"\\([nt\\])", lambda match: {
                     "n": "\n", "t": "\t", "\\": "\\"}[match[1]], format_string)
-                prefix += format_string % tuple(part[2:])
+                content = format_string % tuple(part[2:])
             else:
                 return None
+            prefix += content if limit is None else "".join(content.splitlines(keepends=True)[:limit])
+            if len(prefix) > 262144:
+                return None
         return prefix or None
-    except (OSError, UnicodeError, ValueError, TypeError):
+    except (OSError, UnicodeError, ValueError, TypeError, subprocess.TimeoutExpired):
         return None
 
 

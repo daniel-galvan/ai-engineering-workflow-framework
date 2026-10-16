@@ -83,6 +83,64 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact",
                       runtime.context_trace_errors({"tool_trace": rows}))
 
+    def test_source_search_and_slice_prefix_keeps_listing_names_separate(self):
+        from shutil import which
+        if not which("rg"):
+            self.skipTest("literal rg prefix reconstruction requires ripgrep")
+        source = self.repository / "source.ts"
+        source.write_text("first\nmatch current\nlast\n")
+        archive = ".thoughts/ITEM-1/runs/previous/issue_evidence.md"
+        command = "rg -n 'match' source.ts | head -70; cat source.ts; sed -n '2,3p' source.ts; rg --files .thoughts/ITEM-1"
+        prefix = "2:match current\n" + source.read_text() + "match current\nlast\n"
+        arguments = {"cmd": command, "workdir": str(self.repository)}
+        for wrapped in (False, True):
+            with self.subTest(wrapped=wrapped):
+                output = prefix + archive + "\n"
+                rows = (self.paired("text(await tools.exec_command(" + json.dumps(arguments) + "));", output)
+                        if wrapped else [{"tool": "exec_command", "arguments": arguments, "result": {"output": output}}])
+                self.assertEqual(runtime.context_trace_errors({"tool_trace": rows}), [])
+        directory = self.repository / "sources"
+        directory.mkdir()
+        (directory / "one.ts").write_text("match current\n")
+        directory_command = command.replace("'match' source.ts", "'match' sources")
+        rows = self.paired("text(await tools.exec_command(" + json.dumps({**arguments, "cmd": directory_command}) + "));",
+                           prefix.replace("2:match current\n", "sources/one.ts:1:match current\n", 1) + archive)
+        self.assertEqual(runtime.context_trace_errors({"tool_trace": rows}), [])
+        for unsafe in (command.replace("head -70", "xargs cat"),
+                       command.replace("'match'", "--pre=cat"),
+                       command.replace("source.ts", archive),
+                       command + "; cat " + archive):
+            rows = self.paired("text(await tools.exec_command(" + json.dumps({**arguments, "cmd": unsafe}) + "));",
+                               prefix + archive + "\n")
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors({"tool_trace": rows}))
+        source.write_text(archive + "\n")
+        output = archive + "\n" + archive
+        rows = self.paired("text(await tools.exec_command(" + json.dumps(arguments) + "));", output)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors({"tool_trace": rows}))
+
+    def test_search_prefix_ignores_config_and_fails_closed_when_unavailable_or_unbounded(self):
+        import os
+        from shutil import which
+        from unittest.mock import patch
+        from scripts.runtime_checks import _listing_read_prefix
+        if not which("rg"):
+            self.skipTest("literal rg prefix reconstruction requires ripgrep")
+        source = self.repository / "source.ts"
+        source.write_text("match current\n")
+        config = self.repository / "rg-config"
+        config.write_text("--heading\n")
+        command = "rg -n match source.ts; rg --files .thoughts/ITEM-1"
+        with patch.dict(os.environ, {"RIPGREP_CONFIG_PATH": str(config)}):
+            self.assertEqual(_listing_read_prefix(command, self.repository), "1:match current\n")
+        for error in (FileNotFoundError(), subprocess.TimeoutExpired("rg", 2)):
+            with self.subTest(error=type(error).__name__), patch("scripts.runtime_checks.subprocess.run", side_effect=error):
+                self.assertIsNone(_listing_read_prefix(command, self.repository))
+        with patch("scripts.runtime_checks.subprocess.run") as run:
+            self.assertIsNone(_listing_read_prefix(command.replace("-n match", "-n --pre=cat"), self.repository))
+            source.write_text("x" * 262145)
+            self.assertIsNone(_listing_read_prefix(command, self.repository))
+            run.assert_not_called()
+
     def test_mixed_listing_exception_requires_exact_read_output_and_safe_command(self):
         report = self.repository / "report.md"
         report.write_text("Current report\n")

@@ -67,6 +67,68 @@ class FrameworkCorrections(unittest.TestCase):
         self.assertEqual(finalizer._shape_errors(json.loads(self.packet_path.read_text()),
                                                 json.loads(finalizer.PACKET_TEMPLATE.read_text()), "packet"), [])
 
+    def test_history_contract_delivers_structured_fields_and_distinct_proof(self):
+        run = prepare.prepare_run(self.repository, "HISTORY-1", "techops_issue_remediation", None, False,
+                                  input_manifest=self.inputs)
+        instructions = run["worker_contracts"]["solution_architect"]["instructions"]
+        self.assertIn("requires separate JSON keys Commit, Patch evidence refs, Work item and Work item evidence refs", instructions)
+        self.assertIn("not prose inside Detail", instructions)
+        self.assertIn("must be distinct and included in Evidence refs", instructions)
+        checks = [{"Check": name, "Status": "passed", "Evidence refs": "E-FP-1, E-FD-1", "Detail": "Observed"}
+                  for name in runtime.TECHOPS_CHECKS]
+        history = next(row for row in checks if row["Check"] == "history_reconciliation")
+        history["Detail"] = "Commit abcdef012345; Patch evidence refs E-FP-1; Work item ITEM-2; Work item evidence refs E-FD-1"
+        evidence = {"E-FP-1", "E-FD-1"}
+        self.assertIn("techops_history_patch_and_work_item_required", runtime.techops_check_errors(checks, evidence))
+        history.update({"Commit": "abcdef012345", "Patch evidence refs": "E-FP-1", "Work item": "ITEM-2",
+                        "Work item evidence refs": "E-FD-1"})
+        self.assertEqual(runtime.techops_check_errors(checks, evidence), [])
+        history["Work item evidence refs"] = "E-FP-1"
+        self.assertIn("techops_history_distinct_sources_required", runtime.techops_check_errors(checks, evidence))
+
+    def test_semantic_errors_are_reported_together_without_writes(self):
+        run = prepare.prepare_run(self.repository, "SEMANTIC-1", "techops_issue_remediation", None, False,
+                                  input_manifest=self.inputs)
+        contract = run["worker_contracts"]["solution_architect"]
+        self.assertIn("Do not include Feature Delivery-only", contract["result_instructions"])
+        packet = Path(run["finalization_packet"])
+        result_path = Path(contract["result"])
+        fields = json.loads(finalizer.PACKET_TEMPLATE.read_text())["worker_results"][0]
+        result = {"run_id": json.loads(packet.read_text())["identity"]["Run ID"],
+                  "worker_result": {**dict.fromkeys(fields, "Recorded"), "Worker": "fix-design", "Outcome": "complete"},
+                  "evidence": [{**self.evidence, "Evidence ID": name} for name in ("E-FD-1", "E-FD-2")],
+                  "plan_readiness": "awaiting_input", "implementation_plan_action": "omit",
+                  "techops_checks": [{"Check": name, "Status": "passed", "Evidence refs": "E-FD-1, E-FD-2",
+                                      "Detail": "Observed"} for name in runtime.TECHOPS_CHECKS]}
+        result["worker_result"]["Evidence / claim refs"] = ["E-FD-1", "E-FD-2"]
+        result_path.write_text(json.dumps(result))
+        before = packet.read_bytes(), result_path.read_bytes()
+        with self.assertRaises(ValueError) as caught:
+            merge_result(packet, "solution_architect")
+        self.assertIn("worker_result.Evidence / claim refs must be str", str(caught.exception))
+        self.assertIn("feature_planning_disposition_invalid", str(caught.exception))
+        self.assertIn("techops_history_patch_and_work_item_required", str(caught.exception))
+        self.assertEqual((packet.read_bytes(), result_path.read_bytes()), before)
+        result.pop("plan_readiness")
+        result.pop("implementation_plan_action")
+        result["worker_result"]["Evidence / claim refs"] = "E-FD-1, E-FD-2"
+        history = next(row for row in result["techops_checks"] if row["Check"] == "history_reconciliation")
+        history.update({"Commit": "abcdef012345", "Patch evidence refs": "E-FD-1", "Work item": "ITEM-2",
+                        "Work item evidence refs": "E-FD-2"})
+        result_path.write_text(json.dumps(result))
+        merge_result(packet, "solution_architect")
+        self.assertEqual(json.loads(packet.read_text())["techops_checks"], result["techops_checks"])
+        accepted = packet.read_bytes()
+        result.pop("techops_checks")
+        result_path.write_text(json.dumps(result))
+        with self.assertRaisesRegex(ValueError, "techops_planning_checks_required"):
+            merge_result(packet, "solution_architect")
+        self.assertEqual(packet.read_bytes(), accepted)
+        result["worker_result"]["Outcome"] = "blocked"
+        result_path.write_text(json.dumps(result))
+        merge_result(packet, "solution_architect")
+        self.assertEqual(json.loads(packet.read_text())["worker_results"][-1]["Outcome"], "blocked")
+
     def test_all_schema_errors_are_reported_before_the_single_correction(self):
         template = json.loads(finalizer.PACKET_TEMPLATE.read_text())
         for playbook in ("techops_issue_remediation", "feature_delivery"):
@@ -75,6 +137,8 @@ class FrameworkCorrections(unittest.TestCase):
                                           input_manifest=self.inputs)
                 contract = run["worker_contracts"]["current_state_investigator"]
                 instructions = contract.get("result_instructions", contract.get("instructions", ""))
+                worker = contract.get("worker_id", contract.get("worker"))
+                self.assertIn(f"Its Worker value must be exactly {worker}.", instructions)
                 self.assertIn("Every field value", instructions)
                 self.assertIn("never an array", instructions)
                 packet_path = Path(run["finalization_packet"])

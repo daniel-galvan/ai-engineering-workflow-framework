@@ -24,7 +24,9 @@ description: >-
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
-   parent directory trees. Run gates separately, or use fail-fast command chaining; inspect each exit status.
+   parent directory trees. Run filename discovery in a separate tool result from content reads or searches; mixed
+   outputs may not prove which references are names only. Run gates separately, or use fail-fast command chaining;
+   inspect each exit status.
    Pass `--declared-framework-revision <FULL-SHA>` when the prompt declares one, and pass
    `--declared-plugin-path <prompt-path>` only when the prompt contains an explicit versioned plugin path. A missing,
    stale, or different path is `plugin_revision_mismatch`; do not search another cache version or silently substitute
@@ -178,12 +180,15 @@ description: >-
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
-   Before worker activation, try to open each declared file, folder, URL, or attachment and confirm its contents can be
+   Before preparation, try to open each declared file, folder, URL, or attachment and confirm its contents can be
    passed to the assigned worker. Keep the original locator in `Source or path` and record the access result in that
    input row's `Status`; do not leave an inaccessible artifact marked only `Registered`. If unavailable, record the
    attempted route and its impact, tell the user promptly, and continue only if independent evidence can still produce
    a useful partial result; otherwise stop for the indispensable input. Required Jira or Sentry source-access
    gates still apply; supporting artifacts do not waive those gates.
+   Complete these access-status updates in the source manifest before passing it to `prepare_run.py`.
+   After preparation, `run_inputs.json` is frozen; do not edit it or replace its recorded hash.
+   Record later access observations in the current-run evidence and work record, referencing the original Input IDs.
    For Feature Delivery, add `Asset source: true` to the input row for each explicitly supplied file, folder, or URL
    that must be inventoried; the asset gate reconciles those markers against `asset_manifest.json`.
    Jira-related children, linked issues, and attachments are discovered evidence,
@@ -309,7 +314,9 @@ description: >-
    its path and hash in `role_bindings.json`. For each worker, run the manifest's `worker_runtime_guard` in activation
    mode with `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`
    and require an allowed result immediately before that worker's spawn call. Do not batch guards after dispatching
-   workers. A guard run after its worker started does not satisfy the activation barrier: stop further dispatch, record
+   workers. For a fresh Codex spawn, copy the allowed response's `launch_arguments` into `spawn_agent` alongside
+   the task name and emitted activation message; do not rely on inherited model or effort defaults.
+   A guard run after its worker started does not satisfy the activation barrier: stop further dispatch, record
    `activation_sequence_nonconformant`, set `profile_status: blocked` and `Workflow outcome: blocked`, and reconcile
    already-started workers without claiming the check passed. Preserve a ready plan as `Engineering outcome: plan_only`.
    For a rejected analytical result, use one corrected activation command: include `--rejected-trace`,

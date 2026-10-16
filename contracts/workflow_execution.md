@@ -287,13 +287,16 @@ that is neither consumed nor explicitly recorded as unavailable, conflicting, or
 incomplete. Return the worker once with the missing Input IDs; never ask the user to repeat the underlying information.
 If the worker cannot consume them, preserve the partial result and record the concrete runtime or access limitation.
 
-Before worker activation, the Coordinator MUST try to open every explicitly supplied file, folder, URL, or attachment
+Before preparation, the Coordinator MUST try to open every explicitly supplied file, folder, URL, or attachment
 through an available local path or connected source and confirm its contents can be delivered to the assigned worker.
 Keep the original locator in `Source or path` and record the access result in that input row's `Status`; do not leave an
 inaccessible artifact marked only `Registered`. If access fails, record the attempted route and which question or
 conclusion it limits, then tell the user promptly. Continue only when the remaining evidence can still produce a useful
 bounded result; otherwise stop for the indispensable input. A name, link, or attachment count does not prove that its
 contents were reviewed.
+Complete initial access-status updates in the source manifest before preparation hashes it. After preparation,
+`run_inputs.json` is frozen; do not edit it or replace its recorded hash. Record later access observations in the
+current-run evidence and work record, referencing the original Input IDs.
 
 Supporting inputs may be unused only when the worker records why they were irrelevant to its declared responsibility.
 The gate checks information flow; it does not require every worker to consume every run input.

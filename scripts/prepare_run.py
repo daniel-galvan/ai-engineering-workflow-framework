@@ -531,6 +531,12 @@ def _write_activation_packets(
             "provider_tool_mapping": manifest["provider_tool_mapping"],
             "run_input_manifest": manifest["run_input_manifest"],
             "coordinator_execution": manifest["coordinator_execution"],
+            "repository_instructions": (
+                "Read local AGENTS.md only in the target directory and its ancestors up to the assigned repository "
+                "root. Do not recursively search parent directory trees, the home directory, or unrelated repositories. "
+                "Run filename discovery in a separate tool result from content reads or searches so its output can be "
+                "audited as names only. Use exact assigned artifact paths; do not search unassigned runs/ archives."
+            ),
             "worker_contract": contract_by_agent.get(agent),
             "developer_instructions": developer_instructions.strip(),
         }
@@ -1058,8 +1064,9 @@ def prepare_run(
                 "dependencies. Read existing test fixtures and plan any required seed, state, fresh-read and error support. "
                 "Return techops_checks rows for issue_scope, history_reconciliation, plan_dependencies, regression_fixture "
                 "with Status passed (history may be not_applicable with evidence), Evidence refs and Detail. "
-                "A passed history_reconciliation records Commit, Patch evidence refs, "
-                "Work item and Work item evidence refs from an inspected patch and its associated work item."
+                "A passed history_reconciliation object requires separate JSON keys Commit, Patch evidence refs, "
+                "Work item and Work item evidence refs, not prose inside Detail. Patch and work-item references "
+                "must be distinct and included in Evidence refs, from an inspected patch and its associated work item."
             ),
             "documenter": (
                 "Preserve the accepted techops_checks and Coordinator runtime_audits in finalization_packet.json. "
@@ -1103,12 +1110,15 @@ def prepare_run(
                 "result_instructions": (
                     "Write the narrative to output and a JSON envelope to result with run_id, worker_result, "
                     "and evidence/claims/decisions/actions arrays. Use result_fields exactly; worker_result uses "
-                    "worker_results fields. Every field value in worker_result and in evidence/claims/decisions/actions "
+                    f"worker_results fields. Its Worker value must be exactly {worker}. "
+                    "Every field value in worker_result and in evidence/claims/decisions/actions "
                     "rows must be a string, including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; "
                     "join multiple references in one string, never an array. "
                     "Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
                     "Consume upstream IDs unchanged. Outcome is complete, failed or blocked, never completed. "
-                    "Fix Design also supplies the four techops_checks. Do not edit the Coordinator packet or audits."
+                    "Fix Design also supplies the four techops_checks. Do not include Feature Delivery-only "
+                    "plan_readiness or implementation_plan_action fields; record unresolved decisions in the narrative "
+                    "and worker_result. Do not edit the Coordinator packet or audits."
                 ),
             })
         manifest["worker_result_merger"] = str(ROOT / "scripts" / "merge_techops_result.py")

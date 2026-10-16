@@ -53,6 +53,17 @@ class ExecutionLayers(unittest.TestCase):
         self.assertIn("Before Evidence Topology activation", sentry)
         self.assertIn("## Source-Access Gate", sentry)
 
+    def test_access_observations_preserve_the_prepared_input_manifest(self):
+        launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
+        self.assertIn("Run filename discovery in a separate tool result from content reads or searches", launcher)
+        for name in ("skills/run/SKILL.md", "contracts/workflow_execution.md"):
+            text = " ".join((ROOT / name).read_text().split())
+            with self.subTest(file=name):
+                self.assertIn("Before preparation", text)
+                self.assertIn("access-status updates in the source manifest before", text)
+                self.assertIn("`run_inputs.json` is frozen; do not edit it or replace its recorded hash", text)
+                self.assertIn("Record later access observations in the current-run evidence and work record", text)
+
     def test_sentry_access_failure_stops_before_preparation_without_log_fallback(self):
         launcher = (ROOT / "skills/run/SKILL.md").read_text()
         gate = launcher.split("5b. For Sentry Issue Remediation", 1)[1].split("6. For Standard Sentry planning", 1)[0]
