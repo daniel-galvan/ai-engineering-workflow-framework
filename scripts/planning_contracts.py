@@ -1180,6 +1180,11 @@ def _techops_planning_contract_errors(
             required.update({"repository-integration", "planning-review"})
         if not required <= completed:
             errors.append("techops_planning_workers_incomplete")
+    if pre_handoff:
+        completed.discard("handoff")
+        packet = {**packet, "runtime_audits": [row for row in packet.get("runtime_audits", [])
+                                               if isinstance(row, dict) and row.get("Worker") != "handoff"],
+                  "terminal_observations": []}
     errors.extend(_worker_runtime_audit_errors(packet, packet_path, completed))
     return list(dict.fromkeys(errors))
 

@@ -159,10 +159,21 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
     if failure_path.is_file():
         try:
             failure = json.loads(failure_path.read_text())
-            if failure.get("status") == "failed" and (failure.get("stage") == "workflow"
+            recovery = False
+            bindings_path = path.parent / "role_bindings.json"
+            if expected_agent == "documenter" and rejected_trace_sha256 and bindings_path.is_file():
+                bindings = json.loads(bindings_path.read_text())
+                receipt = bindings.get("handoff_recovery", {})
+                current_identity = json.loads((path.parent / "finalization_packet.json").read_text())["identity"]
+                recovery = (bindings.get("playbook") == "techops_issue_remediation"
+                            and current_identity.get("Lifecycle") == "planning"
+                            and receipt.get("run_id") == failure.get("run_id") == packet.get("run_id")
+                            and receipt.get("failure_sha256") == hashlib.sha256(failure_path.read_bytes()).hexdigest())
+            if failure.get("status") == "failed" and (
+                    (failure.get("stage") == "workflow" and not recovery)
                     or int(failure.get("attempt_count", 0)) >= 2):
                 errors.append("worker_activation_requires_planning_recovery")
-        except (ValueError, TypeError):
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
             errors.append("worker_activation_failure_receipt_invalid")
     try:
         for role, receipt in _pending_rejections(path.parent).items():
@@ -472,10 +483,13 @@ def main() -> int:
                                     if rejected.is_symlink() or rejected.exists() and rejected.read_bytes() != target.read_bytes():
                                         raise ValueError("recovery_rejected_output_conflict")
                                     quarantine.append((target, rejected))
-                            for target, rejected in quarantine:
-                                target.replace(rejected)
                             current_path = args.activation_packet_bundle.parent / "finalization_packet.json"
                             current = json.loads(current_path.read_text())
+                            for target, rejected in quarantine:
+                                if target.resolve() == current_path.resolve():
+                                    rejected.write_bytes(target.read_bytes())
+                                else:
+                                    target.replace(rejected)
                             current.setdefault("activation_repairs", {})[args.expected_agent] = {
                                 "Attempt": 1, "Provider handle": args.provider_handle,
                                 "Last dispatch at": args.last_dispatch_at, "Rejected trace SHA256": rejection_hash,

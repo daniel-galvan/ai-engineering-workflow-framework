@@ -746,6 +746,10 @@ description: >-
    The finalizer also refreshes handoff provenance from the prepared identity. A continuation package change alone
    requires no Documenter follow-up. If a substantive correction requires reactivation, use the guarded activation
    protocol and prove the worker read the complete current binding before accepting its new result.
+   A failed TechOps planning handoff can use explicitly requested `--continuation` and its guarded rejected-result
+   correction. Preparation binds the authorization to the exact failure receipt and Run ID; exhausted finalization
+   attempts and the one-repair limit still block dispatch. The guard preserves the packet and snapshots its rejected
+   bytes, validates accepted upstream audits before Documenter, and requires the new handoff audit at finalization.
    A substantive handoff correction still requires its owning worker and invalidates the affected observations.
    Return errors naming Fix
    Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning
@@ -788,6 +792,8 @@ description: >-
    A verified prepared file is not proof that the final chat response retained that line or the remaining bytes.
    Independent proposed-response files may use `--verify-response`. Only a single terminal LF is optional; internal
    whitespace, labels and content must match. Do not introduce Markdown hard-break spaces.
+   Do not silently correct apparent evidence-ID typos in the chat response. Correct the owning packet before
+   successful finalization where permitted; a provisional failure report must retain its recorded text verbatim.
    The receipt retains both byte hashes and the comparison policy.
    This verifies prepared text; do not claim the CLI observed actual chat delivery.
    The proposed file must contain the intended outgoing answer; copying the canonical file to another path alone

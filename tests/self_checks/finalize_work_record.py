@@ -714,6 +714,15 @@ def self_test() -> None:
         assert "| State | ready_for_implementation |" in techops_record.read_text()
         assert "| Terminal | 0 |" in expand_work_record(techops_record.read_text(), feature_root)
         assert "runtime terminal" in techops_record.read_text()
+        canonical = feature_root / "handoff_response.md"
+        publication = subprocess.run([
+            sys.executable, str(ROOT / "scripts/finalize_work_record.py"),
+            "--packet", str(techops_packet), "--record", str(techops_record),
+            "--publish-response", str(canonical),
+        ], capture_output=True)
+        assert publication.returncode == 0, publication.stdout + publication.stderr
+        assert publication.stdout == canonical.read_bytes()
+        assert json.loads((feature_root / "handoff_delivery.json").read_text())["status"] == "verified"
         changed_packet = json.loads(techops_packet.read_text())
         changed_packet["work_item"]["Title"] = "Updated after pre-release"
         techops_packet.write_text(json.dumps(changed_packet))

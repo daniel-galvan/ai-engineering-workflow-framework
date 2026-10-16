@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -246,6 +247,29 @@ class ActivationDelivery(unittest.TestCase):
         path = self.artifacts / "context_rejected_trace.json"
         path.write_text(json.dumps(trace))
         return path, trace
+
+    def test_recovery_preserves_packet_when_it_is_the_worker_output(self):
+        path, trace = self.rejected_trace()
+        packet_path = Path(self.run["finalization_packet"])
+        saved = packet_path.read_bytes()
+        bundle_path = Path(self.bundle["path"])
+        bundle = json.loads(bundle_path.read_text())
+        bundle["packets"]["current_state_investigator"]["worker_contract"]["output"] = str(packet_path)
+        bundle_path.write_text(json.dumps(bundle))
+        assignment = self.artifacts / "retry.json"
+        assignment.write_text(json.dumps({"objective": "Read complete binding and preserve accepted findings"}))
+        corrected = self.command("--activation-packet-bundle", os.path.relpath(bundle_path),
+            "--expected-agent", "current_state_investigator",
+            "--expected-bundle-sha256", hashlib.sha256(bundle_path.read_bytes()).hexdigest(),
+            "--assignment", assignment, "--dispatch-file", self.artifacts / "retry.txt",
+            "--provider-status", "completed", "--rejected-trace", path,
+            "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH)
+        self.assertEqual(corrected.returncode, 0, corrected.stdout + corrected.stderr)
+        self.assertEqual(packet_path.with_name("finalization_packet.rejected.json").read_bytes(), saved)
+        current = json.loads(packet_path.read_text())
+        self.assertIn("current_state_investigator", current.pop("activation_repairs"))
+        self.assertEqual(current, json.loads(saved))
+        self.assertEqual(json.loads(path.read_text()), trace)
 
     def test_one_completed_activation_repair_is_allowed_and_persisted(self):
         path, trace = self.rejected_trace()

@@ -146,6 +146,19 @@ class SentryFailureRegression(unittest.TestCase):
         proposed.write_text(proposed.read_text().replace("- State:", " - State:"))
         self.assertEqual(self.command("--packet", self.packet, "--verify-response", proposed).returncode, 2)
 
+    def test_response_verification_rejects_silent_evidence_identifier_correction(self):
+        packet = json.loads(self.packet.read_text())
+        packet["handoff"]["established"].append("Recorded evidence reference: DE-FD-1")
+        self.packet.write_text(json.dumps(packet))
+        self.command(*self.arguments())
+        canonical = (self.root / "handoff_failure.md").read_bytes()
+        self.assertIn(b"DE-FD-1", canonical)
+        proposed = self.root / "proposed_response.md"
+        proposed.write_bytes(canonical.replace(b"DE-FD-1", b"E-FD-1"))
+        rejected = self.command("--packet", self.packet, "--verify-response", proposed)
+        self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
+        self.assertFalse((self.root / "handoff_delivery.json").exists())
+
     def test_missing_closure_never_manufactures_release_or_changes_identity(self):
         before = self.packet.read_bytes()
         result = self.command(*self.arguments())

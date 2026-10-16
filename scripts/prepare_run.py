@@ -1188,6 +1188,12 @@ def prepare_run(
     else:
         started_at = str(manifest.get("run_budget", {}).get("started_at") or manifest["prepared_at"])
         manifest["run_id"] = work_item + "-" + re.sub(r"[^0-9A-Za-z]", "", started_at)
+    failure_path = artifact_root / "finalization_failure.json"
+    if continuation and not prior and playbook == "techops_issue_remediation" and failure_path.is_file():
+        manifest["handoff_recovery"] = {
+            "run_id": manifest["run_id"],
+            "failure_sha256": hashlib.sha256(failure_path.read_bytes()).hexdigest(),
+        }
     manifest["activation_packet_bundle"] = _write_activation_packets(artifact_root, manifest)
     manifest_path = artifact_root / "role_bindings.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")

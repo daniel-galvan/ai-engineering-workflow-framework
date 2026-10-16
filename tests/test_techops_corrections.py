@@ -14,9 +14,65 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import finalize_work_record as finalizer
 import validate_worker_runtime as runtime
+import prepare_run as prepare
+import planning_contracts
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_failed_techops_handoff_requires_prepared_bounded_continuation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            inputs = repository / "inputs.json"
+            inputs.write_text(json.dumps({"inputs": [{"Input ID": "I-001", "Input or artifact": "Issue",
+                "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
+            run = prepare.prepare_run(repository, "ISSUE-1", "techops_issue_remediation", None, False,
+                                      input_manifest=inputs)
+            root = Path(run["artifact_root"])
+            packet_path = root / "finalization_packet.json"
+            packet = json.loads(packet_path.read_text())
+            packet["identity"]["Lifecycle"] = "planning"
+            packet_path.write_text(json.dumps(packet))
+            failure = root / "finalization_failure.json"
+            failure.write_text(json.dumps({"status": "failed", "stage": "workflow", "run_id": run["run_id"]}))
+            def errors(run, digest="a" * 64):
+                bundle = run["activation_packet_bundle"]
+                return runtime.activation_packet_errors(Path(bundle["path"]), "documenter", bundle["sha256"],
+                                                        rejected_trace_sha256=digest)
+            self.assertIn("worker_activation_requires_planning_recovery", errors(run))
+            continued = prepare.prepare_run(repository, "ISSUE-1", "techops_issue_remediation", None, True,
+                                            input_manifest=inputs)
+            self.assertEqual(continued["run_id"], run["run_id"])
+            self.assertNotIn("worker_activation_requires_planning_recovery", errors(continued))
+            self.assertIn("techops_pre_handoff_workers_incomplete", errors(continued))
+            self.assertIn("worker_activation_requires_planning_recovery", errors(continued, None))
+            failure.write_text(json.dumps({"status": "failed", "stage": "workflow", "run_id": "other"}))
+            self.assertIn("worker_activation_requires_planning_recovery", errors(continued))
+            failure.write_text(json.dumps({"status": "failed", "stage": "workflow", "run_id": run["run_id"],
+                                           "attempt_count": 2}))
+            with self.assertRaisesRegex(ValueError, "exhausted_attempts"):
+                prepare.prepare_run(repository, "ISSUE-1", "techops_issue_remediation", None, True,
+                                    input_manifest=inputs)
+            self.assertIn("worker_activation_requires_planning_recovery", errors(continued))
+
+    def test_pre_handoff_checks_upstream_audits_without_accepting_rejected_handoff(self):
+        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.20",
+                              "Lifecycle": "planning", "Engineering outcome": "plan_only"},
+                  "worker_results": [{"Worker": name, "Outcome": "complete"}
+                                     for name in ("issue-evidence", "failure-path", "fix-design", "handoff")],
+                  "runtime_audits": [{"Worker": name} for name in ("issue-evidence", "failure-path", "fix-design", "handoff")],
+                  "terminal_observations": [{"Provider handle": "/root/handoff"}]}
+        saved = copy.deepcopy(packet)
+        with patch.object(planning_contracts, "_worker_runtime_audit_errors", return_value=["upstream_defect"]) as audit:
+            errors = planning_contracts._techops_planning_contract_errors(packet, Path("packet.json"), pre_handoff=True)
+            self.assertIn("upstream_defect", errors)
+            checked, _, completed = audit.call_args.args
+            self.assertNotIn("handoff", completed)
+            self.assertNotIn("handoff", {row["Worker"] for row in checked["runtime_audits"]})
+            self.assertEqual(checked["terminal_observations"], [])
+            planning_contracts._techops_planning_contract_errors(packet, Path("packet.json"))
+            self.assertIn("handoff", audit.call_args.args[2])
+        self.assertEqual(packet, saved)
+
     def test_continuation_provenance_refresh_requires_no_worker(self):
         packet = {"identity": {"Plugin package / version": "ai-engineering-workflows / refreshed",
                               "Framework commit / status": "new-revision / Clean",
