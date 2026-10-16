@@ -315,6 +315,23 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("provider_binding_not_delivered", runtime.trace_errors(trace))
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
 
+    def test_current_directory_heading_and_ancestor_reads_are_not_archive_consumption(self):
+        trace = self.instruction_read_trace()
+        command = ('ls -la .thoughts/ITEM-1; for f in AGENTS.md .thoughts/AGENTS.md '
+                   '.thoughts/ITEM-1/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done')
+        call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
+        rows = self.paired(call, '.thoughts/ITEM-1:\ntotal 0\n--- .thoughts/AGENTS.md')
+        rows[0]["call_id"] = rows[1]["call_id"] = "heading"
+        trace["tool_trace"].extend(rows)
+        self.assertEqual(runtime.trace_errors(trace), [])
+        for heading in ('.thoughts/OTHER:', '.thoughts/ITEM-1/runs/prior:'):
+            changed = json.loads(json.dumps(trace))
+            changed["tool_trace"][-1]["output"] = heading
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] = 'await tools.exec_command({cmd:"cat .thoughts/ITEM-1:"})'
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+
     def test_ancestor_filename_probe_is_not_an_archive_read(self):
         for directory in ("", str(self.repository) + "/"):
             trace = self.instruction_read_trace()

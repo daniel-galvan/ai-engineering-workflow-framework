@@ -40,6 +40,13 @@ class ExecutionLayers(unittest.TestCase):
             self.assertIn("followup_task", text)
             self.assertIn("does not start an idle worker", text)
 
+    def test_publisher_is_required_after_finalization(self):
+        for path in ("skills/run/SKILL.md", "providers/codex/agents/orchestrator.toml"):
+            text = " ".join((ROOT / path).read_text().split())
+            self.assertIn("--publish-response", text)
+            self.assertIn("validation diagnostic, not part of", text)
+            self.assertIn("pending", text)
+
     def test_ordinary_handle_join_does_not_create_a_post_spawn_dispatch(self):
         for path in ("providers/codex.md", "skills/run/SKILL.md"):
             text = " ".join((ROOT / path).read_text().split())

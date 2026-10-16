@@ -722,6 +722,9 @@ def _read_targets(command: str) -> list[str]:
     hashed_read = re.fullmatch(r"(?:sha256sum|shasum -a 256) ([^\s;&|<>]+) && cat \1", command)
     if hashed_read:
         return [hashed_read[1]]
+    read_then_hash = re.fullmatch(r"cat ([^\s;&|<>$`]+); (?:sha256sum|shasum -a 256) \1", command)
+    if read_then_hash:
+        return [read_then_hash[1]]
     verified_read = re.fullmatch(
         r'packet=([^\s;&|<>$`]+); actual=\$\(sha256sum "\$packet" \| cut -d \' \' -f 1\); '
         r'if \[ "\$actual" != [0-9a-f]{64} \]; then printf \'SHA256_MISMATCH %s\\n\' "\$actual"; '
@@ -918,6 +921,8 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                     break
                 targets.extend(statement[3:])
                 index = end + 1
+            elif statement[:1] == ["ls"] and _listing_command(shlex.join(statement)):
+                index += 1
             else:
                 selected = _read_targets(shlex.join(statement))
                 if not selected:
@@ -998,6 +1003,10 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                     details.append({"error": errors[-1], "trace_path": list(path), "reference": match.group().strip()})
                 break
         if root and not listing:
+            if output:
+                # Directory headings are labels; do not reinterpret the colon as a different work-item ID.
+                candidate = re.sub(r"(?m)^(" + re.escape(str(root)) + "|" +
+                                   re.escape(".thoughts/" + root.name) + r"):$", r"\1", candidate)
             for reference in THOUGHT_PATH.findall(candidate):
                 relative = reference.split(".thoughts/", 1)[1]
                 if relative.split("/", 1)[0] != root.name or "/runs/" in relative:

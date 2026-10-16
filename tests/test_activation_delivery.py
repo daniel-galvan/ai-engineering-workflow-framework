@@ -141,6 +141,17 @@ class ActivationDelivery(unittest.TestCase):
         return export_worker_trace(ledger, source, "current_state_investigator", observation,
                                    run_id=packet["run_id"], artifact_root=self.artifacts)
 
+    def test_full_dispatch_read_followed_by_checksum_authenticates_delivery(self):
+        trace = self.instruction_trace()
+        path = trace["spawn"]["dispatch_file"]
+        trace["tool_trace"][0]["input"] = 'text(await tools.exec_command(' + json.dumps({
+            "cmd": f"cat {path}; shasum -a 256 {path}"}) + '));'
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
+        trace["tool_trace"][1]["output"][0]["text"] = "Truncated output"
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts), {})
+        self.assertEqual(runtime._read_targets(f"cat {path}; shasum -a 256 other.txt"), [])
+        self.assertEqual(runtime._read_targets(f"cat {path}; shasum -a 256 {path}; cat {ARCHIVE}"), [])
+
     def test_prepared_dispatch_export_and_audit_allow_preservation_metadata(self):
         trace = self.instruction_trace()
         self.assertEqual(trace["audit"], {"status": "passed", "errors": []})

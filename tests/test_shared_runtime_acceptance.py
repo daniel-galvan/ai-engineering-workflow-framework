@@ -123,6 +123,37 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                             self.assertEqual(finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
                                              root / "finalization_packet.json", {worker}), [])
 
+    def test_closure_accounts_for_rejected_spawn_without_accepting_its_analysis(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, role, time, event, parent, _, _ = fixture
+            rejected_child = "00000000-0000-0000-0000-000000000099"
+            parent.extend([
+                event(11, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
+                      call_id="rejected", arguments=json.dumps({"task_name": "rejected"})),
+                event(12, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                      "agent_path": "/root/rejected", "agent_thread_id": rejected_child}),
+                event(13, "response_item", type="function_call_output", call_id="rejected", output=""),
+                event(14, "event_msg", item={"type": "SubAgentActivity", "kind": "completed",
+                      "agent_path": "/root/rejected"})])
+            trace, ledger = self.export(fixture)
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            trace_path = root / "accepted_trace.json"
+            trace_path.write_text(json.dumps(trace))
+            accepted = {**trace["status_observation"], "Provider status": "completed", "Worker": role,
+                        "Trace path": str(trace_path)}
+            packet = {"runtime_audits": [accepted], "terminal_observations": [accepted]}
+            errors = finalizer._worker_runtime_audit_errors(packet, root / "finalization_packet.json", {role})
+            self.assertIn("terminal_closure_worker_handle_mismatch", errors)
+            rejected = {**accepted, "Provider handle": "/root/rejected", "Thread ID": rejected_child,
+                        "Last dispatch at": time(11), "Latest turn started at": time(11),
+                        "Latest turn completed at": time(14)}
+            packet["terminal_observations"].append(rejected)
+            self.assertEqual(finalizer._worker_runtime_audit_errors(packet, root / "finalization_packet.json", {role}), [])
+            rejected["Last dispatch at"] = time(0)
+            self.assertIn("terminal_closure_worker_audit_stale", finalizer._worker_runtime_audit_errors(
+                packet, root / "finalization_packet.json", {role}))
+
     def test_native_inventory_exports_selected_worker_without_manual_timestamps(self):
         for playbook in CASES:
             with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:

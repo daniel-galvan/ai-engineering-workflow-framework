@@ -80,9 +80,9 @@ except ModuleNotFoundError:
     )
 
 try:
-    from worker_runtime_evidence import dispatch_audit_errors
+    from worker_runtime_evidence import dispatch_audit_errors, latest_worker_dispatch
 except ModuleNotFoundError:
-    from scripts.worker_runtime_evidence import dispatch_audit_errors
+    from scripts.worker_runtime_evidence import dispatch_audit_errors, latest_worker_dispatch
 
 
 try:
@@ -1199,6 +1199,16 @@ def _worker_runtime_audit_errors(
     observations = packet.get("terminal_observations", [])
     if isinstance(observations, list) and observations:
         dispatches = {row.get("Provider handle"): row.get("Last dispatch at") for row in audits}
+        manifest_path = packet_path.parent / "role_bindings.json"
+        try:
+            manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+            ledger_path = manifest.get("runtime_evidence", {}).get("ledger")
+            if ledger_path:
+                ledger = json.loads(Path(ledger_path).read_text())
+                for handle in {event["Provider handle"] for event in ledger["events"]}:
+                    dispatches[handle] = latest_worker_dispatch(ledger, handle)["Last dispatch at"]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            errors.append("terminal_closure_dispatch_evidence_invalid:" + str(error))
         if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):
             errors.append("terminal_closure_worker_handle_mismatch")
         for row in observations:

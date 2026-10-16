@@ -779,6 +779,8 @@ description: >-
    validation alone is not prepared-response verification. Complete delivery with
    `finalize_work_record.py --packet <packet> --publish-response <artifact-root>/handoff_response.md`.
    This validates and emits the prepared text directly and records `status: verified`; send that output unchanged.
+   Do not end the run with a pending delivery receipt. The preceding `Workflow-framework validation: passed` line is
+   a validation diagnostic, not part of the canonical report; do not prepend it to the published response.
    Include the first `Workflow-framework handoff:` line when emitted, even on failure; it is part of the report.
    A verified prepared file is not proof that the final chat response retained that line or the remaining bytes.
    Independent proposed-response files may use `--verify-response`. Only a single terminal LF is optional; internal
