@@ -161,7 +161,9 @@ description: >-
    For a live Sentry URL, pass the exact current parent record with `prepare_run.py --provider-session <path>`.
    Preparation retains provider and supplied-log releases in the hashed input rows before summarization. Use name-only
    discovery by current parent thread ID when the provider record path is not already exposed; never open another
-   thread's analytical history. An explicitly selected offline source uses `Evidence mode: supplied_occurrence` in its
+   thread's analytical history. TechOps uses the same current-parent filename lookup for trace collection; do not
+   declare provider-session evidence unavailable before trying that lookup. An explicitly selected offline source
+   uses `Evidence mode: supplied_occurrence` in its
    input row. Preserve every `Observed releases` value with its Input ID in normalized evidence, compare named source
    revisions for the inspected paths, and keep receiver deployment mapping distinct from client release identity.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
@@ -174,7 +176,14 @@ description: >-
 7. Before preparation, create a run-specific JSON input manifest from every material detail in the current request:
    explicit decisions and constraints, observed reports, hypotheses, repository paths, and named supporting artifacts.
    Use stable Input IDs and include each item's short value, source/path, authority, classification, expected use, and
-   status. Use `apply_patch` to create the temporary JSON file when no manifest file already exists, preferably outside
+   status. Include the current request as an input with credentials redacted, and preserve each prohibition explicitly;
+   do not replace
+   a build/test prohibition with the broader phrase "planning-only". Planning product builds/tests require a separate
+   input row with `Classification: "execution authorization"`, `Authority: "User"`, `Status: "Approved"`, and
+   `Authorized operations: ["test_run"]` or `["build_run"]`, only when the user has actually authorized those actions.
+   A delegated objective cannot grant that authorization. Check executed commands against these constraints before
+   fan-in; reject unauthorized results rather than merging them. Keep the full restrictions in every assignment.
+   Use `apply_patch` to create the temporary JSON file when no manifest file already exists, preferably outside
    the execution repository (for example under `/tmp`) so preparation cannot make the source checkout appear dirty.
    The manifest has top-level `schema_version: 1`, `status: "explicit"`, a non-empty `inputs` list, and the canonical
    `precedence_rule`; if that key is omitted, preparation applies the canonical default, while an explicit empty value

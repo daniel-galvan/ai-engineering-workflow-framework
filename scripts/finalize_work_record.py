@@ -1842,6 +1842,11 @@ def main() -> int:
     if args.self_test:
         self_test()
         return 0
+    if args.packet and (args.workflow_failure or args.verify_response):
+        package_errors = prepared_package_errors(args.packet.resolve().parent)
+        if package_errors:
+            print(json.dumps({"status": "blocked", "errors": package_errors}))
+            return 2
     if args.verify_response:
         if not args.packet or any((args.workflow_failure, args.analytical_failure, args.pre_release,
                                    args.check_packet, args.blocked_runtime_snapshot, args.publish_technical_spike_report)):

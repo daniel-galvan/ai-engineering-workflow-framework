@@ -101,6 +101,10 @@ class TechOpsCorrections(unittest.TestCase):
         self.assertEqual(response.count(f"({Path('/tmp/run/repository_integration.md').resolve()})"), 1)
         self.assertIn("[Repository integration]", response)
         self.assertIn(f"[work_record.md]({Path('/tmp/run/work_record.md').resolve()})", response)
+        packet["handoff"]["implementation_plan"] = "implementation_plan.md (Draft; unapproved)"
+        response = finalizer.render_handoff(packet)
+        self.assertIn(f"- Implementation plan: [implementation_plan.md]({Path('/tmp/run/implementation_plan.md').resolve()}) "
+                      "(Draft; unapproved)", response)
 
     def test_targeted_terminal_reads_cover_omitted_workers(self):
         observations = [{

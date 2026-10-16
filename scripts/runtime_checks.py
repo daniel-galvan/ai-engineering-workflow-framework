@@ -790,7 +790,20 @@ def _read_targets(command: str) -> list[str]:
                     or parts[2] != ["cat", variable] or parts[3] != ["done"]):
                 return []
             return parts[0][3:]
-        if not tokens or ";" in tokens or "$" in command:
+        if ";" in tokens and "$" not in command:
+            parts, part = [], []
+            for token in tokens:
+                if token == ";":
+                    parts.append(part)
+                    part = []
+                else:
+                    part.append(token)
+            parts.append(part)
+            if not parts[-1] or not _listing_command(shlex.join(parts[-1])):
+                return []
+            reads = [_read_targets(shlex.join(part)) for part in parts[:-1]]
+            return [target for row in reads for target in row] if reads and all(reads) else []
+        if not tokens or "$" in command:
             return []
         if tokens[0] == "cat" and len(tokens) > 1 and all(not arg.startswith("-") for arg in tokens[1:]):
             return tokens[1:]
@@ -1064,6 +1077,68 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     return list(dict.fromkeys(errors))
 
 
+def planning_permission_errors(trace: dict) -> list[str]:
+    """Planning checks require explicit user authorization, independent of delegated objectives."""
+    content = _verified_dispatch_content(trace)
+    if not content:
+        return []
+    packet = json.loads(content.split("\n", 2)[1])
+    current = json.loads(Path(packet["finalization_packet"]).read_text())
+    if current.get("identity", {}).get("Lifecycle") != "planning":
+        return []
+    authorized = set()
+    for row in packet.get("run_input_manifest", {}).get("inputs", []):
+        if (row.get("Classification") == "execution authorization" and row.get("Status") == "Approved"
+                and row.get("Authority") == "User"):
+            operations = row.get("Authorized operations", [])
+            if isinstance(operations, list) and all(isinstance(value, str) and value in {"test_run", "build_run"}
+                                                    for value in operations):
+                authorized.update(operations)
+    errors = []
+    for row in trace.get("tool_trace", []):
+        for tool, arguments in _tool_operations(row):
+            if tool != "exec_command":
+                continue
+            command = arguments.get("cmd", "")
+            if not isinstance(command, str):
+                errors.append("planning_command_invalid")
+                continue
+            try:
+                tokens = shlex.split(command)
+                if len(tokens) == 3 and Path(tokens[0]).name in {"bash", "sh", "zsh"} and tokens[1] in {"-lc", "-c"}:
+                    command = tokens[2]
+                lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n")
+                lexer.whitespace = " \t\r"
+                lexer.whitespace_split = True
+                parts, part = [], []
+                for token in lexer:
+                    if token and all(char in ";&|\n" for char in token):
+                        parts.append(part)
+                        part = []
+                    else:
+                        part.append(token)
+                parts.append(part)
+                for part in parts:
+                    if not part:
+                        continue
+                    name = Path(part[0]).name
+                    operation = None
+                    if name in {"bazel", "bazelisk", "go", "npm", "pnpm", "yarn", "make"}:
+                        action = next((arg for arg in part[1:] if not arg.startswith("-")), "")
+                        if action == "run" and len(part) > 2:
+                            action = part[2]
+                        if action in {"test", "build"}:
+                            operation = "test_run" if action == "test" else "build_run"
+                    elif name in {"pytest", "pytest-3"} or (name in {"python", "python3"}
+                            and len(part) > 2 and part[1] == "-m" and part[2] in {"pytest", "unittest"}):
+                        operation = "test_run"
+                    if operation and operation not in authorized:
+                        errors.append("planning_operation_not_authorized:" + operation)
+            except (ValueError, TypeError):
+                continue
+    return list(dict.fromkeys(errors))
+
+
 def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
                  context_details: list[dict] | None = None) -> list[str]:
     if not isinstance(trace, dict):
@@ -1124,6 +1199,7 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
     if isinstance(failure, dict) and failure.get("requested") and not failure.get("artifact_created"):
         if failure.get("evidence_artifact_required"):
             errors.append("analytical_failure_artifact_absent")
+    errors.extend(planning_permission_errors(trace))
     errors.extend(context_trace_errors(trace, details=context_details))
     return errors
 

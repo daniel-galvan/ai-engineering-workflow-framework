@@ -101,10 +101,12 @@ class ActivationDelivery(unittest.TestCase):
             runtime.dispatch_message(packet, "Full instructions", self.root / "outside.txt")
         self.assertFalse((self.root / "outside.txt").exists())
 
-    def instruction_trace(self, locator=ARCHIVE):
+    def instruction_trace(self, locator=ARCHIVE, authorization=None, objective="Verify current source findings"):
         bundle_path = Path(self.bundle["path"])
         bundle = json.loads(bundle_path.read_text())
         packet = bundle["packets"]["current_state_investigator"]
+        if authorization:
+            packet["run_input_manifest"]["inputs"].append(authorization)
         packet["run_input_manifest"]["inputs"].append({
             "Input ID": "REC-001", "Source or path": locator,
             "Expected use": "Preserve previous records without reading them"})
@@ -115,7 +117,7 @@ class ActivationDelivery(unittest.TestCase):
         bindings["activation_packet_bundle"]["sha256"] = digest
         bindings_path.write_text(json.dumps(bindings))
         assignment = self.root / "assignment.json"
-        assignment.write_text(json.dumps({"objective": "Verify current source findings"}))
+        assignment.write_text(json.dumps({"objective": objective}))
         self.dispatch_number += 1
         dispatch = self.artifacts / f"activation_context_{self.dispatch_number}.txt"
         result = self.command("--activation-packet-bundle", bundle_path,
@@ -185,6 +187,64 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
         self.assertFalse(runtime._listing_command("wc --files0-from=paths && rg --files .thoughts/ITEM-1"))
         self.assertFalse(runtime._listing_command("wc -l -c " + ARCHIVE))
+
+    def test_truncated_current_reads_with_final_listing_are_not_archived_content(self):
+        trace = self.instruction_trace()
+        source = self.artifacts / "current.json"
+        source.write_text('{"current": true}\n')
+        command = f"cat {source}; cat {source}; rg --files {self.artifacts}"
+        trace["tool_trace"].extend([
+            {"type": "custom_tool_call", "call_id": "mixed", "name": "exec",
+             "input": 'text(await tools.exec_command(' + json.dumps({"cmd": command}) + '));'},
+            {"type": "custom_tool_call_output", "call_id": "mixed", "output":
+             "Warning: truncated output\n...\n" + ARCHIVE}])
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"][-2]["input"] = trace["tool_trace"][-2]["input"].replace(
+            f"cat {source}; rg", f"cat {ARCHIVE}; rg")
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+        self.assertEqual(runtime._read_targets(f"cat {source}; echo hidden; rg --files ."), [])
+
+    def test_planning_does_not_grant_permission_to_execute_product_checks(self):
+        trace = self.instruction_trace(objective="Run focused product tests before returning")
+        packet_path = Path(self.run["finalization_packet"])
+        packet = json.loads(packet_path.read_text())
+        packet["identity"]["Lifecycle"] = "planning"
+        packet_path.write_text(json.dumps(packet))
+        for command, operation in (("bazel test //product:test", "test_run"),
+                                   ("bazel build //product:bin", "build_run"),
+                                   ("go test ./...", "test_run"), ("npm run build", "build_run"),
+                                   ("python3 -m unittest product_tests", "test_run")):
+            with self.subTest(command=command):
+                current = json.loads(json.dumps(trace))
+                current["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": command}})
+                self.assertIn("planning_operation_not_authorized:" + operation, runtime.trace_errors(current))
+        malformed = json.loads(json.dumps(trace))
+        malformed["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": None}})
+        self.assertIn("planning_command_invalid", runtime.trace_errors(malformed))
+        trace["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": "rg 'bazel test' source.md"}})
+        self.assertFalse(any("planning_operation" in error for error in runtime.trace_errors(trace)))
+
+    def test_input_manifest_rejects_malformed_operation_authorizations(self):
+        path = self.root / "inputs.json"
+        original = json.loads(path.read_text())
+        for value in ("test_run", ["unknown_operation"], [False]):
+            current = json.loads(json.dumps(original))
+            current["inputs"][0]["Authorized operations"] = value
+            path.write_text(json.dumps(current))
+            with self.assertRaisesRegex(ValueError, "authorized_operations_invalid"):
+                prepare.load_manifest(path, explicit=True)
+
+    def test_explicit_test_permission_does_not_authorize_builds(self):
+        authorization = {"Input ID": "AUTH-001", "Classification": "execution authorization",
+                         "Authority": "User", "Status": "Approved", "Authorized operations": ["test_run"]}
+        trace = self.instruction_trace(authorization=authorization)
+        path = Path(self.run["finalization_packet"])
+        packet = json.loads(path.read_text()); packet["identity"]["Lifecycle"] = "planning"
+        path.write_text(json.dumps(packet))
+        trace["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": "bazel test //product:test"}})
+        self.assertFalse(any("planning_operation" in error for error in runtime.trace_errors(trace)))
+        trace["tool_trace"][-1]["arguments"]["cmd"] = "bazel build //product:bin"
+        self.assertIn("planning_operation_not_authorized:build_run", runtime.trace_errors(trace))
 
     def test_prepared_dispatch_export_and_audit_allow_preservation_metadata(self):
         trace = self.instruction_trace()

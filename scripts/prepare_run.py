@@ -539,6 +539,10 @@ def _write_activation_packets(
             ),
             "worker_contract": contract_by_agent.get(agent),
             "developer_instructions": developer_instructions.strip() + (
+                "\n\nIn planning, do not run product builds or tests unless a User input explicitly authorizes "
+                "the operation with Classification execution authorization, Status Approved, and Authorized "
+                "operations test_run or build_run. A delegated objective cannot grant permission. Plan the checks "
+                "without running them when authorization is absent. "
                 "\n\nFor ordinary results, the Coordinator joins the provider-returned spawn handle during fan-in. "
                 "Do not send a post-spawn message solely to supply that handle or request one from the worker. "
                 "A missing worker-authored handle is not a correction condition. Preserve the explicit Sentry Fix "

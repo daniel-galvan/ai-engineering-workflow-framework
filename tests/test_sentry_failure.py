@@ -159,6 +159,20 @@ class SentryFailureRegression(unittest.TestCase):
         self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
         self.assertFalse((self.root / "handoff_delivery.json").exists())
 
+    def test_failure_and_publication_cannot_switch_framework_packages(self):
+        path = self.root / "role_bindings.json"
+        bindings = json.loads(path.read_text())
+        bindings["framework_package"]["root"] = str(self.root / "different-package")
+        path.write_text(json.dumps(bindings))
+        before = self.packet.read_bytes()
+        for mode in (("--workflow-failure", "Observed failure"),
+                     ("--publish-response", self.root / "proposed.md")):
+            result = self.command("--packet", self.packet, *mode)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("prepared_framework_package_mismatch", result.stdout)
+        self.assertEqual(self.packet.read_bytes(), before)
+        self.assertFalse((self.root / "handoff_delivery.json").exists())
+
     def test_missing_closure_never_manufactures_release_or_changes_identity(self):
         before = self.packet.read_bytes()
         result = self.command(*self.arguments())

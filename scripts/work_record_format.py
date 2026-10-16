@@ -264,6 +264,10 @@ def render_compact(packet: dict[str, object]) -> str:
 
 def render_handoff(packet: dict[str, object]) -> str:
     handoff = packet["handoff"]
+    plan = str(handoff["implementation_plan"])
+    reference = re.fullmatch(r"((?:/.*?/)?implementation_plan\.md)(\s.*)?", plan)
+    if reference:
+        plan = _artifact_link(reference[1], packet["finalization"]["Durable artifact root"]) + (reference[2] or "")
     explanations = handoff.get("best_current_explanations", [])
     explanation_block = ""
     if explanations:
@@ -303,7 +307,7 @@ Workflow result: {handoff['workflow_result']}
 - Engineering state: {packet['identity']['Engineering state']}
 - Workflow outcome: {packet['identity']['Workflow outcome']}
 - Engineering outcome: {packet['identity']['Engineering outcome']}
-- Implementation plan: {handoff['implementation_plan']}
+- Implementation plan: {plan}
 
 What we established:
 {established}{explanation_block}

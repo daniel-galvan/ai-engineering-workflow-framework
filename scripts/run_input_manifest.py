@@ -179,6 +179,10 @@ def _normalize_input(row: object, index: int) -> dict[str, object]:
         raise ValueError(f"run_input_manifest_input_id_invalid:{input_id}")
     if "Asset source" in normalized and not isinstance(normalized["Asset source"], bool):
         raise ValueError(f"run_input_manifest_asset_source_invalid:{input_id}")
+    operations = normalized.get("Authorized operations", [])
+    if (not isinstance(operations, list) or any(not isinstance(value, str) or value not in {"test_run", "build_run"}
+                                               for value in operations)):
+        raise ValueError(f"run_input_manifest_authorized_operations_invalid:{input_id}")
     normalized.setdefault("Classification", "supporting current-run input")
     normalized.setdefault("Expected use", "Consume or explicitly disposition before finalization")
     source_path = normalized.get("path") or normalized.get("paths")
