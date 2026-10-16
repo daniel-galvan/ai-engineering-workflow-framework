@@ -401,8 +401,55 @@ def _listing_command(command: object) -> bool:
         return False
 
 
-def _listing_outputs(trace: dict) -> set[tuple[str, ...]]:
-    outputs, calls = set(), set()
+def _listing_read_prefix(command: str, cwd: Path) -> str | None:
+    """Separate a final listing from literal reads without exempting the read content."""
+    if not isinstance(command, str) or any(char in command for char in "$`<>|"):
+        return None
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        parts, current = [], []
+        for token in lexer:
+            if token and all(char in ";&" for char in token):
+                if token not in {";", "&&"} or not current:
+                    return None
+                parts.append(current)
+                current = []
+            else:
+                current.append(token)
+        parts.append(current)
+        if len(parts) < 2 or not _listing_command(shlex.join(parts[-1])):
+            return None
+        prefix = ""
+        for part in parts[:-1]:
+            targets = _read_targets(shlex.join(part))
+            if targets:
+                for target in targets:
+                    path = Path(target)
+                    path = path if path.is_absolute() else cwd / path
+                    if (any(pattern.search(str(path.resolve())) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)
+                            or not path.is_file() or path.stat().st_size + len(prefix) > 262144):
+                        return None
+                    prefix += path.read_text()
+            elif len(part) >= 2 and part[0] == "printf":
+                format_string = part[1]
+                if (not re.fullmatch(r"(?:[^%]|%s|%%)*", format_string)
+                        or re.search(r"\\(?![nt\\])", format_string)):
+                    return None
+                format_string = re.sub(r"\\([nt\\])", lambda match: {
+                    "n": "\n", "t": "\t", "\\": "\\"}[match[1]], format_string)
+                prefix += format_string % tuple(part[2:])
+            else:
+                return None
+        return prefix or None
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return None
+
+
+def _listing_outputs(trace: dict, *, read_prefixes: dict | None = None,
+                     cwd: Path | None = None) -> set[tuple[str, ...]]:
+    outputs, calls, mixed = set(), set(), {}
     rows = trace.get("tool_trace", [])
     if not isinstance(rows, list):
         return outputs
@@ -410,20 +457,27 @@ def _listing_outputs(trace: dict) -> set[tuple[str, ...]]:
         if not isinstance(row, dict):
             continue
         prefix = ("tool_trace", str(index))
-        arguments = row.get("arguments", {})
-        if isinstance(arguments, str):
-            try:
-                arguments = json.loads(arguments)
-            except ValueError:
-                arguments = {}
-        known_exec = row.get("tool") == "exec_command" or (
-            row.get("type") == "function_call" and row.get("name") == "exec_command")
-        if known_exec and isinstance(arguments, dict) and _listing_command(arguments.get("cmd")):
+        operations = _tool_operations(row)
+        if operations and all(name == "exec_command" and _listing_command(arguments.get("cmd"))
+                              for name, arguments in operations):
             if row.get("call_id"):
                 calls.add(row["call_id"])
             outputs.update({prefix + ("result",), prefix + ("output",), prefix + ("arguments", "output")})
-        if row.get("type") == "function_call_output" and row.get("call_id") in calls:
+        elif read_prefixes is not None and len(operations) == 1 and operations[0][0] == "exec_command":
+            arguments = operations[0][1]
+            workdir = arguments.get("workdir", cwd or Path.cwd())
+            content = (_listing_read_prefix(arguments.get("cmd"), Path(workdir))
+                       if isinstance(workdir, (str, Path)) else None)
+            if content:
+                for key in ("result", "output"):
+                    read_prefixes[prefix + (key,)] = content
+                if row.get("call_id"):
+                    mixed[row["call_id"]] = content
+        if row.get("type") in {"function_call_output", "custom_tool_call_output"} and row.get("call_id") in calls:
             outputs.add(prefix + ("output",))
+        if read_prefixes is not None and row.get("type") in {"function_call_output", "custom_tool_call_output"}:
+            if row.get("call_id") in mixed:
+                read_prefixes[prefix + ("output",)] = mixed[row["call_id"]]
     return outputs
 
 
@@ -803,8 +857,14 @@ def _ancestor_instruction_reads(row: dict, root: Path) -> list[str]:
                     prefix = ["do", "if", *condition, "then"]
                     if tail[:len(prefix)] == prefix and tail[-len(suffix):] == suffix:
                         marker = tail[len(prefix):-len(suffix)]
-                        valid = marker in ([], ["echo", "--- " + variable],
-                                           ["printf", "\\n--- %s ---\\n", variable])
+                        valid = (not marker or marker[0] in {"echo", "printf"}
+                                 and any(part in (marker, ["then", *marker])
+                                         for part in statements[index + 1:end])
+                                 and (marker[0] != "printf" or len(marker) >= 2
+                                      and not marker[1].startswith("-") and "%n" not in marker[1])
+                                 and not any(token in {"&", "&&", "|", "||", "<", ">"}
+                                             or any(char in token for char in "`<>")
+                                             or "$" in token.replace(variable, "") for token in marker))
                 if not valid or not re.fullmatch(r"[A-Za-z_]\w*", statement[1]):
                     break
                 targets.extend(statement[3:])
@@ -833,7 +893,6 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     errors: list[str] = []
     if str(trace.get("context_conformance", "")).strip().lower() in {"fail", "failed", "blocked"}:
         errors.append("context_conformance_failed")
-    listings = _listing_outputs(trace)
     dispatch_content = _verified_dispatch_content(trace)
     assigned, root = [], None
     if dispatch_content:
@@ -847,6 +906,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                     and not any(value in expected_use for value in ("do not read", "without reading", "preserve only"))):
                 assigned.append(locator)
         root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
+    listing_reads = {}
+    listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs = _read_output_prefixes(trace, assigned, root)
     instruction_contents = _instruction_contents(trace, root)
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
@@ -858,6 +919,11 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         if any(path[:len(prefix)] == prefix for prefix in source_outputs):
             continue
         candidate = value
+        for prefix, content in listing_reads.items():
+            if path[:len(prefix)] == prefix and candidate.startswith(content):
+                candidate = content + "\n".join(line for line in candidate[len(content):].splitlines()
+                                                 if not THOUGHT_PATH.fullmatch(line))
+                break
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
         if dispatch_content and output:
             for content in instruction_contents or [dispatch_content]:

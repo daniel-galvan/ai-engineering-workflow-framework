@@ -52,6 +52,79 @@ class ContextOperationAudit(unittest.TestCase):
                                   'await tools.exec_command({cmd:"cat /repo/.thoughts/ITEM-1_v1/runs/old/research.md"})'})
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
 
+    def test_wrapped_filename_discovery_is_not_archived_content(self):
+        archive = ".thoughts/ITEM-1/runs/previous/issue_evidence.md"
+        trace = {"tool_trace": self.paired(
+            'const r = await tools.exec_command({cmd:"rg --files .thoughts/ITEM-1"}); text(r.output);',
+            [{"type": "input_text", "text": archive}])}
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"][0]["input"] += (
+            'await tools.exec_command({cmd:"cat ' + archive + '"});')
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_mixed_reads_and_listing_keep_read_content_audited(self):
+        report = self.repository / "report.md"
+        report.write_text("Current report\n")
+        archive = ".thoughts/ITEM-1/runs/previous/issue_evidence.md"
+        command = ("cat report.md && printf '\\n--- directory files ---\\n' && "
+                   "rg --files .thoughts/ITEM-1")
+        output = "Current report\n\n--- directory files ---\n" + archive
+        arguments = {"cmd": command, "workdir": str(self.repository)}
+        for wrapped in (False, True):
+            with self.subTest(wrapped=wrapped):
+                rows = (self.paired("const r = await tools.exec_command(" + json.dumps(arguments) +
+                                    "); text(r.output);", [{"type": "input_text", "text": output}])
+                        if wrapped else [{"tool": "exec_command", "arguments": arguments,
+                                          "result": {"output": output}}])
+                self.assertEqual(runtime.context_trace_errors({"tool_trace": rows}), [])
+        report.write_text(archive + "\n")
+        rows = self.paired("await tools.exec_command(" + json.dumps(arguments) + ")",
+                           report.read_text() + "\n--- directory files ---\n" + archive)
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      runtime.context_trace_errors({"tool_trace": rows}))
+
+    def test_mixed_listing_exception_requires_exact_read_output_and_safe_command(self):
+        report = self.repository / "report.md"
+        report.write_text("Current report\n")
+        archive = ".thoughts/ITEM-1/runs/previous/issue_evidence.md"
+        for command, output in (
+            ("cat report.md && rg --files .thoughts/ITEM-1", "Unexpected output\n" + archive),
+            ("cat report.md && rg --files .thoughts/ITEM-1", "Current report\nRead " + archive),
+            ("cat report.md && rg --files .thoughts/ITEM-1 && cat " + archive, "Current report\n" + archive),
+            ("cat report.md && rg --files .thoughts/ITEM-1 | xargs cat", "Current report\n" + archive),
+            ("cat report.md & rg --files .thoughts/ITEM-1", "Current report\n" + archive),
+            ("cat report.md && printf '%b' ignored && rg --files .thoughts/ITEM-1",
+             "Current report\n" + archive),
+        ):
+            with self.subTest(command=command, output=output):
+                code = "await tools.exec_command(" + json.dumps({
+                    "cmd": command, "workdir": str(self.repository)}) + ")"
+                self.assertIn("forbidden_context_reference:archived_artifact",
+                              runtime.context_trace_errors({"tool_trace": self.paired(code, output)}))
+        for workdir in (None, [], {}):
+            code = "await tools.exec_command(" + json.dumps({
+                "cmd": "cat report.md && rg --files .thoughts/ITEM-1", "workdir": workdir}) + ")"
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors({
+                "tool_trace": self.paired(code, "Current report\n" + archive)}))
+
+    def test_mixed_listing_uses_authenticated_repository_when_workdir_is_omitted(self):
+        trace = self.dispatch_trace([])
+        (self.repository / "report.md").write_text("Current report\n")
+        rows = self.paired('await tools.exec_command({cmd:"cat report.md && rg --files .thoughts/ITEM-1"})',
+                           "Current report\n.thoughts/ITEM-1/runs/previous/issue_evidence.md")
+        rows[0]["call_id"] = rows[1]["call_id"] = "mixed-listing"
+        trace["tool_trace"].extend(rows)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+
+    def test_listing_output_does_not_exempt_memory_paths(self):
+        report = self.repository / "report.md"
+        report.write_text("Current report\n")
+        for command in ("rg --files .", "cat report.md && rg --files ."):
+            code = "await tools.exec_command(" + json.dumps({
+                "cmd": command, "workdir": str(self.repository)}) + ")"
+            trace = {"tool_trace": self.paired(code, "Current report\n/Users/example/.codex/memories/MEMORY.md")}
+            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+
     def test_python_inventory_inspection_is_data_but_writes_are_not_allowed(self):
         manifest = self.root / "asset_manifest.json"
         manifest.write_text('{}')
@@ -186,6 +259,8 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
+            'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
+            'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then echo "Checking $p"; cat "$p"; fi; done',
             'cat AGENTS.md; for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; python3 normalizer.py --help',
             'cat AGENTS.md\ncat .thoughts/AGENTS.md; cat .thoughts/ITEM-1/AGENTS.md',
             'cat AGENTS.md; sed -n "1,20p" .thoughts/AGENTS.md',
@@ -207,6 +282,9 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_instruction_exception_does_not_allow_writes_or_other_work_items(self):
         for command in (
+            'for p in .thoughts/AGENTS.md; do if test -f "$p"; then printf -v p changed; cat "$p"; fi; done',
+            'for p in .thoughts/AGENTS.md; do if test -f "$p"; then printf x; p=changed; cat "$p"; fi; done',
+            'for p in .thoughts/AGENTS.md; do if test -f "$p"; then printf "%n" p; cat "$p"; fi; done',
             'cat AGENTS.md; for p in .thoughts/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; cat .thoughts/ITEM-1/runs/prior/notes.md',
             'cat AGENTS.md; for p in .thoughts/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; echo changed > .thoughts/AGENTS.md',
             'cat AGENTS.md; echo "for p in .thoughts/AGENTS.md; do if [ -f \"$p\" ]; then cat \"$p\"; fi; done"; cat .thoughts/ITEM-1/runs/prior/notes.md',
@@ -267,11 +345,16 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertEqual(Path(run["runtime_evidence"]["ledger"]), Path(run["artifact_root"]) / "runtime_dispatches.json")
 
     def test_sentry_guard_provider_export_and_fan_in_without_injected_metadata(self):
+        self.check_guard_provider_export("sentry_issue_remediation", "sentry_current_state_investigator")
+
+    def test_techops_guard_provider_export_and_fan_in_without_injected_metadata(self):
+        self.check_guard_provider_export("techops_issue_remediation", "current_state_investigator")
+
+    def check_guard_provider_export(self, playbook, role):
         from datetime import datetime, timedelta
-        run = fixtures.prepare.prepare_run(self.repository, "SENTRY-2", "sentry_issue_remediation", None, False,
+        run = fixtures.prepare.prepare_run(self.repository, "ITEM-2", playbook, None, False,
                                            input_manifest=self.inputs)
         root = Path(run["artifact_root"])
-        role = "sentry_current_state_investigator"
         bundle = run["activation_packet_bundle"]
         assignment = root / "assignment.json"
         assignment.write_text(json.dumps({"objective": "Collect the supplied occurrence", "input_paths": []}))
@@ -301,6 +384,19 @@ class ContextOperationAudit(unittest.TestCase):
                  "cmd": "sha256sum " + str(dispatch) + " && cat " + str(dispatch)}) + '); text(r.output);'}},
             {"timestamp": time(3), "type": "response_item", "payload": {"type": "custom_tool_call_output",
              "call_id": "instructions", "output": [{"type": "input_text", "text": dispatch.read_text()}]}},
+            {"timestamp": time(4), "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+             "call_id": "listing", "input": 'const r = await tools.exec_command(' + json.dumps({
+                 "cmd": "cat .thoughts/ITEM-2/run_inputs.json && printf '\\n--- directory files ---\\n' && rg --files .thoughts/ITEM-2",
+                 "workdir": str(self.repository)}) + '); text(r.output);'}},
+            {"timestamp": time(5), "type": "response_item", "payload": {"type": "custom_tool_call_output",
+             "call_id": "listing", "output": [{"type": "input_text", "text":
+                 (root / "run_inputs.json").read_text() + "\n--- directory files ---\n.thoughts/ITEM-2/runs/previous/work_record.md"}]}},
+            {"timestamp": time(6), "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+             "call_id": "ancestors", "input": 'const r = await tools.exec_command(' + json.dumps({
+                 "cmd": 'for p in .thoughts/AGENTS.md .thoughts/ITEM-2/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
+                 "workdir": str(self.repository)}) + '); text(r.output);'}},
+            {"timestamp": time(7), "type": "response_item", "payload": {"type": "custom_tool_call_output",
+             "call_id": "ancestors", "output": [{"type": "input_text", "text": "No additional AGENTS.md files."}]}},
         ]) + "\n")
         observation = root / "status.json"
         observation.write_text(json.dumps({"Provider handle": handle, "Thread ID": child, "Provider status": "idle",
