@@ -34,6 +34,12 @@ class ExecutionLayers(unittest.TestCase):
                 self.assertIn(control, adapter)
         self.assertIn("../integrations/jira.md#feature-delivery-source-access-gate", adapter)
 
+    def test_idle_worker_corrections_require_an_execution_triggering_dispatch(self):
+        for path in ("providers/codex.md", "skills/run/SKILL.md"):
+            text = (ROOT / path).read_text()
+            self.assertIn("followup_task", text)
+            self.assertIn("does not start an idle worker", text)
+
     def test_jira_owns_source_coverage_and_failures_and_sentry_owns_acquisition(self):
         jira = (ROOT / "integrations/jira.md").read_text()
         for policy in ("## Feature Delivery Source-Access Gate", "at most one distinct configured Jira connector",

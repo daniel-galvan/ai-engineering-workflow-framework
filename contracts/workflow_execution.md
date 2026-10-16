@@ -605,11 +605,6 @@ by the Orchestrator at fan-in.
 | `plan_readiness`   | Conditional | Fix-design disposition: `ready_for_implementation` or `awaiting_input`. |
 | `implementation_plan_action` | Conditional | Fix-design instruction to `create`, `create_draft` where supported, or `omit` the implementation plan. |
 | `supported_remediation_boundary` | Conditional | Fix-design boundary supported by current-run evidence. |
-
-The worker does not know its provider handle unless the Coordinator explicitly supplies it. For ordinary worker
-results, the Coordinator joins the stored spawn handle during fan-in; absence from the worker-authored envelope is not
-a correction or retry condition. A playbook-specific durable artifact may require the field only when its protocol
-explicitly sends the exact handle to that worker before the artifact is written.
 | `supported_intended_change` | Conditional | Fix-design change supported by current-run evidence. |
 | `interface_change` | Conditional | Boolean stating whether the fix changes an API, event, payload, schema, or other interface. |
 | `interface_contract` | Conditional | Exact surface, request/response shapes, absence semantics, compatibility precedence, and rollout; `null` when no interface changes. |
@@ -617,6 +612,11 @@ explicitly sends the exact handle to that worker before the artifact is written.
 | `timing`           | Evaluation only | Coordinator-observed activation, start, terminal, elapsed, and wait timestamps for an explicitly declared evaluation or benchmark run. |
 | `usage`            | Recommended | Provider-reported tokens, duration, credits, or `Unknown`.      |
 | `errors_blockers`  | Yes         | Errors, blockers, or `None`.                                    |
+
+The worker does not know its provider handle unless the Coordinator explicitly supplies it. For ordinary worker
+results, the Coordinator joins the stored spawn handle during fan-in; absence from the worker-authored envelope is not
+a correction or retry condition. A playbook-specific durable artifact may require the field only when its protocol
+explicitly sends the exact handle to that worker before the artifact is written.
 
 The summary must describe the worker's unique contribution, not repeat the entire input artifact. A downstream worker
 must consume the envelope and referenced artifacts rather than independently repeating the same investigation unless it

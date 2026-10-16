@@ -160,6 +160,9 @@ class SentryFailureRegression(unittest.TestCase):
         proposed = self.root / "proposed_response.md"
         proposed.write_bytes((self.root / "handoff_failure.md").read_bytes())
         self.assertEqual(self.command("--packet", self.packet, "--verify-response", proposed).returncode, 0)
+        self.assertIn(b"reported by Coordinator\n\nWorkflow result:", proposed.read_bytes())
+        proposed.write_bytes(proposed.read_bytes().replace(b"\n\n", b"  \n", 1))
+        self.assertEqual(self.command("--packet", self.packet, "--verify-response", proposed).returncode, 2)
 
 
     def test_delivery_rejects_self_comparison_and_changed_canonical_content(self):

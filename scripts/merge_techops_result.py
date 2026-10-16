@@ -58,26 +58,31 @@ def merge_result(packet_path: Path, agent: str) -> None:
     if result.get("run_id") != packet["identity"]["Run ID"]:
         raise ValueError("worker_result_run_mismatch")
     worker, namespace = workers[agent]
-    summary = result["worker_result"]
-    if summary.get("Worker") != worker or summary.get("Outcome") not in {"complete", "failed", "blocked"}:
-        raise ValueError("worker_result_identity_or_outcome_invalid")
+    summary = result.get("worker_result")
     template = json.loads((Path(__file__).resolve().parents[1] / "templates/finalization_packet.json").read_text())
     required = set(template["worker_results"][0])
-    if shape_errors(summary, template["worker_results"][0], "worker_result"):
-        raise ValueError("worker_result_summary_schema_invalid")
+    errors = []
+    summary_errors = shape_errors(summary, template["worker_results"][0], "worker_result")
+    if summary_errors:
+        errors.extend(["worker_result_summary_schema_invalid", *summary_errors])
+    for table in TABLES:
+        incoming = result.get(table, [])
+        table_errors = shape_errors(incoming, template[table], table)
+        if table_errors:
+            label = "table" if not isinstance(incoming, list) else "row"
+            errors.extend([f"worker_result_{label}_invalid:{table}", *table_errors])
+    if errors:
+        raise ValueError("; ".join(errors))
+    if summary.get("Worker") != worker or summary.get("Outcome") not in {"complete", "failed", "blocked"}:
+        raise ValueError("worker_result_identity_or_outcome_invalid")
     if any(not summary[key].strip() for key in required):
         raise ValueError("worker_result_summary_incomplete")
     for table, key in TABLES.items():
         incoming = result.get(table, [])
-        if not isinstance(incoming, list):
-            raise ValueError(f"worker_result_table_invalid:{table}")
         ids = set()
         for row in incoming:
-            if not isinstance(row, dict):
-                raise ValueError(f"worker_result_row_invalid:{table}")
             identity = row.get(key, "")
-            if (shape_errors(row, template[table][0], table) or not isinstance(identity, str)
-                    or not re.fullmatch(rf"{PREFIXES[table]}-{namespace}-[A-Za-z0-9_-]+", identity)
+            if (not re.fullmatch(rf"{PREFIXES[table]}-{namespace}-[A-Za-z0-9_-]+", identity)
                     or identity in ids):
                 raise ValueError(f"worker_result_row_invalid:{table}")
             ids.add(identity)

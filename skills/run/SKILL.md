@@ -395,6 +395,10 @@ description: >-
    `prepare_run.py`. Workers must use the current task's in-task `spawn_agent`/collaboration runtime. Never use
    `create_thread`, `fork_thread`, or `send_message_to_thread` for workers. Verify the in-task runtime before
    `prepare_run.py`; when unavailable, stop with `worker_runtime_unavailable` without creating user-owned tasks.
+   For an idle or completed Codex worker, use `followup_task` to start a correction turn on its existing handle.
+   `send_message` only delivers a message; it does not start an idle worker. Use it for steering an active turn,
+   then verify consumption. After an idle-worker correction, verify a new turn actually started before waiting
+   for its result; keep the guarded activation message and refresh the dispatch ledger.
    Join each provider-returned handle to its ordinary result envelope during fan-in. Do not return a worker result for
    correction merely because the worker could not self-report a handle it was never given. Keep the explicit Fix Design
    handle-delivery protocol because that durable Sentry artifact validates the supplied handle.
@@ -762,7 +766,8 @@ description: >-
    `finalize_work_record.py --packet <packet> --publish-response <artifact-root>/handoff_response.md`.
    This validates and emits the prepared text directly and records `status: verified`; send that output unchanged.
    Independent proposed-response files may use `--verify-response`. Only a single terminal LF is optional; internal
-   whitespace, labels and content must match. The receipt retains both byte hashes and the comparison policy.
+   whitespace, labels and content must match. Do not introduce Markdown hard-break spaces.
+   The receipt retains both byte hashes and the comparison policy.
    This verifies prepared text; do not claim the CLI observed actual chat delivery.
    The proposed file must contain the intended outgoing answer; copying the canonical file to another path alone
    does not prove that the chat message used those bytes.

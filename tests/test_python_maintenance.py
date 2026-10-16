@@ -27,6 +27,32 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PythonMaintenance(unittest.TestCase):
+    def test_compatibility_reexports_are_explicit_to_static_analyzers(self):
+        for name in ("validate_worker_runtime.py", "finalize_work_record.py", "prepare_run.py",
+                     "validation/common.py", "worker_runtime_evidence.py"):
+            path = ROOT / "scripts" / name
+            tree = ast.parse(path.read_text())
+            used = {node.id for node in ast.walk(tree)
+                    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module != "__future__":
+                    for alias in node.names:
+                        if (alias.asname or alias.name) not in used:
+                            self.assertEqual(alias.asname, alias.name, f"{name}: implicit re-export {alias.name}")
+
+    def test_runtime_facade_reexports_preserve_script_and_package_imports(self):
+        code = (
+            "import importlib,sys; facade=importlib.import_module(sys.argv[1]); "
+            "checks=importlib.import_module(sys.argv[2]); "
+            "names=['terminal_observation_errors','techops_check_errors','context_trace_errors',"
+            "'_verified_dispatch_content','ACTIVE_STATUSES','TECHOPS_CHECKS']; "
+            "assert all(getattr(facade,name) is getattr(checks,name) for name in names)"
+        )
+        for prefix, directory in (("scripts.", ROOT), ("", ROOT / "scripts")):
+            result = subprocess.run([sys.executable, "-c", code, prefix + "validate_worker_runtime",
+                                     prefix + "runtime_checks"], cwd=directory, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_every_playbook_freezes_supplied_source_bytes_without_freezing_the_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

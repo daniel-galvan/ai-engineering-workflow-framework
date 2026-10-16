@@ -13,7 +13,7 @@ from pathlib import Path
 try:
     from provider_runtime import (
         timestamp,
-        provider_json_value,
+        provider_json_value as provider_json_value,
         read_runtime_events,
         latest_worker_dispatch,
         runtime_configurations,
@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from scripts.provider_runtime import (
         timestamp,
-        provider_json_value,
+        provider_json_value as provider_json_value,
         read_runtime_events,
         latest_worker_dispatch,
         runtime_configurations,

@@ -237,6 +237,17 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             path.write_text(json.dumps({"runtime_closure": [row]}))
             self.assertEqual(validate().returncode, 0)
 
+    def test_message_delivery_does_not_start_an_idle_worker_interval(self):
+        for operation, expected_seconds in (("send_message", 3), ("followup_task", 8)):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory)
+                fixture[5][5]["payload"]["name"] = operation
+                parent = fixture[1] / "parent.jsonl"
+                parent.write_text("\n".join(json.dumps(row) for row in fixture[5]) + "\n")
+                ledger = read_runtime_events(parent, PARENT, fixture[0]["runtime_evidence"]["run_started_at"])
+                self.assertEqual(ledger["timing"]["worker_active_seconds"], expected_seconds)
+                self.assertEqual(ledger["events"][-1]["Operation"], operation)
+
     def test_failed_in_turn_message_blocks_acceptance(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory)

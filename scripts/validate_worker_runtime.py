@@ -11,88 +11,89 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 
+# Same-name aliases preserve compatibility exports and make that intent explicit to static analyzers.
 try:
     from runtime_checks import (
         prepared_package_errors,
         worker_binding,
-        trace_identity_errors,
+        trace_identity_errors as trace_identity_errors,
         activation_message,
         dispatch_message,
         dispatch_notice,
         delivery_start_errors,
         transition_error,
         rejected_result_errors,
-        terminal_observation_errors,
-        techops_check_errors,
-        _trace_strings,
-        _listing_command,
-        _listing_outputs,
-        _verified_dispatch_content,
-        _authorized_read,
-        _literal_argument,
-        _tool_operations,
-        _python_read_targets,
-        _read_targets,
-        _read_output_prefixes,
-        observed_dispatch_binding,
-        _instruction_contents,
-        _ancestor_instruction_reads,
-        context_trace_errors,
+        terminal_observation_errors as terminal_observation_errors,
+        techops_check_errors as techops_check_errors,
+        _trace_strings as _trace_strings,
+        _listing_command as _listing_command,
+        _listing_outputs as _listing_outputs,
+        _verified_dispatch_content as _verified_dispatch_content,
+        _authorized_read as _authorized_read,
+        _literal_argument as _literal_argument,
+        _tool_operations as _tool_operations,
+        _python_read_targets as _python_read_targets,
+        _read_targets as _read_targets,
+        _read_output_prefixes as _read_output_prefixes,
+        observed_dispatch_binding as observed_dispatch_binding,
+        _instruction_contents as _instruction_contents,
+        _ancestor_instruction_reads as _ancestor_instruction_reads,
+        context_trace_errors as context_trace_errors,
         trace_errors,
     )
 except ModuleNotFoundError:
     from scripts.runtime_checks import (
         prepared_package_errors,
         worker_binding,
-        trace_identity_errors,
+        trace_identity_errors as trace_identity_errors,
         activation_message,
         dispatch_message,
         dispatch_notice,
         delivery_start_errors,
         transition_error,
         rejected_result_errors,
-        terminal_observation_errors,
-        techops_check_errors,
-        _trace_strings,
-        _listing_command,
-        _listing_outputs,
-        _verified_dispatch_content,
-        _authorized_read,
-        _literal_argument,
-        _tool_operations,
-        _python_read_targets,
-        _read_targets,
-        _read_output_prefixes,
-        observed_dispatch_binding,
-        _instruction_contents,
-        _ancestor_instruction_reads,
-        context_trace_errors,
+        terminal_observation_errors as terminal_observation_errors,
+        techops_check_errors as techops_check_errors,
+        _trace_strings as _trace_strings,
+        _listing_command as _listing_command,
+        _listing_outputs as _listing_outputs,
+        _verified_dispatch_content as _verified_dispatch_content,
+        _authorized_read as _authorized_read,
+        _literal_argument as _literal_argument,
+        _tool_operations as _tool_operations,
+        _python_read_targets as _python_read_targets,
+        _read_targets as _read_targets,
+        _read_output_prefixes as _read_output_prefixes,
+        observed_dispatch_binding as observed_dispatch_binding,
+        _instruction_contents as _instruction_contents,
+        _ancestor_instruction_reads as _ancestor_instruction_reads,
+        context_trace_errors as context_trace_errors,
         trace_errors,
     )
 
 
 try:
     from runtime_checks import (
-        ACTIVE_STATUSES,
-        TERMINAL_STATUSES,
-        DESTRUCTIVE_TRANSITIONS,
-        TRACE_METADATA_KEYS,
+        ACTIVE_STATUSES as ACTIVE_STATUSES,
+        TERMINAL_STATUSES as TERMINAL_STATUSES,
+        DESTRUCTIVE_TRANSITIONS as DESTRUCTIVE_TRANSITIONS,
+        TRACE_METADATA_KEYS as TRACE_METADATA_KEYS,
         FORBIDDEN_CONTEXT_PATTERNS,
     )
 except ModuleNotFoundError:
     from scripts.runtime_checks import (
-        ACTIVE_STATUSES,
-        TERMINAL_STATUSES,
-        DESTRUCTIVE_TRANSITIONS,
-        TRACE_METADATA_KEYS,
+        ACTIVE_STATUSES as ACTIVE_STATUSES,
+        TERMINAL_STATUSES as TERMINAL_STATUSES,
+        DESTRUCTIVE_TRANSITIONS as DESTRUCTIVE_TRANSITIONS,
+        TRACE_METADATA_KEYS as TRACE_METADATA_KEYS,
         FORBIDDEN_CONTEXT_PATTERNS,
     )
 
 
 try:
-    from runtime_checks import TECHOPS_CHECKS, THOUGHT_PATH
+    from runtime_checks import TECHOPS_CHECKS as TECHOPS_CHECKS, THOUGHT_PATH as THOUGHT_PATH
 except ModuleNotFoundError:
-    from scripts.runtime_checks import TECHOPS_CHECKS, THOUGHT_PATH
+    from scripts.runtime_checks import TECHOPS_CHECKS as TECHOPS_CHECKS, THOUGHT_PATH as THOUGHT_PATH
 
 
 ROOT = Path(__file__).resolve().parents[1]

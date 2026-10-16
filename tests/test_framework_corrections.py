@@ -67,6 +67,50 @@ class FrameworkCorrections(unittest.TestCase):
         self.assertEqual(finalizer._shape_errors(json.loads(self.packet_path.read_text()),
                                                 json.loads(finalizer.PACKET_TEMPLATE.read_text()), "packet"), [])
 
+    def test_all_schema_errors_are_reported_before_the_single_correction(self):
+        template = json.loads(finalizer.PACKET_TEMPLATE.read_text())
+        for playbook in ("techops_issue_remediation", "feature_delivery"):
+            with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:
+                run = prepare.prepare_run(Path(directory), "ITEM-ALL", playbook, None, False,
+                                          input_manifest=self.inputs)
+                contract = run["worker_contracts"]["current_state_investigator"]
+                instructions = contract.get("result_instructions", contract.get("instructions", ""))
+                self.assertIn("Every field value", instructions)
+                self.assertIn("never an array", instructions)
+                packet_path = Path(run["finalization_packet"])
+                packet = json.loads(packet_path.read_text())
+                namespace = contract["id_namespace"]
+                evidence_id = f"E-{namespace}-001"
+                result = {"run_id": packet["identity"]["Run ID"],
+                          "worker_result": {**dict.fromkeys(template["worker_results"][0], "Observed"),
+                              "Worker": contract.get("worker") or contract["worker_id"],
+                              "Outcome": "complete", "Evidence / claim refs": [evidence_id]},
+                          "evidence": [{**dict.fromkeys(template["evidence"][0], "Observed"),
+                                        "Evidence ID": evidence_id}],
+                          "claims": [{**dict.fromkeys(template["claims"][0], "Observed"),
+                                      "Claim ID": f"CL-{namespace}-{i}", "Evidence refs": [evidence_id]}
+                                     for i in range(4)]}
+                result_path = Path(contract["result"])
+                result_path.write_text(json.dumps(result))
+                packet_before, result_before = packet_path.read_bytes(), result_path.read_bytes()
+                with self.assertRaises(ValueError) as caught:
+                    merge_result(packet_path, "current_state_investigator")
+                message = str(caught.exception)
+                self.assertIn("worker_result_summary_schema_invalid", message)
+                self.assertIn("worker_result.Evidence / claim refs must be str", message)
+                for i in range(4):
+                    self.assertIn(f"claims[{i}].Evidence refs must be str", message)
+                self.assertEqual(packet_path.read_bytes(), packet_before)
+                self.assertEqual(result_path.read_bytes(), result_before)
+                result["worker_result"]["Evidence / claim refs"] = evidence_id
+                for row in result["claims"]:
+                    row["Evidence refs"] = evidence_id
+                result_path.write_text(json.dumps(result))
+                merge_result(packet_path, "current_state_investigator")
+                merged = json.loads(packet_path.read_text())
+                self.assertEqual(merged["claims"], result["claims"])
+                self.assertEqual(merged["worker_results"], [result["worker_result"]])
+
     def test_wrong_framework_checkout_is_rejected_before_any_write(self):
         path = self.root / "role_bindings.json"
         bindings = json.loads(path.read_text())

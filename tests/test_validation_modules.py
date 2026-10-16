@@ -63,6 +63,32 @@ class ValidationModules(unittest.TestCase):
             self.assertTrue(any("column-count mismatch" in error for error in errors))
             self.assertTrue(any("unclosed fenced block" in error for error in errors))
 
+    def test_orphan_table_rows_are_rejected_but_fenced_examples_are_not(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "document.md"
+            for text in ("| Field | Required |\n| --- | --- |\n| first | Yes |\n\n"
+                         "Intervening explanation.\n| second | Yes |\n",
+                         "| orphan | final row |"):
+                path.write_text(text)
+                self.assertTrue(any("without a header separator" in error for error in markdown_errors(root)))
+            path.write_text("~~~~text\n| orphan | example |\n~~~\n| another | example |\n~~~~\n")
+            self.assertEqual(markdown_errors(root), [])
+
+    def test_worker_result_envelope_has_one_complete_table(self):
+        text = (ROOT / "contracts/workflow_execution.md").read_text()
+        rows = markdown_table(text, "## Worker Result Envelope")
+        expected = ("worker_id worker_handle outcome summary inputs_consumed outputs_produced checks_performed "
+                    "checks_remaining evidence_refs claim_refs confidence uncertainties next_consumer model_effort "
+                    "configuration_conformance context_conformance plan_readiness implementation_plan_action "
+                    "supported_remediation_boundary supported_intended_change interface_change interface_contract "
+                    "blocking_unknowns timing usage errors_blockers").split()
+        self.assertEqual([row["Field"].strip("`") for row in rows], expected)
+        self.assertEqual(rows[1]["Required"], "Coordinator")
+        self.assertEqual(rows[-3]["Required"], "Evaluation only")
+        self.assertGreater(text.index("The worker does not know its provider handle"),
+                           text.index("| `errors_blockers`"))
+
     def test_tracked_jira_fixture_and_reference_are_valid(self):
         path = ROOT / "tests/fixtures/jira_adapter_contract.json"
         self.assertIn("../tests/fixtures/jira_adapter_contract.json", (ROOT / "integrations/jira.md").read_text())

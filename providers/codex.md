@@ -101,10 +101,19 @@ For Codex collaboration runtimes without a close operation, collect fresh status
 correction/follow-up. Use `Runtime status: Terminal` only when these reads account for every activated worker, including
 Documenter. The snapshot may combine live inventory and targeted reads; one inventory call need not retain every
 completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its provider-observed
-thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess an ID. A targeted read
-must show no active or pending thread and a completed latest turn started at or after the last dispatch. For a
-correction delivered during an active turn, an earlier start is valid only with provider-observed `Latest turn
-completed at` at or after the dispatch, `Dispatch consumed: true`, and `Dispatch consumption evidence` identifying
+thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess an ID.
+
+Distinguish message delivery from execution: `send_message` does not start an idle worker. Use `followup_task`
+with the guarded activation message to start that worker's correction turn and refresh the dispatch ledger.
+Verify that a new turn started; an acknowledgement alone does not prove execution. For an active turn, steering
+through `send_message` still requires evidence of consumption before acceptance. Provider JSONL records file operations
+as `custom_tool_call`/`custom_tool_call_output` or `function_call`/`function_call_output`,
+not the app UI's `fileChange`.
+
+A targeted read must show no active or pending thread and a completed latest turn started at or after the last dispatch.
+For a correction delivered during an active turn, an earlier start is valid only with provider-observed
+`Latest turn completed at` at or after the dispatch, `Dispatch consumed: true`, and
+`Dispatch consumption evidence` identifying
 the accepted corrected result. A completion timestamp alone does not prove that a queued correction was consumed.
 Before requesting another turn, check for a provider-recorded corrected artifact write after the message and validate
 that result against the specific requested correction. Record its tool-call identity, dispatch relationship, artifact

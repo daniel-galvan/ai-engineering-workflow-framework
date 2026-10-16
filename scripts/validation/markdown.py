@@ -67,23 +67,40 @@ def fenced_section(text: str, heading: str) -> str:
     return match.group(1) if match else ""
 
 
+def _fence_state(line: str, fence: str | None) -> tuple[str | None, bool]:
+    marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+    if marker:
+        token = marker[1]
+        if fence is None:
+            fence = token
+        elif token[0] == fence[0] and len(token) >= len(fence) and not marker[2].strip():
+            fence = None
+    return fence, bool(marker)
+
+
 def markdown_errors(root: Path) -> list[str]:
     errors: list[str] = []
     for path in root.rglob("*.md"):
         lines = path.read_text().splitlines()
         index = 0
-        while index + 1 < len(lines):
-            if not (is_table_row(lines[index]) and is_table_row(lines[index + 1])):
+        fence = None
+        while index < len(lines):
+            fence, marker = _fence_state(lines[index], fence)
+            if marker or fence or not is_table_row(lines[index]):
                 index += 1
                 continue
 
             header = table_cells(lines[index])
-            separator = table_cells(lines[index + 1])
+            separator = (table_cells(lines[index + 1])
+                         if index + 1 < len(lines) and is_table_row(lines[index + 1]) else [])
             is_separator = separator and all(
                 "-" in cell and set(cell) <= {"-", ":"} for cell in separator
             )
             if not is_separator:
-                index += 1
+                if ".thoughts" not in path.relative_to(root).parts:
+                    errors.append(f"{path.relative_to(root)}:{index + 1} has table rows without a header separator")
+                while index < len(lines) and is_table_row(lines[index]):
+                    index += 1
                 continue
 
             relative = path.relative_to(root)
@@ -117,12 +134,10 @@ def markdown_errors(root: Path) -> list[str]:
             if dependency_list and line.strip():
                 dependency_list = False
 
-        in_fence = False
+        fence = None
         for line_number, line in enumerate(text.splitlines(), start=1):
-            if line.startswith(("```", "~~~")):
-                in_fence = not in_fence
-                continue
-            if in_fence:
+            fence, marker = _fence_state(line, fence)
+            if marker or fence:
                 continue
             for target in re.findall(r"(?<!!)\[[^]]+\]\(([^)]+)\)", line):
                 target = target.strip().strip("<>").split("#", 1)[0]
@@ -143,7 +158,7 @@ def markdown_errors(root: Path) -> list[str]:
                     f"{path.relative_to(root)}:{line_number} prose line is "
                     f"{len(line)} columns; maximum is {MAX_MARKDOWN_PROSE_WIDTH}"
                 )
-        if in_fence:
+        if fence:
             errors.append(f"{path.relative_to(root)} has an unclosed fenced block")
         version = re.search(r"^version: (.+)$", text, re.M)
         if version and not SEMVER.fullmatch(version.group(1)):

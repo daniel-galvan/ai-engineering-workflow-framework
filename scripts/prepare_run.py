@@ -16,7 +16,7 @@ from pathlib import Path
 
 try:
     from run_input_manifest import (
-        DEFAULT_PRECEDENCE_RULE,
+        DEFAULT_PRECEDENCE_RULE as DEFAULT_PRECEDENCE_RULE,
         default_manifest,
         load_manifest,
         local_input_paths,
@@ -27,7 +27,7 @@ try:
     )
 except ModuleNotFoundError:  # Imported as scripts.prepare_run from the repository root.
     from scripts.run_input_manifest import (
-        DEFAULT_PRECEDENCE_RULE,
+        DEFAULT_PRECEDENCE_RULE as DEFAULT_PRECEDENCE_RULE,
         default_manifest,
         load_manifest,
         local_input_paths,
@@ -1103,7 +1103,10 @@ def prepare_run(
                 "result_instructions": (
                     "Write the narrative to output and a JSON envelope to result with run_id, worker_result, "
                     "and evidence/claims/decisions/actions arrays. Use result_fields exactly; worker_result uses "
-                    "worker_results fields. Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
+                    "worker_results fields. Every field value in worker_result and in evidence/claims/decisions/actions "
+                    "rows must be a string, including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; "
+                    "join multiple references in one string, never an array. "
+                    "Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
                     "Consume upstream IDs unchanged. Outcome is complete, failed or blocked, never completed. "
                     "Fix Design also supplies the four techops_checks. Do not edit the Coordinator packet or audits."
                 ),
@@ -1127,6 +1130,9 @@ def prepare_run(
                     "Write narrative to output and JSON to result with current run_id, worker_result, "
                     "evidence/claims/decisions/actions using result_fields. worker_result is one object using the exact "
                     "worker_results fields (including capitalization), not an array or lowercase summary. "
+                    "Every field value in worker_result and in evidence/claims/decisions/actions rows must be a string, "
+                    "including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; join multiple "
+                    "references in one string, never an array. "
                     f"Its Worker value must be exactly {worker}. Reference existing upstream IDs without "
                     "repeating their rows in these arrays; every emitted row must use this worker's "
                     "E/CL/DE/A-<id_namespace>-<number> namespace. Record exact asset evidence IDs in references. "

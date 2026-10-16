@@ -13,53 +13,86 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# Same-name aliases preserve compatibility exports and make that intent explicit to static analyzers.
 try:
-    from run_input_manifest import load_manifest
+    from run_input_manifest import load_manifest as load_manifest
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
-    from scripts.run_input_manifest import load_manifest
+    from scripts.run_input_manifest import load_manifest as load_manifest
 
 try:
     from asset_manifest import (
-        ASSET_MANIFEST_FILENAME,
-        asset_gate_errors,
-        asset_plan_errors,
-        validate_asset_manifest,
+        ASSET_MANIFEST_FILENAME as ASSET_MANIFEST_FILENAME,
+        asset_gate_errors as asset_gate_errors,
+        asset_plan_errors as asset_plan_errors,
+        validate_asset_manifest as validate_asset_manifest,
     )
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.asset_manifest import (
-        ASSET_MANIFEST_FILENAME,
-        asset_gate_errors,
-        asset_plan_errors,
-        validate_asset_manifest,
+        ASSET_MANIFEST_FILENAME as ASSET_MANIFEST_FILENAME,
+        asset_gate_errors as asset_gate_errors,
+        asset_plan_errors as asset_plan_errors,
+        validate_asset_manifest as validate_asset_manifest,
     )
 
 try:
     from specification_assessment import (
-        NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors, coverage_readiness_errors,
+        NO_PLAN_MESSAGE,
+        REPORT_NAME as REPORT_NAME,
+        assessment_report_errors as assessment_report_errors,
+        coverage_mapping_errors as coverage_mapping_errors,
+        coverage_readiness_errors as coverage_readiness_errors,
     )
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.specification_assessment import (
-        NO_PLAN_MESSAGE, REPORT_NAME, assessment_report_errors, coverage_mapping_errors, coverage_readiness_errors,
+        NO_PLAN_MESSAGE,
+        REPORT_NAME as REPORT_NAME,
+        assessment_report_errors as assessment_report_errors,
+        coverage_mapping_errors as coverage_mapping_errors,
+        coverage_readiness_errors as coverage_readiness_errors,
     )
 
 try:
     from review_evidence import (
-        PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors, delivery_evidence_fixture,
-        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors, draft_plan_errors,
+        PLAN_FIXTURE as PLAN_FIXTURE,
+        REVIEW_FIXTURE as REVIEW_FIXTURE,
+        applicability_errors as applicability_errors,
+        completed_review_errors as completed_review_errors,
+        delivery_evidence_fixture as delivery_evidence_fixture,
+        review_report_errors as review_report_errors,
+        validation_report_errors as validation_report_errors,
+        plan_design_errors as plan_design_errors,
+        plan_review_coverage_errors as plan_review_coverage_errors,
+        draft_plan_errors as draft_plan_errors,
     )
 except ModuleNotFoundError:  # Imported as scripts.finalize_work_record from the repository root.
     from scripts.review_evidence import (
-        PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, completed_review_errors, delivery_evidence_fixture,
-        review_report_errors, validation_report_errors, plan_design_errors, plan_review_coverage_errors, draft_plan_errors,
+        PLAN_FIXTURE as PLAN_FIXTURE,
+        REVIEW_FIXTURE as REVIEW_FIXTURE,
+        applicability_errors as applicability_errors,
+        completed_review_errors as completed_review_errors,
+        delivery_evidence_fixture as delivery_evidence_fixture,
+        review_report_errors as review_report_errors,
+        validation_report_errors as validation_report_errors,
+        plan_design_errors as plan_design_errors,
+        plan_review_coverage_errors as plan_review_coverage_errors,
+        draft_plan_errors as draft_plan_errors,
     )
 
 try:
     from runtime_checks import (
-        terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors, trace_identity_errors,
+        terminal_observation_errors,
+        techops_check_errors as techops_check_errors,
+        trace_errors,
+        prepared_package_errors,
+        trace_identity_errors,
     )
 except ModuleNotFoundError:
     from scripts.runtime_checks import (
-        terminal_observation_errors, techops_check_errors, trace_errors, prepared_package_errors, trace_identity_errors,
+        terminal_observation_errors,
+        techops_check_errors as techops_check_errors,
+        trace_errors,
+        prepared_package_errors,
+        trace_identity_errors,
     )
 
 try:
@@ -92,42 +125,42 @@ except ModuleNotFoundError:
 
 try:
     from work_record_format import (
-        _feature_asset_manifest,
+        _feature_asset_manifest as _feature_asset_manifest,
         _explanation_text,
         _artifact_link,
-        _relative_artifact_path,
-        _artifact_rows_for_record,
-        _feature_asset_section,
-        _cell,
-        _table,
-        _mapping_table,
-        _section,
+        _relative_artifact_path as _relative_artifact_path,
+        _artifact_rows_for_record as _artifact_rows_for_record,
+        _feature_asset_section as _feature_asset_section,
+        _cell as _cell,
+        _table as _table,
+        _mapping_table as _mapping_table,
+        _section as _section,
         _runtime_closed,
         snapshot_bytes,
         snapshot_name,
         render_compact,
         render_handoff,
-        render,
+        render as render,
         _material_rows,
     )
 except ModuleNotFoundError:
     from scripts.work_record_format import (
-        _feature_asset_manifest,
+        _feature_asset_manifest as _feature_asset_manifest,
         _explanation_text,
         _artifact_link,
-        _relative_artifact_path,
-        _artifact_rows_for_record,
-        _feature_asset_section,
-        _cell,
-        _table,
-        _mapping_table,
-        _section,
+        _relative_artifact_path as _relative_artifact_path,
+        _artifact_rows_for_record as _artifact_rows_for_record,
+        _feature_asset_section as _feature_asset_section,
+        _cell as _cell,
+        _table as _table,
+        _mapping_table as _mapping_table,
+        _section as _section,
         _runtime_closed,
         snapshot_bytes,
         snapshot_name,
         render_compact,
         render_handoff,
-        render,
+        render as render,
         _material_rows,
     )
 
@@ -142,77 +175,77 @@ try:
     from planning_contracts import (
         _canonicalize_technical_spike_worker_ids,
         _feature_assessment_reference_errors,
-        _feature_asset_artifact_path,
+        _feature_asset_artifact_path as _feature_asset_artifact_path,
         _feature_delivery_asset_contract_errors,
         _feature_delivery_packet_contract_errors,
-        _feature_delivery_remediation_errors,
-        _feature_expected_inputs,
+        _feature_delivery_remediation_errors as _feature_delivery_remediation_errors,
+        _feature_expected_inputs as _feature_expected_inputs,
         _planning_runtime_closure_errors,
         _technical_spike_candidate_reference_errors,
         _technical_spike_missing_workers,
         _technical_spike_packet_contract_errors,
-        _technical_spike_packet_evidence_quality_errors,
-        _technical_spike_reasoning_graph_errors,
+        _technical_spike_packet_evidence_quality_errors as _technical_spike_packet_evidence_quality_errors,
+        _technical_spike_reasoning_graph_errors as _technical_spike_reasoning_graph_errors,
         _technical_spike_report_artifact_errors,
         _technical_spike_worker_contract_errors,
         _techops_planning_contract_errors,
-        _worker_runtime_audit_errors,
-        feature_delivery_pre_handoff_errors,
+        _worker_runtime_audit_errors as _worker_runtime_audit_errors,
+        feature_delivery_pre_handoff_errors as feature_delivery_pre_handoff_errors,
     )
 except ModuleNotFoundError:
     from scripts.planning_contracts import (
         _canonicalize_technical_spike_worker_ids,
         _feature_assessment_reference_errors,
-        _feature_asset_artifact_path,
+        _feature_asset_artifact_path as _feature_asset_artifact_path,
         _feature_delivery_asset_contract_errors,
         _feature_delivery_packet_contract_errors,
-        _feature_delivery_remediation_errors,
-        _feature_expected_inputs,
+        _feature_delivery_remediation_errors as _feature_delivery_remediation_errors,
+        _feature_expected_inputs as _feature_expected_inputs,
         _planning_runtime_closure_errors,
         _technical_spike_candidate_reference_errors,
         _technical_spike_missing_workers,
         _technical_spike_packet_contract_errors,
-        _technical_spike_packet_evidence_quality_errors,
-        _technical_spike_reasoning_graph_errors,
+        _technical_spike_packet_evidence_quality_errors as _technical_spike_packet_evidence_quality_errors,
+        _technical_spike_reasoning_graph_errors as _technical_spike_reasoning_graph_errors,
         _technical_spike_report_artifact_errors,
         _technical_spike_worker_contract_errors,
         _techops_planning_contract_errors,
-        _worker_runtime_audit_errors,
-        feature_delivery_pre_handoff_errors,
+        _worker_runtime_audit_errors as _worker_runtime_audit_errors,
+        feature_delivery_pre_handoff_errors as feature_delivery_pre_handoff_errors,
     )
 
 
 try:
     from planning_contracts import (
-        REFERENCE_ID,
-        TECHNICAL_SPIKE_RANGE_REFERENCE,
-        TECHNICAL_SPIKE_PRIMARY_GOALS,
-        TECHNICAL_SPIKE_PROFILES,
-        TECHNICAL_SPIKE_REASONING_TABLES,
-        TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF,
-        TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY,
-        TECHNICAL_SPIKE_REQUIRED_WORKERS,
-        TECHNICAL_SPIKE_WORKER_ROLES,
-        FEATURE_DELIVERY_WORKER_ROLES,
-        FEATURE_DELIVERY_LEDGER_FIELDS,
-        FEATURE_DELIVERY_RESULT_FIELDS,
+        REFERENCE_ID as REFERENCE_ID,
+        TECHNICAL_SPIKE_RANGE_REFERENCE as TECHNICAL_SPIKE_RANGE_REFERENCE,
+        TECHNICAL_SPIKE_PRIMARY_GOALS as TECHNICAL_SPIKE_PRIMARY_GOALS,
+        TECHNICAL_SPIKE_PROFILES as TECHNICAL_SPIKE_PROFILES,
+        TECHNICAL_SPIKE_REASONING_TABLES as TECHNICAL_SPIKE_REASONING_TABLES,
+        TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF as TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF,
+        TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY as TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY,
+        TECHNICAL_SPIKE_REQUIRED_WORKERS as TECHNICAL_SPIKE_REQUIRED_WORKERS,
+        TECHNICAL_SPIKE_WORKER_ROLES as TECHNICAL_SPIKE_WORKER_ROLES,
+        FEATURE_DELIVERY_WORKER_ROLES as FEATURE_DELIVERY_WORKER_ROLES,
+        FEATURE_DELIVERY_LEDGER_FIELDS as FEATURE_DELIVERY_LEDGER_FIELDS,
+        FEATURE_DELIVERY_RESULT_FIELDS as FEATURE_DELIVERY_RESULT_FIELDS,
         AGENT_ROLE_LABELS,
         ROLE_AGENTS,
     )
 except ModuleNotFoundError:
     from scripts.planning_contracts import (
-        REFERENCE_ID,
-        TECHNICAL_SPIKE_RANGE_REFERENCE,
-        TECHNICAL_SPIKE_PRIMARY_GOALS,
-        TECHNICAL_SPIKE_PROFILES,
-        TECHNICAL_SPIKE_REASONING_TABLES,
-        TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF,
-        TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY,
-        TECHNICAL_SPIKE_REQUIRED_WORKERS,
-        TECHNICAL_SPIKE_WORKER_ROLES,
-        FEATURE_DELIVERY_WORKER_ROLES,
-        FEATURE_DELIVERY_LEDGER_FIELDS,
-        FEATURE_DELIVERY_RESULT_FIELDS,
+        REFERENCE_ID as REFERENCE_ID,
+        TECHNICAL_SPIKE_RANGE_REFERENCE as TECHNICAL_SPIKE_RANGE_REFERENCE,
+        TECHNICAL_SPIKE_PRIMARY_GOALS as TECHNICAL_SPIKE_PRIMARY_GOALS,
+        TECHNICAL_SPIKE_PROFILES as TECHNICAL_SPIKE_PROFILES,
+        TECHNICAL_SPIKE_REASONING_TABLES as TECHNICAL_SPIKE_REASONING_TABLES,
+        TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF as TECHNICAL_SPIKE_UNRESOLVED_WORKER_REF,
+        TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY as TECHNICAL_SPIKE_GENERIC_EVIDENCE_SUMMARY,
+        TECHNICAL_SPIKE_REQUIRED_WORKERS as TECHNICAL_SPIKE_REQUIRED_WORKERS,
+        TECHNICAL_SPIKE_WORKER_ROLES as TECHNICAL_SPIKE_WORKER_ROLES,
+        FEATURE_DELIVERY_WORKER_ROLES as FEATURE_DELIVERY_WORKER_ROLES,
+        FEATURE_DELIVERY_LEDGER_FIELDS as FEATURE_DELIVERY_LEDGER_FIELDS,
+        FEATURE_DELIVERY_RESULT_FIELDS as FEATURE_DELIVERY_RESULT_FIELDS,
         AGENT_ROLE_LABELS,
         ROLE_AGENTS,
     )
@@ -1743,8 +1776,8 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
             "Provisional work summary: " + summary)
         provisional["handoff"]["execution"] = provisional["handoff"]["execution"].replace(
             "Terminal publication failed", "Validated terminal publication was not performed")
-    heading = ("Workflow-framework handoff: failed; control failure reported by Coordinator\n"
-               if receipt.get("validation_performed") is False else "Workflow-framework validation: failed\n")
+    heading = ("Workflow-framework handoff: failed; control failure reported by Coordinator\n\n"
+               if receipt.get("validation_performed") is False else "Workflow-framework validation: failed\n\n")
     return heading + render_handoff(provisional).removeprefix("```text\n").removesuffix("```")
 
 
