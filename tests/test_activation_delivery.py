@@ -148,10 +148,43 @@ class ActivationDelivery(unittest.TestCase):
         trace["tool_trace"][0]["input"] = 'text(await tools.exec_command(' + json.dumps({
             "cmd": f"cat {path}; shasum -a 256 {path}"}) + '));'
         self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
+        trace["tool_trace"][0]["input"] = trace["tool_trace"][0]["input"].replace("; shasum", " && shasum")
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
         trace["tool_trace"][1]["output"][0]["text"] = "Truncated output"
         self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts), {})
         self.assertEqual(runtime._read_targets(f"cat {path}; shasum -a 256 other.txt"), [])
         self.assertEqual(runtime._read_targets(f"cat {path}; shasum -a 256 {path}; cat {ARCHIVE}"), [])
+
+    def test_complete_chunked_dispatch_is_authenticated_without_exempting_extra_output(self):
+        trace = self.instruction_trace()
+        path = trace["spawn"]["dispatch_file"]
+        content = Path(path).read_text()
+        command = (f"python3 - <<'PY'\np={path!r}\ns=open(p).read()\n"
+                   "for i in range(0,len(s),9000): print(f'---CHUNK {i}---\\n{s[i:i+9000]}')\nPY")
+        trace["tool_trace"][0]["input"] = 'text(await tools.exec_command(' + json.dumps({"cmd": command}) + '));'
+        output = "".join(f"---CHUNK {i}---\n{content[i:i+9000]}\n" for i in range(0, len(content), 9000))
+        trace["tool_trace"][1]["output"][0]["text"] = output
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace["tool_trace"][1]["output"][0]["text"] = output + "\n" + ARCHIVE
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+        for invalid in (output[:-20], output.replace("---CHUNK 9000---", "---CHUNK 9001---")):
+            trace["tool_trace"][1]["output"][0]["text"] = invalid
+            self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts), {})
+        trace["tool_trace"][1]["output"][0]["text"] = output
+        trace["tool_trace"][1]["call_id"] = "wrong-call"
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts), {})
+        self.assertEqual(runtime._read_targets(command.replace("range(0,", "range(1,")), [])
+        self.assertEqual(runtime._read_targets(command.replace("9000]}')", "9000]}'); print(open('extra').read())")), [])
+
+    def test_file_count_and_listing_do_not_count_as_archive_reads(self):
+        command = "wc -l -c .thoughts/ITEM-1/activation.txt && rg --files .thoughts/ITEM-1"
+        trace = self.trace(command, "3 120 .thoughts/ITEM-1/activation.txt\n" + ARCHIVE)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        trace = self.trace(command + "; cat " + ARCHIVE, ARCHIVE)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+        self.assertFalse(runtime._listing_command("wc --files0-from=paths && rg --files .thoughts/ITEM-1"))
+        self.assertFalse(runtime._listing_command("wc -l -c " + ARCHIVE))
 
     def test_prepared_dispatch_export_and_audit_allow_preservation_metadata(self):
         trace = self.instruction_trace()

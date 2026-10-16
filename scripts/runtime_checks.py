@@ -394,7 +394,11 @@ def _listing_command(command: object) -> bool:
             filter_only = (previous == "|" and (
                 (tool in {"head", "tail"} and all(re.fullmatch(r"-?(?:n|[0-9]+)", arg) for arg in args[1:]))
                 or (tool in {"rg", "grep"} and len(args) == 2 and not args[1].startswith("-"))))
-            if not listing and not filter_only:
+            metadata = (tool == "wc" and len(args) in {3, 4}
+                        and all(arg in {"-l", "-c", "-lc", "-cl"} for arg in args[1:-1])
+                        and not args[-1].startswith("-")
+                        and not any(pattern.search(args[-1]) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS))
+            if not listing and not filter_only and not metadata:
                 return False
             previous = ""
         return bool(tokens)
@@ -667,6 +671,35 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
         return []
 
 
+def _chunked_dispatch_read(command: str) -> tuple[str, int] | None:
+    """Recognize only the literal, complete chunk printer; never execute provider code."""
+    if not isinstance(command, str):
+        return None
+    match = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*", command, re.S)
+    if not match:
+        return None
+    try:
+        tree = ast.parse(match[2])
+        target = tree.body[0].value.value
+        size = tree.body[2].iter.args[2].value
+        if not isinstance(target, str) or type(size) is not int or not 256 <= size <= 65536:
+            return None
+        template = (f"p={target!r}\ns=open(p).read()\n"
+                    f"for i in range(0,len(s),{size}): print(f'---CHUNK {{i}}---\\n{{s[i:i+{size}]}}')")
+        if ast.dump(tree) == ast.dump(ast.parse(template)):
+            return target, size
+    except (SyntaxError, AttributeError, IndexError, TypeError, ValueError):
+        pass
+    return None
+
+
+def _dispatch_read_output(command: str, content: str) -> str:
+    chunk = _chunked_dispatch_read(command)
+    if chunk:
+        return "".join(f"---CHUNK {i}---\n{content[i:i+chunk[1]]}\n" for i in range(0, len(content), chunk[1]))
+    return content
+
+
 def _python_read_targets(source: str) -> list[str]:
     """Recognize the recorded JSON inspection form; other Python remains unaudited."""
     tree = ast.parse(source)
@@ -713,6 +746,9 @@ def _python_read_targets(source: str) -> list[str]:
 def _read_targets(command: str) -> list[str]:
     if not isinstance(command, str):
         return []
+    chunk = _chunked_dispatch_read(command)
+    if chunk:
+        return [chunk[0]]
     python = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*", command, re.S)
     if python:
         try:
@@ -722,7 +758,7 @@ def _read_targets(command: str) -> list[str]:
     hashed_read = re.fullmatch(r"(?:sha256sum|shasum -a 256) ([^\s;&|<>]+) && cat \1", command)
     if hashed_read:
         return [hashed_read[1]]
-    read_then_hash = re.fullmatch(r"cat ([^\s;&|<>$`]+); (?:sha256sum|shasum -a 256) \1", command)
+    read_then_hash = re.fullmatch(r"cat ([^\s;&|<>$`]+)(?:;| &&) (?:sha256sum|shasum -a 256) \1", command)
     if read_then_hash:
         return [read_then_hash[1]]
     verified_read = re.fullmatch(
@@ -824,7 +860,8 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
                     for output in trace.get("tool_trace", []):
                         if (output.get("type") in {"function_call_output", "custom_tool_call_output"}
                                 and output.get("call_id") == row["call_id"]
-                                and any(content in value for _, value in _trace_strings({"tool_trace": [output]}))):
+                                and any(_dispatch_read_output(arguments.get("cmd", ""), content) in value
+                                        for _, value in _trace_strings({"tool_trace": [output]}))):
                             return proof
     return {}
 
@@ -845,6 +882,15 @@ def _instruction_contents(trace: dict, root: Path | None) -> list[str]:
         content = _verified_dispatch_content(candidate)
         if content:
             contents.append(content)
+            for row in trace.get("tool_trace", []):
+                for tool, arguments in _tool_operations(row):
+                    command = arguments.get("cmd", "")
+                    chunk = _chunked_dispatch_read(command) if tool == "exec_command" else None
+                    if chunk:
+                        target = Path(chunk[0])
+                        target = target if target.is_absolute() else Path(arguments.get("workdir", root.parent.parent)) / target
+                        if target.resolve() == (root / name).resolve():
+                            contents.append(_dispatch_read_output(command, content))
     for row in trace.get("tool_trace", []):
         if not isinstance(row, dict):
             continue
