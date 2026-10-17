@@ -52,6 +52,21 @@ class ContextOperationAudit(unittest.TestCase):
                                   'await tools.exec_command({cmd:"cat /repo/.thoughts/ITEM-1_v1/runs/old/research.md"})'})
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
 
+    def test_current_input_exclusion_text_followed_by_status_is_not_archive_access(self):
+        manifest = self.root / "run_inputs.json"
+        content = "Do not inspect .thoughts/2806_v1; names only, contents excluded."
+        manifest.write_text(content)
+        (self.repository / "AGENTS.md").write_text("# Current repository instructions\n")
+        trace = self.instruction_read_trace()
+        command = "cat .thoughts/ITEM-1/run_inputs.json AGENTS.md && git status --short"
+        call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
+        trace["tool_trace"].extend(self.paired(call, content + "\n# Current repository instructions\n"))
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        for tail in ("cat .thoughts/2806_v1/notes.md", "git show HEAD:.thoughts/2806_v1/notes.md"):
+            changed = json.loads(json.dumps(trace))
+            changed["tool_trace"][-2]["input"] = call.replace("git status --short", tail)
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(changed))
+
     def test_wrapped_filename_discovery_is_not_archived_content(self):
         archive = ".thoughts/ITEM-1/runs/previous/issue_evidence.md"
         trace = {"tool_trace": self.paired(

@@ -1186,6 +1186,16 @@ def _techops_planning_contract_errors(
                                                if isinstance(row, dict) and row.get("Worker") != "handoff"],
                   "terminal_observations": []}
     errors.extend(_worker_runtime_audit_errors(packet, packet_path, completed))
+    bindings = packet_path.parent / "role_bindings.json"
+    if bindings.is_file():
+        try:
+            from merge_techops_result import merged_result_errors
+        except ModuleNotFoundError:
+            from scripts.merge_techops_result import merged_result_errors
+        try:
+            errors.extend(merged_result_errors(packet, json.loads(bindings.read_text()), packet_path.parent))
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            errors.append("worker_result_source_invalid:" + str(error))
     return list(dict.fromkeys(errors))
 
 

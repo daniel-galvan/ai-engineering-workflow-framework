@@ -1086,7 +1086,11 @@ def prepare_run(
                 "Do not mark a check passed without its owning worker's evidence. Finalization schema belongs only in "
                 "finalization, not identity. For Engineering outcome plan_only after analytical fan-in, create "
                 "implementation_plan as well as output; use the accepted TechOps checks, not Sentry readiness fields. "
-                "Keep the plan unapproved and external proof gates separate from local work."
+                "Keep the plan unapproved and external proof gates separate from local work. "
+                "For a supported complete planning result, set State ready_for_implementation and Workflow outcome "
+                "completed; never use handoff/incomplete as the final TechOps planning identity. "
+                "Use awaiting_input or blocked when indispensable evidence or a material decision is unresolved. "
+                "Write a concrete workflow work summary, never a bare Partially answered label."
             ),
             "reviewer": (
                 "Challenge history reconciliation, local/external plan dependencies and fixture feasibility; return "

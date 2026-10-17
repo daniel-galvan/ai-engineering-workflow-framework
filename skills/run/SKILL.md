@@ -459,7 +459,13 @@ description: >-
    After the fan-in guard passes, merge it with
    `python3 <worker_result_merger> --packet <artifact-root>/finalization_packet.json --agent <provider-role>`.
    Do not reconstruct accepted evidence, outcomes or references from prose. The merger preserves immutable identity
-   and Coordinator audits; it does not grant readiness or implementation approval. Before accepting Fix Design,
+   and Coordinator audits; it does not grant readiness or implementation approval. The merger accepts analytical
+   roles only. Documenter writes the prepared packet directly; audit its trace and validate that packet through
+   `--check-packet`, not the analytical merger. Preserve accepted worker-owned evidence, claims, decisions and actions
+   exactly. Return changed references to their owning worker; never attach extra IDs merely to satisfy validation.
+   For TechOps planning, resolve State to ready_for_implementation, awaiting_input, or blocked before pre-release;
+   Workflow outcome must be completed or blocked. Keep the plan unapproved. Do not use handoff/incomplete as a final
+   planning identity or Partially answered as the entire work summary. Before accepting Fix Design,
    verify `techops_checks`:
    `issue_scope`, `history_reconciliation`, `plan_dependencies`, and `regression_fixture`. Each row uses `Check`,
    `Status`, `Evidence refs`, and `Detail`; require `passed`, except evidence-backed `not_applicable` for history with

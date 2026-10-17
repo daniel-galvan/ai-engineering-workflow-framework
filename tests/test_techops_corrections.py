@@ -19,6 +19,31 @@ import planning_contracts
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_techops_pre_release_rejects_nonterminal_planning_identity(self):
+        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.20",
+                               "Lifecycle": "planning", "State": "handoff", "Workflow outcome": "incomplete"}}
+        with self.assertRaisesRegex(ValueError, "TechOps planning.*ready_for_implementation"):
+            finalizer._validate_pre_release_state(packet)
+        packet["identity"].update({"State": "ready_for_implementation", "Workflow outcome": "completed"})
+        finalizer._validate_pre_release_state(packet)
+
+    def test_packet_cannot_rewrite_accepted_worker_reasoning(self):
+        from scripts.merge_techops_result import merged_result_errors
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "failure_path_result.json"
+            original = {"claims": [{"Claim ID": "CL-FP-1", "Evidence refs": "E-FP-1"}],
+                        "evidence": [], "decisions": [], "actions": []}
+            source.write_text(json.dumps(original))
+            manifest = {"worker_contracts": {"dependency_analyst": {"result": str(source)}}}
+            packet = {**copy.deepcopy(original), "worker_results": [{"Worker": "failure-path", "Outcome": "complete"}]}
+            self.assertEqual(merged_result_errors(packet, manifest, root), [])
+            packet["claims"][0]["Evidence refs"] += " E-FD-1"
+            self.assertIn("worker_owned_record_changed:failure-path:claims:CL-FP-1",
+                          merged_result_errors(packet, manifest, root))
+            source.unlink()
+            self.assertIn("worker_result_source_missing:failure-path", merged_result_errors(packet, manifest, root))
+
     def test_failed_techops_handoff_requires_prepared_bounded_continuation(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
@@ -203,7 +228,8 @@ class TechOpsCorrections(unittest.TestCase):
                               "next_action": {"owner": "Coordinator", "action": "Reconcile runtime proof",
                                               "complete_when": "Fresh worker observations are available"}}}
         finalizer._validate_handoff(packet, check_provenance=False)
-        for token in ("ready_for_implementation", "Ready for implementation", "blocked", "designed", "plan_only"):
+        for token in ("ready_for_implementation", "Ready for implementation", "blocked", "designed", "plan_only",
+                      "Partially answered", "Answered"):
             with self.subTest(token=token):
                 packet["handoff"]["workflow_result"] = token
                 with self.assertRaisesRegex(ValueError, "plain-language work summary"):

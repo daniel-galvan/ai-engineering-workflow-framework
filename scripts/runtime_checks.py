@@ -394,7 +394,8 @@ def _listing_command(command: object) -> bool:
             if not args:
                 continue
             tool = Path(args[0]).name
-            listing = (tool in {"ls", "pwd"} or (tool == "rg" and "--files" in args)
+            listing = (args == ["git", "status", "--short"]
+                       or tool in {"ls", "pwd"} or (tool == "rg" and "--files" in args)
                        or (tool == "find" and not set(args) & {
                            "-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf"}))
             filter_only = (previous == "|" and (
@@ -773,6 +774,9 @@ def _read_targets(command: str) -> list[str]:
         r'exit 2; fi; printf \'SHA256_OK %s\\n\' "\$actual"; cat "\$packet"', command)
     if verified_read:
         return [verified_read[1]]
+    status_suffix = re.fullmatch(r"(.+?)(?:;| &&) git status --short", command, re.S)
+    if status_suffix:
+        return _read_targets(status_suffix[1])
     if any(value in command for value in ("$(", "`", "<", ">", "|", "&")):
         return []
     try:
@@ -842,7 +846,9 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 safe = safe and bool(targets) and all(
                     not (path.resolve().parent == root and path.name in instructions)
                     and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()
-                    and ((path.resolve().parent == root and path.is_file()) or str(path) in assigned)
+                    and ((path.resolve().parent == root and path.is_file()) or str(path) in assigned
+                         or path.resolve() in {parent / "AGENTS.md" for parent in
+                                               (root, root.parent, root.parent.parent)} and path.is_file())
                     for path in resolved)
             elif name not in {"mcp__codex_apps__atlassian_getjiraissue", "mcp__codex_apps__atlassian_executeread",
                               "mcp__codex_apps__atlassian_discover", "mcp__codex_apps__atlassian_searchjiraissuesusingjql"}:

@@ -563,7 +563,8 @@ def _validate_handoff(
     if isinstance(identity, dict):
         playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
         if playbook == "techops_issue_remediation" and (
-            re.sub(r"[_-]+", " ", str(handoff["workflow_result"]).strip().lower()) in TECHOPS_STATE_RESULT_TOKENS
+            re.sub(r"[_-]+", " ", str(handoff["workflow_result"]).strip().lower())
+            in TECHOPS_STATE_RESULT_TOKENS | {"partially answered", "answered"}
         ):
             raise ValueError("TechOps workflow_result requires a plain-language work summary, not a state token")
         provenance = str(handoff["provenance"]).lower()
@@ -710,6 +711,13 @@ def _validate_pre_release_state(packet: dict[str, object]) -> None:
         return
     playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)[0].lower()
     playbook = playbook.replace(" ", "_")
+    if "techops_issue_remediation" in playbook and identity.get("Lifecycle") == "planning":
+        if identity.get("State") not in {"ready_for_implementation", "awaiting_input", "blocked"}:
+            raise ValueError("TechOps planning State must be ready_for_implementation, awaiting_input, or blocked; "
+                             "received=" + str(identity.get("State")) + "; return to Documenter before pre-release")
+        if identity.get("Workflow outcome") not in {"completed", "blocked"}:
+            raise ValueError("TechOps planning Workflow outcome must be completed or blocked; received="
+                             + str(identity.get("Workflow outcome")))
     if "technical_spike" in playbook and str(identity.get("State", "")).strip().lower() == "completed":
         raise ValueError("Technical Spike pre-release packet must keep State handoff until finalizer succeeds")
     if ("feature_delivery" in playbook and identity.get("Lifecycle") == "remediation"

@@ -32,6 +32,27 @@ TABLES = {"evidence": "Evidence ID", "claims": "Claim ID", "decisions": "Decisio
 PREFIXES = {"evidence": "E", "claims": "CL", "decisions": "DE", "actions": "A"}
 
 
+def merged_result_errors(packet: dict, manifest: dict, root: Path) -> list[str]:
+    """Accepted analytical records remain owned by their producing workers."""
+    completed = {row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"}
+    errors = []
+    for agent, (worker, _) in WORKERS.items():
+        contract = manifest.get("worker_contracts", {}).get(agent, {})
+        if worker not in completed or not contract.get("result"):
+            continue
+        source = Path(contract["result"])
+        if source.resolve().parent != root.resolve() or not source.is_file():
+            errors.append("worker_result_source_missing:" + worker)
+            continue
+        result = json.loads(source.read_text())
+        for table, key in TABLES.items():
+            current = {row.get(key): row for row in packet.get(table, [])}
+            for row in result.get(table, []):
+                if current.get(row.get(key)) != row:
+                    errors.append("worker_owned_record_changed:" + worker + ":" + table + ":" + str(row.get(key)))
+    return errors
+
+
 def merge_result(packet_path: Path, agent: str) -> None:
     root = packet_path.parent.resolve()
     try:
