@@ -64,6 +64,20 @@ class ActivationDelivery(unittest.TestCase):
                     self.assertIn("explicit Sentry Fix Design handle-delivery protocol", message)
                     self.assertIn("Every later message remains a dispatch requiring fresh consumption evidence", message)
 
+    def test_missing_instruction_input_is_rejected_before_dispatch(self):
+        instructions = self.root / ".thoughts/AGENTS.md"
+        source = self.root / "assignment.json"
+        source.write_text(json.dumps({"objective": "Inspect current inputs", "input_paths": [str(instructions)]}))
+        dispatch = self.artifacts / "activation_context.txt"
+        args = ("--activation-packet-bundle", self.bundle["path"], "--expected-agent", "current_state_investigator",
+                "--expected-bundle-sha256", self.bundle["sha256"], "--assignment", source, "--dispatch-file", dispatch)
+        rejected = self.command(*args)
+        self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
+        self.assertIn("assigned_instruction_file_missing", rejected.stdout)
+        self.assertFalse(dispatch.exists())
+        instructions.write_text("# Local instructions\n")
+        self.assertEqual(self.command(*args).returncode, 0)
+
     def test_compact_message_preserves_the_complete_hashed_contract(self):
         assignment = {"objective": "Reverify supplied findings only", "input_paths": []}
         source = self.root / "assignment.json"
@@ -377,6 +391,15 @@ class ActivationDelivery(unittest.TestCase):
         activation = ["--activation-packet-bundle", bundle["path"], "--expected-agent", "current_state_investigator",
             "--expected-bundle-sha256", bundle["sha256"], "--assignment", assignment,
             "--dispatch-file", self.artifacts / "retry.txt", *recovery]
+        before = Path(self.run["finalization_packet"]).read_bytes()
+        assignment.write_text(json.dumps({"objective": "Read complete guarded instructions",
+                                         "input_paths": [str(self.artifacts.parent / "AGENTS.md")]}))
+        rejected = self.command(*activation)
+        self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
+        self.assertIn("assigned_instruction_file_missing", rejected.stdout)
+        self.assertEqual(Path(self.run["finalization_packet"]).read_bytes(), before)
+        self.assertFalse((self.artifacts / "retry.txt").exists())
+        assignment.write_text(json.dumps({"objective": "Read complete guarded instructions"}))
         corrected = self.command(*activation)
         self.assertEqual(corrected.returncode, 0, corrected.stdout + corrected.stderr)
         packet = json.loads(Path(self.run["finalization_packet"]).read_text())

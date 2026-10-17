@@ -22,7 +22,9 @@ description: >-
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
-   parent directory trees. Run filename discovery in a separate tool result from content reads or searches; mixed
+   parent directory trees. Instruction files are optional: check existence, read those present, and continue when
+   absent. Never promote a missing instruction-file probe into a required worker input. Run filename discovery in a
+   separate tool result from content reads or searches; mixed
    outputs may not prove which references are names only. Run gates separately, or use fail-fast command chaining;
    inspect each exit status.
    Pass `--declared-framework-revision <FULL-SHA>` when the prompt declares one, and pass
@@ -498,6 +500,8 @@ description: >-
    its emitted `activation_message` with a new handle. A separate transition check does not authorize that launch.
    Inspect `audit.context_violations` for the exact offending operation and path before attributing a context failure;
    a repository instruction file or a product directory containing the word archive is not historical evidence.
+   Before assigning an instruction file during recovery, verify it exists. Preserve optional lookup semantics;
+   do not fabricate a required input to silence an audit error.
    The trace must prove rejection of that handle's latest completed result. Completion alone does not authorize
    replacement, and an active worker cannot be replaced. Use a new provider handle, retain the rejected artifacts,
    and keep the same run identity and typed inputs. Allow one recovery attempt total per rejected stage, whether
@@ -773,7 +777,12 @@ description: >-
    status paragraph. Precheck/pre-release failures remain correction feedback, not user-facing terminal reports.
    If activation, upstream correction, or Documenter execution cannot be recovered within this run, always invoke
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet <artifact-root>/finalization_packet.json`
-   `--workflow-failure <exact-reason>`. This terminal failure mode needs no invented closure receipt or implementation
+   `--workflow-failure <exact-reason>`. Before this failure report, reconcile every activated ledger handle, including
+   rejected and replacement workers. Refresh the native inventory and collect `runtime_closure.json` through the
+   packaged collector's `--closure` route. If a worker is active, follow the provider's supported stop/wait protocol
+   and observe it again. If closure cannot be verified, retain a Coordinator-owned Blocked receipt with the concrete
+   observation failure. Rejection does not waive closure collection. Never invent terminal observations or withhold
+   the failure report when provider evidence is unavailable. This mode needs no invented receipt or implementation
    plan. It writes `finalization_failure.json` and `handoff_failure.md`, preserves recorded analytical contributions,
    limitations, proposed actions and existing artifacts even when `handoff` is empty, and returns exit 2 with the
    canonical

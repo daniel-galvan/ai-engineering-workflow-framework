@@ -93,6 +93,12 @@ def activation_message(packet: dict, assignment: dict) -> str:
             or not isinstance(assignment.get("input_paths", []), list)
             or not all(isinstance(path, str) and path.strip() for path in assignment.get("input_paths", []))):
         raise ValueError("expected objective and optional input_paths only")
+    for source in assignment.get("input_paths", []):
+        path = Path(source)
+        if path.name == "AGENTS.md":
+            path = path if path.is_absolute() else Path(packet["finalization_packet"]).parents[2] / path
+            if not path.is_file():
+                raise ValueError("assigned_instruction_file_missing: omit absent optional guidance: " + source)
     return (packet["required_prefix"] + "\n" + json.dumps(packet, sort_keys=True)
             + "\nTyped assignment:\n" + json.dumps(assignment, sort_keys=True))
 
@@ -983,6 +989,11 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
             elif statement[:1] == ["ls"] and _listing_command(shlex.join(statement)):
                 index += 1
             else:
+                # Suppressing missing optional instruction errors does not read historical content.
+                for redirect in (["2>/dev/null"], ["2>", "/dev/null"]):
+                    if statement[-len(redirect):] == redirect:
+                        statement = statement[:-len(redirect)]
+                        break
                 selected = _read_targets(shlex.join(statement))
                 if not selected:
                     break

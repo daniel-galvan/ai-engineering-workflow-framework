@@ -533,7 +533,9 @@ def _write_activation_packets(
             "coordinator_execution": manifest["coordinator_execution"],
             "repository_instructions": (
                 "Read local AGENTS.md only in the target directory and its ancestors up to the assigned repository "
-                "root. Do not recursively search parent directory trees, the home directory, or unrelated repositories. "
+                "root. These instruction files are optional: check existence and read only files that exist. "
+                "Absence is not a blocker; never add a nonexistent instruction file to required input_paths. "
+                "Do not recursively search parent directory trees, the home directory, or unrelated repositories. "
                 "Run filename discovery in a separate tool result from content reads or searches so its output can be "
                 "audited as names only. Use exact assigned artifact paths; do not search unassigned runs/ archives."
             ),
