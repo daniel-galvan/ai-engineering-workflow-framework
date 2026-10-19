@@ -453,11 +453,15 @@ description: >-
    plan only with `status: Draft`, full structural tables and owned unresolved decisions. Do not label it ready.
    Check runtime capacity before dispatch, choose either an existing compatible worker or a fresh worker, and record
    cancellation if a superseded assignment is interrupted. Do not accept the cancelled result as current work.
-8a. For TechOps planning, the prepared worker contracts are operative instructions, not optional references. Include
-   their complete `worker_contract` with each fresh assignment. Each analytical worker writes its assigned narrative
-   and JSON result to the exact `output` and `result` paths; preserve the prepared ID namespace and upstream IDs.
+8a. For TechOps planning and Feature Delivery analytical results, prepared worker contracts are operative instructions.
+   Include their complete `worker_contract` with each fresh assignment. Each analytical worker writes its assigned
+   narrative and JSON result to the exact `output` and `result` paths. Preserve the
+   prepared ID namespace and upstream IDs.
    After the fan-in guard passes, merge it with
-   `python3 <worker_result_merger> --packet <artifact-root>/finalization_packet.json --agent <provider-role>`.
+   `python3 <worker_result_merger> --packet <packet> --agent <provider-role> --trace <current-run-trace.json>`.
+   This validates and records the Coordinator-owned audit entry atomically with the analytical result. A missing audit
+   entry is Coordinator bookkeeping: supply the passed trace and rerun the merger; do not reject, rename, or redispatch
+   valid worker output for that reason. An actually rejected trace still requires the guarded recovery protocol.
    Do not reconstruct accepted evidence, outcomes or references from prose. The merger preserves immutable identity
    and Coordinator audits; it does not grant readiness or implementation approval. The merger accepts analytical
    roles only. Documenter writes the prepared packet directly; audit its trace and validate that packet through

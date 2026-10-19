@@ -55,7 +55,7 @@ def merged_result_errors(packet: dict, manifest: dict, root: Path, *, table_proj
     return errors
 
 
-def merge_result(packet_path: Path, agent: str) -> None:
+def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) -> None:
     root = packet_path.parent.resolve()
     try:
         from validate_worker_runtime import prepared_package_errors, _pending_rejections
@@ -81,11 +81,29 @@ def merge_result(packet_path: Path, agent: str) -> None:
     if result.get("run_id") != packet["identity"]["Run ID"]:
         raise ValueError("worker_result_run_mismatch")
     worker, namespace = workers[agent]
+    if trace is not None:
+        trace = trace.resolve()
+        if trace.parent != root:
+            raise ValueError("worker_trace_outside_current_run:" + worker)
+        saved = json.loads(trace.read_text())
+        audit = {**saved["status_observation"], "Worker": worker, "Provider status": "completed",
+                 "Trace path": str(trace), "Trace retrieval": saved["trace_retrieval"]}
+        try:
+            from planning_contracts import _worker_runtime_audit_errors
+        except ModuleNotFoundError:
+            from scripts.planning_contracts import _worker_runtime_audit_errors
+        errors = _worker_runtime_audit_errors({"runtime_audits": [audit]}, packet_path, {worker})
+        if errors:
+            raise ValueError(";".join(errors))
+        packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
+                                    if row.get("Worker") != worker] + [audit]
     if contract.get("result_hash_required"):
         audit = next((row for row in packet.get("runtime_audits", []) if row.get("Worker") == worker), None)
         ledger = bindings.get("runtime_evidence", {}).get("ledger")
         if audit is None and ledger and Path(ledger).is_file():
-            raise ValueError("worker_result_audit_required:" + worker)
+            raise ValueError("worker_result_audit_required:" + worker
+                             + ": Coordinator must rerun this merger with --trace <passed-current-run-trace>; "
+                               "missing Coordinator audit bookkeeping is not a worker rejection")
         if audit is not None:
             try:
                 from runtime_checks import result_artifact_errors
@@ -192,9 +210,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path, required=True)
     parser.add_argument("--agent", choices=tuple(WORKERS), required=True)
+    parser.add_argument("--trace", type=Path, help="Validate and register the completed worker trace atomically with its result")
     args = parser.parse_args()
     try:
-        merge_result(args.packet, args.agent)
+        merge_result(args.packet, args.agent, trace=args.trace)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}))
         return 2

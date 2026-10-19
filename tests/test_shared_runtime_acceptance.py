@@ -91,6 +91,36 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         trace = export_worker_trace(ledger, child, role, observation, run_id=run["run_id"], artifact_root=root)
         return trace, ledger
 
+    def test_merger_registers_passed_trace_with_result_atomically(self):
+        from scripts.merge_techops_result import merge_result
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, role, *_ = fixture
+            source = Path(run["worker_contracts"][role]["result"])
+            template = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())
+            source.write_text(json.dumps({"run_id": run["run_id"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"}}))
+            trace, ledger = self.export(fixture)
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            path = root / "trace.json"
+            path.write_text(json.dumps(trace))
+            packet_path = root / "finalization_packet.json"
+            before = packet_path.read_bytes()
+            trace["spawn"]["agent"] = "dependency_analyst"
+            path.write_text(json.dumps(trace))
+            with self.assertRaises(ValueError):
+                merge_result(packet_path, role, trace=path)
+            self.assertEqual(packet_path.read_bytes(), before)
+            trace["spawn"]["agent"] = role
+            path.write_text(json.dumps(trace))
+            merge_result(packet_path, role, trace=path)
+            packet = json.loads(packet_path.read_text())
+            self.assertEqual(packet["runtime_audits"][0]["Worker"], "issue-evidence")
+            self.assertEqual(packet["worker_results"][0]["Outcome"], "complete")
+            merge_result(packet_path, role, trace=path)
+            self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
+
     def test_missing_result_is_a_rejected_trace_eligible_for_bounded_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "dependency_analyst")
