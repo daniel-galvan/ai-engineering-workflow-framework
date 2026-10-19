@@ -142,6 +142,8 @@ def dispatch_message(packet: dict, message: str, path: Path) -> str:
 def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     digest = hashlib.sha256(message.encode()).hexdigest()
     return (packet["required_prefix"] + "\n"
+            + "First task: verify and read the supplied file only; this bootstrap is self-contained. "
+              "Before that read, do not search memory, previous chats, or historical artifacts.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
             + f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"

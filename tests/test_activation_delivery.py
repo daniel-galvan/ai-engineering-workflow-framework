@@ -97,6 +97,9 @@ class ActivationDelivery(unittest.TestCase):
         self.assertEqual(receipt["dispatch_file_sha256"], hashlib.sha256(dispatch.read_bytes()).hexdigest())
         self.assertIn(receipt["dispatch_file_sha256"], receipt["activation_message"])
         self.assertIn(packet["run_id"], receipt["activation_message"])
+        self.assertIn("this bootstrap is self-contained", receipt["activation_message"])
+        self.assertLess(receipt["activation_message"].index("do not search memory"),
+                        receipt["activation_message"].index(packet["run_id"]))
         outbound = self.root / "outbound.txt"
         outbound.write_text(receipt["activation_message"])
         self.assertEqual(self.command(*args, "--activation-message", outbound).returncode, 0)

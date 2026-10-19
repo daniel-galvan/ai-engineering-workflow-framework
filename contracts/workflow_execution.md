@@ -1755,9 +1755,10 @@ parent launch. It pairs provider calls with their outputs. Quoted commands insid
 inside a current-run inventory are source data, not newly executed operations. Unknown or mixed unsafe operations do
 not receive the read-output exception; actual unassigned reads and historical writes remain rejected.
 
-The canonical launch message names its SHA256; the worker verifies and reads the full file before analysis. A short
-launch notice is not a replacement for the role contract. Modified instructions require a new file and a fresh
-guarded dispatch.
+The canonical launch message names its SHA256 and makes verification and reading the supplied file the self-contained
+first task, before any memory, previous-chat, or historical-artifact search. The worker reads the full file before
+analysis. A short launch notice is not a replacement for the role contract. Modified instructions require a new file
+and a fresh guarded dispatch.
 
 A provider-proven shortened message rejects that result, not all previously accepted work. Preserve the trace and
 actual/expected message hashes, stop downstream dispatch, and reserve one repair for that bound role using the existing
