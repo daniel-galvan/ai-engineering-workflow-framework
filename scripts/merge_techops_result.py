@@ -32,7 +32,7 @@ TABLES = {"evidence": "Evidence ID", "claims": "Claim ID", "decisions": "Decisio
 PREFIXES = {"evidence": "E", "claims": "CL", "decisions": "DE", "actions": "A"}
 
 
-def merged_result_errors(packet: dict, manifest: dict, root: Path) -> list[str]:
+def merged_result_errors(packet: dict, manifest: dict, root: Path, *, table_projection: bool = False) -> list[str]:
     """Accepted analytical records remain owned by their producing workers."""
     completed = {row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"}
     errors = []
@@ -48,7 +48,9 @@ def merged_result_errors(packet: dict, manifest: dict, root: Path) -> list[str]:
         for table, key in TABLES.items():
             current = {row.get(key): row for row in packet.get(table, [])}
             for row in result.get(table, []):
-                if current.get(row.get(key)) != row:
+                expected = ({name: str(value).replace("\n", "<br>").strip() for name, value in row.items()}
+                            if table_projection else row)
+                if current.get(row.get(key)) != expected:
                     errors.append("worker_owned_record_changed:" + worker + ":" + table + ":" + str(row.get(key)))
     return errors
 

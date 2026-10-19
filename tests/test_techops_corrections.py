@@ -32,12 +32,18 @@ class TechOpsCorrections(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "failure_path_result.json"
-            original = {"claims": [{"Claim ID": "CL-FP-1", "Evidence refs": "E-FP-1"}],
+            original = {"claims": [{"Claim ID": "CL-FP-1", "Evidence refs": "E-FP-1", "Claim": "First line\nNext | line"}],
                         "evidence": [], "decisions": [], "actions": []}
             source.write_text(json.dumps(original))
             manifest = {"worker_contracts": {"dependency_analyst": {"result": str(source)}}}
             packet = {**copy.deepcopy(original), "worker_results": [{"Worker": "failure-path", "Outcome": "complete"}]}
             self.assertEqual(merged_result_errors(packet, manifest, root), [])
+            rendered = copy.deepcopy(packet)
+            rendered["claims"][0]["Claim"] = "First line<br>Next | line"
+            self.assertEqual(merged_result_errors(rendered, manifest, root, table_projection=True), [])
+            self.assertTrue(merged_result_errors(rendered, manifest, root))
+            rendered["claims"][0]["Evidence refs"] += " E-FD-1"
+            self.assertTrue(merged_result_errors(rendered, manifest, root, table_projection=True))
             packet["claims"][0]["Evidence refs"] += " E-FD-1"
             self.assertIn("worker_owned_record_changed:failure-path:claims:CL-FP-1",
                           merged_result_errors(packet, manifest, root))

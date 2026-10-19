@@ -653,10 +653,13 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
         for error in _techops_planning_contract_errors({
             "identity": identity, "worker_results": table_rows["# Worker Result Summary"],
             "evidence": markdown_table(text, "# Evidence"),
+            "claims": markdown_table(text, "# Claims"),
+            "decisions": markdown_table(text, "# Decision Log"),
+            "actions": markdown_table(text, "# Action Log"),
             "techops_checks": markdown_table(text, "# TechOps Planning Checks"),
             "runtime_audits": markdown_table(text, "# Worker Runtime Audits"),
             "terminal_observations": markdown_table(text, "# Worker Terminal Observations"),
-        }, path):
+        }, path, table_projection=True):
             fail(f"{path}: {error}")
     if playbook_name == "technical_spike":
         for row in table_rows["# Worker Result Summary"]:

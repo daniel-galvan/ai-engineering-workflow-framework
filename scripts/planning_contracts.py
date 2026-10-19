@@ -1158,7 +1158,7 @@ def _canonicalize_technical_spike_worker_ids(
 
 
 def _techops_planning_contract_errors(
-    packet: dict[str, object], packet_path: Path, *, pre_handoff: bool = False,
+    packet: dict[str, object], packet_path: Path, *, pre_handoff: bool = False, table_projection: bool = False,
 ) -> list[str]:
     identity = packet.get("identity", {})
     if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
@@ -1193,7 +1193,8 @@ def _techops_planning_contract_errors(
         except ModuleNotFoundError:
             from scripts.merge_techops_result import merged_result_errors
         try:
-            errors.extend(merged_result_errors(packet, json.loads(bindings.read_text()), packet_path.parent))
+            errors.extend(merged_result_errors(packet, json.loads(bindings.read_text()), packet_path.parent,
+                                              table_projection=table_projection))
         except (OSError, ValueError, TypeError, AttributeError) as error:
             errors.append("worker_result_source_invalid:" + str(error))
     return list(dict.fromkeys(errors))

@@ -680,8 +680,14 @@ def self_test() -> None:
         from scripts.prepare_run import _agent_binding
         bindings = {role: _agent_binding(role, None) for role in roles.values()}
         baseline = re.search(r"^baseline_id: (\S+)$", (ROOT / "providers/codex/model_effort_policy.md").read_text(), re.MULTILINE)[1]
+        published_techops["claims"][0]["Claim"] += "\nAdditional source detail with a | separator."
+        analytical_result = feature_root / "issue_evidence_result.json"
+        analytical_result.write_text(json.dumps({field: published_techops[field]
+                                                 for field in ("evidence", "claims", "decisions", "actions")}))
         (feature_root / "role_bindings.json").write_text(json.dumps({
             "playbook": "techops_issue_remediation", "baseline_id": baseline, "bindings": bindings,
+            "worker_contracts": {"current_state_investigator": {
+                "worker_id": "issue-evidence", "result": str(analytical_result)}},
         }))
         published_techops["identity"]["Coordinator model/effort"] = "gpt-6.1-sol / high"
         for row in published_techops["workers"]:
