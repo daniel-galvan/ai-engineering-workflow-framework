@@ -91,6 +91,32 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         trace = export_worker_trace(ledger, child, role, observation, run_id=run["run_id"], artifact_root=root)
         return trace, ledger
 
+    def test_missing_result_is_a_rejected_trace_eligible_for_bounded_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "dependency_analyst")
+            run, root, role, *_ = fixture
+            bindings = json.loads((root / "role_bindings.json").read_text())
+            Path(bindings["worker_contracts"][role]["result"]).unlink()
+            trace, ledger = self.export(fixture)
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            self.assertEqual(trace["audit"]["status"], "rejected")
+            self.assertIn("worker_result_artifact_changed:" + role, trace["audit"]["errors"])
+            self.assertEqual(runtime.rejected_result_errors(trace, trace["spawn"]["provider_handle"],
+                                                          trace["last_dispatch_at"]), [])
+            rejected = root / "missing_result_trace.json"
+            rejected.write_text(json.dumps(trace))
+            for status, expected in (("completed", 0), ("running", 2)):
+                checked = subprocess.run([sys.executable, str(preparation.ROOT / "scripts/validate_worker_runtime.py"),
+                    "--transition", "replace", "--provider-status", status, "--rejected-trace", str(rejected),
+                    "--provider-handle", trace["spawn"]["provider_handle"],
+                    "--last-dispatch-at", trace["last_dispatch_at"]], capture_output=True, text=True)
+                self.assertEqual(checked.returncode, expected, checked.stdout + checked.stderr)
+            notice = runtime.dispatch_notice({"required_prefix": "Coordinator initialization: complete",
+                "agent": role, "model": "model", "effort": "high", "run_id": run["run_id"]},
+                "instructions", root / "activation.txt")
+            self.assertIn("continue in this same turn through the full typed assignment", notice)
+            self.assertIn("A bootstrap acknowledgment is not completion", notice)
+
     def test_prepared_roles_keep_binding_and_pass_their_finalizer_audit_seam(self):
         for playbook, roles in CASES.items():
             for role in roles:

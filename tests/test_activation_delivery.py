@@ -158,6 +158,9 @@ class ActivationDelivery(unittest.TestCase):
                 "type": "custom_tool_call_output", "call_id": "read-contract",
                 "output": [{"type": "input_text", "text": dispatch.read_text()}]}}]
         source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        contract = packet.get("worker_contract", {})
+        if contract.get("result_hash_required"):
+            Path(contract["result"]).write_text(json.dumps({"run_id": packet["run_id"]}))
         return export_worker_trace(ledger, source, "current_state_investigator", observation,
                                    run_id=packet["run_id"], artifact_root=self.artifacts)
 

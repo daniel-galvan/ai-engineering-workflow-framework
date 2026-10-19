@@ -157,12 +157,14 @@ def dispatch_message(packet: dict, message: str, path: Path) -> str:
 def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     digest = hashlib.sha256(message.encode()).hexdigest()
     return (packet["required_prefix"] + "\n"
-            + "First task: verify and read the supplied file only; this bootstrap is self-contained. "
+            + "First step: verify and read the supplied file; this bootstrap is self-contained. "
               "Before that read, do not search memory, previous chats, or historical artifacts.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
             + f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
             + f"Verify its SHA256 is {digest} before analytical work; on mismatch stop and report it.\n"
+            + "After verification, continue in this same turn through the full typed assignment and write its required "
+              "outputs. A bootstrap acknowledgment is not completion.\n"
             + "The file is the operative role, input, output and policy contract. Read it in full; do not substitute "
               "this launch notice for those instructions. Do not rerun Coordinator initialization.")
 
@@ -1228,6 +1230,14 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
             pass
     if not delivered:
         errors.append("provider_binding_not_delivered")
+    elif require_freshness and spawn.get("dispatch_file"):
+        try:
+            root = Path(spawn["dispatch_file"]).resolve().parent
+            bindings = json.loads((root / "role_bindings.json").read_text())
+            errors.extend(result_artifact_errors(trace, bindings, root,
+                                                worker_binding(bindings, spawn["agent"])))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            errors.append("worker_result_artifact_invalid:" + str(error))
     for event in trace.get("events", []):
         if not isinstance(event, dict) or "action" not in event:
             errors.append("runtime_event_invalid")
