@@ -1609,6 +1609,41 @@ def self_test() -> None:
     run_self_check("finalize_work_record", "self_test")
 
 
+def collect_failure_closure(packet_path: Path) -> str:
+    """Retain provider closure even when analytical finalization cannot proceed."""
+    root = packet_path.parent
+    bindings_path = root / "role_bindings.json"
+    if not bindings_path.is_file():
+        return "unverified"
+    bindings = json.loads(bindings_path.read_text())
+    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"}:
+        return "unverified"
+    ledger_path = Path(bindings.get("runtime_evidence", {}).get("ledger", root / "runtime_dispatches.json"))
+    if not ledger_path.is_file():
+        return "unverified"
+    try:
+        from worker_runtime_evidence import read_runtime_events, terminal_closure
+    except ModuleNotFoundError:
+        from scripts.worker_runtime_evidence import read_runtime_events, terminal_closure
+    try:
+        if ledger_path.resolve().parent != root.resolve():
+            raise ValueError("runtime_dispatch_ledger_outside_current_run")
+        saved = json.loads(ledger_path.read_text())
+        current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
+            saved["run_started_at"], tuple(Path(p) for p in saved.get("identity_sessions", [])))
+        closure = terminal_closure(current)
+        state = "terminal"
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        state = "unverified"
+        if (root / "runtime_closure.json").exists():
+            return state
+        closure = {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
+            "Completed worker handles": "Unknown", "Runtime status": "Blocked", "Remaining active handles": "Unknown",
+            "Closure evidence or blocker": "Provider closure collection failed: " + str(error)}]}
+    (root / "runtime_closure.json").write_text(json.dumps(closure, indent=2) + "\n")
+    return state
+
+
 def failure_handoff(packet_path: Path, reason: str) -> str:
     """Report saved work provisionally without publishing or certifying a terminal record."""
     packet_path = packet_path.resolve()
@@ -1779,6 +1814,8 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
         },
     }
     _, receipt = _finalization_status(packet_path)
+    if receipt.get("runtime_closure") == "terminal":
+        provisional["handoff"]["execution"] += "; provider closure verified for every activated handle."
     if receipt.get("validation_performed") is False:
         provisional["handoff"]["workflow_result"] = "Workflow stopped on a Coordinator-reported control failure. " + (
             "Provisional work summary: " + summary)
@@ -1916,6 +1953,9 @@ def main() -> int:
             (packet_path.parent / "handoff_delivery.json").write_text(json.dumps(receipt, indent=2) + "\n")
             if args.publish_response:
                 print(proposed.decode(), end="")
+                print("Final-response instruction: send the emitted stdout unchanged as your final answer; "
+                      "do not summarize it or replace it with a link. The receipt verifies prepared bytes only.",
+                      file=sys.stderr)
             else:
                 print(json.dumps(receipt, sort_keys=True))
         except (OSError, ValueError, KeyError, TypeError, IndexError, subprocess.CalledProcessError) as error:
@@ -1930,6 +1970,7 @@ def main() -> int:
         try:
             packet_path = args.packet.resolve()
             # This receipt reports failure; it never certifies activation, readiness or runtime release.
+            closure_state = collect_failure_closure(packet_path)
             _, previous = _finalization_status(packet_path)
             packet = json.loads(packet_path.read_text())
             frozen = snapshot_bytes(packet)
@@ -1947,7 +1988,7 @@ def main() -> int:
                        "errors": [args.workflow_failure],
                        "historical_errors": list(dict.fromkeys(previous.get("historical_errors", [])
                                                                + previous.get("errors", []))),
-                       "blocker_owner": "Coordinator", "runtime_closure": "unverified",
+                       "blocker_owner": "Coordinator", "runtime_closure": closure_state,
                        "observed_at": datetime.now(timezone.utc).isoformat(),
                        "packet_sha256": hashlib.sha256(packet_path.read_bytes()).hexdigest()}
             (packet_path.parent / FINALIZATION_STATUS_FILENAME).write_text(json.dumps(receipt, indent=2) + "\n")

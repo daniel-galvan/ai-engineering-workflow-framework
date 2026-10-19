@@ -361,6 +361,21 @@ class ContextOperationAudit(unittest.TestCase):
             trace["tool_trace"].extend(rows)
             self.assertEqual(runtime.trace_errors(trace), [])
 
+    def test_echo_ancestor_probe_with_literal_quotes_is_not_an_archive_read(self):
+        for condition, output in (("test -f $p", "echo $p"),
+                                  (r'test -f \"$p\"', r'echo \"$p\"')):
+            trace = self.instruction_read_trace()
+            command = ('for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+                       f'do if {condition}; then {output}; fi; done')
+            call = 'text(await tools.exec_command(' + json.dumps({"cmd": command,
+                "workdir": str(self.repository)}) + '));'
+            trace["tool_trace"].extend(self.paired(call, ""))
+            self.assertEqual(runtime._ancestor_instruction_reads(trace["tool_trace"][-2], self.root), [])
+            self.assertEqual(runtime.trace_errors(trace), [])
+            trace["tool_trace"][-2]["input"] = call.replace('fi; done',
+                'fi; done; cat .thoughts/OTHER/notes.md')
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
             'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',

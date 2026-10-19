@@ -80,9 +80,24 @@ def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thr
             errors.append("worker_trace_observation_mismatch:" + worker)
         errors.extend(terminal_observation_errors([observation], [handle]))
         errors.extend(launch_binding_errors(trace, root, worker_binding(bindings, worker)))
+        errors.extend(result_artifact_errors(trace, bindings, root, worker_binding(bindings, worker)))
         return errors
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         return ["worker_trace_identity_invalid:" + worker + ":" + str(error)]
+
+
+def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -> list[str]:
+    """Keep analytical result bytes equal to their completed trace's snapshot."""
+    contract = bindings.get("worker_contracts", {}).get(role, {})
+    if not contract.get("result_hash_required"):
+        return []
+    source = Path(contract["result"])
+    receipt = trace.get("result_artifact", {})
+    if (source.resolve().parent != root.resolve() or not source.is_file()
+            or not isinstance(receipt, dict) or receipt.get("path") != str(source.resolve())
+            or receipt.get("sha256") != hashlib.sha256(source.read_bytes()).hexdigest()):
+        return ["worker_result_artifact_changed:" + role]
+    return []
 
 
 def activation_message(packet: dict, assignment: dict) -> str:
@@ -976,8 +991,10 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                 conditions = (["[", "-f", variable, "]"], ["test", "-f", variable])
                 suffix = ["cat", variable, "fi", "done"]
                 valid = include_probes and any(
-                    tail == ["do", "if", *condition, "then", "printf", "%s\\n", variable, "fi", "done"]
-                    for condition in conditions)
+                    tail == ["do", "if", *condition, "then", *output, "fi", "done"]
+                    for argument in (variable, '"' + variable + '"')
+                    for condition in (["[", "-f", argument, "]"], ["test", "-f", argument])
+                    for output in (["printf", "%s\\n", argument], ["echo", argument]))
                 for condition in conditions:
                     prefix = ["do", "if", *condition, "then"]
                     if tail[:len(prefix)] == prefix and tail[-len(suffix):] == suffix:

@@ -126,6 +126,28 @@ class V6Recovery(unittest.TestCase):
         self.assertTrue((root / "runtime_dispatches.json").is_file())
         return trace
 
+    def test_exported_trace_preserves_completed_result_hash(self):
+        run = self.prepare()
+        source = Path(run["artifact_root"]) / "issue_evidence_result.json"
+        source.write_text('{"run_id": "original worker output"}\n')
+        trace = json.loads(self.rejected_trace(run).read_text())
+        receipt = trace["result_artifact"]
+        self.assertEqual(receipt["path"], str(source.resolve()))
+        self.assertEqual(receipt["sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
+
+    def test_recovery_rejects_manually_added_launch_errors(self):
+        run = self.prepare()
+        trace = self.rejected_trace(run)
+        value = json.loads(trace.read_text())
+        value["launch_errors"].append("assignment_scope_violation: manually inserted")
+        value["audit"]["errors"] = runtime.trace_errors(value, require_freshness=True)
+        trace.write_text(json.dumps(value))
+        result = self.command("validate_worker_runtime.py", "--transition", "replace",
+            "--provider-status", "completed", "--rejected-trace", trace,
+            "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("rejected_result_launch_errors_mismatch", result.stdout)
+
     def test_exported_rejection_allows_only_matching_completed_task_replacement(self):
         run = self.prepare()
         trace = self.rejected_trace(run)
@@ -291,6 +313,11 @@ class V6Recovery(unittest.TestCase):
                             "Observed at": "2026-10-09T20:04:00Z"})
         observation.pop("Binding evidence")
         observation_path.write_text(json.dumps(observation))
+        template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
+        result = {"run_id": envelope["run_id"], "worker_result": {
+            **dict.fromkeys(template["worker_results"][0], "Reverified current-run evidence"),
+            "Worker": "issue-evidence", "Outcome": "complete"}}
+        Path(envelope["worker_contract"]["result"]).write_text(json.dumps(result))
         corrected_path = root / "corrected_issue_evidence_trace.json"
         exported = self.command("worker_runtime_evidence.py", "--provider-session", parent,
             "--parent-thread-id", PARENT, "--started-at", START, "--ledger", root / "runtime_dispatches.json",
@@ -311,11 +338,10 @@ class V6Recovery(unittest.TestCase):
         self.assertEqual(rejected_path.read_bytes(), rejected_bytes)
         bundle = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())
         envelope = bundle["packets"]["current_state_investigator"]
-        template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
-        result = {"run_id": envelope["run_id"], "worker_result": {
-            **dict.fromkeys(template["worker_results"][0], "Reverified current-run evidence"),
-            "Worker": "issue-evidence", "Outcome": "complete"}}
-        Path(envelope["worker_contract"]["result"]).write_text(json.dumps(result))
+        packet_path = Path(run["finalization_packet"])
+        packet = json.loads(packet_path.read_text())
+        packet["runtime_audits"] = [{"Worker": "issue-evidence", "Trace path": str(corrected_path)}]
+        packet_path.write_text(json.dumps(packet))
         merge_result(Path(envelope["finalization_packet"]), "current_state_investigator")
         self.assertEqual(json.loads(Path(envelope["finalization_packet"]).read_text())[
             "worker_results"][0]["Outcome"], "complete")

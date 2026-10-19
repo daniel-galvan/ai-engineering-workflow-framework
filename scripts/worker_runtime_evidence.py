@@ -18,6 +18,7 @@ try:
         latest_worker_dispatch,
         runtime_configurations,
         launch_binding_errors,
+        worker_binding,
     )
 except ModuleNotFoundError:
     from scripts.provider_runtime import (
@@ -27,6 +28,7 @@ except ModuleNotFoundError:
         latest_worker_dispatch,
         runtime_configurations,
         launch_binding_errors,
+        worker_binding,
     )
 
 
@@ -104,6 +106,14 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         result["spawn"].update(observed_dispatch_binding(result, artifact_root))
     launch_errors = launch_binding_errors(result, artifact_root, agent, ledger) if artifact_root else []
     result["launch_errors"] = launch_errors
+    if artifact_root is not None and (artifact_root / "role_bindings.json").is_file():
+        bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+        contract = bindings.get("worker_contracts", {}).get(worker_binding(bindings, agent), {})
+        if contract.get("result_hash_required"):
+            target = Path(contract["result"])
+            if target.resolve().parent == artifact_root.resolve() and target.is_file():
+                result["result_artifact"] = {"path": str(target.resolve()),
+                                             "sha256": hashlib.sha256(target.read_bytes()).hexdigest()}
     context_details = []
     errors = trace_errors(result, require_freshness=True, context_details=context_details)
     if errors:

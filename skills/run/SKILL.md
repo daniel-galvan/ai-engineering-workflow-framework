@@ -788,7 +788,10 @@ description: >-
    packaged collector's `--closure` route. If a worker is active, follow the provider's supported stop/wait protocol
    and observe it again. If closure cannot be verified, retain a Coordinator-owned Blocked receipt with the concrete
    observation failure. Rejection does not waive closure collection. Never invent terminal observations or withhold
-   the failure report when provider evidence is unavailable. This mode needs no invented receipt or implementation
+   the failure report when provider evidence is unavailable. TechOps and Feature Delivery failure reporting also
+   reconstruct native inventory from the registered provider ledger and save a Terminal or Blocked closure receipt.
+   Inspect that receipt; it does not replace refreshing the provider inventory before reporting failure.
+   This mode needs no invented receipt or implementation
    plan. It writes `finalization_failure.json` and `handoff_failure.md`, preserves recorded analytical contributions,
    limitations, proposed actions and existing artifacts even when `handoff` is empty, and returns exit 2 with the
    canonical
@@ -808,6 +811,8 @@ description: >-
    validation alone is not prepared-response verification. Complete delivery with
    `finalize_work_record.py --packet <packet> --publish-response <artifact-root>/handoff_response.md`.
    This validates and emits the prepared text directly and records `status: verified`; send that output unchanged.
+   After publication, the next assistant message is the final answer containing those emitted bytes. Do not perform
+   another summary pass. Publisher instructions on stderr are control messages, not part of the canonical stdout.
    If higher-priority instructions require a preamble or footer, keep the canonical artifact unchanged. Save the exact
    required UTF-8 prefix and/or suffix (including separating newlines) in current-run files. Create a separate outgoing
    response containing prefix + complete canonical bytes + suffix. Publish that outgoing file using

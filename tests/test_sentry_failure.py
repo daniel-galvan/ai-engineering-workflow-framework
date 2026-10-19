@@ -137,6 +137,7 @@ class SentryFailureRegression(unittest.TestCase):
         self.assertEqual(json.loads(receipt.read_text())["status"], "pending")
         canonical = self.root / "handoff_response.md"
         published = self.command("--packet", self.packet, "--publish-response", canonical)
+        self.assertIn("send the emitted stdout unchanged", published.stderr)
         self.assertEqual(published.returncode, 0, published.stdout + published.stderr)
         self.assertEqual(published.stdout.encode(), canonical.read_bytes())
         self.assertEqual(json.loads(receipt.read_text())["status"], "verified")

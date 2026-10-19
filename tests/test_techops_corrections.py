@@ -1,6 +1,7 @@
 """Regressions for native status reads and TechOps blocked publication."""
 
 import copy
+import hashlib
 import json
 import io
 import subprocess
@@ -19,6 +20,42 @@ import planning_contracts
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_merger_rejects_edits_after_result_audit(self):
+        from scripts.merge_techops_result import merge_result
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = root / "inputs.json"
+            inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
+                "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
+            run = prepare.prepare_run(root, "HASH-1", "techops_issue_remediation", None, False, input_manifest=inputs)
+            packet_path = Path(run["finalization_packet"])
+            source = packet_path.parent / "issue_evidence_result.json"
+            packet = json.loads(packet_path.read_text())
+            template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
+            result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"}}
+            source.write_text(json.dumps(result))
+            trace = packet_path.parent / "trace.json"
+            trace.write_text(json.dumps({"result_artifact": {"path": str(source.resolve()),
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}}))
+            packet["runtime_audits"] = [{"Worker": "issue-evidence", "Trace path": str(trace)}]
+            packet_path.write_text(json.dumps(packet))
+            merge_result(packet_path, "current_state_investigator")
+            before = packet_path.read_bytes()
+            result["worker_result"]["Confidence"] = "Coordinator rewrite"
+            source.write_text(json.dumps(result))
+            with self.assertRaisesRegex(ValueError, "worker_result_artifact_changed"):
+                merge_result(packet_path, "current_state_investigator")
+            self.assertEqual(packet_path.read_bytes(), before)
+            packet["runtime_audits"] = []
+            packet_path.write_text(json.dumps(packet))
+            Path(run["runtime_evidence"]["ledger"]).write_text("{}")
+            before = packet_path.read_bytes()
+            with self.assertRaisesRegex(ValueError, "worker_result_audit_required"):
+                merge_result(packet_path, "current_state_investigator")
+            self.assertEqual(packet_path.read_bytes(), before)
+
     def test_techops_pre_release_rejects_nonterminal_planning_identity(self):
         packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.20",
                                "Lifecycle": "planning", "State": "handoff", "Workflow outcome": "incomplete"}}

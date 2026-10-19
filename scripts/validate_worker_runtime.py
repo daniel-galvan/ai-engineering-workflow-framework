@@ -129,6 +129,12 @@ def _recovery_errors(path: Path, role: str, handle: str, dispatch: str, provider
                 or worker_binding(bindings, trace["spawn"].get("agent") or trace["spawn"].get("expected_agent")) != role):
             return ["rejected_result_current_binding_required"]
         errors = rejected_result_errors(trace, handle, dispatch)
+        try:
+            from provider_runtime import launch_binding_errors
+        except ModuleNotFoundError:
+            from scripts.provider_runtime import launch_binding_errors
+        if "launch_errors" in trace and trace["launch_errors"] != launch_binding_errors(trace, path.parent, role):
+            errors.append("rejected_result_launch_errors_mismatch")
         error = transition_error("replace", provider_status, rejected_result=not errors)
         if error:
             errors.append(error)

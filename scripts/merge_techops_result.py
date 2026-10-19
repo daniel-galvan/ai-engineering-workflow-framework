@@ -81,6 +81,23 @@ def merge_result(packet_path: Path, agent: str) -> None:
     if result.get("run_id") != packet["identity"]["Run ID"]:
         raise ValueError("worker_result_run_mismatch")
     worker, namespace = workers[agent]
+    if contract.get("result_hash_required"):
+        audit = next((row for row in packet.get("runtime_audits", []) if row.get("Worker") == worker), None)
+        ledger = bindings.get("runtime_evidence", {}).get("ledger")
+        if audit is None and ledger and Path(ledger).is_file():
+            raise ValueError("worker_result_audit_required:" + worker)
+        if audit is not None:
+            try:
+                from runtime_checks import result_artifact_errors
+            except ModuleNotFoundError:
+                from scripts.runtime_checks import result_artifact_errors
+            trace_path = Path(audit.get("Trace path", ""))
+            trace_path = trace_path if trace_path.is_absolute() else root / trace_path
+            if trace_path.resolve().parent != root:
+                raise ValueError("worker_trace_outside_current_run:" + worker)
+            errors = result_artifact_errors(json.loads(trace_path.read_text()), bindings, root, agent)
+            if errors:
+                raise ValueError(";".join(errors))
     summary = result.get("worker_result")
     template = json.loads((Path(__file__).resolve().parents[1] / "templates/finalization_packet.json").read_text())
     required = set(template["worker_results"][0])

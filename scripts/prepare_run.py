@@ -1122,6 +1122,7 @@ def prepare_run(
             manifest["worker_contracts"][agent].update({
                 "worker_id": worker, "id_namespace": namespace,
                 "result": str(artifact_root / f"{worker.replace('-', '_')}_result.json"),
+                "result_hash_required": True,
                 "result_fields": {name: list(result_template[name][0])
                                   for name in ("worker_results", *TABLES)},
                 "result_instructions": (
@@ -1132,7 +1133,8 @@ def prepare_run(
                     "rows must be a string, including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; "
                     "join multiple references in one string, never an array. "
                     "Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
-                    "Consume upstream IDs unchanged. Outcome is complete, failed or blocked, never completed. "
+                    "Reference upstream IDs unchanged without copying their rows; emit only your namespace's rows. "
+                    "Outcome is complete, failed or blocked, never completed. "
                     "Fix Design also supplies the four techops_checks. Do not include Feature Delivery-only "
                     "plan_readiness or implementation_plan_action fields; record unresolved decisions in the narrative "
                     "and worker_result. Do not edit the Coordinator packet or audits."
@@ -1152,6 +1154,7 @@ def prepare_run(
                 "worker": worker, "id_namespace": namespace,
                 "output": str(artifact_root / (worker.replace("-", "_") + ".md")),
                 "result": str(artifact_root / (worker.replace("-", "_") + "_result.json")),
+                "result_hash_required": True,
                 "result_fields": fields,
                 "instructions": (
                     "Write narrative to output and JSON to result with current run_id, worker_result, "

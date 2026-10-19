@@ -1766,9 +1766,20 @@ rejected-result guard. Only completed workers may be corrected or replaced. Audi
 another repair for the same role is blocked. Name-only file discovery does not constitute reading archived analysis.
 Unknown tool operations and actual archive content reads retain the context gate.
 
+Do not edit exported launch errors or audit outcomes to manufacture a rejected trace. Recovery rechecks launch errors
+against provider evidence. A separately observed violation that the runtime audit cannot establish must retain its
+exact operations in a workflow-failure report; it does not authorize rewriting the audit or bypassing recovery guards.
+
+For newly prepared TechOps and Feature Delivery analytical results, trace export records the completed result's path
+and SHA256. Merge and final trace checks require those bytes to remain unchanged. The Coordinator must not edit a
+worker's result to resolve schema or upstream-row conflicts. Return corrections to the owning worker through the
+supported guarded path. Workers reference upstream IDs without copying or redefining upstream rows.
+
 A terminal workflow-failure receipt binds an immutable packet snapshot and its Run ID. It may establish the closed
 invocation for explicit planning recovery after reconciliation changes the live packet. Actual provider closure remains
 required. Failed preparation or an exhausted invocation prohibits further dispatch until supported recovery succeeds.
+TechOps and Feature Delivery workflow-failure reporting reconstruct native provider inventory from the registered
+ledger and retain Terminal closure or a concrete Blocked receipt. That closure does not validate analytical findings.
 
 Analytical merging uses the same field schema as finalization. Empty tables preserve accepted rows. Repeated IDs must
 have identical contents; a corrected finding needs a new ID and an explicit supersession. References must resolve

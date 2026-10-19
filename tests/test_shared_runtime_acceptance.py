@@ -49,6 +49,9 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 input_manifest=Path(run["run_input_manifest"]["path"]), remediation_reentry=True,
                 approval_reference="Synthetic explicit user approval")
         packet = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"][role]
+        result_contract = packet.get("worker_contract") or {}
+        if result_contract.get("result_hash_required"):
+            Path(result_contract["result"]).write_text(json.dumps({"run_id": run["run_id"]}))
         contract = root / "activation.txt"
         # Test the receipt seam; lifecycle approval and stage gates have their own regression coverage.
         runtime.dispatch_message(packet, runtime.activation_message(packet, {"objective": "Inspect the supplied occurrence"}), contract)
@@ -122,6 +125,12 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                             row["Worker"] = worker
                             self.assertEqual(finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
                                              root / "finalization_packet.json", {worker}), [])
+                        if contract.get("result_hash_required"):
+                            output = Path(contract["result"])
+                            output.write_text(output.read_text() + "\n")
+                            errors = finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
+                                root / "finalization_packet.json", {row["Worker"]})
+                            self.assertIn("worker_result_artifact_changed:" + role, errors)
 
     def test_closure_accounts_for_rejected_spawn_without_accepting_its_analysis(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -177,6 +186,39 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                     "--trace", str(root / "native_trace.json")], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(json.loads((root / "native_trace.json").read_text())["audit"]["status"], "passed")
+
+    def test_workflow_failure_collects_closure_from_every_native_handle(self):
+        for status in ({"completed": "Done"}, "running"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+                run, root, role, time, event, parent, _, _ = fixture
+                parent.extend([
+                    event(20, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
+                        call_id="rejected", arguments=json.dumps({"task_name": "rejected"})),
+                    event(20, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                        "agent_path": "/root/rejected", "agent_thread_id": "00000000-0000-0000-0000-000000000003"}),
+                    event(21, "response_item", type="function_call", namespace="collaboration", name="list_agents",
+                        call_id="inventory", arguments="{}"),
+                    event(22, "response_item", type="function_call_output", call_id="inventory", output=json.dumps({
+                        "agents": [{"agent_name": "/root/worker", "agent_status": status},
+                                   {"agent_name": "/root/rejected", "agent_status": {"completed": "Rejected"}}]}))])
+                _, ledger = self.export(fixture)
+                Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+                result = subprocess.run([sys.executable, str(preparation.ROOT / "scripts/finalize_work_record.py"),
+                    "--packet", str(root / "finalization_packet.json"), "--workflow-failure", "Synthetic control failure"],
+                    capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                closure = json.loads((root / "runtime_closure.json").read_text())
+                receipt = json.loads((root / "finalization_failure.json").read_text())
+                if isinstance(status, dict):
+                    self.assertEqual(receipt["runtime_closure"], "terminal")
+                    self.assertEqual({row["Provider handle"] for row in closure["terminal_observations"]},
+                                     {"/root/worker", "/root/rejected"})
+                    self.assertIn("provider closure verified for every activated handle", result.stdout)
+                else:
+                    self.assertEqual(receipt["runtime_closure"], "unverified")
+                    self.assertEqual(closure["runtime_closure"][0]["Runtime status"], "Blocked")
+                    self.assertNotIn("terminal_observations", closure)
 
     def test_native_inventory_never_uses_an_older_terminal_status(self):
         for problem in ("absent", "missing", "active", "stale", "unmapped"):
