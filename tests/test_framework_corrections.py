@@ -44,6 +44,13 @@ class FrameworkCorrections(unittest.TestCase):
         self.source.write_text(json.dumps(self.result))
         merge_result(self.packet_path, "current_state_investigator")
 
+    def test_failure_without_ledger_retains_concrete_closure_blocker(self):
+        self.assertFalse((self.root / "runtime_dispatches.json").exists())
+        self.assertEqual(finalizer.collect_failure_closure(self.packet_path), "unverified")
+        closure = json.loads((self.root / "runtime_closure.json").read_text())["runtime_closure"][0]
+        self.assertEqual(closure["Runtime status"], "Blocked")
+        self.assertIn("runtime_dispatch_ledger_missing", closure["Closure evidence or blocker"])
+
     def test_empty_result_preserves_evidence_and_conflicts_do_not_mutate_packet(self):
         self.merge()
         saved = self.packet_path.read_bytes()
@@ -54,6 +61,21 @@ class FrameworkCorrections(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "row_conflict"):
             self.merge()
         self.assertEqual(saved, self.packet_path.read_bytes())
+
+    def test_feature_finalization_rejects_coordinator_rewrites_of_accepted_analysis(self):
+        from scripts.merge_techops_result import merged_result_errors
+        self.merge()
+        packet = json.loads(self.packet_path.read_text())
+        bindings = json.loads((self.root / "role_bindings.json").read_text())
+        self.assertEqual(merged_result_errors(packet, bindings, self.root), [])
+        packet["evidence"][0]["Source"] = "Coordinator rewrite"
+        self.assertIn("worker_owned_record_changed:feature-context:evidence:E-FC-001",
+                      merged_result_errors(packet, bindings, self.root))
+        packet["identity"].update({"Lifecycle": "planning", "State": "awaiting_input",
+            "Requested profile": "standard", "Activated profile": "standard", "Executed profile": "standard"})
+        packet["finalization"]["Durable artifact root"] = str(self.root)
+        self.assertIn("worker_owned_record_changed:feature-context:evidence:E-FC-001",
+                      finalizer._feature_delivery_packet_contract_errors(packet))
 
     def test_bad_types_and_dangling_references_fail_before_mutation(self):
         saved = self.packet_path.read_bytes()

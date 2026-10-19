@@ -87,7 +87,7 @@ def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thr
 
 
 def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -> list[str]:
-    """Keep analytical result bytes equal to their completed trace's snapshot."""
+    """Require unchanged analytical bytes and the same contract used at durable acceptance."""
     contract = bindings.get("worker_contracts", {}).get(role, {})
     if not contract.get("result_hash_required"):
         return []
@@ -97,6 +97,15 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
             or not isinstance(receipt, dict) or receipt.get("path") != str(source.resolve())
             or receipt.get("sha256") != hashlib.sha256(source.read_bytes()).hexdigest()):
         return ["worker_result_artifact_changed:" + role]
+    try:
+        try:
+            from merge_techops_result import validated_result
+        except ModuleNotFoundError:
+            from scripts.merge_techops_result import validated_result
+        validated_result(json.loads((root / "finalization_packet.json").read_text()),
+                         json.loads(source.read_text()), bindings, role)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        return ["worker_result_contract_invalid:" + role + ":" + str(error)]
     return []
 
 

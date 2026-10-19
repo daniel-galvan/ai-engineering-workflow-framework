@@ -759,8 +759,18 @@ def _feature_delivery_packet_contract_errors(
                 errors.append(f"Feature Delivery worker {worker} ledger/result outcomes must match")
     bindings = root / "role_bindings.json" if (root := Path(str(
         packet.get("finalization", {}).get("Durable artifact root", "")))).is_absolute() else None
-    if not pre_handoff and bindings and bindings.is_file():
-        if json.loads(bindings.read_text()).get("runtime_evidence"):
+    if bindings and bindings.is_file():
+        try:
+            from merge_techops_result import merged_result_errors
+        except ModuleNotFoundError:
+            from scripts.merge_techops_result import merged_result_errors
+        try:
+            manifest = json.loads(bindings.read_text())
+            errors.extend(merged_result_errors(packet, manifest, root))
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            errors.append("worker_result_source_invalid:" + str(error))
+            manifest = {}
+        if not pre_handoff and manifest.get("runtime_evidence"):
             errors.extend(_worker_runtime_audit_errors(packet, root / "finalization_packet.json", {
                 row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"
             }))

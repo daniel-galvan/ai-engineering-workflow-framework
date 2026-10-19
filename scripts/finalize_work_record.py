@@ -1609,7 +1609,8 @@ def self_test() -> None:
     run_self_check("finalize_work_record", "self_test")
 
 
-def collect_failure_closure(packet_path: Path) -> str:
+def collect_failure_closure(packet_path: Path, provider_session: Path | None = None,
+                            parent_thread_id: str | None = None) -> str:
     """Retain provider closure even when analytical finalization cannot proceed."""
     root = packet_path.parent
     bindings_path = root / "role_bindings.json"
@@ -1619,8 +1620,6 @@ def collect_failure_closure(packet_path: Path) -> str:
     if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"}:
         return "unverified"
     ledger_path = Path(bindings.get("runtime_evidence", {}).get("ledger", root / "runtime_dispatches.json"))
-    if not ledger_path.is_file():
-        return "unverified"
     try:
         from worker_runtime_evidence import read_runtime_events, terminal_closure
     except ModuleNotFoundError:
@@ -1628,9 +1627,18 @@ def collect_failure_closure(packet_path: Path) -> str:
     try:
         if ledger_path.resolve().parent != root.resolve():
             raise ValueError("runtime_dispatch_ledger_outside_current_run")
-        saved = json.loads(ledger_path.read_text())
-        current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
-            saved["run_started_at"], tuple(Path(p) for p in saved.get("identity_sessions", [])))
+        if provider_session is not None:
+            if not parent_thread_id:
+                raise ValueError("provider_parent_thread_id_required")
+            current = read_runtime_events(provider_session, parent_thread_id,
+                                          bindings["runtime_evidence"]["run_started_at"])
+        else:
+            if not ledger_path.is_file():
+                raise ValueError("runtime_dispatch_ledger_missing: supply current provider session and parent thread ID")
+            saved = json.loads(ledger_path.read_text())
+            current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
+                saved["run_started_at"], tuple(Path(p) for p in saved.get("identity_sessions", [])))
+        ledger_path.write_text(json.dumps(current, indent=2) + "\n")
         closure = terminal_closure(current)
         state = "terminal"
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
@@ -1882,6 +1890,8 @@ def main() -> int:
     parser.add_argument("--blocked-runtime-snapshot", action="store_true")
     parser.add_argument("--publish-technical-spike-report", type=Path)
     parser.add_argument("--workflow-failure")
+    parser.add_argument("--provider-session", type=Path, help="Current parent record for workflow-failure closure collection")
+    parser.add_argument("--parent-thread-id", help="Provider identity for the workflow-failure parent record")
     parser.add_argument("--analytical-failure")
     parser.add_argument("--analytical-failure-stage", choices=tuple(ANALYTICAL_FAILURE_STAGES))
     parser.add_argument("--completed-handle", action="append", default=[])
@@ -1895,6 +1905,9 @@ def main() -> int:
     parser.add_argument("--presentation-suffix", type=Path, help="UTF-8 text required after the canonical report")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    if (args.provider_session or args.parent_thread_id) and not (
+            args.workflow_failure and args.provider_session and args.parent_thread_id):
+        parser.error("--provider-session and --parent-thread-id require each other and --workflow-failure")
     if args.publish_response:
         if args.verify_response:
             parser.error("publish-response and verify-response are separate modes")
@@ -1976,7 +1989,7 @@ def main() -> int:
         try:
             packet_path = args.packet.resolve()
             # This receipt reports failure; it never certifies activation, readiness or runtime release.
-            closure_state = collect_failure_closure(packet_path)
+            closure_state = collect_failure_closure(packet_path, args.provider_session, args.parent_thread_id)
             _, previous = _finalization_status(packet_path)
             packet = json.loads(packet_path.read_text())
             frozen = snapshot_bytes(packet)

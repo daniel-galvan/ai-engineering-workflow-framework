@@ -39,7 +39,7 @@ class PackagedLifecycle(unittest.TestCase):
                     (playbook, worker, recover)
                     for playbook, worker in (("techops_issue_remediation", "issue-evidence"),
                                              ("feature_delivery", "feature-context"))
-                    for recover in (False, True)):
+                    for recover in (False, "missing", "malformed")):
                 with self.subTest(playbook=playbook, recover=recover):
                     repository = Path(directory) / (playbook + str(recover))
                     repository.mkdir()
@@ -66,6 +66,8 @@ class PackagedLifecycle(unittest.TestCase):
                         "Worker": worker, "Outcome": "complete"}})
                     if not recover:
                         Path(contract["result"]).write_text(worker_result)
+                    elif recover == "malformed":
+                        Path(contract["result"]).write_text(json.dumps({"run_id": run["run_id"]}))
                     start = datetime.fromisoformat(run["runtime_evidence"]["run_started_at"].replace("Z", "+00:00"))
                     stamp = lambda seconds: (start + timedelta(seconds=seconds)).isoformat()
                     event = lambda seconds, kind, **payload: {
@@ -143,9 +145,16 @@ class PackagedLifecycle(unittest.TestCase):
                     self.assertEqual(accepted["runtime_audits"][0]["Worker"], worker)
                     self.assertEqual(accepted["worker_results"][0]["Outcome"], "complete")
                     closure = root / "runtime_closure.json"
-                    command("worker_runtime_evidence.py", *collector, "--closure", closure)
+                    if recover:
+                        Path(run["runtime_evidence"]["ledger"]).unlink()
+                        failure_source = ("--provider-session", parent, "--parent-thread-id", parent_id)
+                    else:
+                        command("worker_runtime_evidence.py", *collector, "--closure", closure)
+                        failure_source = ()
                     command("finalize_work_record.py", "--packet", packet, "--workflow-failure",
-                            "Synthetic later control failure", expected=2)
+                            "Synthetic later control failure", *failure_source, expected=2)
+                    self.assertTrue(Path(run["runtime_evidence"]["ledger"]).is_file())
+                    self.assertTrue(closure.is_file())
                     receipt = json.loads((root / "finalization_failure.json").read_text())
                     self.assertEqual(receipt["runtime_closure"], "terminal")
                     response = root / "handoff_response.md"

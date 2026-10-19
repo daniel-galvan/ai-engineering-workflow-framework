@@ -160,7 +160,10 @@ class ActivationDelivery(unittest.TestCase):
         source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
         contract = packet.get("worker_contract", {})
         if contract.get("result_hash_required"):
-            Path(contract["result"]).write_text(json.dumps({"run_id": packet["run_id"]}))
+            fields = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())["worker_results"][0]
+            Path(contract["result"]).write_text(json.dumps({"run_id": packet["run_id"], "worker_result": {
+                **dict.fromkeys(fields, "Synthetic evidence blocker"),
+                "Worker": "feature-context", "Outcome": "blocked"}}))
         return export_worker_trace(ledger, source, "current_state_investigator", observation,
                                    run_id=packet["run_id"], artifact_root=self.artifacts)
 

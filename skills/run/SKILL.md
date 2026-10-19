@@ -488,7 +488,10 @@ description: >-
    a delivery flag or prepared bundle alone does not prove delivery.
    The exporter checks parent/child identity, the latest dispatch and fresh status. It writes canonical
    `last_dispatch_at`, `tool_trace`, `spawn` and fan-in events.
-   Run `--trace <path> --require-freshness` before acceptance. Never write an ad hoc exporter or repair
+   Run `--trace <path> --require-freshness` before acceptance. For prepared TechOps and Feature Delivery analytical
+   results, the audit checks the same result contract as the merger, including schema and evidence references.
+   A malformed result is an audited rejection eligible for the bounded correction below; a legitimate evidence
+   blocker with a valid result envelope remains acceptable. Never write an ad hoc exporter or repair
    dispatch timestamps.
    For the sequential Standard Sentry path, refresh `list_agents`, then run the same collector with its parent,
    start and ledger arguments plus `--closure <artifact-root>/runtime_closure.json`. This derives canonical Terminal
@@ -501,9 +504,10 @@ description: >-
    Keep a rejected trace: the exporter writes its `audit.status: rejected`, exact errors and blocked fan-in receipt
    before returning exit 2. Do not merge that result. A forbidden trace read requires a fresh worker with the same
    typed inputs; correction cannot erase the old worker's context. Output or envelope mistakes may use the same worker.
-   Before redispatch, move narrative and result files to `<stem>.rejected.<extension>`
-   in the active root; leave assigned output paths absent. The recovery activation guard quarantines the prepared
-   worker-contract output mechanically. Preserve the rejected trace under its original path. These audit files are
+   Leave rejected narrative and result files in place until the corrected-activation guard validates their audit.
+   The guard then moves both prepared outputs to `<stem>.rejected.<extension>` in the active root, leaving their
+   assigned paths absent. Do not rename or edit these files before the guard; that changes the audited bytes.
+   Preserve the rejected trace under its original path. These audit files are
    not worker inputs; a replacement must never read a rejected output left at its assigned path.
    Export the worker's complete current-run activity to a new trace path using its fresh dispatch observation.
    If clean isolation requires a fresh worker, use the complete corrected-activation command above, then launch
@@ -794,6 +798,10 @@ description: >-
    observation failure. Rejection does not waive closure collection. Never invent terminal observations or withhold
    the failure report when provider evidence is unavailable. TechOps and Feature Delivery failure reporting also
    reconstruct native inventory from the registered provider ledger and save a Terminal or Blocked closure receipt.
+   If the ledger was never collected, pass `--provider-session <exact-current-parent-record>` and
+   `--parent-thread-id <current-parent-thread-id>` to the failure command. It reconstructs the ledger from native
+   dispatches and collects closure against the prepared run start. Missing provider evidence produces a concrete
+   Blocked closure receipt; it cannot certify terminal closure.
    Inspect that receipt; it does not replace refreshing the provider inventory before reporting failure.
    This mode needs no invented receipt or implementation
    plan. It writes `finalization_failure.json` and `handoff_failure.md`, preserves recorded analytical contributions,

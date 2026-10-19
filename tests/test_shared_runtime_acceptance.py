@@ -51,7 +51,15 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         packet = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"][role]
         result_contract = packet.get("worker_contract") or {}
         if result_contract.get("result_hash_required"):
-            Path(result_contract["result"]).write_text(json.dumps({"run_id": run["run_id"]}))
+            from scripts.merge_techops_result import FEATURE_WORKERS, WORKERS
+            workers = FEATURE_WORKERS if playbook == "feature_delivery" else WORKERS
+            fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())["worker_results"][0]
+            result = {"run_id": run["run_id"], "worker_result": {
+                **dict.fromkeys(fields, "Synthetic evidence blocker"),
+                "Worker": workers[role][0], "Outcome": "blocked"}}
+            if result_contract.get("planning_disposition_required"):
+                result.update(plan_readiness="awaiting_input", implementation_plan_action="omit")
+            Path(result_contract["result"]).write_text(json.dumps(result))
         contract = root / "activation.txt"
         # Test the receipt seam; lifecycle approval and stage gates have their own regression coverage.
         runtime.dispatch_message(packet, runtime.activation_message(packet, {"objective": "Inspect the supplied occurrence"}), contract)
@@ -120,6 +128,19 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(packet["worker_results"][0]["Outcome"], "complete")
             merge_result(packet_path, role, trace=path)
             self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
+
+    def test_malformed_result_is_a_rejected_trace_eligible_for_bounded_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "dependency_analyst")
+            run, root, role, *_ = fixture
+            Path(run["worker_contracts"][role]["result"]).write_text(json.dumps({"run_id": run["run_id"]}))
+            trace, ledger = self.export(fixture)
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            self.assertEqual(trace["audit"]["status"], "rejected")
+            self.assertTrue(any("worker_result_summary_schema_invalid" in error
+                                for error in trace["audit"]["errors"]))
+            self.assertEqual(runtime.rejected_result_errors(trace, trace["spawn"]["provider_handle"],
+                                                          trace["last_dispatch_at"]), [])
 
     def test_missing_result_is_a_rejected_trace_eligible_for_bounded_recovery(self):
         with tempfile.TemporaryDirectory() as directory:

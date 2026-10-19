@@ -2,6 +2,7 @@
 """Merge a prepared TechOps or Feature Delivery analytical result without retyping evidence."""
 
 import argparse
+import copy
 import json
 import re
 import tempfile
@@ -36,7 +37,8 @@ def merged_result_errors(packet: dict, manifest: dict, root: Path, *, table_proj
     """Accepted analytical records remain owned by their producing workers."""
     completed = {row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"}
     errors = []
-    for agent, (worker, _) in WORKERS.items():
+    workers = FEATURE_WORKERS if manifest.get("playbook") == "feature_delivery" else WORKERS
+    for agent, (worker, _) in workers.items():
         contract = manifest.get("worker_contracts", {}).get(agent, {})
         if worker not in completed or not contract.get("result"):
             continue
@@ -55,67 +57,20 @@ def merged_result_errors(packet: dict, manifest: dict, root: Path, *, table_proj
     return errors
 
 
-def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) -> None:
-    root = packet_path.parent.resolve()
-    try:
-        from validate_worker_runtime import prepared_package_errors, _pending_rejections
-    except ModuleNotFoundError:
-        from scripts.validate_worker_runtime import prepared_package_errors, _pending_rejections
-    errors = prepared_package_errors(root)
-    if errors:
-        raise ValueError(";".join(errors))
-    bindings = json.loads((root / "role_bindings.json").read_text())
+def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> dict:
+    """Apply the shared analytical contract in memory before audit or durable acceptance."""
+    packet = copy.deepcopy(packet)
     workers = FEATURE_WORKERS if bindings.get("playbook") == "feature_delivery" else WORKERS
     if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"} or agent not in workers:
         raise ValueError("analytical_binding_required")
-    if agent in _pending_rejections(root):
-        raise ValueError("worker_result_recovery_authorization_required:" + agent)
-    contract = bindings["worker_contracts"][agent]
-    result_path = Path(contract["result"])
-    if result_path.resolve().parent != root:
-        raise ValueError("worker_result_outside_current_run")
-    result = json.loads(result_path.read_text())
-    packet = json.loads(packet_path.read_text())
+    if not isinstance(result, dict):
+        raise ValueError("worker_result_object_required")
     if packet["identity"].get("Lifecycle", "") not in {"", "planning"}:
         raise ValueError("techops_planning_packet_required")
     if result.get("run_id") != packet["identity"]["Run ID"]:
         raise ValueError("worker_result_run_mismatch")
     worker, namespace = workers[agent]
-    if trace is not None:
-        trace = trace.resolve()
-        if trace.parent != root:
-            raise ValueError("worker_trace_outside_current_run:" + worker)
-        saved = json.loads(trace.read_text())
-        audit = {**saved["status_observation"], "Worker": worker, "Provider status": "completed",
-                 "Trace path": str(trace), "Trace retrieval": saved["trace_retrieval"]}
-        try:
-            from planning_contracts import _worker_runtime_audit_errors
-        except ModuleNotFoundError:
-            from scripts.planning_contracts import _worker_runtime_audit_errors
-        errors = _worker_runtime_audit_errors({"runtime_audits": [audit]}, packet_path, {worker})
-        if errors:
-            raise ValueError(";".join(errors))
-        packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
-                                    if row.get("Worker") != worker] + [audit]
-    if contract.get("result_hash_required"):
-        audit = next((row for row in packet.get("runtime_audits", []) if row.get("Worker") == worker), None)
-        ledger = bindings.get("runtime_evidence", {}).get("ledger")
-        if audit is None and ledger and Path(ledger).is_file():
-            raise ValueError("worker_result_audit_required:" + worker
-                             + ": Coordinator must rerun this merger with --trace <passed-current-run-trace>; "
-                               "missing Coordinator audit bookkeeping is not a worker rejection")
-        if audit is not None:
-            try:
-                from runtime_checks import result_artifact_errors
-            except ModuleNotFoundError:
-                from scripts.runtime_checks import result_artifact_errors
-            trace_path = Path(audit.get("Trace path", ""))
-            trace_path = trace_path if trace_path.is_absolute() else root / trace_path
-            if trace_path.resolve().parent != root:
-                raise ValueError("worker_trace_outside_current_run:" + worker)
-            errors = result_artifact_errors(json.loads(trace_path.read_text()), bindings, root, agent)
-            if errors:
-                raise ValueError(";".join(errors))
+    contract = bindings["worker_contracts"][agent]
     summary = result.get("worker_result")
     template = json.loads((Path(__file__).resolve().parents[1] / "templates/finalization_packet.json").read_text())
     required = set(template["worker_results"][0])
@@ -192,6 +147,67 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
         packet["techops_checks"] = result.get("techops_checks")
     if errors:
         raise ValueError("; ".join(dict.fromkeys(errors)))
+    return packet
+
+
+def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) -> None:
+    root = packet_path.parent.resolve()
+    try:
+        from validate_worker_runtime import prepared_package_errors, _pending_rejections
+    except ModuleNotFoundError:
+        from scripts.validate_worker_runtime import prepared_package_errors, _pending_rejections
+    errors = prepared_package_errors(root)
+    if errors:
+        raise ValueError(";".join(errors))
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    workers = FEATURE_WORKERS if bindings.get("playbook") == "feature_delivery" else WORKERS
+    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"} or agent not in workers:
+        raise ValueError("analytical_binding_required")
+    if agent in _pending_rejections(root):
+        raise ValueError("worker_result_recovery_authorization_required:" + agent)
+    contract = bindings["worker_contracts"][agent]
+    result_path = Path(contract["result"])
+    if result_path.resolve().parent != root:
+        raise ValueError("worker_result_outside_current_run")
+    result = json.loads(result_path.read_text())
+    packet = json.loads(packet_path.read_text())
+    worker, _ = workers[agent]
+    if trace is not None:
+        trace = trace.resolve()
+        if trace.parent != root:
+            raise ValueError("worker_trace_outside_current_run:" + worker)
+        saved = json.loads(trace.read_text())
+        audit = {**saved["status_observation"], "Worker": worker, "Provider status": "completed",
+                 "Trace path": str(trace), "Trace retrieval": saved["trace_retrieval"]}
+        try:
+            from planning_contracts import _worker_runtime_audit_errors
+        except ModuleNotFoundError:
+            from scripts.planning_contracts import _worker_runtime_audit_errors
+        errors = _worker_runtime_audit_errors({"runtime_audits": [audit]}, packet_path, {worker})
+        if errors:
+            raise ValueError(";".join(errors))
+        packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
+                                    if row.get("Worker") != worker] + [audit]
+    if contract.get("result_hash_required"):
+        audit = next((row for row in packet.get("runtime_audits", []) if row.get("Worker") == worker), None)
+        ledger = bindings.get("runtime_evidence", {}).get("ledger")
+        if audit is None and ledger and Path(ledger).is_file():
+            raise ValueError("worker_result_audit_required:" + worker
+                             + ": Coordinator must rerun this merger with --trace <passed-current-run-trace>; "
+                               "missing Coordinator audit bookkeeping is not a worker rejection")
+        if audit is not None:
+            try:
+                from runtime_checks import result_artifact_errors
+            except ModuleNotFoundError:
+                from scripts.runtime_checks import result_artifact_errors
+            trace_path = Path(audit.get("Trace path", ""))
+            trace_path = trace_path if trace_path.is_absolute() else root / trace_path
+            if trace_path.resolve().parent != root:
+                raise ValueError("worker_trace_outside_current_run:" + worker)
+            errors = result_artifact_errors(json.loads(trace_path.read_text()), bindings, root, agent)
+            if errors:
+                raise ValueError(";".join(errors))
+    packet = validated_result(packet, result, bindings, agent)
     with tempfile.NamedTemporaryFile("w", dir=root, delete=False) as stream:
         temporary = Path(stream.name)
         try:

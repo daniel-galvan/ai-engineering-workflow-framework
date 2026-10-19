@@ -284,7 +284,9 @@ class ContextOperationAudit(unittest.TestCase):
             "Latest turn status": "completed", "Thread status": "idle"}
         observation.pop("Last dispatch at")
         Path(self.run["worker_contracts"]["current_state_investigator"]["result"]).write_text(
-            json.dumps({"run_id": self.run["run_id"]}))
+            json.dumps({"run_id": self.run["run_id"], "worker_result": {
+                **dict.fromkeys(json.loads(finalizer.PACKET_TEMPLATE.read_text())["worker_results"][0], "Observed"),
+                "Worker": "feature-context", "Outcome": "blocked"}}))
         exported = export_worker_trace(ledger, source, "feature-context", observation,
                                        run_id=trace["run_id"], artifact_root=self.root)
         self.assertEqual(exported["audit"], {"status": "passed", "errors": []})
@@ -549,7 +551,9 @@ class ContextOperationAudit(unittest.TestCase):
         trace_path = root / "trace.json"
         contract = run["worker_contracts"].get(role, {})
         if contract.get("result_hash_required"):
-            Path(contract["result"]).write_text(json.dumps({"run_id": run["run_id"]}))
+            Path(contract["result"]).write_text(json.dumps({"run_id": run["run_id"], "worker_result": {
+                **dict.fromkeys(json.loads(finalizer.PACKET_TEMPLATE.read_text())["worker_results"][0], "Observed"),
+                "Worker": contract["worker_id"], "Outcome": "blocked"}}))
         result = subprocess.run([sys.executable, run["runtime_evidence"]["collector"], "--provider-session", str(parent),
             "--parent-thread-id", SOURCE, "--started-at", time(0), "--ledger", run["runtime_evidence"]["ledger"],
             "--worker-session", str(session), "--observation", str(observation), "--agent", role,

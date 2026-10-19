@@ -299,6 +299,17 @@ class PlanningRecovery(unittest.TestCase):
         manifest = self.artifacts / 'asset_manifest.json'
         manifest.write_text(json.dumps(asset))
         self.packet_path.write_text(json.dumps(self.packet))
+        self.assertIn('worker_result_source_missing:feature-context',
+                      finalizer.feature_delivery_pre_handoff_errors(self.packet_path))
+        # This gate fixture supplies source envelopes, not worker acceptance evidence.
+        for row, role in zip(self.packet['worker_results'],
+                             ('current_state_investigator', 'dependency_analyst', 'solution_architect')):
+            result = {'run_id': self.prepared['run_id'], 'worker_result': row}
+            if role == 'current_state_investigator':
+                result.update({key: self.packet[key] for key in ('evidence', 'claims', 'decisions', 'actions')})
+            if role == 'solution_architect':
+                result.update(plan_readiness='awaiting_input', implementation_plan_action='omit')
+            Path(bindings['worker_contracts'][role]['result']).write_text(json.dumps(result))
         self.assertEqual(finalizer.feature_delivery_pre_handoff_errors(self.packet_path), [])
         asset['sources'][0]['evidence_refs'] = ['E-OLD-001']
         manifest.write_text(json.dumps(asset))
