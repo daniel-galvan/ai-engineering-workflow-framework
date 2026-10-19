@@ -215,6 +215,15 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                     self.assertEqual({row["Provider handle"] for row in closure["terminal_observations"]},
                                      {"/root/worker", "/root/rejected"})
                     self.assertIn("provider closure verified for every activated handle", result.stdout)
+                    self.assertIn("runtime terminal", result.stdout)
+                    self.assertNotIn("runtime closure unverified", result.stdout)
+                    for missing in (False, True):
+                        (root / "runtime_closure.json").write_text("not valid JSON")
+                        if missing:
+                            (root / "runtime_closure.json").unlink()
+                        report = finalizer.failure_handoff(root / "finalization_packet.json", "Synthetic failure")
+                        self.assertIn("runtime closure unverified", report)
+                        self.assertNotIn("provider closure verified", report)
                 else:
                     self.assertEqual(receipt["runtime_closure"], "unverified")
                     self.assertEqual(closure["runtime_closure"][0]["Runtime status"], "Blocked")

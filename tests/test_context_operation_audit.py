@@ -330,6 +330,22 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("provider_binding_not_delivered", runtime.trace_errors(trace))
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
 
+    def test_awk_checked_activation_read_proves_binding(self):
+        for quote in ('"', r'\"'):
+            trace = self.instruction_read_trace()
+            path = trace["spawn"]["dispatch_file"]
+            digest = trace["spawn"]["dispatch_file_sha256"]
+            command = ("actual=$(shasum -a 256 " + path + " | awk '{print $1}'); "
+                       + f'if [ {quote}$actual{quote} != {quote}{digest}{quote} ]; then '
+                       + "printf 'SHA256 mismatch: %s\\\\n' " + quote + "$actual" + quote
+                       + "; exit 2; fi; cat " + path)
+            trace["tool_trace"][0]["input"] = 'await tools.exec_command(' + json.dumps({"cmd": command}) + ')'
+            self.assertEqual(runtime.trace_errors(trace), [])
+            trace["tool_trace"][0]["input"] = 'await tools.exec_command(' + json.dumps({
+                "cmd": command + '; cat .thoughts/ITEM-1/runs/prior/notes.md'}) + ')'
+            self.assertIn("provider_binding_not_delivered", runtime.trace_errors(trace))
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
     def test_current_directory_heading_and_ancestor_reads_are_not_archive_consumption(self):
         trace = self.instruction_read_trace()
         command = ('ls -la .thoughts/ITEM-1; for f in AGENTS.md .thoughts/AGENTS.md '

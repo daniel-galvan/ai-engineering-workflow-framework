@@ -791,6 +791,12 @@ def _read_targets(command: str) -> list[str]:
         r'exit 2; fi; printf \'SHA256_OK %s\\n\' "\$actual"; cat "\$packet"', command)
     if verified_read:
         return [verified_read[1]]
+    checked_read = re.fullmatch(
+        r"actual=\$\((?:sha256sum|shasum -a 256) ([^\s;&|<>$`\"'\\]+) \| awk '\{print \$1\}'\); "
+        r'if \[ (\\?"?)\$actual\2 != (\\?"?)[0-9a-f]{64}\3 \]; then '
+        r"printf 'SHA256 mismatch: %s\\{1,2}n' (\\?\"?)\$actual\4; exit 2; fi; cat \1", command)
+    if checked_read:
+        return [checked_read[1]]
     status_suffix = re.fullmatch(r"(.+?)(?:;| &&) git status --short", command, re.S)
     if status_suffix:
         return _read_targets(status_suffix[1])

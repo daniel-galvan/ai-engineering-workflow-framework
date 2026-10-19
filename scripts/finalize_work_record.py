@@ -1815,7 +1815,13 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     }
     _, receipt = _finalization_status(packet_path)
     if receipt.get("runtime_closure") == "terminal":
-        provisional["handoff"]["execution"] += "; provider closure verified for every activated handle."
+        try:
+            closure = json.loads((root / "runtime_closure.json").read_text())["runtime_closure"]
+            if _runtime_closed(closure):
+                provisional["runtime_closure"] = closure
+                provisional["handoff"]["execution"] += "; provider closure verified for every activated handle."
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass  # Failure reporting must remain available when the saved closure cannot be read.
     if receipt.get("validation_performed") is False:
         provisional["handoff"]["workflow_result"] = "Workflow stopped on a Coordinator-reported control failure. " + (
             "Provisional work summary: " + summary)
