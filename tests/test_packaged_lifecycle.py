@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+from scripts.provider_runtime import related_run_status_projection_source
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -93,6 +95,84 @@ class PackagedLifecycle(unittest.TestCase):
             rejected = command("validate_worker_runtime.py", *activation, expected=2)
             self.assertTrue(any("parent_context_turn_mismatch" in error for error in rejected["errors"]))
             self.assertEqual(packet.read_bytes(), before)
+
+    def test_shipped_prepare_requires_correlated_terminal_status_before_stale_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.package(directory)
+            repository = Path(directory) / "repository"
+            repository.mkdir()
+            subprocess.run(["git", "-C", str(repository), "init", "-q"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repository), "config", "user.name", "Fixture"],
+                           check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repository), "config", "user.email", "fixture@example.invalid"],
+                           check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repository), "commit", "--allow-empty", "-qm", "Initial fixture"],
+                           check=True, capture_output=True)
+
+            parent_id, turn_id, child_id = ("00000000-0000-0000-0000-000000000001",
+                                            "00000000-0000-0000-0000-000000000002",
+                                            "00000000-0000-0000-0000-000000000003")
+            stamp = datetime.now().astimezone().isoformat()
+            parent = Path(directory) / "parent.jsonl"
+            core_events = [
+                {"timestamp": stamp, "type": "session_meta", "payload": {"id": parent_id}},
+                {"timestamp": stamp, "type": "turn_context", "payload": {"turn_id": turn_id}},
+            ]
+            input_manifest = Path(directory) / "inputs.json"
+            input_manifest.write_text(json.dumps({"inputs": [{"Input ID": "IN-001",
+                "Input or artifact": "Current synthetic issue", "Source or path": "User",
+                "Authority": "User", "Status": "Registered"}]}))
+
+            def save_parent(status):
+                events = list(core_events)
+                if status is not None:
+                    call_id = "related-run-status"
+                    projection = related_run_status_projection_source("ITEM-1", parent_id, (child_id,))
+                    events.extend([
+                        {"timestamp": stamp, "type": "response_item", "payload": {
+                            "type": "custom_tool_call", "name": "exec", "call_id": call_id, "input": projection}},
+                        {"timestamp": stamp, "type": "response_item", "payload": {
+                            "type": "custom_tool_call_output", "call_id": call_id,
+                            "output": [{"type": "text", "text": json.dumps([
+                                {"id": child_id, "status": status}])}]}}])
+                parent.write_text("".join(json.dumps(row) + "\n" for row in events))
+
+            def command(*args, expected=0):
+                result = subprocess.run([sys.executable, str(package / "scripts" / "prepare_run.py"), *map(str, args)],
+                                        cwd=package, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                return json.loads(result.stdout)
+
+            base = ("--execution-repository", repository, "--work-item", "ITEM-1", "--playbook",
+                    "techops_issue_remediation", "--input-manifest", input_manifest, "--provider-session", parent)
+            save_parent(None)
+            prior = command(*base)
+            root = Path(prior["artifact_root"])
+            prior_run_id = prior["run_id"]
+            work_record = root / "work_record.md"
+            record = work_record.read_text()
+            state_row = next(line for line in record.splitlines() if line.startswith("| State |"))
+            work_record.write_text(record.replace(state_row, "| State | in_progress |"))
+            ledger = root / "runtime_dispatches.json"
+            ledger.write_text(json.dumps({"thread_mappings": {"/root/prior_worker": child_id},
+                "events": [{"Operation": "spawn_agent", "Provider handle": "/root/prior_worker",
+                            "Thread ID": child_id}], "failed_dispatches": []}))
+            before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+
+            save_parent("running")
+            blocked = command(*base, "--archive-stale-run", expected=2)
+            self.assertIn("stale_run_related_task_active:" + child_id, blocked["reason"])
+            self.assertIn("| State | in_progress |", work_record.read_text())
+            self.assertEqual(before, {path.relative_to(root): path.read_bytes()
+                                      for path in root.rglob("*") if path.is_file()})
+
+            save_parent("completed")
+            prepared = command(*base, "--archive-stale-run")
+            self.assertNotEqual(prepared["run_id"], prior_run_id)
+            archived = Path(prepared["archived_prior_run"])
+            archived_ledger = json.loads((archived / "runtime_dispatches.json").read_text())
+            self.assertEqual(archived_ledger["thread_mappings"], {"/root/prior_worker": child_id})
+            self.assertIn("| State | in_progress |", (archived / "work_record.md").read_text())
 
     def test_shipped_commands_register_analysis_and_publish_closed_failure(self):
         with tempfile.TemporaryDirectory() as directory:

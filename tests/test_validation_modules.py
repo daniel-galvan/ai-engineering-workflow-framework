@@ -26,6 +26,32 @@ class ValidationModules(unittest.TestCase):
                "Source or path": "Current user request", "Authority": "Authoritative user request"}
         self.assertEqual(input_provenance_errors(row), [])
 
+    def test_plugin_refresh_gate_ignores_test_only_changes_but_requires_runtime_refresh(self):
+        from scripts.validation import provider_policy
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / ".codex-plugin" / "plugin.json"
+            runtime = root / "scripts" / "worker.py"
+            test = root / "tests" / "test_worker.py"
+            manifest.parent.mkdir(parents=True)
+            runtime.parent.mkdir()
+            test.parent.mkdir()
+            manifest.write_text('{"version":"1.0.0"}\n')
+            runtime.write_text("print('runtime v1')\n")
+            test.write_text("assert True\n")
+            for args in (("init", "-q"), ("config", "user.name", "Fixture"),
+                         ("config", "user.email", "fixture@example.invalid"), ("add", "."),
+                         ("commit", "-qm", "Initial package")):
+                subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+            with patch.object(provider_policy, "ROOT", root), patch.object(provider_policy, "PLUGIN_MANIFEST", manifest):
+                test.write_text("assert 1 + 1 == 2\n")
+                self.assertIsNone(provider_policy._plugin_version_refresh_error())
+                runtime.write_text("print('runtime v2')\n")
+                self.assertEqual(provider_policy._plugin_version_refresh_error(),
+                    "plugin build metadata must change when bundled package content changes")
+
     def test_worker_outputs_cannot_be_attributed_to_user(self):
         for description, authority in (("Normalized evidence", "Evidence worker output"),
                                        ("Worker result", "Current-run evidence"),

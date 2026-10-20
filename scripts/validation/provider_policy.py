@@ -43,7 +43,9 @@ def _plugin_version_refresh_error() -> str | None:
     if completed.returncode:
         return None
     changed = [line[3:] for line in completed.stdout.splitlines() if len(line) > 3]
-    if not any(path != str(PLUGIN_MANIFEST.relative_to(ROOT)) for path in changed):
+    shipped_changes = [path for path in changed if path != str(PLUGIN_MANIFEST.relative_to(ROOT))
+                       and path != "tests" and not path.startswith("tests/")]
+    if not shipped_changes:
         return None
     previous = subprocess.run(
         ["git", "-C", str(ROOT), "show", f"HEAD:{PLUGIN_MANIFEST.relative_to(ROOT)}"],
