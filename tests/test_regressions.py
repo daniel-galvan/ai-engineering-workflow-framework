@@ -195,7 +195,7 @@ class V4Regressions(unittest.TestCase):
         rejected["identity"]["Lifecycle"] = "remediation"
         packet_path.write_text(json.dumps(rejected))
         before_rejection = packet_path.read_bytes()
-        with self.assertRaisesRegex(ValueError, "planning_packet_required"):
+        with self.assertRaisesRegex(ValueError, "prepared_lifecycle_mismatch:expected=planning;received=remediation"):
             merge_result(packet_path, "current_state_investigator")
         self.assertEqual(packet_path.read_bytes(), before_rejection)
         packet_path.write_bytes(accepted)

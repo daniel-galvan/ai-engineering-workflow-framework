@@ -51,6 +51,35 @@ class FrameworkCorrections(unittest.TestCase):
         self.assertEqual(closure["Runtime status"], "Blocked")
         self.assertIn("runtime_dispatch_ledger_missing", closure["Closure evidence or blocker"])
 
+    def test_lifecycle_conflict_cannot_change_or_reprepare_an_existing_stage(self):
+        before = self.packet_path.read_bytes()
+        bindings = self.root / "role_bindings.json"
+        binding_bytes = bindings.read_bytes()
+        with self.assertRaisesRegex(ValueError, "lifecycle_conflict:expected=planning;received=remediation"):
+            prepare.prepare_run(self.repository, "NEW-1", "techops_issue_remediation", None, False,
+                                input_manifest=self.inputs, lifecycle="remediation")
+        self.assertFalse((self.repository / ".thoughts" / "NEW-1").exists())
+        changed = json.loads(before)
+        changed["identity"]["Lifecycle"] = "remediation"
+        self.packet_path.write_text(json.dumps(changed))
+        unaccepted = self.packet_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "prepared_lifecycle_mismatch"):
+            prepare.prepare_run(self.repository, "ITEM-1", "feature_delivery", None, True,
+                                input_manifest=self.inputs, lifecycle="planning")
+        self.assertEqual(self.packet_path.read_bytes(), unaccepted)
+        self.assertEqual(bindings.read_bytes(), binding_bytes)
+        legacy = json.loads(binding_bytes)
+        legacy.pop("framework_package")
+        bindings.write_text(json.dumps(legacy))
+        self.assertTrue(any(error.startswith("prepared_lifecycle_mismatch")
+                            for error in runtime.prepared_package_errors(self.root)))
+        bindings.write_bytes(binding_bytes)
+        self.packet_path.write_bytes(before)
+        run = prepare.prepare_run(self.repository, "ITEM-1", "feature_delivery", None, True,
+                                  input_manifest=self.inputs, lifecycle="planning")
+        self.assertEqual(run["lifecycle"], "planning")
+        self.assertEqual(json.loads(self.packet_path.read_text())["identity"]["Run ID"], self.run["run_id"])
+
     def test_empty_result_preserves_evidence_and_conflicts_do_not_mutate_packet(self):
         self.merge()
         saved = self.packet_path.read_bytes()

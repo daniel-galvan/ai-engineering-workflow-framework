@@ -57,9 +57,14 @@ class PackagedLifecycle(unittest.TestCase):
             self.assertFalse((repository / ".thoughts").exists())
             save(rows)
             self.assertEqual(command("run_preflight.py", "--provider-session", source)["status"], "passed")
-            run = command("prepare_run.py", *prepare)
+            rejected = command("prepare_run.py", *prepare, "--lifecycle", "remediation", expected=2)
+            self.assertIn("lifecycle_conflict", rejected["reason"])
+            self.assertFalse((repository / ".thoughts").exists())
+            run = command("prepare_run.py", *prepare, "--lifecycle", "planning")
+            self.assertEqual(run["lifecycle"], "planning")
             packet = Path(run["finalization_packet"])
             before = packet.read_bytes()
+            self.assertEqual(json.loads(before)["identity"]["Lifecycle"], "planning")
             activation = ("--activation-packet-bundle", run["activation_packet_bundle"]["path"],
                           "--expected-agent", "current_state_investigator", "--expected-bundle-sha256",
                           run["activation_packet_bundle"]["sha256"])

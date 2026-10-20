@@ -129,6 +129,31 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             merge_result(packet_path, role, trace=path)
             self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
 
+    def test_prepared_planning_lifecycle_enforces_permissions_even_after_packet_edit(self):
+        for playbook, role in (("techops_issue_remediation", "current_state_investigator"),
+                               ("sentry_issue_remediation", "sentry_current_state_investigator"),
+                               ("feature_delivery", "current_state_investigator")):
+            with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, playbook, role)
+                run, root, _, _, event, _, child, _ = fixture
+                packet_path = Path(run["finalization_packet"])
+                packet = json.loads(packet_path.read_text())
+                self.assertEqual(packet["identity"]["Lifecycle"], "planning")
+                child.append(event(9, "response_item", type="function_call", name="exec_command",
+                    call_id="test", arguments=json.dumps({"cmd": "pytest -q", "workdir": str(Path(directory))})))
+                trace, _ = self.export(fixture)
+                self.assertTrue(any("not_authorized" in error for error in trace["audit"]["errors"]))
+                packet["identity"]["Lifecycle"] = "remediation"
+                packet_path.write_text(json.dumps(packet))
+                self.assertTrue(any(error.startswith("prepared_lifecycle_mismatch:expected=planning;received=remediation")
+                                    for error in runtime.prepared_package_errors(root)))
+                trace, _ = self.export(fixture)
+                self.assertTrue(any("lifecycle" in error for error in trace["audit"]["errors"]))
+                self.assertTrue(any("not_authorized" in error for error in trace["audit"]["errors"]))
+                bundle = run["activation_packet_bundle"]
+                self.assertTrue(any(error.startswith("worker_lifecycle_mismatch") for error in
+                    runtime.activation_packet_errors(Path(bundle["path"]), role, bundle["sha256"])))
+
     def test_collector_registers_documenter_audit_without_coordinator_packet_edits(self):
         for playbook in ("feature_delivery", "techops_issue_remediation"):
             with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:

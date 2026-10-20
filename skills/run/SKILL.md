@@ -234,6 +234,10 @@ description: >-
    `--input-manifest <path>`. Pass the exact current parent record with `--provider-session <path>` when available;
    live Sentry requires it. Preparation repeats the parent audit against approved inputs before changing artifacts.
    Each later activation rechecks the bound parent turn; a new forbidden read blocks downstream activation.
+   Pass `--lifecycle <declared-lifecycle>` to verify the requested stage. Fresh preparation starts in planning;
+   approved reentry selects remediation and continuation retains its bound lifecycle. Preparation writes the
+   lifecycle into the packet and hashed worker envelopes before activation. Editing the packet's lifecycle cannot
+   change worker permissions; a conflicting declaration or packet is correction feedback, not execution approval.
    An optional verified runtime-agent directory uses `--runtime-agents <path>`. Pass `--requested-outcome` and
    `--workflow-objective` only when the request explicitly supplied a complete compatible pair, including the named
    Feature Delivery assessment above. When the request omits both, omit both flags so preparation records the selected

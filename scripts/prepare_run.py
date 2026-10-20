@@ -522,6 +522,7 @@ def _write_activation_packets(
             "required_prefix": "Coordinator initialization: complete",
             "agent": agent,
             "run_id": manifest["run_id"],
+            "lifecycle": manifest["lifecycle"],
             "finalization_packet": str(artifact_root / "finalization_packet.json"),
             "definition": binding["definition"],
             "definition_sha256": binding["definition_sha256"],
@@ -860,6 +861,7 @@ def prepare_run(
     approval_reference: str | None = None,
     planning_recovery: bool = False,
     provider_session: Path | None = None,
+    lifecycle: str | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
@@ -917,6 +919,24 @@ def prepare_run(
     repository_row["Repository role"] = "Source checkout"
     repository_row["Declared path"] = str(execution_repository.resolve())
     artifact_root = resolved_execution_repository / ".thoughts" / work_item
+    previous_lifecycle = None
+    if continuation and not remediation_reentry:
+        previous_bindings = artifact_root / "role_bindings.json"
+        if previous_bindings.is_file():
+            previous_lifecycle = json.loads(previous_bindings.read_text()).get("lifecycle")
+        previous_packet = artifact_root / "finalization_packet.json"
+        if previous_packet.is_file():
+            recorded = json.loads(previous_packet.read_text()).get("identity", {}).get("Lifecycle")
+            if previous_lifecycle and recorded and recorded != previous_lifecycle:
+                raise ValueError("prepared_lifecycle_mismatch:expected=" + previous_lifecycle + ";received=" + str(recorded))
+            previous_lifecycle = previous_lifecycle or recorded
+    resolved_lifecycle = "remediation" if remediation_reentry else previous_lifecycle or "planning"
+    if resolved_lifecycle not in {"planning", "remediation"} or (
+            playbook == "technical_spike" and resolved_lifecycle != "planning"):
+        raise ValueError("prepared_lifecycle_unsupported:" + str(resolved_lifecycle))
+    if lifecycle is not None and lifecycle != resolved_lifecycle:
+        raise ValueError("lifecycle_conflict:expected=" + resolved_lifecycle + ";received=" + lifecycle
+                         + ";remediation requires approved reentry")
     legacy_root = source_checkout / ".thoughts" / work_item
     if continuation and legacy_root != artifact_root and legacy_root.exists() and not artifact_root.exists():
         raise ValueError("legacy_worktree_artifacts_require_explicit_migration")
@@ -1023,8 +1043,7 @@ def prepare_run(
     manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
     manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
     manifest["run_input_manifest"]["precedence_rule"] = run_inputs["precedence_rule"]
-    if playbook == "feature_delivery":
-        manifest["lifecycle"] = "remediation" if workflow_objective == "feature_implementation" else "planning"
+    manifest["lifecycle"] = resolved_lifecycle
     if budget:
         budget_path = artifact_root / RUN_BUDGET_FILENAME
         budget_path.write_text(json.dumps(budget, indent=2, sort_keys=True) + "\n")
@@ -1287,11 +1306,12 @@ def prepare_run(
                                     repository_row, resolved_runtime_agents, manifest, manifest_path)
         for field in ("Run input manifest", "Run input manifest hash", "Framework commit / status",
                       "Playbook / version", "Plugin package / version", "Role-policy baseline ID",
-                      "Role binding manifest", "Provider/runtime configuration", "Provider configuration source/status"):
+                      "Role binding manifest", "Provider/runtime configuration", "Provider configuration source/status", "Lifecycle"):
             packet["identity"][field] = refreshed["identity"][field]
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     return {
         "status": "prepared",
+        "lifecycle": resolved_lifecycle,
         "artifact_root": str(artifact_root),
         "legacy_artifact_root": str(legacy_root) if legacy_root != artifact_root and legacy_root.exists() else None,
         "work_record": str(record),
@@ -1326,6 +1346,8 @@ def main() -> int:
     parser.add_argument("--playbook")
     parser.add_argument("--runtime-agents", type=Path)
     parser.add_argument("--provider-session", type=Path, help="Exact current parent record for context audit and live source observations")
+    parser.add_argument("--lifecycle", choices=("planning", "remediation"),
+                        help="Declared lifecycle; must match the initial planning stage or approved continuation/reentry")
     parser.add_argument("--continuation", action="store_true")
     parser.add_argument("--remediation-reentry", action="store_true",
                         help="Start a new Feature Delivery remediation lifecycle, preserving planning history")
@@ -1370,6 +1392,7 @@ def main() -> int:
             args.approval_reference,
             args.planning_recovery,
             args.provider_session,
+            args.lifecycle,
         )
     except (OSError, ValueError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

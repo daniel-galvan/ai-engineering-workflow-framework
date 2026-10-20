@@ -234,6 +234,9 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
             if (not packet.get("run_id") or packet["run_id"] != current["identity"]["Run ID"]
                     or packet.get("finalization_packet") != str(current_path.resolve())):
                 errors.append("worker_run_identity_mismatch")
+            if packet.get("lifecycle") and packet["lifecycle"] != current["identity"].get("Lifecycle"):
+                errors.append("worker_lifecycle_mismatch:expected=" + packet["lifecycle"]
+                              + ";received=" + str(current["identity"].get("Lifecycle")))
         except (OSError, ValueError, KeyError, TypeError):
             errors.append("worker_run_identity_unavailable")
     elif isinstance(contract, dict) and "run_id" in str(contract.get("result_instructions", "")):

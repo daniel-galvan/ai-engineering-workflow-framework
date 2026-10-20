@@ -40,17 +40,19 @@ except ModuleNotFoundError:
 
 
 def prepared_package_errors(root: Path) -> list[str]:
-    """Reject execution from a different package than the prepared run."""
+    """Reject package or lifecycle drift from the prepared run."""
     try:
         manifest = json.loads((root / "role_bindings.json").read_text())
         package = manifest.get("framework_package")
-        if package is None:
-            return []  # Legacy packets retain their existing validation path.
-        if (Path(package["root"]).resolve() != ROOT
+        if package is not None and (Path(package["root"]).resolve() != ROOT
                 or package["plugin_sha256"] != hashlib.sha256((ROOT / ".codex-plugin/plugin.json").read_bytes()).hexdigest()):
             return ["prepared_framework_package_mismatch: prepare recovery from the selected package"]
+        if manifest.get("lifecycle"):
+            lifecycle = json.loads((root / "finalization_packet.json").read_text())["identity"].get("Lifecycle")
+            if lifecycle != manifest["lifecycle"]:
+                return ["prepared_lifecycle_mismatch:expected=" + manifest["lifecycle"] + ";received=" + str(lifecycle)]
         return []
-    except (OSError, ValueError, TypeError, KeyError):
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return ["prepared_framework_package_invalid"]
 
 
@@ -1138,8 +1140,15 @@ def planning_permission_errors(trace: dict) -> list[str]:
         return []
     packet = json.loads(content.split("\n", 2)[1])
     current = json.loads(Path(packet["finalization_packet"]).read_text())
-    if current.get("identity", {}).get("Lifecycle") != "planning":
-        return []
+    recorded = current.get("identity", {}).get("Lifecycle")
+    lifecycle = packet.get("lifecycle") or recorded
+    errors = []
+    if packet.get("lifecycle") and recorded != lifecycle:
+        errors.append("worker_lifecycle_mismatch:expected=" + lifecycle + ";received=" + str(recorded))
+    if lifecycle not in {"planning", "remediation"}:
+        return errors + ["worker_lifecycle_required"]
+    if lifecycle != "planning":
+        return errors
     authorized = set()
     for row in packet.get("run_input_manifest", {}).get("inputs", []):
         if (row.get("Classification") == "execution authorization" and row.get("Status") == "Approved"
@@ -1148,7 +1157,6 @@ def planning_permission_errors(trace: dict) -> list[str]:
             if isinstance(operations, list) and all(isinstance(value, str) and value in {"test_run", "build_run"}
                                                     for value in operations):
                 authorized.update(operations)
-    errors = []
     for row in trace.get("tool_trace", []):
         for tool, arguments in _tool_operations(row):
             if tool != "exec_command":
