@@ -322,6 +322,10 @@ class PackagedLifecycle(unittest.TestCase):
                     self.assertEqual(exported["runtime_audits"][0]["Worker"], worker)
                     self.assertFalse(any(row.get("Worker") == worker and row.get("Outcome") == "complete"
                                          for row in exported.get("worker_results", [])))
+                    if recover is False:
+                        # Reproduce a missing Coordinator audit while preserving the passed worker trace.
+                        exported["runtime_audits"] = []
+                        packet.write_text(json.dumps(exported))
                     command("merge_techops_result.py", "--packet", packet, "--agent",
                             "current_state_investigator", "--trace", trace)
                     accepted = json.loads(packet.read_text())
