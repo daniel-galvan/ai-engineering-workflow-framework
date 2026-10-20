@@ -270,9 +270,17 @@ def main() -> int:
     )
     if result["status"] == "passed" and args.provider_session:
         try:
+            try:
+                from provider_runtime import parent_context_audit
+            except ModuleNotFoundError:
+                from scripts.provider_runtime import parent_context_audit
+            context = parent_context_audit(args.provider_session)
+            result["parent_context"] = context
+            if context["status"] != "passed":
+                result.update(status="blocked", reason="parent_context_nonconformant")
             if mandatory_presentation_notice(args.provider_session):
                 result["presentation_notice"] = "Mandatory surrounding text must be recorded separately at publication."
-        except (OSError, ValueError, TypeError, AttributeError) as error:
+        except (OSError, ValueError, TypeError, AttributeError, StopIteration) as error:
             result.update(status="blocked", reason="provider_instruction_read_failed", detail=str(error))
     result["preflight_elapsed_ms"] = str(round((time.perf_counter() - started) * 1000, 1))
     print(json.dumps(result, sort_keys=True))

@@ -925,6 +925,23 @@ def prepare_run(
     if playbook == "feature_delivery" and input_manifest is None:
         raise ValueError("run_input_manifest_required")
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
+    parent_context = None
+    if provider_session:
+        try:
+            from provider_runtime import parent_context_audit
+        except ModuleNotFoundError:
+            from scripts.provider_runtime import parent_context_audit
+        assigned = []
+        for row in (validated_supplied or {}).get("inputs", []):
+            expected_use = str(row.get("Expected use", "")).lower()
+            if (str(row.get("Status", "")).lower() not in {"rejected", "denied", "superseded"}
+                    and not any(value in expected_use for value in ("do not read", "without reading", "preserve only"))):
+                assigned.extend(str(path) for path in local_input_paths(row))
+                assigned.append(str(row.get("Source or path", "")))
+        parent_context = parent_context_audit(provider_session, artifact_root=artifact_root,
+                                              input_paths=tuple(assigned))
+        if parent_context["status"] != "passed":
+            raise ValueError("parent_context_nonconformant:" + ";".join(parent_context["errors"]))
     if playbook == "sentry_issue_remediation" and validated_supplied:
         retain_source_releases(validated_supplied, provider_session)
     prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery)
@@ -1201,6 +1218,8 @@ def prepare_run(
     else:
         started_at = str(manifest.get("run_budget", {}).get("started_at") or manifest["prepared_at"])
         manifest["run_id"] = work_item + "-" + re.sub(r"[^0-9A-Za-z]", "", started_at)
+    if parent_context:
+        manifest["parent_context"] = {**parent_context, "run_id": manifest["run_id"], "input_paths": assigned}
     failure_path = artifact_root / "finalization_failure.json"
     if continuation and not prior and playbook == "techops_issue_remediation" and failure_path.is_file():
         manifest["handoff_recovery"] = {
@@ -1306,7 +1325,7 @@ def main() -> int:
     parser.add_argument("--work-item")
     parser.add_argument("--playbook")
     parser.add_argument("--runtime-agents", type=Path)
-    parser.add_argument("--provider-session", type=Path, help="Exact current parent record for live Sentry source observations")
+    parser.add_argument("--provider-session", type=Path, help="Exact current parent record for context audit and live source observations")
     parser.add_argument("--continuation", action="store_true")
     parser.add_argument("--remediation-reentry", action="store_true",
                         help="Start a new Feature Delivery remediation lifecycle, preserving planning history")

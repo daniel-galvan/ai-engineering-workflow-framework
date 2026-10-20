@@ -99,6 +99,7 @@ class V7SentryAcceptance(unittest.TestCase):
         source = self.root / "provider.jsonl"
         source.write_text("\n".join(json.dumps(row) for row in [
             {"type": "session_meta", "payload": {"id": PARENT}},
+            {"type": "turn_context", "payload": {"turn_id": shared.CHILD}},
             {"type": "response_item", "payload": {"type": "custom_tool_call", "call_id": "source",
              "input": 'await tools.mcp__sentry__get_sentry_resource({url:"https://example.sentry.io/issues/123/"})'}},
             {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "source",

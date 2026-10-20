@@ -24,6 +24,51 @@ class PackagedLifecycle(unittest.TestCase):
             subprocess.run(["git", "-C", str(package), *args], check=True, capture_output=True)
         return package
 
+    def test_shipped_parent_context_gate_blocks_before_artifacts_and_rechecks_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.package(directory)
+            repository = Path(directory) / "repository"
+            repository.mkdir()
+            source = Path(directory) / "parent.jsonl"
+            rows = [{"type": "session_meta", "payload": {"id": "00000000-0000-0000-0000-000000000001"}},
+                    {"type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000002"}}]
+            forbidden = {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+                "input": 'await tools.exec_command({"cmd":"cat /repo/.codex/memories/MEMORY.md"})'}}
+
+            def save(events):
+                source.write_text("".join(json.dumps(row) + "\n" for row in events))
+
+            def command(script, *args, expected=0):
+                result = subprocess.run([sys.executable, str(package / "scripts" / script), *map(str, args)],
+                                        cwd=package, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                return json.loads(result.stdout)
+
+            save(rows + [forbidden])
+            blocked = command("run_preflight.py", "--provider-session", source, expected=2)
+            self.assertEqual(blocked["reason"], "parent_context_nonconformant")
+            self.assertFalse((repository / ".thoughts").exists())
+            inputs = repository / "inputs.json"
+            inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
+                "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
+            prepare = ("--execution-repository", repository, "--work-item", "ITEM-1", "--playbook",
+                       "feature_delivery", "--input-manifest", inputs, "--provider-session", source)
+            self.assertIn("parent_context_nonconformant", command("prepare_run.py", *prepare, expected=2)["reason"])
+            self.assertFalse((repository / ".thoughts").exists())
+            save(rows)
+            self.assertEqual(command("run_preflight.py", "--provider-session", source)["status"], "passed")
+            run = command("prepare_run.py", *prepare)
+            packet = Path(run["finalization_packet"])
+            before = packet.read_bytes()
+            activation = ("--activation-packet-bundle", run["activation_packet_bundle"]["path"],
+                          "--expected-agent", "current_state_investigator", "--expected-bundle-sha256",
+                          run["activation_packet_bundle"]["sha256"])
+            self.assertEqual(command("validate_worker_runtime.py", *activation)["status"], "allowed")
+            save(rows + [forbidden])
+            rejected = command("validate_worker_runtime.py", *activation, expected=2)
+            self.assertTrue(any("parent_context_nonconformant" in error for error in rejected["errors"]))
+            self.assertEqual(packet.read_bytes(), before)
+
     def test_shipped_commands_register_analysis_and_publish_closed_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             package = self.package(directory)
@@ -280,7 +325,11 @@ class PackagedLifecycle(unittest.TestCase):
                          ("commit", "-qm", "Synthetic package snapshot")):
                 subprocess.run(["git", "-C", str(package), *args], check=True, capture_output=True)
             source = Path(directory) / "parent.jsonl"
-            source.write_text("\n".join(json.dumps({"type": "response_item", "payload": {
+            source.write_text(json.dumps({"type": "session_meta", "payload": {
+                "id": "00000000-0000-0000-0000-000000000001"}}) + "\n" +
+                json.dumps({"type": "turn_context", "payload": {
+                "turn_id": "00000000-0000-0000-0000-000000000002"}}) + "\n" +
+                "\n".join(json.dumps({"type": "response_item", "payload": {
                 "role": role, "content": [{"text": text}]}}) for role, text in (
                 ("developer", "begin the first final answer with Developer Workflows skills are available"),
                 ("user", "Run the Sentry playbook"))))

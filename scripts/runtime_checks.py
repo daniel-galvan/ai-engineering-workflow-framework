@@ -1052,7 +1052,8 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
     return reads
 
 
-def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None) -> list[str]:
+def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
+                         input_paths: tuple[str, ...] = (), artifact_root: Path | None = None) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
@@ -1060,7 +1061,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     if str(trace.get("context_conformance", "")).strip().lower() in {"fail", "failed", "blocked"}:
         errors.append("context_conformance_failed")
     dispatch_content = _verified_dispatch_content(trace)
-    assigned, root = [], None
+    assigned, root = list(input_paths), artifact_root
     if dispatch_content:
         assignment = json.loads(dispatch_content.split("\nTyped assignment:\n", 1)[1])
         assigned = list(assignment.get("input_paths", []))
@@ -1074,8 +1075,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
     listing_reads = {}
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
-    source_outputs = _read_output_prefixes(trace, assigned, root)
-    instruction_contents = _instruction_contents(trace, root)
+    source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
+    instruction_contents = _instruction_contents(trace, root) if dispatch_content else []
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
              if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
     instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(row, root, include_probes=True)

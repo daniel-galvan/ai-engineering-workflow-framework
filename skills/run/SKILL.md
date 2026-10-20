@@ -19,6 +19,8 @@ description: >-
    Mandatory presentation text from other active instructions does not block preflight or investigation. Preserve
    higher-priority instructions and record their required surrounding text separately at publication as described below.
    When the provider exposes the exact current parent session path, pass `--provider-session <path>` to preflight.
+   This audits executed calls in the latest native turn, not quoted instructions or returned text. A rejected parent
+   context is an early terminal block; do not activate workers or continue after acknowledging contamination.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
@@ -229,7 +231,9 @@ description: >-
    ]}
    ```
    Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
-   `--input-manifest <path>`. For live Sentry also pass `--provider-session <exact-current-parent-record>`.
+   `--input-manifest <path>`. Pass the exact current parent record with `--provider-session <path>` when available;
+   live Sentry requires it. Preparation repeats the parent audit against approved inputs before changing artifacts.
+   Each later activation rechecks the bound parent turn; a new forbidden read blocks downstream activation.
    An optional verified runtime-agent directory uses `--runtime-agents <path>`. Pass `--requested-outcome` and
    `--workflow-objective` only when the request explicitly supplied a complete compatible pair, including the named
    Feature Delivery assessment above. When the request omits both, omit both flags so preparation records the selected

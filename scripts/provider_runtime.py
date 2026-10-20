@@ -12,6 +12,61 @@ UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
 
 
+def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
+                         input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None) -> dict:
+    """Audit current-turn operations without importing messages or previous analytical content."""
+    try:
+        from runtime_checks import _tool_operations, context_trace_errors
+    except ModuleNotFoundError:
+        from scripts.runtime_checks import _tool_operations, context_trace_errors
+    with source.open() as stream:
+        header = json.loads(next(stream, ""))
+        thread = header.get("payload", {}).get("id")
+        if (header.get("type") != "session_meta" or not isinstance(thread, str) or not UUID.fullmatch(thread)
+                or expected_thread_id is not None and thread != expected_thread_id):
+            raise ValueError("provider_session_parent_mismatch")
+        turn, operations, children, errors = None, [], set(), []
+        for line in stream:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                if not line.endswith("\n"):
+                    break  # The native provider may still be appending its last event.
+                raise
+            payload = row.get("payload", {})
+            if row.get("type") == "turn_context":
+                turn = payload.get("turn_id")
+                operations, children, errors = [], set(), []
+            elif turn and row.get("type") == "event_msg":
+                item = payload.get("item", {})
+                if item.get("type") == "SubAgentActivity" and item.get("kind") == "started":
+                    children.add(item.get("agent_thread_id"))
+            elif turn and row.get("type") == "response_item" and payload.get("type") in {
+                    "function_call", "custom_tool_call"}:
+                calls = _tool_operations(payload)
+                if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(payload.get("input", "")):
+                    errors.append("parent_tool_arguments_unavailable")
+                for name, arguments in calls:
+                    if name == "exec_command":
+                        operations.append({"type": "function_call", "name": name, "arguments": arguments})
+                    elif name.rsplit("__", 1)[-1] in {"read_thread", "wait_threads"}:
+                        targets = (arguments.get("targets", []) if name.endswith("wait_threads") else [arguments])
+                        for target in targets:
+                            identity = target.get("threadId")
+                            if identity not in children and "codex://threads/" + str(identity) not in input_paths:
+                                errors.append("parent_unassigned_thread_read:" + str(identity))
+                    elif name.rsplit("__", 1)[-1] in {"list_threads", "list_archived_threads"}:
+                        errors.append("parent_unassigned_thread_discovery")
+        if not isinstance(turn, str) or not UUID.fullmatch(turn):
+            raise ValueError("provider_current_turn_unavailable")
+    details = []
+    errors.extend(context_trace_errors({"tool_trace": operations}, details=details,
+                                      input_paths=input_paths, artifact_root=artifact_root))
+    return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
+            "parent_thread_id": thread, "turn_id": turn, "errors": list(dict.fromkeys(errors)),
+            "context_violations": details}
+
+
 def worker_binding(bindings: dict, worker: str) -> str:
     if worker in bindings["bindings"]:
         return worker
