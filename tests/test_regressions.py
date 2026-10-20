@@ -12,6 +12,7 @@ from scripts.merge_techops_result import merge_result
 from scripts.worker_runtime_evidence import read_runtime_events, dispatch_audit_errors
 from scripts.validate_worker_runtime import terminal_observation_errors
 from scripts.validation.work_records import validate_work_record
+from tests.worker_response_support import stage_worker_response
 
 
 PARENT = "00000000-0000-0000-0000-000000000001"
@@ -185,11 +186,10 @@ class V4Regressions(unittest.TestCase):
         evidence = dict.fromkeys(template["evidence"][0], "Current issue")
         evidence["Evidence ID"] = "E-ISS-001"
         result = {"run_id": packet["identity"]["Run ID"], "worker_result": summary, "evidence": [evidence]}
-        result_path = Path(prepared["worker_contracts"]["current_state_investigator"]["result"])
-        result_path.write_text(json.dumps(result))
-        merge_result(packet_path, "current_state_investigator")
+        trace, _ = stage_worker_response(prepared, "current_state_investigator", result)
+        merge_result(packet_path, "current_state_investigator", trace=trace)
         accepted = packet_path.read_bytes()
-        merge_result(packet_path, "current_state_investigator")
+        merge_result(packet_path, "current_state_investigator", trace=trace)
         self.assertEqual(packet_path.read_bytes(), accepted)
         rejected = json.loads(accepted)
         rejected["identity"]["Lifecycle"] = "remediation"
@@ -201,14 +201,14 @@ class V4Regressions(unittest.TestCase):
         packet_path.write_bytes(accepted)
         self.assertEqual(json.loads(accepted)["identity"], packet["identity"])
         result["evidence"][0]["Evidence ID"] = "E-FP-001"
-        result_path.write_text(json.dumps(result))
+        trace, _ = stage_worker_response(prepared, "current_state_investigator", result)
         with self.assertRaisesRegex(ValueError, "row_invalid"):
-            merge_result(packet_path, "current_state_investigator")
+            merge_result(packet_path, "current_state_investigator", trace=trace)
         self.assertEqual(packet_path.read_bytes(), accepted)
         result["run_id"] = "another run"
-        result_path.write_text(json.dumps(result))
+        trace, _ = stage_worker_response(prepared, "current_state_investigator", result)
         with self.assertRaisesRegex(ValueError, "run_mismatch"):
-            merge_result(packet_path, "current_state_investigator")
+            merge_result(packet_path, "current_state_investigator", trace=trace)
         self.assertEqual(packet_path.read_bytes(), accepted)
 
     def test_pre_release_nonterminal_record_still_checks_reasoning_graph(self):

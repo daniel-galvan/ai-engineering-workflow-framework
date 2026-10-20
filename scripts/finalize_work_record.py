@@ -1638,7 +1638,8 @@ def collect_failure_closure(packet_path: Path, provider_session: Path | None = N
             validate_prepared_provider_source(bindings, provider_session, parent_thread_id,
                                               bindings["runtime_evidence"]["run_started_at"])
             current = read_runtime_events(provider_session, parent_thread_id,
-                                          bindings["runtime_evidence"]["run_started_at"])
+                bindings["runtime_evidence"]["run_started_at"],
+                tuple(Path(value) for value in bindings["runtime_evidence"].get("identity_sessions", [])))
         else:
             if not ledger_path.is_file():
                 raise ValueError("runtime_dispatch_ledger_missing: supply current provider session and parent thread ID")

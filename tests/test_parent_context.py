@@ -21,12 +21,14 @@ class ParentContext(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.source = self.root / "parent.jsonl"
-        self.rows = [{"type": "session_meta", "payload": {"id": PARENT}},
-                     {"type": "turn_context", "payload": {"turn_id": TURN}}]
+        self.rows = [{"type": "session_meta", "timestamp": "2026-10-01T00:00:00Z",
+                      "payload": {"id": PARENT}},
+                     {"type": "turn_context", "timestamp": "2026-10-01T00:00:01Z",
+                      "payload": {"turn_id": TURN}}]
 
     def call(self, name, **arguments):
-        return {"type": "response_item", "payload": {"type": "function_call", "name": name,
-                "arguments": json.dumps(arguments)}}
+        return {"type": "response_item", "timestamp": "2026-10-01T00:00:02Z",
+                "payload": {"type": "function_call", "name": name, "arguments": json.dumps(arguments)}}
 
     def audit(self, **kwargs):
         self.source.write_text("".join(json.dumps(row) + "\n" for row in self.rows))
@@ -34,10 +36,12 @@ class ParentContext(unittest.TestCase):
 
     def test_actual_memory_read_is_rejected_but_quotes_and_prior_turn_are_ignored(self):
         memory = "/repo/.codex/memories/MEMORY.md"
-        self.rows.insert(1, {"type": "turn_context", "payload": {"turn_id": CHILD}})
+        self.rows.insert(1, {"type": "turn_context", "timestamp": "2026-09-30T23:59:00Z",
+                             "payload": {"turn_id": CHILD}})
         self.rows.insert(2, self.call("exec_command", cmd="cat " + memory))
         self.rows.extend([self.call("spawn_agent", message="Do not read " + memory),
-            {"type": "response_item", "payload": {"type": "function_call_output", "output": "cat " + memory}},
+            {"type": "response_item", "timestamp": "2026-10-01T00:00:02Z",
+             "payload": {"type": "function_call_output", "output": "cat " + memory}},
             self.call("exec_command", cmd="cat start_prompt.md")])
         self.assertEqual(self.audit()["status"], "passed")
         self.rows.append(self.call("exec_command", cmd="rg -n issue " + memory))
@@ -55,7 +59,8 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(self.audit(artifact_root=artifact, input_paths=(archived,))["status"], "rejected")
 
     def test_parent_can_observe_its_workers_and_explicit_continuity_threads(self):
-        self.rows.append({"type": "event_msg", "payload": {"item": {"type": "SubAgentActivity",
+        self.rows.append({"type": "event_msg", "timestamp": "2026-10-01T00:00:02Z",
+            "payload": {"item": {"type": "SubAgentActivity",
             "kind": "started", "agent_thread_id": CHILD}}})
         self.rows.extend([self.call("mcp__codex_app__read_thread", threadId=CHILD),
                           self.call("mcp__codex_app__read_thread", threadId=TURN)])
@@ -97,7 +102,8 @@ class ParentContext(unittest.TestCase):
         self.rows.append(self.call("exec_command", cmd="cat /repo/.codex/memories/MEMORY.md"))
         self.audit()
         self.assertTrue(any(error.startswith("parent_context_nonconformant") for error in check()))
-        self.rows.append({"type": "turn_context", "payload": {"turn_id": CHILD}})
+        self.rows.append({"type": "turn_context", "timestamp": "2026-10-01T00:00:03Z",
+                          "payload": {"turn_id": CHILD}})
         self.audit()
         self.assertTrue(any(error.startswith("parent_context_turn_mismatch:expected=" + TURN)
                             for error in check()))

@@ -254,7 +254,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--declared-framework-revision")
     parser.add_argument("--declared-plugin-path", type=Path)
-    parser.add_argument("--provider-session", type=Path)
+    parser.add_argument("--provider-session", type=Path, help="Assert the automatically resolved current native record")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -268,20 +268,23 @@ def main() -> int:
         declared_framework_revision=args.declared_framework_revision,
         declared_plugin_path=args.declared_plugin_path,
     )
-    if result["status"] == "passed" and args.provider_session:
+    if result["status"] == "passed":
         try:
             try:
-                from provider_runtime import parent_context_audit
+                from provider_runtime import current_parent_session, parent_context_audit
             except ModuleNotFoundError:
-                from scripts.provider_runtime import parent_context_audit
-            context = parent_context_audit(args.provider_session)
-            result["parent_context"] = context
-            if context["status"] != "passed":
-                result.update(status="blocked", reason="parent_context_nonconformant")
-            if mandatory_presentation_notice(args.provider_session):
-                result["presentation_notice"] = "Mandatory surrounding text must be recorded separately at publication."
+                from scripts.provider_runtime import current_parent_session, parent_context_audit
+            source = current_parent_session(args.provider_session)
+            if source:
+                context = parent_context_audit(source)
+                result["parent_context"] = context
+                if context["status"] != "passed":
+                    result.update(status="blocked", reason="parent_context_nonconformant")
+                if mandatory_presentation_notice(source):
+                    result["presentation_notice"] = "Mandatory surrounding text must be recorded separately at publication."
         except (OSError, ValueError, TypeError, AttributeError, StopIteration) as error:
-            result.update(status="blocked", reason="provider_instruction_read_failed", detail=str(error))
+            reason = str(error).split(":", 1)[0] if str(error).startswith("provider_current_") else "provider_instruction_read_failed"
+            result.update(status="blocked", reason=reason, detail=str(error))
     result["preflight_elapsed_ms"] = str(round((time.perf_counter() - started) * 1000, 1))
     print(json.dumps(result, sort_keys=True))
     return EXIT_OK if result["status"] == "passed" else EXIT_BLOCKED

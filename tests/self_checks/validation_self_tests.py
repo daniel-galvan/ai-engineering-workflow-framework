@@ -972,7 +972,15 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
         path.write_text(terminal)
         validate_work_record(path, require_terminal=True)
         assert_invalid(terminal.replace("=completed", "=running"), "snapshot contains non-terminal workers")
-        assert_invalid(terminal.replace("=completed", "=stopped"), "lacks exact provider terminal status")
+        stopped = terminal.replace("=completed", "=stopped")
+        path.write_text(stopped)
+        validate_work_record(path, require_terminal=True)
+        from scripts.runtime_checks import terminal_observation_errors
+        assert "terminal_observation_not_terminal:/root/feature_context" in terminal_observation_errors([{
+            "Provider handle": "/root/feature_context", "Provider status": "stopped",
+            "Last dispatch at": "2026-10-07T22:40:00Z", "Observed at": "2026-10-07T22:42:58Z",
+            "Status source": "list_agents",
+        }], ["/root/feature_context"])
         assert_invalid(terminal.replace("2026-10-07T22:42:58Z", "Unknown"), "timestamped provider status snapshot")
         assert_invalid(terminal.replace("| Terminal | None |", "| Terminal | Unknown |"), "zero active turns")
 

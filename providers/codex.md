@@ -175,6 +175,11 @@ after the check passes; then record exact provider closure and run the finalizer
 Evidence Topology and Fix Design receive prepared contracts and exact output paths from `role_bindings.json`. Each
 writes only its assigned artifact; the Coordinator validates those files rather than reconstructing their payloads.
 
+TechOps planning and Feature Delivery analytical agents may be configured read-only. Their prepared contracts require
+one strict JSON final answer containing `output` and `result`; Feature `feature-context` also returns `asset_manifest`.
+The packaged trace exporter snapshots that answer per dispatch, and the validated result merger writes the assigned
+files only after acceptance. Do not ask these workers to write files or pre-create their result paths.
+
 Framework tool IDs are provider-neutral capability classes, not literal Codex tool names. Use the
 `provider_tool_mapping` emitted in `role_bindings.json`: repository reads, searches, history, builds, tests, and local
 runtime inspection use `exec_command`; artifact and approved repository writes use `apply_patch`; connected runtime,
@@ -197,6 +202,10 @@ For prepared Sentry, TechOps, and Feature Delivery runs that declare `runtime_ev
 `runtime_evidence.collector` to extract this run's provider events into
 `runtime_evidence.ledger`. Read only the verified current parent session, never memory or prior runs:
 
+Preflight and preparation resolve this record from `CODEX_THREAD_ID` (or `CODEX_SESSION_ID`) and native turn metadata.
+Use their `parent_context.provider_session` and `parent_context.parent_thread_id`; an explicit source must match.
+Same-chat continuation retains earlier current-run control metadata automatically. It imports no analytical outputs.
+
 ```bash
 python3 <collector> --provider-session <current-parent-rollout.jsonl> \
   --parent-thread-id <verified-current-task-UUID> --started-at <prepared-run-start> --ledger <prepared-ledger>
@@ -204,7 +213,9 @@ python3 <collector> --provider-session <current-parent-rollout.jsonl> \
 
 Use `runtime_evidence.run_started_at` as the prepared run start. The collector verifies the parent identity,
 extracts exact spawn/follow-up/message timestamps, preserves live
-inventory responses unchanged and maps child UUIDs from `SubAgentActivity` metadata. Use those UUIDs for targeted
+inventory responses unchanged and maps child UUIDs from `SubAgentActivity` metadata. Earlier bound fragments supply
+current-run dispatch and status metadata across reopening; a Coordinator does not need to assemble that history.
+Use those UUIDs for targeted
 `read_thread`/`wait_threads` calls when live inventory omits a child. A metadata mapping proves identity, not current
 completion. Sync after every dispatch and fresh inventory read; copy `Last dispatch at` from the latest matching
 event, never from an earlier clock sample. Use the canonical binding key as the collector's `--agent` value, such as

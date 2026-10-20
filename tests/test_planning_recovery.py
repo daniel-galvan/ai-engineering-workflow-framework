@@ -13,6 +13,7 @@ from scripts import prepare_run as preparation
 from scripts.merge_techops_result import merge_result
 from scripts.review_evidence import PLAN_FIXTURE, draft_plan_errors
 from scripts.worker_runtime_evidence import read_runtime_events
+from tests.worker_response_support import stage_worker_response
 
 
 PARENT = "00000000-0000-0000-0000-000000000001"
@@ -188,17 +189,16 @@ class PlanningRecovery(unittest.TestCase):
                 key: "Observed" for key in contract["result_fields"]["evidence"]}]}
         result["worker_result"].update({"Worker": "feature-context", "Outcome": "complete"})
         result["evidence"][0]["Evidence ID"] = "E-FC-001"
-        source = Path(contract["result"])
-        source.write_text(json.dumps(result))
-        merge_result(self.packet_path, "current_state_investigator")
+        trace, _ = stage_worker_response(self.prepared, "current_state_investigator", result)
+        merge_result(self.packet_path, "current_state_investigator", trace=trace)
         saved = self.packet_path.read_bytes()
-        merge_result(self.packet_path, "current_state_investigator")
+        merge_result(self.packet_path, "current_state_investigator", trace=trace)
         self.assertEqual(self.packet_path.read_bytes(), saved)
         self.assertEqual(json.loads(saved)["evidence"][0]["Evidence ID"], "E-FC-001")
         result["run_id"] = "other-run"
-        source.write_text(json.dumps(result))
+        trace, _ = stage_worker_response(self.prepared, "current_state_investigator", result)
         with self.assertRaisesRegex(ValueError, "worker_result_run_mismatch"):
-            merge_result(self.packet_path, "current_state_investigator")
+            merge_result(self.packet_path, "current_state_investigator", trace=trace)
         self.assertEqual(self.packet_path.read_bytes(), saved)
 
     def test_failed_spawn_does_not_poison_later_dispatch(self):

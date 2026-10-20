@@ -150,6 +150,20 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
     return packet
 
 
+def _write_text(path: Path, value: str) -> None:
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(value)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) -> None:
     root = packet_path.parent.resolve()
     try:
@@ -166,40 +180,69 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
     if agent in _pending_rejections(root):
         raise ValueError("worker_result_recovery_authorization_required:" + agent)
     contract = bindings["worker_contracts"][agent]
-    result_path = Path(contract["result"])
-    if result_path.resolve().parent != root:
+    canonical_result_path = Path(contract["result"])
+    if canonical_result_path.resolve().parent != root:
         raise ValueError("worker_result_outside_current_run")
-    result = json.loads(result_path.read_text())
+    canonical_output_path = Path(contract["output"])
+    if canonical_output_path.resolve().parent != root:
+        raise ValueError("worker_output_outside_current_run")
+    asset_manifest_output = None
+    if contract.get("asset_inventory"):
+        asset_manifest_output = Path(contract["asset_inventory"]["output"])
+        if asset_manifest_output.resolve().parent != root:
+            raise ValueError("worker_asset_manifest_outside_current_run")
     packet = json.loads(packet_path.read_text())
     worker, _ = workers[agent]
-    if trace is not None:
+    trace_value, output, asset_manifest = None, None, None
+    if contract.get("result_hash_required"):
+        audit = next((row for row in packet.get("runtime_audits", []) if row.get("Worker") == worker), None)
+        trace_path = trace or (Path(audit["Trace path"]) if audit and audit.get("Trace path") else None)
+        if trace_path is None:
+            raise ValueError("worker_result_trace_required:" + worker)
+        trace_path = trace_path if trace_path.is_absolute() else root / trace_path
+        if trace_path.resolve().parent != root:
+            raise ValueError("worker_trace_outside_current_run:" + worker)
         try:
             from planning_contracts import worker_audit_record
         except ModuleNotFoundError:
             from scripts.planning_contracts import worker_audit_record
-        audit = worker_audit_record(packet_path, worker, trace)
+        audit = worker_audit_record(packet_path, worker, trace_path)
         packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
                                     if row.get("Worker") != worker] + [audit]
+        trace_value = json.loads(trace_path.read_text())
+        try:
+            from runtime_checks import result_artifact_errors
+        except ModuleNotFoundError:
+            from scripts.runtime_checks import result_artifact_errors
+        errors = result_artifact_errors(trace_value, bindings, root, agent)
+        if errors:
+            raise ValueError(";".join(errors))
+        receipt = trace_value["result_artifact"]
+        staged_result_path = Path(receipt["path"])
+        staged_output_path = Path(receipt["output_path"])
+        if staged_result_path.resolve().parent.parent.parent != (root / ".worker_responses").resolve():
+            raise ValueError("worker_result_outside_current_run")
+        result = json.loads(staged_result_path.read_text())
+        output = staged_output_path.read_text()
+        if contract.get("asset_inventory"):
+            asset_manifest_path = Path(receipt["asset_manifest_path"])
+            if asset_manifest_path.resolve().parent != staged_result_path.resolve().parent:
+                raise ValueError("worker_asset_manifest_outside_current_run")
+            asset_manifest = asset_manifest_path.read_text()
+    else:
+        if not canonical_result_path.is_file():
+            raise ValueError("worker_result_source_missing:" + worker)
+        result = json.loads(canonical_result_path.read_text())
     if contract.get("result_hash_required"):
-        audit = next((row for row in packet.get("runtime_audits", []) if row.get("Worker") == worker), None)
         ledger = bindings.get("runtime_evidence", {}).get("ledger")
-        if audit is None and ledger and Path(ledger).is_file():
-            raise ValueError("worker_result_audit_required:" + worker
-                             + ": Coordinator must rerun this merger with --trace <passed-current-run-trace>; "
-                               "missing Coordinator audit bookkeeping is not a worker rejection")
-        if audit is not None:
-            try:
-                from runtime_checks import result_artifact_errors
-            except ModuleNotFoundError:
-                from scripts.runtime_checks import result_artifact_errors
-            trace_path = Path(audit.get("Trace path", ""))
-            trace_path = trace_path if trace_path.is_absolute() else root / trace_path
-            if trace_path.resolve().parent != root:
-                raise ValueError("worker_trace_outside_current_run:" + worker)
-            errors = result_artifact_errors(json.loads(trace_path.read_text()), bindings, root, agent)
-            if errors:
-                raise ValueError(";".join(errors))
+        if not ledger or not Path(ledger).is_file():
+            raise ValueError("worker_runtime_ledger_required:" + worker)
     packet = validated_result(packet, result, bindings, agent)
+    if output is not None:
+        _write_text(canonical_output_path, output)
+        _write_text(canonical_result_path, json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+        if asset_manifest is not None:
+            _write_text(asset_manifest_output, asset_manifest)
     with tempfile.NamedTemporaryFile("w", dir=root, delete=False) as stream:
         temporary = Path(stream.name)
         try:

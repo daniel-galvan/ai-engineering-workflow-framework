@@ -18,7 +18,8 @@ description: >-
    not construct or pass a separate framework-root argument. Preflight also validates the shipped static library.
    Mandatory presentation text from other active instructions does not block preflight or investigation. Preserve
    higher-priority instructions and record their required surrounding text separately at publication as described below.
-   When the provider exposes the exact current parent session path, pass `--provider-session <path>` to preflight.
+   Native Codex preflight resolves the current parent record from its runtime identity and turn metadata.
+   An optional `--provider-session <path>` must match that resolved record; it cannot select an older fragment.
    This audits executed calls in the latest native turn, not quoted instructions or returned text. A rejected parent
    context is an early terminal block; do not activate workers or continue after acknowledging contamination.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
@@ -160,11 +161,11 @@ description: >-
    do not claim the supplied data belongs to the inaccessible issue. Pass the successful route and issue/event
    observations to Evidence Topology so it does not repeat the access probe. If live access fails later, stop further
    analysis and downstream activation, report `required_source_unavailable`, and close already-started workers.
-   For a live Sentry URL, pass the exact current parent record with `prepare_run.py --provider-session <path>`.
-   Preparation retains provider and supplied-log releases in the hashed input rows before summarization. Use name-only
-   discovery by current parent thread ID when the provider record path is not already exposed; never open another
-   thread's analytical history. TechOps uses the same current-parent filename lookup for trace collection; do not
-   declare provider-session evidence unavailable before trying that lookup. An explicitly selected offline source
+   For a live Sentry URL, use the current parent record resolved by preflight and preparation.
+   Preparation retains provider and supplied-log releases in the hashed input rows before summarization.
+   The packaged resolver checks exact parent identity and current-turn metadata across reopened fragments;
+   it reads no analytical outputs. A resolution failure is a concrete provider-evidence blocker.
+   An explicitly selected offline source
    uses `Evidence mode: supplied_occurrence` in its
    input row. Preserve every `Observed releases` value with its Input ID in normalized evidence, compare named source
    revisions for the inspected paths, and keep receiver deployment mapping distinct from client release identity.
@@ -231,8 +232,10 @@ description: >-
    ]}
    ```
    Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
-   `--input-manifest <path>`. Pass the exact current parent record with `--provider-session <path>` when available;
-   live Sentry requires it. Preparation repeats the parent audit against approved inputs before changing artifacts.
+   `--input-manifest <path>`. Native Codex resolves the parent from its thread identity and turn metadata.
+   Missing or ambiguous native records block preparation. `--provider-session <path>` asserts the resolved path;
+   an older fragment cannot override it. Preparation repeats the parent audit before changing artifacts.
+   Same-chat continuation retains current-run control metadata automatically, without analytical imports.
    Activation, result acceptance, finalization, and successful publication recheck the bound parent turn.
    A new forbidden read blocks success; report it through the packaged workflow-failure path and collect closure.
    Runtime collection must use the bound parent identity and exact native record, including on failure paths.
@@ -300,7 +303,8 @@ description: >-
    Use the playbook's logical worker IDs exactly: final provider role `documenter` is recorded as `handoff`,
    `spike-investigation` uses `solution_architect`, and `spike-assessment` uses `reviewer`. The packaged finalizer
    validates those role bindings and validates `spike_report.md` before releasing the Documenter.
-   For Feature Delivery, after `feature-context` writes `asset_manifest.json` and before activating
+   For Feature Delivery, after `feature-context` returns its final JSON response, collect and merge the current-run
+   trace to materialize `asset_manifest.json`; before activating
    `impact-analysis`, `repository-integration`, or `feature-design`, run
    ```bash
    python3 <framework-root>/scripts/asset_manifest.py \
@@ -466,9 +470,11 @@ description: >-
    Check runtime capacity before dispatch, choose either an existing compatible worker or a fresh worker, and record
    cancellation if a superseded assignment is interrupted. Do not accept the cancelled result as current work.
 8a. For TechOps planning and Feature Delivery analytical results, prepared worker contracts are operative instructions.
-   Include their complete `worker_contract` with each fresh assignment. Each analytical worker writes its assigned
-   narrative and JSON result to the exact `output` and `result` paths. Preserve the
-   prepared ID namespace and upstream IDs.
+   Include their complete `worker_contract` with each fresh assignment. Each analytical worker returns exactly one
+   strict JSON final answer with `output` (narrative string) and `result` (the prepared JSON envelope). Feature
+   `feature-context` also returns `asset_manifest` using its prepared contract. The runtime exporter stores immutable
+   per-dispatch response artifacts; workers do not write the assigned paths. The merger publishes those files only
+   after acceptance. Preserve the prepared ID namespace and upstream IDs.
    After the fan-in guard passes, merge it with
    `python3 <worker_result_merger> --packet <packet> --agent <provider-role> --trace <current-run-trace.json>`.
    This validates and records the Coordinator-owned audit entry atomically with the analytical result. A missing audit
@@ -818,7 +824,8 @@ description: >-
    observation failure. Rejection does not waive closure collection. Never invent terminal observations or withhold
    the failure report when provider evidence is unavailable. TechOps and Feature Delivery failure reporting also
    reconstruct native inventory from the registered provider ledger and save a Terminal or Blocked closure receipt.
-   If the ledger was never collected, pass `--provider-session <exact-current-parent-record>` and
+   If the ledger was never collected, the failure collector reuses the prepared parent binding automatically.
+   For an older unbound packet, pass `--provider-session <exact-current-parent-record>` and
    `--parent-thread-id <current-parent-thread-id>` to the failure command. It reconstructs the ledger from native
    dispatches and collects closure against the prepared run start. Missing provider evidence produces a concrete
    Blocked closure receipt; it cannot certify terminal closure.

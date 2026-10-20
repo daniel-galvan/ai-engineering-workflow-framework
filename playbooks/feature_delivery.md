@@ -85,8 +85,10 @@ clarification-required run may complete discovery and hand off focused questions
 ## Asset Inventory and Review Gate
 
 Every Feature Delivery run MUST create `asset_manifest.json` before downstream planning fan-in. The `feature-context`
-worker MUST inventory the complete Jira attachment collections of the supplied issue and selected related issues,
-and separately query Jira remote links for each selected issue. Record the remote-link collection as `empty`,
+worker MUST return its inventory in the `asset_manifest` key of its final JSON response; the Coordinator's validated
+result merger materializes the file before the packaged gate. The worker MUST inventory the complete Jira
+attachment collections of the supplied issue and selected related issues, and separately query Jira remote links
+for each selected issue. Record the remote-link collection as `empty`,
 `complete`, or an explicit retrieval limitation in the Jira source's `remote_link_inventory`; every discovered link
 needs a supporting source and disposition even when non-material. Include every file or folder explicitly supplied in
 the run prompt or `run_inputs.json`. A folder inventory is recursive

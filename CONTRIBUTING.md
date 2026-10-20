@@ -78,8 +78,11 @@ python3 scripts/validate_library.py --self-test
 python3 scripts/run_preflight.py --self-test
 python3 scripts/prepare_run.py --self-test
 python3 scripts/finalize_work_record.py --self-test
-python3 -m unittest discover -s tests -p 'test_*.py'
+env -u CODEX_THREAD_ID -u CODEX_SESSION_ID python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+The regression suite uses synthetic provider records. Clear the editing chat's native identity as shown above;
+native-binding tests supply their own controlled identity and records. Packaged self-checks isolate this automatically.
 
 To validate a terminal work record's identity and referential integrity, supply its path:
 

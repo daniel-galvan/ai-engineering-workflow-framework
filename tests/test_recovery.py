@@ -13,6 +13,7 @@ from unittest.mock import patch
 from scripts import prepare_run as prepare
 from scripts import validate_worker_runtime as runtime
 from scripts.merge_techops_result import merge_result
+from tests.worker_response_support import stage_worker_response
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,8 +72,8 @@ class V6Recovery(unittest.TestCase):
         result = {"run_id": envelope["run_id"], "worker_result": {
             **dict.fromkeys(template["worker_results"][0], "Current-run evidence"),
             "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
-        Path(envelope["worker_contract"]["result"]).write_text(json.dumps(result))
-        merge_result(packet_path, "current_state_investigator")
+        trace_path, _ = stage_worker_response(run, "current_state_investigator", result)
+        merge_result(packet_path, "current_state_investigator", trace=trace_path)
         self.assertEqual(json.loads(packet_path.read_text())["worker_results"][0]["Worker"], "issue-evidence")
         continued = self.prepare(continuation=True)
         messages = json.loads(Path(continued["activation_packet_bundle"]["path"]).read_text())["packets"]
@@ -108,12 +109,21 @@ class V6Recovery(unittest.TestCase):
         child = self.root / "child.jsonl"
         rows = [{"timestamp": START, "type": "session_meta", "payload": {"id": CHILD}},
                 {"timestamp": "2026-10-09T20:01:00Z", "type": "response_item", "payload": {
-                 "type": "custom_tool_call", "input": "find .thoughts/ISSUE-1/runs -type f"}}]
+                 "type": "custom_tool_call", "input": "find .thoughts/ISSUE-1/runs -type f"}},
+                {"timestamp": "2026-10-09T20:01:20Z", "type": "turn_context", "payload": {
+                 "turn_id": "00000000-0000-0000-0000-000000000004", "model": "gpt-6-luna", "effort": "high"}},
+                {"timestamp": "2026-10-09T20:01:30Z", "type": "response_item", "payload": {
+                 "type": "message", "role": "assistant", "phase": "final_answer",
+                 "content": [{"type": "output_text", "text": json.dumps({"output": "Rejected archived evidence",
+                     "result": {"run_id": json.loads(Path(run["finalization_packet"]).read_text())[
+                         "identity"]["Run ID"], "worker_result": {"Worker": "issue-evidence",
+                         "Outcome": "complete"}, "evidence": []}})}]}}]
         child.write_text("".join(json.dumps(row) + "\n" for row in rows))
         observation = root / "observation.json"
         observation.write_text(json.dumps({"Provider handle": HANDLE, "Thread ID": CHILD,
             "Provider status": "completed", "Last dispatch at": DISPATCH, "Observed at": "2026-10-09T20:02:00Z",
-            "Status source": "read_thread", "Latest turn started at": DISPATCH,
+            "Status source": "read_thread", "Latest turn started at": "2026-10-09T20:01:20Z",
+            "Latest turn completed at": "2026-10-09T20:01:30Z",
             "Latest turn status": "completed", "Thread status": "idle",
             "Binding evidence": {"activation_packet_delivered": True}}))
         trace = root / "issue_evidence_trace.json"
@@ -134,12 +144,11 @@ class V6Recovery(unittest.TestCase):
 
     def test_exported_trace_preserves_completed_result_hash(self):
         run = self.prepare()
-        source = Path(run["artifact_root"]) / "issue_evidence_result.json"
-        source.write_text('{"run_id": "original worker output"}\n')
         trace = json.loads(self.rejected_trace(run).read_text())
         receipt = trace["result_artifact"]
-        self.assertEqual(receipt["path"], str(source.resolve()))
-        self.assertEqual(receipt["sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
+        staged = Path(receipt["path"])
+        self.assertNotEqual(staged, Path(run["worker_contracts"]["current_state_investigator"]["result"]))
+        self.assertEqual(receipt["sha256"], hashlib.sha256(staged.read_bytes()).hexdigest())
 
     def test_recovery_rejects_manually_added_launch_errors(self):
         run = self.prepare()
@@ -177,8 +186,7 @@ class V6Recovery(unittest.TestCase):
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
         rejected["run_id"] = json.loads(Path(run["finalization_packet"]).read_text())["identity"]["Run ID"]
         rejected["tool_trace"] = []
-        rejected["spawn"]["observed_agent_role"] = "current_state_investigator"
-        rejected["audit"]["errors"] = runtime.trace_errors(rejected, require_freshness=True)
+        rejected["audit"]["errors"] = []
         trace.write_text(json.dumps(rejected))
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
         rejected["audit"] = {"status": "passed", "errors": []}
@@ -303,27 +311,33 @@ class V6Recovery(unittest.TestCase):
                 "agent_thread_id": fresh_child}}}) + "\n")
         child = self.root / "fresh_child.jsonl"
         contract_path = Path(run["artifact_root"]) / "activation_corrected.txt"
+        template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
+        result = {"run_id": envelope["run_id"], "worker_result": {
+            **dict.fromkeys(template["worker_results"][0], "Reverified current-run evidence"),
+            "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
         child.write_text("\n".join(json.dumps(row) for row in [
             {"timestamp": dispatch, "type": "session_meta", "payload": {"id": fresh_child}},
             {"timestamp": "2026-10-09T20:03:30Z", "type": "response_item", "payload": {
                 "type": "custom_tool_call", "call_id": "contract", "input":
                 'await tools.exec_command(' + json.dumps({"cmd": "cat " + str(contract_path)}) + ')'}},
             {"timestamp": "2026-10-09T20:03:31Z", "type": "response_item", "payload": {
-                "type": "custom_tool_call_output", "call_id": "contract", "output": contract_path.read_text()}}
+                "type": "custom_tool_call_output", "call_id": "contract", "output": contract_path.read_text()}},
+            {"timestamp": "2026-10-09T20:03:32Z", "type": "turn_context", "payload": {
+                "turn_id": "00000000-0000-0000-0000-000000000005", "model": "gpt-6-luna", "effort": "high"}},
+            {"timestamp": "2026-10-09T20:03:33Z", "type": "response_item", "payload": {
+                "type": "message", "role": "assistant", "phase": "final_answer",
+                "content": [{"type": "output_text", "text": json.dumps({
+                    "output": "Corrected current-run evidence", "result": result})}]}}
         ]) + "\n")
         root = rejected_path.parent
         observation_path = root / "observation.json"
         observation = json.loads(observation_path.read_text())
         observation.update({"Provider handle": fresh_handle, "Thread ID": fresh_child,
-                            "Last dispatch at": dispatch, "Latest turn started at": dispatch,
+                            "Last dispatch at": dispatch, "Latest turn started at": "2026-10-09T20:03:32Z",
+                            "Latest turn completed at": "2026-10-09T20:03:33Z",
                             "Observed at": "2026-10-09T20:04:00Z"})
         observation.pop("Binding evidence")
         observation_path.write_text(json.dumps(observation))
-        template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
-        result = {"run_id": envelope["run_id"], "worker_result": {
-            **dict.fromkeys(template["worker_results"][0], "Reverified current-run evidence"),
-            "Worker": "issue-evidence", "Outcome": "complete"}}
-        Path(envelope["worker_contract"]["result"]).write_text(json.dumps(result))
         corrected_path = root / "corrected_issue_evidence_trace.json"
         exported = self.command("worker_runtime_evidence.py", "--provider-session", parent,
             "--parent-thread-id", PARENT, "--started-at", START, "--ledger", root / "runtime_dispatches.json",

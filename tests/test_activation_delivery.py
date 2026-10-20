@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 from scripts import prepare_run as prepare
+from scripts import runtime_checks
 from scripts import validate_worker_runtime as runtime
 from scripts.worker_runtime_evidence import export_worker_trace
 
@@ -148,7 +149,8 @@ class ActivationDelivery(unittest.TestCase):
              "Launch": {"fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"]}}]}
         observation = {"Provider handle": HANDLE, "Thread ID": CHILD, "Provider status": "completed",
             "Last dispatch at": DISPATCH, "Observed at": "2026-10-12T20:02:00Z", "Status source": "read_thread",
-            "Latest turn started at": DISPATCH, "Latest turn status": "completed", "Thread status": "idle"}
+            "Latest turn started at": "2026-10-12T20:01:02Z", "Latest turn completed at": "2026-10-12T20:01:03Z",
+            "Latest turn status": "completed", "Thread status": "idle"}
         source = self.root / "child.jsonl"
         rows = [{"timestamp": DISPATCH, "type": "session_meta", "payload": {"id": CHILD}},
             {"timestamp": "2026-10-12T20:01:00Z", "type": "response_item", "payload": {
@@ -157,13 +159,26 @@ class ActivationDelivery(unittest.TestCase):
             {"timestamp": "2026-10-12T20:01:01Z", "type": "response_item", "payload": {
                 "type": "custom_tool_call_output", "call_id": "read-contract",
                 "output": [{"type": "input_text", "text": dispatch.read_text()}]}}]
-        source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
         contract = packet.get("worker_contract", {})
         if contract.get("result_hash_required"):
             fields = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())["worker_results"][0]
-            Path(contract["result"]).write_text(json.dumps({"run_id": packet["run_id"], "worker_result": {
+            result = {"run_id": packet["run_id"], "worker_result": {
                 **dict.fromkeys(fields, "Synthetic evidence blocker"),
-                "Worker": "feature-context", "Outcome": "blocked"}}))
+                "Worker": "feature-context", "Outcome": "blocked"},
+                "evidence": [], "claims": [], "decisions": [], "actions": []}
+            if contract.get("planning_disposition_required"):
+                result.update(plan_readiness="awaiting_input", implementation_plan_action="omit")
+            response = {"output": "Synthetic worker response.", "result": result}
+            if contract.get("asset_inventory"):
+                response["asset_manifest"] = {}
+            rows.extend([
+                {"timestamp": "2026-10-12T20:01:02Z", "type": "turn_context", "payload": {
+                    "turn_id": "00000000-0000-0000-0000-000000000004", "model": packet["model"],
+                    "effort": packet["effort"]}},
+                {"timestamp": "2026-10-12T20:01:03Z", "type": "response_item", "payload": {
+                    "type": "message", "role": "assistant", "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": json.dumps(response)}]}}])
+        source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
         return export_worker_trace(ledger, source, "current_state_investigator", observation,
                                    run_id=packet["run_id"], artifact_root=self.artifacts)
 
@@ -246,6 +261,72 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn("planning_command_invalid", runtime.trace_errors(malformed))
         trace["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": "rg 'bazel test' source.md"}})
         self.assertFalse(any("planning_operation" in error for error in runtime.trace_errors(trace)))
+
+    def test_planning_rejects_direct_writes_for_response_contracts(self):
+        trace = self.instruction_trace()
+        worker_packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["current_state_investigator"]
+        output = worker_packet["worker_contract"]["output"]
+        result = worker_packet["worker_contract"]["result"]
+        packet_path = Path(self.run["finalization_packet"])
+        packet = json.loads(packet_path.read_text())
+        packet["identity"]["Lifecycle"] = "planning"
+        packet_path.write_text(json.dumps(packet))
+        trace["tool_trace"].append({"type": "custom_tool_call", "name": "functions.apply_patch",
+            "input": "*** Begin Patch\n*** Update File: src/service.go\n@@\n-old\n+new\n*** End Patch"})
+        self.assertIn("planning_source_write_not_authorized", runtime.trace_errors(trace))
+        trace["tool_trace"][-1]["input"] = ("*** Begin Patch\n*** Add File: " + output
+                                               + "\n+current-run analysis\n*** End Patch")
+        self.assertIn("planning_write_target_not_assigned", runtime.trace_errors(trace))
+        trace["tool_trace"][-1]["input"] = ("*** Begin Patch\n*** Add File: " + result
+                                               + "\n+current-run result\n*** End Patch")
+        self.assertIn("planning_write_target_not_assigned", runtime.trace_errors(trace))
+        trace["tool_trace"][-1]["input"] = ("*** Begin Patch\n*** Add File: " + str(self.artifacts / "finalization_packet.json")
+                                               + "\n+changed control record\n*** End Patch")
+        self.assertIn("planning_write_target_not_assigned", runtime.trace_errors(trace))
+        commands = ["printf plan > " + output, "printf plan > " + result,
+                    "printf plan > 1", "printf plan >&1",
+                    "printf plan > src/service.go", "tee src/service.go", "cp note.md src/service.go",
+                    "sed -i 's/old/new/' src/service.go", "git apply source.patch",
+                    "python3 -c \"from pathlib import Path; Path('src/service.go').write_text('new')\""]
+        for command in commands:
+            with self.subTest(command=command):
+                current = json.loads(json.dumps(trace))
+                current["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": command}})
+                errors = runtime.trace_errors(current)
+                if command in {"printf plan >&1"}:
+                    self.assertFalse(any(error.startswith("planning_source_write") for error in errors))
+                elif command in {"printf plan > " + output, "printf plan > " + result}:
+                    self.assertIn("planning_source_write_not_authorized", errors)
+                else:
+                    self.assertIn("planning_source_write_not_authorized", errors)
+
+        relative_output = Path(output).relative_to(self.root.resolve())
+        relative = json.loads(json.dumps(trace))
+        relative["tool_trace"].append({"tool": "exec_command", "arguments": {
+            "cmd": "printf plan > " + str(relative_output), "workdir": "."}})
+        self.assertIn("planning_source_write_not_authorized", runtime.trace_errors(relative))
+
+    def test_planning_keeps_assigned_sentry_file_outputs_writable(self):
+        run = prepare.prepare_run(self.root, "SENTRY-1", "sentry_issue_remediation", None, False,
+                                  input_manifest=self.root / "inputs.json")
+        artifact_root = Path(run["artifact_root"])
+        bundle = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())
+        role = "sentry_current_state_investigator"
+        packet = bundle["packets"][role]
+        dispatch = artifact_root / "activation_context_sentry.txt"
+        message = runtime.activation_message(packet, {"objective": "Review the assigned current evidence"})
+        runtime.dispatch_message(packet, message, dispatch)
+        spawn = {"dispatch_file": str(dispatch),
+                 "dispatch_file_sha256": hashlib.sha256(dispatch.read_bytes()).hexdigest(),
+                 "agent": role, "binding_agent": role}
+        output = packet["worker_contract"]["output"]
+        trace = {"run_id": packet["run_id"], "spawn": spawn, "tool_trace": [
+            {"tool": "apply_patch", "arguments": {"patch":
+                "*** Begin Patch\n*** Add File: " + output + "\n+assigned Sentry output\n*** End Patch"}}]}
+        self.assertEqual(runtime_checks.planning_permission_errors(trace), [])
+        trace["tool_trace"] = [{"tool": "exec_command", "arguments": {
+            "cmd": "printf evidence > " + output}}]
+        self.assertEqual(runtime_checks.planning_permission_errors(trace), [])
 
     def test_input_manifest_rejects_malformed_operation_authorizations(self):
         path = self.root / "inputs.json"

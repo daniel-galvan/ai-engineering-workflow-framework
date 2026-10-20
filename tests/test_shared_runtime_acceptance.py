@@ -149,7 +149,10 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 "Worker": workers[role][0], "Outcome": "blocked"}}
             if result_contract.get("planning_disposition_required"):
                 result.update(plan_readiness="awaiting_input", implementation_plan_action="omit")
-            Path(result_contract["result"]).write_text(json.dumps(result))
+            if result_contract.get("asset_inventory"):
+                response_manifest = {}
+            else:
+                response_manifest = None
         contract = root / "activation.txt"
         # Test the receipt seam; lifecycle approval and stage gates have their own regression coverage.
         runtime.dispatch_message(packet, runtime.activation_message(packet, {"objective": "Inspect the supplied occurrence"}), contract)
@@ -173,12 +176,28 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             event(2, "response_item", type="custom_tool_call", call_id="contract", name="exec",
                   input='const r = await tools.exec_command(' + json.dumps({"cmd": "cat " + str(contract)}) + '); text(r.output);'),
             event(3, "response_item", type="custom_tool_call_output", call_id="contract", output=contract.read_text()),
+            event(5, "turn_context", turn_id="00000000-0000-0000-0000-000000000004",
+                  model=packet["model"], effort=packet["effort"]),
             event(8, "response_item", type="custom_tool_call", call_id="current", name="exec",
                   input='await tools.exec_command({cmd:"pwd"})')]
+        if result_contract.get("result_hash_required"):
+            response = {"output": "Synthetic worker response.", "result": result}
+            if response_manifest is not None:
+                response["asset_manifest"] = response_manifest
+            child_rows.append(event(9, "response_item", type="message", role="assistant", phase="final_answer",
+                                    content=[{"type": "output_text", "text": json.dumps(response)}]))
         observation = {"Provider handle": handle, "Thread ID": CHILD, "Provider status": "idle",
             "Observed at": time(20), "Status source": "read_thread", "Latest turn started at": time(5),
             "Latest turn completed at": time(10), "Latest turn status": "completed", "Thread status": "idle"}
         return run, root, role, time, event, parent_rows, child_rows, observation
+
+    def set_worker_response(self, fixture, result, output="Synthetic worker response."):
+        child = fixture[6]
+        response = {"output": output, "result": result}
+        if fixture[0]["worker_contracts"][fixture[2]].get("asset_inventory"):
+            response["asset_manifest"] = {}
+        final = next(row for row in child if row.get("payload", {}).get("phase") == "final_answer")
+        final["payload"]["content"] = [{"type": "output_text", "text": json.dumps(response)}]
 
     def export(self, fixture):
         run, root, role, time, event, parent_rows, child_rows, observation = fixture
@@ -194,11 +213,10 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
             run, root, role, *_ = fixture
-            source = Path(run["worker_contracts"][role]["result"])
             template = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())
-            source.write_text(json.dumps({"run_id": run["run_id"], "worker_result": {
+            self.set_worker_response(fixture, {"run_id": run["run_id"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
-                "Worker": "issue-evidence", "Outcome": "complete"}}))
+                "Worker": "issue-evidence", "Outcome": "complete"}})
             trace, ledger = self.export(fixture)
             Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
             path = root / "trace.json"
@@ -218,6 +236,20 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(packet["worker_results"][0]["Outcome"], "complete")
             merge_result(packet_path, role, trace=path)
             self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
+
+    def test_feature_asset_manifest_is_published_from_the_read_only_worker_response(self):
+        from scripts.merge_techops_result import merge_result
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "feature_delivery", "current_state_investigator")
+            run, root, role, *_ = fixture
+            manifest_path = Path(run["worker_contracts"][role]["asset_inventory"]["output"])
+            self.assertFalse(manifest_path.exists())
+            trace, ledger = self.export(fixture)
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            trace_path = root / "trace.json"
+            trace_path.write_text(json.dumps(trace))
+            merge_result(Path(run["finalization_packet"]), role, trace=trace_path)
+            self.assertEqual(json.loads(manifest_path.read_text()), {})
 
     def test_prepared_planning_lifecycle_enforces_permissions_even_after_packet_edit(self):
         for playbook, role in (("techops_issue_remediation", "current_state_investigator"),
@@ -286,7 +318,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "dependency_analyst")
             run, root, role, *_ = fixture
-            Path(run["worker_contracts"][role]["result"]).write_text(json.dumps({"run_id": run["run_id"]}))
+            self.set_worker_response(fixture, {"run_id": run["run_id"]})
             trace, ledger = self.export(fixture)
             Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
             self.assertEqual(trace["audit"]["status"], "rejected")
@@ -299,12 +331,12 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "dependency_analyst")
             run, root, role, *_ = fixture
-            bindings = json.loads((root / "role_bindings.json").read_text())
-            Path(bindings["worker_contracts"][role]["result"]).unlink()
+            child = fixture[6]
+            child[:] = [row for row in child if row.get("payload", {}).get("phase") != "final_answer"]
             trace, ledger = self.export(fixture)
             Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
             self.assertEqual(trace["audit"]["status"], "rejected")
-            self.assertIn("worker_result_artifact_changed:" + role, trace["audit"]["errors"])
+            self.assertIn("worker_final_response_missing:" + role, trace["audit"]["errors"])
             self.assertEqual(runtime.rejected_result_errors(trace, trace["spawn"]["provider_handle"],
                                                           trace["last_dispatch_at"]), [])
             rejected = root / "missing_result_trace.json"
@@ -356,7 +388,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                             self.assertEqual(finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
                                              root / "finalization_packet.json", {worker}), [])
                         if contract.get("result_hash_required"):
-                            output = Path(contract["result"])
+                            output = Path(trace["result_artifact"]["path"])
                             output.write_text(output.read_text() + "\n")
                             errors = finalizer._worker_runtime_audit_errors({"runtime_audits": [row]},
                                 root / "finalization_packet.json", {row["Worker"]})
@@ -519,7 +551,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 fixture = self.fixture(directory, playbook, CASES[playbook][0])
                 _, _, _, time, _, parent, _, status = fixture
                 del parent[5:]
-                status["Latest turn started at"] = time(1)
+                status["Latest turn started at"] = time(5)
                 trace, ledger = self.export(fixture)
                 self.assertEqual(len(ledger["events"]), 1)
                 self.assertEqual(trace["last_dispatch_at"], time(1))
@@ -545,6 +577,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             del parent[5:7]
             child.insert(3, event(4, "response_item", type="custom_tool_call", name="exec",
                                  input='await tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})'))
+            child[3]["timestamp"] = fixture[3](1)
             status.update({"Latest turn started at": fixture[3](1), "Dispatch consumed": True,
                            "Dispatch consumption evidence": "Corrected artifact write and validation after dispatch"})
             trace, _ = self.export(fixture)
@@ -719,6 +752,9 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             fixture[5].insert(7, event(7, "response_item", type="function_call", namespace="collaboration",
                 name="followup_task", call_id="retry", arguments=json.dumps({"target": "/root/worker", "message": "Retry correction"})))
             fixture[5].insert(8, event(8, "response_item", type="function_call_output", call_id="retry", output=""))
+            binding = json.loads((fixture[1] / "role_bindings.json").read_text())["bindings"][fixture[2]]
+            fixture[6].insert(4, event(7, "turn_context", turn_id="00000000-0000-0000-0000-000000000005",
+                                       model=binding["model"], effort=binding["effort"]))
             fixture[7]["Latest turn started at"] = fixture[3](7)
             trace, ledger = self.export(fixture)
             self.assertEqual(len(ledger["failed_dispatches"]), 1)
@@ -747,9 +783,10 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             child[0]["payload"]["id"] = thread
             for row in child:
                 row["timestamp"] = time(13)
+            child[3]["timestamp"] = time(13)
             fresh.write_text("\n".join(json.dumps(row) for row in child) + "\n")
             observation = {**fixture[7], "Provider handle": replacement, "Thread ID": thread,
-                "Latest turn started at": time(12), "Latest turn completed at": time(17)}
+                "Latest turn started at": time(13), "Latest turn completed at": time(17)}
             trace = export_worker_trace(ledger, fresh, role, observation, run_id=run["run_id"], artifact_root=root)
             trace_path = root / "replacement.trace.json"
             trace_path.write_text(json.dumps(trace))

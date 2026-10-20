@@ -867,6 +867,11 @@ def prepare_run(
     execution_profile: str | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
+    try:
+        from provider_runtime import current_parent_session
+    except ModuleNotFoundError:
+        from scripts.provider_runtime import current_parent_session
+    provider_session = current_parent_session(provider_session)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
         raise ValueError("invalid_work_item")
     if not execution_repository.resolve().is_dir():
@@ -963,6 +968,12 @@ def prepare_run(
     if playbook == "feature_delivery" and input_manifest is None:
         raise ValueError("run_input_manifest_required")
     validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
+    previous_run_bindings = {}
+    if continuation and not (remediation_reentry or planning_recovery) and (artifact_root / "role_bindings.json").is_file():
+        previous_run_bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+        previous_parent = previous_run_bindings.get("parent_context", {})
+        if provider_session is None and previous_parent:
+            provider_session = Path(previous_parent["provider_session"])
     parent_context = None
     if provider_session:
         try:
@@ -976,10 +987,23 @@ def prepare_run(
                     and not any(value in expected_use for value in ("do not read", "without reading", "preserve only"))):
                 assigned.extend(str(path) for path in local_input_paths(row))
                 assigned.append(str(row.get("Source or path", "")))
+        previous_parent = previous_run_bindings.get("parent_context", {})
+        control = dict(previous_run_bindings.get("runtime_evidence", {}))
+        if previous_parent and Path(previous_parent["provider_session"]).resolve() != provider_session.resolve():
+            control["identity_sessions"] = list(dict.fromkeys([
+                *control.get("identity_sessions", []), previous_parent["provider_session"]]))
         parent_context = parent_context_audit(provider_session, artifact_root=artifact_root,
-                                              input_paths=tuple(assigned))
+            input_paths=tuple(assigned), expected_thread_id=previous_parent.get("parent_thread_id"), runtime_evidence=control)
         if parent_context["status"] != "passed":
             raise ValueError("parent_context_nonconformant:" + ";".join(parent_context["errors"]))
+        if previous_parent and previous_parent["parent_thread_id"] != parent_context["parent_thread_id"]:
+            raise ValueError("continuation_parent_identity_mismatch: continue the run in its original chat")
+        if previous_parent:
+            previous_context = parent_context_audit(Path(previous_parent["provider_session"]), artifact_root=artifact_root,
+                input_paths=tuple(previous_parent["input_paths"]), expected_thread_id=previous_parent["parent_thread_id"],
+                expected_turn_id=previous_parent["turn_id"], runtime_evidence=previous_run_bindings.get("runtime_evidence"))
+            if previous_context["status"] != "passed":
+                raise ValueError("continuation_parent_context_nonconformant:" + ";".join(previous_context["errors"]))
     if playbook == "sentry_issue_remediation" and validated_supplied:
         retain_source_releases(validated_supplied, provider_session)
     prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery)
@@ -1178,11 +1202,14 @@ def prepare_run(
                 "worker_id": worker, "id_namespace": namespace,
                 "result": str(artifact_root / f"{worker.replace('-', '_')}_result.json"),
                 "result_hash_required": True,
+                "result_response": "strict_json_final_answer",
                 "result_fields": {name: list(result_template[name][0])
                                   for name in ("worker_results", *TABLES)},
                 "result_instructions": (
-                    "Write the narrative to output and a JSON envelope to result with run_id, worker_result, "
-                    "and evidence/claims/decisions/actions arrays. Use result_fields exactly; worker_result uses "
+                    "Do not write files. Return exactly one strict JSON object as your final answer with keys "
+                    "output (narrative string) and result (the JSON envelope with run_id, worker_result, and "
+                    "evidence/claims/decisions/actions arrays). The Coordinator captures this answer into immutable "
+                    "current-dispatch artifacts; the merger publishes accepted files. Use result_fields exactly; worker_result uses "
                     f"worker_results fields. Its Worker value must be exactly {worker}. "
                     "Every field value in worker_result and in evidence/claims/decisions/actions "
                     "rows must be a string, including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; "
@@ -1210,10 +1237,13 @@ def prepare_run(
                 "output": str(artifact_root / (worker.replace("-", "_") + ".md")),
                 "result": str(artifact_root / (worker.replace("-", "_") + "_result.json")),
                 "result_hash_required": True,
+                "result_response": "strict_json_final_answer",
                 "result_fields": fields,
                 "instructions": (
-                    "Write narrative to output and JSON to result with current run_id, worker_result, "
-                    "evidence/claims/decisions/actions using result_fields. worker_result is one object using the exact "
+                    "Do not write files. Return exactly one strict JSON object as your final answer with keys "
+                    "output (narrative string) and result (JSON with current run_id, worker_result, "
+                    "evidence/claims/decisions/actions using result_fields). The Coordinator captures this answer into "
+                    "immutable current-dispatch artifacts; the merger publishes accepted files. worker_result is one object using the exact "
                     "worker_results fields (including capitalization), not an array or lowercase summary. "
                     "Every field value in worker_result and in evidence/claims/decisions/actions rows must be a string, "
                     "including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; join multiple "
@@ -1236,6 +1266,9 @@ def prepare_run(
         )
         manifest["worker_contracts"]["current_state_investigator"]["asset_inventory"] = (
             manifest["worker_contracts"]["feature_asset_inventory"])
+        manifest["worker_contracts"]["current_state_investigator"]["instructions"] += (
+            " Include asset_manifest as a third key in the final JSON object using the prepared asset_inventory "
+            "contract. The Coordinator publishes it before the packaged asset gate; do not write the file yourself.")
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
     if playbook in {"techops_issue_remediation", "sentry_issue_remediation"} or (
             playbook == "feature_delivery" and workflow_objective != "specification_assessment"):
@@ -1249,6 +1282,12 @@ def prepare_run(
             previous = json.loads((artifact_root / "role_bindings.json").read_text()).get("runtime_evidence", {})
             if previous.get("run_started_at"):
                 manifest["runtime_evidence"]["run_started_at"] = previous["run_started_at"]
+            sources = list(previous.get("identity_sessions", []))
+            previous_source = previous_run_bindings.get("parent_context", {}).get("provider_session")
+            if previous_source and provider_session and Path(previous_source).resolve() != provider_session.resolve():
+                sources.append(previous_source)
+            if sources:
+                manifest["runtime_evidence"]["identity_sessions"] = list(dict.fromkeys(sources))
     manifest["worker_runtime_guard"] = str(WORKER_RUNTIME_GUARD)
     packet_path = artifact_root / "finalization_packet.json"
     if continuation and not prior and packet_path.is_file():
@@ -1365,7 +1404,7 @@ def main() -> int:
     parser.add_argument("--work-item")
     parser.add_argument("--playbook")
     parser.add_argument("--runtime-agents", type=Path)
-    parser.add_argument("--provider-session", type=Path, help="Exact current parent record for context audit and live source observations")
+    parser.add_argument("--provider-session", type=Path, help="Assert the automatically resolved current native parent record")
     parser.add_argument("--lifecycle", choices=("planning", "remediation"),
                         help="Declared lifecycle; must match the initial planning stage or approved continuation/reentry")
     parser.add_argument("--execution-profile", choices=("standard", "deep"),

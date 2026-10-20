@@ -14,6 +14,7 @@ from scripts.merge_techops_result import merge_result
 from scripts.worker_runtime_evidence import export_worker_trace, read_runtime_events
 from tests import test_framework_corrections as fixtures
 from tests import test_activation_delivery as activation_fixtures
+from tests.worker_response_support import stage_worker_response
 
 
 SOURCE = "00000000-0000-0000-0000-000000000001"
@@ -310,22 +311,26 @@ class ContextOperationAudit(unittest.TestCase):
              "output": Path(trace["spawn"]["dispatch_file"]).read_text()}, *self.paired(
             'await tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"})', quoted)]
         source = self.repository / "child.jsonl"
-        source.write_text(json.dumps({"type": "session_meta", "payload": {"id": child}}) + "\n" + "".join(
-            json.dumps({"timestamp": "2026-10-13T01:00:02Z", "type": "response_item", "payload": row}) + "\n"
-            for row in trace["tool_trace"]))
         binding = json.loads((self.root / "role_bindings.json").read_text())["bindings"]["current_state_investigator"]
+        rows = [{"timestamp": "2026-10-13T01:00:00Z", "type": "session_meta", "payload": {"id": child}},
+            *[{"timestamp": "2026-10-13T01:00:02Z", "type": "response_item", "payload": row}
+              for row in trace["tool_trace"]],
+            {"timestamp": "2026-10-13T01:00:03Z", "type": "turn_context", "payload": {
+                "turn_id": "00000000-0000-0000-0000-000000000004", "model": binding["model"],
+                "effort": binding["effort"]}},
+            {"timestamp": "2026-10-13T01:00:30Z", "type": "response_item", "payload": {
+                "type": "message", "role": "assistant", "phase": "final_answer",
+                "content": [{"type": "output_text", "text": json.dumps({"output": "Current response",
+                    "result": self.result, "asset_manifest": {}})}]}}]
+        source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
         ledger = {"events": [{"Provider handle": handle, "Last dispatch at": dispatch, "Operation": "spawn_agent",
                   "Launch": {"model": binding["model"], "reasoning_effort": binding["effort"], "fork_turns": "none"}}],
                   "thread_mappings": {handle: child}}
         observation = {"Provider handle": handle, "Thread ID": child, "Provider status": "completed",
             "Last dispatch at": dispatch, "Observed at": "2026-10-13T01:01:00Z", "Status source": "read_thread",
-            "Latest turn started at": dispatch, "Latest turn completed at": "2026-10-13T01:00:30Z",
+            "Latest turn started at": "2026-10-13T01:00:03Z", "Latest turn completed at": "2026-10-13T01:00:30Z",
             "Latest turn status": "completed", "Thread status": "idle"}
         observation.pop("Last dispatch at")
-        Path(self.run["worker_contracts"]["current_state_investigator"]["result"]).write_text(
-            json.dumps({"run_id": self.run["run_id"], "worker_result": {
-                **dict.fromkeys(json.loads(finalizer.PACKET_TEMPLATE.read_text())["worker_results"][0], "Observed"),
-                "Worker": "feature-context", "Outcome": "blocked"}}))
         exported = export_worker_trace(ledger, source, "feature-context", observation,
                                        run_id=trace["run_id"], artifact_root=self.root)
         self.assertEqual(exported["audit"], {"status": "passed", "errors": []})
@@ -582,17 +587,31 @@ class ContextOperationAudit(unittest.TestCase):
                  "workdir": str(self.repository)}) + '); text(r.output);'}},
             {"timestamp": time(7), "type": "response_item", "payload": {"type": "custom_tool_call_output",
              "call_id": "ancestors", "output": [{"type": "input_text", "text": "No additional AGENTS.md files."}]}},
+            {"timestamp": time(8), "type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000104",
+             "model": "gpt-6-luna", "effort": "high"}},
         ]) + "\n")
-        observation = root / "status.json"
-        observation.write_text(json.dumps({"Provider handle": handle, "Thread ID": child, "Provider status": "idle",
-            "Observed at": time(30), "Status source": "read_thread", "Latest turn started at": time(1),
-            "Latest turn completed at": time(20), "Latest turn status": "completed", "Thread status": "idle"}))
-        trace_path = root / "trace.json"
         contract = run["worker_contracts"].get(role, {})
         if contract.get("result_hash_required"):
-            Path(contract["result"]).write_text(json.dumps({"run_id": run["run_id"], "worker_result": {
-                **dict.fromkeys(json.loads(finalizer.PACKET_TEMPLATE.read_text())["worker_results"][0], "Observed"),
-                "Worker": contract["worker_id"], "Outcome": "blocked"}}))
+            worker_fields = contract.get("result_fields", {}).get("worker_results") or json.loads(
+                finalizer.PACKET_TEMPLATE.read_text())["worker_results"][0]
+            response_result = {"run_id": run["run_id"], "worker_result": {
+                **dict.fromkeys(worker_fields, "Observed"),
+                "Worker": contract.get("worker_id", contract.get("worker")), "Outcome": "blocked"},
+                "evidence": [], "claims": [], "decisions": [], "actions": []}
+            if contract.get("planning_disposition_required"):
+                response_result.update(plan_readiness="awaiting_input", implementation_plan_action="omit")
+            response = {"output": "Current worker response", "result": response_result}
+            if contract.get("asset_inventory"):
+                response["asset_manifest"] = {}
+            with session.open("a") as stream:
+                stream.write(json.dumps({"timestamp": time(9), "type": "response_item", "payload": {
+                    "type": "message", "role": "assistant", "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": json.dumps(response)}]}}) + "\n")
+        observation = root / "status.json"
+        observation.write_text(json.dumps({"Provider handle": handle, "Thread ID": child, "Provider status": "idle",
+            "Observed at": time(30), "Status source": "read_thread", "Latest turn started at": time(8),
+            "Latest turn completed at": time(20), "Latest turn status": "completed", "Thread status": "idle"}))
+        trace_path = root / "trace.json"
         result = subprocess.run([sys.executable, run["runtime_evidence"]["collector"], "--provider-session", str(parent),
             "--parent-thread-id", SOURCE, "--started-at", time(0), "--ledger", run["runtime_evidence"]["ledger"],
             "--worker-session", str(session), "--observation", str(observation), "--agent", role,
@@ -657,9 +676,8 @@ class ContextOperationAudit(unittest.TestCase):
         self.result["worker_result"]["Worker"] = "feature-design"
         self.result["evidence"] = []
         self.result.update({"plan_readiness": "awaiting_input", "implementation_plan_action": "create_draft"})
-        source = self.root / "feature_design_result.json"
-        source.write_text(json.dumps(self.result))
-        merge_result(self.packet_path, "solution_architect")
+        trace, _ = stage_worker_response(self.run, "solution_architect", self.result)
+        merge_result(self.packet_path, "solution_architect", trace=trace)
         packet = json.loads(self.packet_path.read_text())
         self.assertEqual(packet["planning_disposition"], {
             "plan_readiness": "awaiting_input", "implementation_plan_action": "create_draft"})
@@ -667,10 +685,10 @@ class ContextOperationAudit(unittest.TestCase):
                                    "Activated profile": "standard", "Executed profile": "standard"})
         self.assertIn("feature_partial_draft_plan_required", finalizer._feature_delivery_packet_contract_errors(packet))
         self.result["implementation_plan_action"] = "create"
-        source.write_text(json.dumps(self.result))
         saved = self.packet_path.read_bytes()
         with self.assertRaisesRegex(ValueError, "feature_planning_disposition_invalid"):
-            merge_result(self.packet_path, "solution_architect")
+            trace, _ = stage_worker_response(self.run, "solution_architect", self.result)
+            merge_result(self.packet_path, "solution_architect", trace=trace)
         self.assertEqual(self.packet_path.read_bytes(), saved)
 
     def test_rejected_result_requires_one_combined_corrected_activation(self):

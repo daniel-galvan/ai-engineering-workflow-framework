@@ -99,24 +99,57 @@ def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thr
 
 
 def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -> list[str]:
-    """Require unchanged analytical bytes and the same contract used at durable acceptance."""
+    """Require the staged response to match the latest completed worker answer."""
     contract = bindings.get("worker_contracts", {}).get(role, {})
     if not contract.get("result_hash_required"):
         return []
-    source = Path(contract["result"])
     receipt = trace.get("result_artifact", {})
-    if (source.resolve().parent != root.resolve() or not source.is_file()
-            or not isinstance(receipt, dict) or receipt.get("path") != str(source.resolve())
-            or receipt.get("sha256") != hashlib.sha256(source.read_bytes()).hexdigest()):
+    try:
+        root = root.resolve()
+        try:
+            from worker_runtime_evidence import worker_final_response, strict_json_loads
+        except ModuleNotFoundError:
+            from scripts.worker_runtime_evidence import worker_final_response, strict_json_loads
+        response = worker_final_response(Path(trace["trace_retrieval"]), trace["last_dispatch_at"],
+                                         trace["status_observation"]["Observed at"],
+                                         trace["status_observation"].get("Latest turn started at"))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        if str(error).startswith("worker_final_response"):
+            return [str(error) + ":" + role]
+        return ["worker_result_contract_invalid:" + role + ":" + str(error)]
+    if not isinstance(receipt, dict) or receipt.get("dispatch_at") != trace.get("last_dispatch_at"):
         return ["worker_result_artifact_changed:" + role]
     try:
+        dispatch_digest = hashlib.sha256(trace["last_dispatch_at"].encode()).hexdigest()[:16]
+        stage = (root / ".worker_responses" / role / dispatch_digest).resolve()
+        expected = {"path": ("result.json", "sha256"), "output_path": ("output.md", "output_sha256"),
+                    "response_path": ("response.json", "response_sha256")}
+        if contract.get("asset_inventory"):
+            expected["asset_manifest_path"] = ("asset_manifest.json", "asset_manifest_sha256")
+        paths = {}
+        for field, (name, hash_field) in expected.items():
+            path = Path(receipt.get(field, "")).resolve()
+            if (path != stage / name or not path.is_file()
+                    or receipt.get(hash_field) != hashlib.sha256(path.read_bytes()).hexdigest()):
+                return ["worker_result_artifact_changed:" + role]
+            paths[field] = path
+        if paths["response_path"].read_text() != response:
+            return ["worker_result_artifact_changed:" + role]
+        envelope = strict_json_loads(response)
+        if (paths["output_path"].read_text() != envelope["output"]
+                or json.loads(paths["path"].read_text()) != envelope["result"]):
+            return ["worker_result_artifact_changed:" + role]
+        if contract.get("asset_inventory") and json.loads(paths["asset_manifest_path"].read_text()) != envelope.get("asset_manifest"):
+            return ["worker_result_artifact_changed:" + role]
         try:
             from merge_techops_result import validated_result
         except ModuleNotFoundError:
             from scripts.merge_techops_result import validated_result
         validated_result(json.loads((root / "finalization_packet.json").read_text()),
-                         json.loads(source.read_text()), bindings, role)
+                         envelope["result"], bindings, role)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        if str(error).startswith("worker_final_response"):
+            return [str(error) + ":" + role]
         return ["worker_result_contract_invalid:" + role + ":" + str(error)]
     return []
 
@@ -1170,6 +1203,14 @@ def planning_permission_errors(trace: dict) -> list[str]:
         return errors + ["worker_lifecycle_required"]
     if lifecycle != "planning":
         return errors
+    artifact_root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
+    repository_root = artifact_root.parent.parent
+    contract = packet.get("worker_contract") or {}
+    allowed_writes = {Path(contract[key]).resolve() for key in ("output", "result", "implementation_plan")
+                      if isinstance(contract.get(key), str)}
+    if contract.get("result_response") == "strict_json_final_answer":
+        allowed_writes.difference_update(Path(contract[key]).resolve() for key in ("output", "result")
+                                        if isinstance(contract.get(key), str))
     authorized = set()
     for row in packet.get("run_input_manifest", {}).get("inputs", []):
         if (row.get("Classification") == "execution authorization" and row.get("Status") == "Approved"
@@ -1180,6 +1221,23 @@ def planning_permission_errors(trace: dict) -> list[str]:
                 authorized.update(operations)
     for row in trace.get("tool_trace", []):
         for tool, arguments in _tool_operations(row):
+            if tool == "apply_patch":
+                patch = arguments.get("patch")
+                targets = re.findall(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", patch or "", re.M)
+                if not isinstance(patch, str) or not targets:
+                    errors.append("planning_write_targets_unavailable")
+                    continue
+                for target in targets:
+                    path = Path(target)
+                    path = path if path.is_absolute() else repository_root / path
+                    resolved = path.resolve()
+                    if not resolved.is_relative_to(artifact_root):
+                        errors.append("planning_source_write_not_authorized")
+                        break
+                    if resolved not in allowed_writes:
+                        errors.append("planning_write_target_not_assigned")
+                        break
+                continue
             if tool != "exec_command":
                 continue
             command = arguments.get("cmd", "")
@@ -1190,21 +1248,62 @@ def planning_permission_errors(trace: dict) -> list[str]:
                 tokens = shlex.split(command)
                 if len(tokens) == 3 and Path(tokens[0]).name in {"bash", "sh", "zsh"} and tokens[1] in {"-lc", "-c"}:
                     command = tokens[2]
-                lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n")
+                lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>\n")
                 lexer.whitespace = " \t\r"
                 lexer.whitespace_split = True
                 parts, part = [], []
                 for token in lexer:
-                    if token and all(char in ";&|\n" for char in token):
+                    if token in {";", "&", "|", "&&", "||", "\n"}:
                         parts.append(part)
                         part = []
                     else:
                         part.append(token)
                 parts.append(part)
+
+                def authorized_write_target(target):
+                    if target in {"/dev/null", "/dev/stdout", "/dev/stderr"}:
+                        return True
+                    path = Path(target)
+                    cwd = Path(arguments.get("workdir") or repository_root)
+                    if not cwd.is_absolute():
+                        cwd = repository_root / cwd
+                    resolved = (path if path.is_absolute() else cwd / path).resolve()
+                    if not resolved.is_relative_to(artifact_root):
+                        return False
+                    return resolved in allowed_writes
+
                 for part in parts:
                     if not part:
                         continue
                     name = Path(part[0]).name
+                    # shortcut: audit literal embedded writes; opaque external scripts need a provider sandbox.
+                    if name in {"python", "python3", "node", "ruby"} and re.search(
+                            r"\.write_(?:text|bytes)\s*\(|\bopen\s*\([^)]*,\s*['\"](?:w|a|x)"
+                            r"|\b(?:os|shutil)\.(?:remove|unlink|mkdir|makedirs|rmdir|rename|replace|"
+                            r"copy|copy2|copyfile|copytree|move|rmtree)\s*\(", command):
+                        errors.append("planning_source_write_not_authorized")
+                    for index, token in enumerate(part[:-1]):
+                        if token in {">", ">>", ">|", "&>", "&>>", ">&"}:
+                            target = part[index + 1]
+                            if not (token == ">&" and target in {"1", "2"}) and not authorized_write_target(target):
+                                errors.append("planning_source_write_not_authorized")
+                    operands = [token for token in part[1:] if not token.startswith("-") and token != "--"]
+                    if name in {"tee", "touch", "mkdir", "rmdir", "rm"}:
+                        targets = [target for target in operands if target != "-"]
+                    elif name in {"cp", "install", "ln"}:
+                        targets = operands[-1:]
+                    elif name == "mv":
+                        targets = operands
+                    elif (name in {"sed", "perl"} and any(token == "-i" or token.startswith("-i") for token in part[1:])
+                          or name == "git" and len(part) > 1 and part[1] in {
+                              "apply", "checkout", "switch", "reset", "clean", "stash", "am", "merge", "rebase",
+                              "cherry-pick"}):
+                        errors.append("planning_source_write_not_authorized")
+                        targets = []
+                    else:
+                        targets = []
+                    if any(not authorized_write_target(target) for target in targets):
+                        errors.append("planning_source_write_not_authorized")
                     operation = None
                     if name in {"bazel", "bazelisk", "go", "npm", "pnpm", "yarn", "make"}:
                         action = next((arg for arg in part[1:] if not arg.startswith("-")), "")
@@ -1232,6 +1331,10 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
     if not isinstance(launch_errors, list) or any(not isinstance(error, str) for error in launch_errors):
         return ["worker_launch_errors_invalid"]
     errors: list[str] = list(launch_errors)
+    response_errors = trace.get("worker_response_errors", [])
+    if not isinstance(response_errors, list) or any(not isinstance(error, str) for error in response_errors):
+        return ["worker_response_errors_invalid"]
+    errors.extend(response_errors)
     spawn = trace.get("spawn", {})
     if not isinstance(spawn, dict):
         return ["spawn_trace_invalid"]
@@ -1292,7 +1395,7 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
             errors.append("analytical_failure_artifact_absent")
     errors.extend(planning_permission_errors(trace))
     errors.extend(context_trace_errors(trace, details=context_details))
-    return errors
+    return list(dict.fromkeys(errors))
 
 
 TECHOPS_CHECKS = {"issue_scope", "history_reconciliation", "plan_dependencies", "regression_fixture"}

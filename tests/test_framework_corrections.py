@@ -16,6 +16,7 @@ from scripts import run_preflight as preflight
 from scripts import validate_worker_runtime as runtime
 from scripts.merge_techops_result import merge_result
 from scripts.worker_runtime_evidence import read_runtime_events
+from tests.worker_response_support import stage_worker_response
 
 
 class FrameworkCorrections(unittest.TestCase):
@@ -41,8 +42,8 @@ class FrameworkCorrections(unittest.TestCase):
         self.source = Path(self.run["worker_contracts"]["current_state_investigator"]["result"])
 
     def merge(self):
-        self.source.write_text(json.dumps(self.result))
-        merge_result(self.packet_path, "current_state_investigator")
+        trace, _ = stage_worker_response(self.run, "current_state_investigator", self.result)
+        merge_result(self.packet_path, "current_state_investigator", trace=trace)
 
     def test_failure_without_ledger_retains_concrete_closure_blocker(self):
         self.assertFalse((self.root / "runtime_dispatches.json").exists())
@@ -118,14 +119,18 @@ class FrameworkCorrections(unittest.TestCase):
 
     def test_empty_result_preserves_evidence_and_conflicts_do_not_mutate_packet(self):
         self.merge()
-        saved = self.packet_path.read_bytes()
+        saved = json.loads(self.packet_path.read_text())
         self.result["evidence"] = []
         self.merge()
-        self.assertEqual(saved, self.packet_path.read_bytes())
+        merged = json.loads(self.packet_path.read_text())
+        self.assertEqual(saved["evidence"], merged["evidence"])
+        self.assertEqual(saved["claims"], merged["claims"])
+        self.assertEqual(saved["decisions"], merged["decisions"])
+        saved_bytes = self.packet_path.read_bytes()
         self.result["evidence"] = [{**self.evidence, "Source": "Changed"}]
         with self.assertRaisesRegex(ValueError, "row_conflict"):
             self.merge()
-        self.assertEqual(saved, self.packet_path.read_bytes())
+        self.assertEqual(saved_bytes, self.packet_path.read_bytes())
 
     def test_feature_finalization_rejects_coordinator_rewrites_of_accepted_analysis(self):
         from scripts.merge_techops_result import merged_result_errors
@@ -188,32 +193,33 @@ class FrameworkCorrections(unittest.TestCase):
                   "techops_checks": [{"Check": name, "Status": "passed", "Evidence refs": "E-FD-1, E-FD-2",
                                       "Detail": "Observed"} for name in runtime.TECHOPS_CHECKS]}
         result["worker_result"]["Evidence / claim refs"] = ["E-FD-1", "E-FD-2"]
-        result_path.write_text(json.dumps(result))
-        before = packet.read_bytes(), result_path.read_bytes()
+        before = packet.read_bytes()
         with self.assertRaises(ValueError) as caught:
-            merge_result(packet, "solution_architect")
+            trace, _ = stage_worker_response(run, "solution_architect", result)
+            merge_result(packet, "solution_architect", trace=trace)
         self.assertIn("worker_result.Evidence / claim refs must be str", str(caught.exception))
         self.assertIn("feature_planning_disposition_invalid", str(caught.exception))
         self.assertIn("techops_history_patch_and_work_item_required", str(caught.exception))
-        self.assertEqual((packet.read_bytes(), result_path.read_bytes()), before)
+        self.assertEqual(packet.read_bytes(), before)
+        self.assertFalse(result_path.exists())
         result.pop("plan_readiness")
         result.pop("implementation_plan_action")
         result["worker_result"]["Evidence / claim refs"] = "E-FD-1, E-FD-2"
         history = next(row for row in result["techops_checks"] if row["Check"] == "history_reconciliation")
         history.update({"Commit": "abcdef012345", "Patch evidence refs": "E-FD-1", "Work item": "ITEM-2",
                         "Work item evidence refs": "E-FD-2"})
-        result_path.write_text(json.dumps(result))
-        merge_result(packet, "solution_architect")
+        trace, _ = stage_worker_response(run, "solution_architect", result)
+        merge_result(packet, "solution_architect", trace=trace)
         self.assertEqual(json.loads(packet.read_text())["techops_checks"], result["techops_checks"])
         accepted = packet.read_bytes()
         result.pop("techops_checks")
-        result_path.write_text(json.dumps(result))
+        trace, _ = stage_worker_response(run, "solution_architect", result)
         with self.assertRaisesRegex(ValueError, "techops_planning_checks_required"):
-            merge_result(packet, "solution_architect")
+            merge_result(packet, "solution_architect", trace=trace)
         self.assertEqual(packet.read_bytes(), accepted)
         result["worker_result"]["Outcome"] = "blocked"
-        result_path.write_text(json.dumps(result))
-        merge_result(packet, "solution_architect")
+        trace, _ = stage_worker_response(run, "solution_architect", result)
+        merge_result(packet, "solution_architect", trace=trace)
         self.assertEqual(json.loads(packet.read_text())["worker_results"][-1]["Outcome"], "blocked")
 
     def test_all_schema_errors_are_reported_before_the_single_correction(self):
@@ -242,22 +248,22 @@ class FrameworkCorrections(unittest.TestCase):
                                       "Claim ID": f"CL-{namespace}-{i}", "Evidence refs": [evidence_id]}
                                      for i in range(4)]}
                 result_path = Path(contract["result"])
-                result_path.write_text(json.dumps(result))
-                packet_before, result_before = packet_path.read_bytes(), result_path.read_bytes()
+                packet_before = packet_path.read_bytes()
                 with self.assertRaises(ValueError) as caught:
-                    merge_result(packet_path, "current_state_investigator")
+                    trace, _ = stage_worker_response(run, "current_state_investigator", result)
+                    merge_result(packet_path, "current_state_investigator", trace=trace)
                 message = str(caught.exception)
                 self.assertIn("worker_result_summary_schema_invalid", message)
                 self.assertIn("worker_result.Evidence / claim refs must be str", message)
                 for i in range(4):
                     self.assertIn(f"claims[{i}].Evidence refs must be str", message)
                 self.assertEqual(packet_path.read_bytes(), packet_before)
-                self.assertEqual(result_path.read_bytes(), result_before)
+                self.assertFalse(result_path.exists())
                 result["worker_result"]["Evidence / claim refs"] = evidence_id
                 for row in result["claims"]:
                     row["Evidence refs"] = evidence_id
-                result_path.write_text(json.dumps(result))
-                merge_result(packet_path, "current_state_investigator")
+                trace, _ = stage_worker_response(run, "current_state_investigator", result)
+                merge_result(packet_path, "current_state_investigator", trace=trace)
                 merged = json.loads(packet_path.read_text())
                 self.assertEqual(merged["claims"], result["claims"])
                 self.assertEqual(merged["worker_results"], [result["worker_result"]])

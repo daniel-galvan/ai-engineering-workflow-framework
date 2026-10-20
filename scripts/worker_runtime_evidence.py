@@ -38,6 +38,95 @@ except ModuleNotFoundError:
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
+def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
+                          turn_started_at: str | None = None) -> str:
+    """Read the latest assistant final answer from the dispatched worker turn."""
+    with source.open() as stream:
+        rows = [json.loads(line) for line in stream if line.strip()]
+    if not rows or not isinstance(rows[0], dict) or rows[0].get("type") != "session_meta":
+        raise ValueError("worker_trace_session_mismatch")
+    after, before = timestamp(dispatch_at), timestamp(observed_at)
+    turns = [row for row in rows if isinstance(row, dict) and row.get("type") == "turn_context"
+             and timestamp(row["timestamp"]) <= before]
+    if not turns:
+        raise ValueError("worker_final_response_turn_context_required")
+    started = timestamp(turn_started_at) if turn_started_at else max(timestamp(row["timestamp"]) for row in turns)
+    if started != max(timestamp(row["timestamp"]) for row in turns):
+        raise ValueError("worker_final_response_turn_context_mismatch")
+    started = max(started, after)
+    messages = [row for row in rows if isinstance(row, dict) and row.get("type") == "response_item"
+                and started <= timestamp(row["timestamp"]) <= before
+                and isinstance(row.get("payload"), dict)
+                and row["payload"].get("type") == "message"
+                and row["payload"].get("role") == "assistant"
+                and row["payload"].get("phase") in {"final", "final_answer"}]
+    if not messages:
+        raise ValueError("worker_final_response_missing")
+    content = messages[-1]["payload"].get("content")
+    if not isinstance(content, list):
+        raise ValueError("worker_final_response_invalid")
+    parts = [item.get("text") for item in content
+             if isinstance(item, dict) and item.get("type") == "output_text" and isinstance(item.get("text"), str)]
+    if len(parts) != len(content) or not parts:
+        raise ValueError("worker_final_response_invalid")
+    return "".join(parts)
+
+
+def strict_json_loads(value: str):
+    def unique_object(pairs):
+        result = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key: " + key)
+            result[key] = item
+        return result
+    return json.loads(value, object_pairs_hook=unique_object,
+                      parse_constant=lambda token: (_ for _ in ()).throw(ValueError(token)))
+
+
+def _materialize_worker_response(root: Path, role: str, dispatch_at: str, response: str,
+                                 contract: dict) -> dict:
+    """Save one immutable, dispatch-scoped response snapshot for acceptance."""
+    try:
+        value = strict_json_loads(response)
+    except (json.JSONDecodeError, ValueError) as error:
+        raise ValueError("worker_final_response_json_invalid") from error
+    allowed = {"output", "result"} | ({"asset_manifest"} if contract.get("asset_inventory") else set())
+    if (not isinstance(value, dict) or set(value) - allowed or not isinstance(value.get("output"), str)
+            or not value["output"].strip() or not isinstance(value.get("result"), dict)):
+        raise ValueError("worker_final_response_schema_invalid")
+    digest = hashlib.sha256(dispatch_at.encode()).hexdigest()[:16]
+    directory = root / ".worker_responses" / role / digest
+    directory.mkdir(parents=True, exist_ok=True)
+    artifacts = {"path": ("result.json", json.dumps(value["result"], indent=2, ensure_ascii=False) + "\n"),
+                 "output_path": ("output.md", value["output"]),
+                 "response_path": ("response.json", response)}
+    if contract.get("asset_inventory"):
+        if not isinstance(value.get("asset_manifest"), dict):
+            raise ValueError("worker_asset_manifest_response_required")
+        artifacts["asset_manifest_path"] = (
+            "asset_manifest.json", json.dumps(value["asset_manifest"], indent=2, ensure_ascii=False) + "\n")
+    for name, content in artifacts.values():
+        path = directory / name
+        if path.exists() and path.read_bytes() != content.encode():
+            raise ValueError("worker_response_snapshot_conflict:" + role)
+    receipt = {}
+    for field, (name, content) in artifacts.items():
+        path = directory / name
+        raw = content.encode()
+        if not path.exists():
+            try:
+                with path.open("xb") as stream:
+                    stream.write(raw)
+            except BaseException:
+                path.unlink(missing_ok=True)
+                raise
+        receipt[field] = str(path.resolve())
+        receipt[field.replace("_path", "_sha256") if field.endswith("_path") else "sha256"] = hashlib.sha256(raw).hexdigest()
+    receipt["dispatch_at"] = dispatch_at
+    return receipt
+
+
 def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict | None = None, *, run_id: str | None = None, artifact_root: Path | None = None) -> dict:
     """Export tool activity only, using the exact parent mapping and fresh status receipt."""
     try:
@@ -110,14 +199,22 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         result["spawn"].update(observed_dispatch_binding(result, artifact_root))
     launch_errors = launch_binding_errors(result, artifact_root, agent, ledger) if artifact_root else []
     result["launch_errors"] = launch_errors
+    response_errors = []
     if artifact_root is not None and (artifact_root / "role_bindings.json").is_file():
         bindings = json.loads((artifact_root / "role_bindings.json").read_text())
         contract = bindings.get("worker_contracts", {}).get(worker_binding(bindings, agent), {})
         if contract.get("result_hash_required"):
-            target = Path(contract["result"])
-            if target.resolve().parent == artifact_root.resolve() and target.is_file():
-                result["result_artifact"] = {"path": str(target.resolve()),
-                                             "sha256": hashlib.sha256(target.read_bytes()).hexdigest()}
+            try:
+                response = worker_final_response(source, dispatch["Last dispatch at"], observation["Observed at"],
+                                                 observation.get("Latest turn started at"))
+                result["result_artifact"] = _materialize_worker_response(
+                    artifact_root, worker_binding(bindings, agent), dispatch["Last dispatch at"], response, contract)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                message = str(error)
+                if message.startswith("worker_final_response") or message.startswith("worker_asset_manifest_response"):
+                    message += ":" + worker_binding(bindings, agent)
+                response_errors.append(message)
+    result["worker_response_errors"] = response_errors
     context_details = []
     errors = trace_errors(result, require_freshness=True, context_details=context_details)
     if errors:
@@ -257,7 +354,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider-session", type=Path, required=True)
     parser.add_argument("--identity-session", type=Path, action="append", default=[],
-                        help="Exact earlier parent fragment; read identity events only, not analytical outputs")
+                        help="Exact earlier parent fragment; read current-run control metadata, not analytical outputs")
     parser.add_argument("--parent-thread-id", required=True)
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--ledger", type=Path, required=True)
@@ -277,17 +374,19 @@ def main() -> int:
             (args.worker_session, args.agent, args.trace)):
         parser.error("trace export requires --worker-session, --agent and --trace")
     try:
+        identity_sessions = list(args.identity_session)
         bindings_path = args.ledger.parent / "role_bindings.json"
         if bindings_path.is_file():
             bindings = json.loads(bindings_path.read_text())
             validate_prepared_provider_source(bindings, args.provider_session, args.parent_thread_id, args.started_at)
             contract = bindings.get("runtime_evidence", {})
+            identity_sessions = [Path(value) for value in contract.get("identity_sessions", [])] + identity_sessions
             expected = contract.get("ledger")
             if expected and args.ledger.resolve() != Path(expected).resolve():
                 raise ValueError("runtime_dispatch_ledger_mismatch:expected=" + str(expected)
                                  + ";received=" + str(args.ledger.resolve()))
         result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at,
-                                     tuple(args.identity_session))
+                                     tuple(dict.fromkeys(identity_sessions)))
         if args.ledger.exists():
             pending = json.loads(args.ledger.read_text()).get("rejected_results", {})
             if pending:

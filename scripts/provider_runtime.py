@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -12,8 +13,60 @@ UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
 
 
+def current_parent_session(source: Path | None = None) -> Path | None:
+    """Resolve the native current fragment from identity and event metadata only."""
+    identity = os.environ.get("CODEX_THREAD_ID") or os.environ.get("CODEX_SESSION_ID")
+    if not identity:
+        return source.resolve() if source else None
+    if not UUID.fullmatch(identity):
+        raise ValueError("provider_current_identity_invalid")
+    sessions = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
+    candidates, incomplete = {}, []
+    for path in sessions.rglob("*" + identity.lower() + "*.jsonl"):
+        with path.open() as stream:
+            header = json.loads(next(stream, ""))
+            if not isinstance(header, dict) or not isinstance(header.get("payload"), dict):
+                raise ValueError("provider_current_session_metadata_invalid")
+            if header.get("type") != "session_meta" or str(header["payload"].get("id", "")).lower() != identity.lower():
+                continue
+            turn, started, latest = None, None, None
+            for line in stream:
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    if not line.endswith("\n"):
+                        break
+                    raise
+                if not isinstance(row, dict):
+                    raise ValueError("provider_current_session_metadata_invalid")
+                if row.get("type") == "turn_context":
+                    payload = row.get("payload")
+                    turn = payload.get("turn_id") if isinstance(payload, dict) else None
+                    if not isinstance(turn, str) or not UUID.fullmatch(turn):
+                        raise ValueError("provider_current_turn_unavailable")
+                    started = latest = timestamp(str(row.get("timestamp", "")))
+                elif started and row.get("timestamp"):
+                    latest = max(latest, timestamp(str(row["timestamp"])))
+            if started:
+                candidates[path.resolve()] = (started, latest, turn)
+            else:
+                incomplete.append(timestamp(str(header["timestamp"])) if header.get("timestamp") else None)
+    if not candidates:
+        raise ValueError("provider_current_session_unavailable")
+    newest = max(value[:2] for value in candidates.values())
+    if any(created is None or created >= newest[0] for created in incomplete):
+        raise ValueError("provider_current_turn_unavailable")
+    selected = [path for path, value in candidates.items() if value[:2] == newest]
+    if len(selected) != 1:
+        raise ValueError("provider_current_session_ambiguous")
+    if source and source.resolve() != selected[0]:
+        raise ValueError("provider_current_session_mismatch: use the current native fragment")
+    return selected[0]
+
+
 def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
-                         input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None) -> dict:
+                         input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None,
+                         expected_turn_id: str | None = None, runtime_evidence: dict | None = None) -> dict:
     """Audit current-turn operations without importing messages or previous analytical content."""
     try:
         from runtime_checks import _tool_operations, context_trace_errors
@@ -25,7 +78,12 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         if (header.get("type") != "session_meta" or not isinstance(thread, str) or not UUID.fullmatch(thread)
                 or expected_thread_id is not None and thread != expected_thread_id):
             raise ValueError("provider_session_parent_mismatch")
-        turn, operations, children, errors = None, [], set(), []
+        known_children = set()
+        if runtime_evidence:
+            native = read_runtime_events(source, thread, runtime_evidence["run_started_at"],
+                tuple(Path(value) for value in runtime_evidence.get("identity_sessions", [])))
+            known_children = {native["thread_mappings"][row["Provider handle"]] for row in native["events"]}
+        turn, operations, children, errors = None, [], set(known_children), []
         for line in stream:
             try:
                 row = json.loads(line)
@@ -35,13 +93,15 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 raise
             payload = row.get("payload", {})
             if row.get("type") == "turn_context":
+                if expected_turn_id and turn == expected_turn_id and payload.get("turn_id") != expected_turn_id:
+                    break
                 turn = payload.get("turn_id")
-                operations, children, errors = [], set(), []
-            elif turn and row.get("type") == "event_msg":
+                operations, children, errors = [], set(known_children), []
+            elif turn and (expected_turn_id is None or turn == expected_turn_id) and row.get("type") == "event_msg":
                 item = payload.get("item", {})
                 if item.get("type") == "SubAgentActivity" and item.get("kind") == "started":
                     children.add(item.get("agent_thread_id"))
-            elif turn and row.get("type") == "response_item" and payload.get("type") in {
+            elif turn and (expected_turn_id is None or turn == expected_turn_id) and row.get("type") == "response_item" and payload.get("type") in {
                     "function_call", "custom_tool_call"}:
                 calls = _tool_operations(payload)
                 if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(payload.get("input", "")):
@@ -66,6 +126,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                         errors.append("parent_unassigned_thread_discovery")
         if not isinstance(turn, str) or not UUID.fullmatch(turn):
             raise ValueError("provider_current_turn_unavailable")
+        if expected_turn_id and turn != expected_turn_id:
+            raise ValueError("provider_bound_turn_unavailable")
     details = []
     errors.extend(context_trace_errors({"tool_trace": operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
@@ -78,12 +140,16 @@ def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
     """Recheck the bound current turn at every acceptance boundary, without importing its answers."""
     parent = manifest.get("parent_context")
     if not parent:
+        if os.environ.get("CODEX_THREAD_ID") or os.environ.get("CODEX_SESSION_ID"):
+            return ["parent_context_binding_required: prepare the run in the current native chat"]
         return []
     try:
+        current_parent_session(Path(parent["provider_session"]))
         # Sentry stages output in a temporary directory; the prepared activation root remains canonical.
         audit_root = Path(manifest["activation_packet_bundle"]["path"]).resolve().parent
         current = parent_context_audit(Path(parent["provider_session"]), artifact_root=audit_root,
-            input_paths=tuple(parent["input_paths"]), expected_thread_id=parent["parent_thread_id"])
+            input_paths=tuple(parent["input_paths"]), expected_thread_id=parent["parent_thread_id"],
+            runtime_evidence=manifest.get("runtime_evidence"))
         errors = []
         if current["status"] != "passed":
             errors.append("parent_context_nonconformant:" + ";".join(current["errors"]))
@@ -100,6 +166,7 @@ def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
 
 def validate_prepared_provider_source(bindings: dict, source: Path, parent_thread_id: str, started_at: str) -> None:
     """Keep trace and failure-closure collection on the same prepared parent and run interval."""
+    current_parent_session(source)
     parent = bindings.get("parent_context")
     if parent:
         if parent_thread_id != parent["parent_thread_id"]:
@@ -181,7 +248,14 @@ def read_runtime_events(
         observed_starts = {}
         observed_until = started
         active, intervals = {}, []
-        for line in stream:
+        def current_run_lines():
+            for source in identity_sessions:
+                with source.open() as earlier:
+                    next(earlier)
+                    yield from earlier
+            yield from stream
+        seen = set()
+        for line in current_run_lines():
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
@@ -193,6 +267,13 @@ def read_runtime_events(
             observed_until = max(observed_until, timestamp(row["timestamp"]))
             payload = row.get("payload", {})
             item = payload.get("item", {})
+            if not ((row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity")
+                    or row.get("type") == "response_item" and payload.get("type") in {"function_call", "function_call_output"}):
+                continue
+            key = json.dumps(row, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
             if row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity":
                 handle = item.get("agent_path")
                 if item.get("kind") == "started":
@@ -252,8 +333,11 @@ def read_runtime_events(
                 if operation == "followup_task":
                     active.setdefault(handle, timestamp(row["timestamp"]))
             elif payload.get("type") == "function_call_output":
-                raw = provider_json_value(payload["output"])
                 call_id = payload.get("call_id")
+                if (call_id not in pending_followups and call_id not in spawn_calls
+                        and not (inventory_pending and inventory_pending in {True, call_id})):
+                    continue
+                raw = provider_json_value(payload["output"])
                 explicit_error = (
                     isinstance(raw, dict) and bool(raw.get("error") or raw.get("isError")
                                                   or raw.get("status") in ("failed", "error"))

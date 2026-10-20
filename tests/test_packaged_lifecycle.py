@@ -1,6 +1,7 @@
 """Exercise shipped entrypoints from a clean local package, without live workers."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -8,6 +9,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,9 +32,10 @@ class PackagedLifecycle(unittest.TestCase):
             repository = Path(directory) / "repository"
             repository.mkdir()
             source = Path(directory) / "parent.jsonl"
-            rows = [{"type": "session_meta", "payload": {"id": "00000000-0000-0000-0000-000000000001"}},
-                    {"type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000002"}}]
-            forbidden = {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+            stamp = datetime.now().astimezone().isoformat()
+            rows = [{"timestamp": stamp, "type": "session_meta", "payload": {"id": "00000000-0000-0000-0000-000000000001"}},
+                    {"timestamp": stamp, "type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000002"}}]
+            forbidden = {"timestamp": stamp, "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
                 "input": 'await tools.exec_command({"cmd":"cat /repo/.codex/memories/MEMORY.md"})'}}
 
             def save(events):
@@ -85,7 +88,7 @@ class PackagedLifecycle(unittest.TestCase):
             self.assertEqual(rejected["reason"], "runtime_dispatch_provider_session_mismatch")
             self.assertFalse(Path(run["runtime_evidence"]["ledger"]).exists())
             with source.open("a") as stream:
-                stream.write(json.dumps({"type": "turn_context", "payload": {
+                stream.write(json.dumps({"timestamp": datetime.now().astimezone().isoformat(), "type": "turn_context", "payload": {
                     "turn_id": "00000000-0000-0000-0000-000000000003"}}) + "\n")
             rejected = command("validate_worker_runtime.py", *activation, expected=2)
             self.assertTrue(any("parent_context_turn_mismatch" in error for error in rejected["errors"]))
@@ -128,13 +131,31 @@ class PackagedLifecycle(unittest.TestCase):
                     self.assertIn("continue in this same turn", guarded["activation_message"])
                     contract = run["worker_contracts"]["current_state_investigator"]
                     template = json.loads((package / "templates/finalization_packet.json").read_text())
-                    worker_result = json.dumps({"run_id": run["run_id"], "worker_result": {
+                    namespace = "FC" if playbook == "feature_delivery" else "ISS"
+                    evidence = {"Evidence ID": f"E-{namespace}-001", "Source": "Synthetic issue",
+                        "Summary": "Current synthetic issue evidence", "Confidence": "High",
+                        "Uncertainty": "None", "Status": "Verified"}
+                    worker_result = {"run_id": run["run_id"], "worker_result": {
                         **dict.fromkeys(template["worker_results"][0], "Synthetic current evidence"),
-                        "Worker": worker, "Outcome": "complete"}})
-                    if not recover:
-                        Path(contract["result"]).write_text(worker_result)
-                    elif recover == "malformed":
-                        Path(contract["result"]).write_text(json.dumps({"run_id": run["run_id"]}))
+                        "Worker": worker, "Outcome": "complete", "Evidence / claim refs": evidence["Evidence ID"]},
+                        "evidence": [evidence], "claims": [], "decisions": [], "actions": []}
+                    asset_manifest = {"schema_version": 1, "status": "passed", "work_item": "ITEM-1",
+                        "sources": [{"source_id": "SRC-JIRA", "input_id": "IN-001",
+                            "kind": "jira_issue_attachments", "locator": "Jira ITEM-1 attachments",
+                            "requiredness": "required", "discovery_status": "empty",
+                            "discovery_method": "Read the complete Jira attachment inventory",
+                            "remote_link_inventory": {"status": "empty", "method": "Read Jira remote links for ITEM-1",
+                                "locators": []}, "limitation": "No synthetic Jira attachments were supplied.",
+                            "asset_ids": [], "evidence_refs": [evidence["Evidence ID"]]}], "assets": [],
+                        "gate": {"inventory_complete": True, "all_assets_accounted_for": True,
+                            "all_available_assets_reviewed": True, "all_material_assets_linked": True,
+                            "reviewed_before_plan": True, "unresolved_asset_ids": [], "blocking_source_ids": []}}
+                    response = {"output": "Synthetic current evidence", "result": worker_result}
+                    if contract.get("asset_inventory"):
+                        response["asset_manifest"] = asset_manifest
+                    response_text = json.dumps(response)
+                    if recover == "malformed":
+                        response_text = '{"run_id": "' + run["run_id"] + '"'
                     start = datetime.fromisoformat(run["runtime_evidence"]["run_started_at"].replace("Z", "+00:00"))
                     stamp = lambda seconds: (start + timedelta(seconds=seconds)).isoformat()
                     event = lambda seconds, kind, **payload: {
@@ -157,12 +178,19 @@ class PackagedLifecycle(unittest.TestCase):
                             output=json.dumps({"agents": [{"agent_name": handle,
                                                            "agent_status": {"completed": "Done"}}]}))]) + "\n")
                     child = root / "child.jsonl"
-                    child.write_text("\n".join(json.dumps(row) for row in [
+                    child_rows = [
                         event(1, "session_meta", id=child_id),
                         event(2, "response_item", type="function_call", name="exec_command", call_id="read",
                             arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)})),
                         event(3, "response_item", type="function_call_output", call_id="read",
-                            output=activation.read_text())]) + "\n")
+                            output=activation.read_text()),
+                        event(4, "turn_context", turn_id="00000000-0000-0000-0000-000000000003",
+                            model=guarded["launch_arguments"]["model"],
+                            effort=guarded["launch_arguments"]["reasoning_effort"])]
+                    if recover != "missing":
+                        child_rows.append(event(5, "response_item", type="message", role="assistant",
+                            phase="final_answer", content=[{"type": "output_text", "text": response_text}]))
+                    child.write_text("\n".join(json.dumps(row) for row in child_rows) + "\n")
                     trace = root / "trace.json"
                     collector = ("--provider-session", parent, "--parent-thread-id", parent_id,
                                  "--started-at", run["runtime_evidence"]["run_started_at"],
@@ -199,9 +227,13 @@ class PackagedLifecycle(unittest.TestCase):
                                     call_id="corrected_read", arguments=json.dumps({
                                         "cmd": "cat " + str(corrected_activation), "workdir": str(repository)})),
                                 event(10, "response_item", type="function_call_output", call_id="corrected_read",
-                                    output=corrected_activation.read_text())):
+                                    output=corrected_activation.read_text()),
+                                event(11, "turn_context", turn_id="00000000-0000-0000-0000-000000000004",
+                                    model=guarded["launch_arguments"]["model"],
+                                    effort=guarded["launch_arguments"]["reasoning_effort"]),
+                                event(12, "response_item", type="message", role="assistant", phase="final_answer",
+                                    content=[{"type": "output_text", "text": json.dumps(response)}])):
                                 stream.write(json.dumps(row) + "\n")
-                        Path(contract["result"]).write_text(worker_result)
                         trace = root / "corrected_trace.json"
                         command("worker_runtime_evidence.py", *collector, "--worker-session", child,
                                 "--agent", "current_state_investigator", "--trace", trace)
@@ -250,8 +282,10 @@ class PackagedLifecycle(unittest.TestCase):
                 ("sentry_runtime_regressions.json", "valid_awaiting_fix_design_result", "awaiting_input", False),
                 ("sentry_deterministic_finalization.json", "fix_design_result", "ready_for_implementation", True),
                 ("sentry_runtime_regressions.json", "valid_awaiting_fix_design_result", "awaiting_input", True)):
-                with self.subTest(state=expected_state, recover=recover):
-                    case = expected_state + ("-recovered" if recover else "")
+                case = expected_state + ("-recovered" if recover else "")
+                with self.subTest(state=expected_state, recover=recover), patch.dict(os.environ, {
+                        "CODEX_THREAD_ID": "00000000-0000-0000-0000-000000000001",
+                        "CODEX_HOME": str(Path(directory) / "native" / case)}):
                     repository = Path(directory) / case
                     repository.mkdir()
                     for args in (("init", "-q"), ("config", "user.name", "Repository fixture"),
@@ -266,13 +300,17 @@ class PackagedLifecycle(unittest.TestCase):
                         "Authority": "User", "Status": "Registered"}]}))
                     parent_id = "00000000-0000-0000-0000-000000000001"
                     turn_id = "00000000-0000-0000-0000-000000000099"
-                    parent = Path(directory) / (case + "-parent.jsonl")
+                    parent = Path(os.environ["CODEX_HOME"]) / "sessions" / ("parent-" + parent_id + ".jsonl")
+                    parent.parent.mkdir(parents=True)
+                    parent_start = datetime.now().astimezone().isoformat()
                     parent.write_text("\n".join(json.dumps(row) for row in [
-                        {"type": "session_meta", "payload": {"id": parent_id}},
-                        {"type": "turn_context", "payload": {"turn_id": turn_id}}]) + "\n")
+                        {"timestamp": parent_start, "type": "session_meta", "payload": {"id": parent_id}},
+                        {"timestamp": parent_start, "type": "turn_context", "payload": {"turn_id": turn_id}}]) + "\n")
+                    native_preflight = json.loads(command("run_preflight.py"))
+                    self.assertEqual(native_preflight["parent_context"]["provider_session"], str(parent.resolve()))
                     run = json.loads(command("prepare_run.py", "--execution-repository", repository,
                         "--work-item", "ITEM-1", "--playbook", "sentry_issue_remediation",
-                        "--input-manifest", inputs, "--provider-session", parent))
+                        "--input-manifest", inputs))
                     root = Path(run["artifact_root"])
                     fixture = json.loads((package / "tests/fixtures" / name).read_text())
                     fix = fixture[result_key]
@@ -282,7 +320,8 @@ class PackagedLifecycle(unittest.TestCase):
                     stamp = lambda seconds: (start + timedelta(seconds=seconds)).isoformat()
                     event = lambda seconds, kind, **payload: {
                         "timestamp": stamp(seconds), "type": kind, "payload": payload}
-                    rows = [event(0, "session_meta", id=parent_id), event(0, "turn_context", turn_id=turn_id)]
+                    rows = [{"timestamp": parent_start, "type": "session_meta", "payload": {"id": parent_id}},
+                            {"timestamp": parent_start, "type": "turn_context", "payload": {"turn_id": turn_id}}]
                     traces = []
                     rejected_bytes = None
                     for index, (worker, role) in enumerate((

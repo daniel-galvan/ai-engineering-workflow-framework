@@ -2,13 +2,16 @@
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
+from contextlib import ExitStack
 from pathlib import Path
 from uuid import UUID
+from unittest.mock import patch
 
 from scripts.review_evidence import PLAN_COLUMNS, DESIGN_COLUMNS, SOLUTION_COLUMNS
 from tests import test_packaged_lifecycle as packaging
@@ -31,8 +34,13 @@ class PlanningCommandPath(unittest.TestCase):
             with self.subTest(playbook=playbook):
                 self.planning_path(playbook, recover_failed_worker=True)
 
-    def planning_path(self, playbook, *, late_parent_violation=False, recover_failed_worker=False):
-        with tempfile.TemporaryDirectory() as directory:
+    def test_native_fragment_continuation_preserves_accepted_results_through_publication(self):
+        for playbook in ("techops_issue_remediation", "feature_delivery"):
+            with self.subTest(playbook=playbook):
+                self.planning_path(playbook, native_continuation=True)
+
+    def planning_path(self, playbook, *, late_parent_violation=False, recover_failed_worker=False, native_continuation=False):
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
             repository.mkdir()
@@ -45,10 +53,13 @@ class PlanningCommandPath(unittest.TestCase):
                               ("commit", "-qm", "Initial counter fixture")):
                 subprocess.run(["git", "-C", str(repository), *arguments], check=True, capture_output=True)
             source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-            provider = Path(directory) / "provider"
-            provider.mkdir()
-            parent = provider / "parent.jsonl"
             parent_id, turn_id = str(UUID(int=1)), str(UUID(int=2))
+            provider = Path(directory) / ("native/sessions" if native_continuation else "provider")
+            provider.mkdir(parents=True)
+            parent = provider / ("rollout-" + parent_id + ".jsonl" if native_continuation else "parent.jsonl")
+            if native_continuation:
+                environment.enter_context(patch.dict(os.environ, {"CODEX_THREAD_ID": parent_id,
+                                                                 "CODEX_HOME": str(provider.parent)}))
 
             def append(path, kind, **payload):
                 with path.open("a") as stream:
@@ -67,7 +78,8 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, script + "\n" + result.stdout + result.stderr)
                 return result.stdout
 
-            preflight = json.loads(command("run_preflight.py", "--provider-session", parent))
+            parent_option = () if native_continuation else ("--provider-session", parent)
+            preflight = json.loads(command("run_preflight.py", *parent_option))
             inputs = Path(directory) / "inputs.json"
             inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact":
                 "Counter defect: increment(2) returns 1; expected 3. Planning only, standard profile.",
@@ -76,7 +88,7 @@ class PlanningCommandPath(unittest.TestCase):
                  "Source or path": "Jira DEMO-1", "Authority": "User supplied fixture", "Status": "Verified"}]}))
             run = json.loads(command("prepare_run.py", "--execution-repository", repository, "--work-item", "DEMO-1",
                 "--playbook", playbook, "--input-manifest", inputs,
-                "--provider-session", parent, "--lifecycle", "planning"))
+                *parent_option, "--lifecycle", "planning"))
             root, packet_path = Path(run["artifact_root"]), Path(run["finalization_packet"])
             template = json.loads((package / "templates/finalization_packet.json").read_text())
             roles = (("issue-evidence", "current_state_investigator", "ISS"),
@@ -171,6 +183,7 @@ class PlanningCommandPath(unittest.TestCase):
                     "Selected the minimal operator correction and regression extension.",
                     "Assembled accepted analysis and an unapproved plan without source changes.")[index]
                 summaries[worker] = summary
+                response_manifest = None
                 if worker != "handoff":
                     evidence = {"Evidence ID": "E-" + namespace + "-001", "Source": str(source),
                         "Summary": "Current counter subtracts one; supplied requirement explicitly expects an increment.",
@@ -196,14 +209,9 @@ class PlanningCommandPath(unittest.TestCase):
                             if check == "history_reconciliation" else
                             "Existing source and regression fixture inspected; local correction and test extensions planned, not executed."}
                             for check in ("issue_scope", "history_reconciliation", "plan_dependencies", "regression_fixture")]
-                    contract = run["worker_contracts"][role]
-                    Path(contract["output"]).write_text("# Current counter planning\n" + evidence["Summary"] + "\n")
-                    Path(contract["result"]).write_text(json.dumps(result))
-                    result_path = Path(contract["result"])
-                    result_hashes[result_path] = hashlib.sha256(result_path.read_bytes()).hexdigest()
                     if playbook == "feature_delivery" and index == 0:
                         # Simulated context-worker inventory of the explicitly supplied offline Jira record.
-                        (root / "asset_manifest.json").write_text(json.dumps({
+                        response_manifest = {
                             "schema_version": 1, "status": "passed", "work_item": "DEMO-1", "sources": [{
                                 "source_id": "SRC-JIRA", "input_id": "IN-002", "kind": "jira_issue_attachments",
                                 "locator": "Jira DEMO-1 attachments", "requiredness": "required", "discovery_status": "empty",
@@ -212,7 +220,13 @@ class PlanningCommandPath(unittest.TestCase):
                                 "limitation": "None", "asset_ids": [], "evidence_refs": ["E-FC-001"]}], "assets": [],
                             "gate": {"inventory_complete": True, "all_assets_accounted_for": True,
                                 "all_available_assets_reviewed": True, "all_material_assets_linked": True,
-                                "reviewed_before_plan": True, "unresolved_asset_ids": [], "blocking_source_ids": []}}))
+                                "reviewed_before_plan": True, "unresolved_asset_ids": [], "blocking_source_ids": []}}
+                    response = {"output": "# Current counter planning\n" + evidence["Summary"] + "\n",
+                                "result": result}
+                    if response_manifest is not None:
+                        response["asset_manifest"] = response_manifest
+                    append(child, "response_item", type="message", role="assistant", phase="final_answer",
+                           content=[{"type": "output_text", "text": json.dumps(response)}])
                 else:
                     # Simulated Documenter output preserves accepted tables and generated Coordinator audits.
                     packet = json.loads(packet_path.read_text())
@@ -282,6 +296,35 @@ class PlanningCommandPath(unittest.TestCase):
                 command("worker_runtime_evidence.py", *collector, "--worker-session", child, "--agent", role, "--trace", trace)
                 if worker != "handoff":
                     command("merge_techops_result.py", "--packet", packet_path, "--agent", role, "--trace", trace)
+                    contract = run["worker_contracts"][role]
+                    for field in ("output", "result"):
+                        path = Path(contract[field])
+                        result_hashes[path] = hashlib.sha256(path.read_bytes()).hexdigest()
+                    if contract.get("asset_inventory"):
+                        path = Path(contract["asset_inventory"]["output"])
+                        result_hashes[path] = hashlib.sha256(path.read_bytes()).hexdigest()
+                if native_continuation and index == 0:
+                    accepted = json.loads(packet_path.read_text())
+                    earlier, parent = parent, provider / ("reopened-" + parent_id + ".jsonl")
+                    append(parent, "session_meta", id=parent_id, cwd=str(repository))
+                    append(parent, "turn_context", turn_id=str(UUID(int=999)))
+                    append(parent, "response_item", role="user", content=[{"type": "input_text", "text":
+                        "Continue this run, preserving accepted findings. Do not repeat completed investigation."}])
+                    previous_run = run
+                    run = json.loads(command("prepare_run.py", "--execution-repository", repository,
+                        "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
+                        "--input-manifest", run["run_input_manifest"]["path"]))
+                    self.assertEqual(run["run_id"], previous_run["run_id"])
+                    self.assertEqual(run["runtime_evidence"]["run_started_at"], previous_run["runtime_evidence"]["run_started_at"])
+                    self.assertEqual(run["runtime_evidence"]["identity_sessions"], [str(earlier.resolve())])
+                    continued = json.loads(packet_path.read_text())
+                    self.assertEqual(continued["worker_results"], accepted["worker_results"])
+                    self.assertEqual(continued["evidence"], accepted["evidence"])
+                    collector = ("--provider-session", parent, "--parent-thread-id", parent_id,
+                                 "--started-at", run["runtime_evidence"]["run_started_at"],
+                                 "--ledger", run["runtime_evidence"]["ledger"])
+                    append(parent, "response_item", type="function_call", name="mcp__codex_app__read_thread",
+                           call_id="continued-worker-status", arguments=json.dumps({"threadId": child_id}))
             closure = root / "runtime_closure.json"
             command("worker_runtime_evidence.py", *collector, "--pending-closure", closure)
             finalize = ("--packet", packet_path, "--closure", closure, "--record", root / "work_record.md",

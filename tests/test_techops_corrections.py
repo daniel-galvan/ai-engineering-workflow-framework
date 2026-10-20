@@ -17,6 +17,7 @@ import finalize_work_record as finalizer
 import validate_worker_runtime as runtime
 import prepare_run as prepare
 import planning_contracts
+from tests.worker_response_support import stage_worker_response
 
 
 class TechOpsCorrections(unittest.TestCase):
@@ -29,30 +30,25 @@ class TechOpsCorrections(unittest.TestCase):
                 "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
             run = prepare.prepare_run(root, "HASH-1", "techops_issue_remediation", None, False, input_manifest=inputs)
             packet_path = Path(run["finalization_packet"])
-            source = packet_path.parent / "issue_evidence_result.json"
             packet = json.loads(packet_path.read_text())
             template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
             result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
-                "Worker": "issue-evidence", "Outcome": "complete"}}
-            source.write_text(json.dumps(result))
-            trace = packet_path.parent / "trace.json"
-            trace.write_text(json.dumps({"result_artifact": {"path": str(source.resolve()),
-                "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}}))
-            packet["runtime_audits"] = [{"Worker": "issue-evidence", "Trace path": str(trace)}]
-            packet_path.write_text(json.dumps(packet))
-            merge_result(packet_path, "current_state_investigator")
+                "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
+            trace, exported = stage_worker_response(run, "current_state_investigator", result)
+            source = Path(exported["result_artifact"]["path"])
+            merge_result(packet_path, "current_state_investigator", trace=trace)
             before = packet_path.read_bytes()
             result["worker_result"]["Confidence"] = "Coordinator rewrite"
             source.write_text(json.dumps(result))
             with self.assertRaisesRegex(ValueError, "worker_result_artifact_changed"):
-                merge_result(packet_path, "current_state_investigator")
+                merge_result(packet_path, "current_state_investigator", trace=trace)
             self.assertEqual(packet_path.read_bytes(), before)
             packet["runtime_audits"] = []
             packet_path.write_text(json.dumps(packet))
             Path(run["runtime_evidence"]["ledger"]).write_text("{}")
             before = packet_path.read_bytes()
-            with self.assertRaisesRegex(ValueError, "worker_result_audit_required"):
+            with self.assertRaisesRegex(ValueError, "worker_result_trace_required"):
                 merge_result(packet_path, "current_state_investigator")
             self.assertEqual(packet_path.read_bytes(), before)
 
