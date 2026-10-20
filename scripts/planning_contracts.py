@@ -80,9 +80,9 @@ except ModuleNotFoundError:
     )
 
 try:
-    from worker_runtime_evidence import dispatch_audit_errors, latest_worker_dispatch
+    from worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles, latest_worker_dispatch
 except ModuleNotFoundError:
-    from scripts.worker_runtime_evidence import dispatch_audit_errors, latest_worker_dispatch
+    from scripts.worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles, latest_worker_dispatch
 
 
 try:
@@ -1244,7 +1244,7 @@ def _worker_runtime_audit_errors(
             ledger_path = manifest.get("runtime_evidence", {}).get("ledger")
             if ledger_path:
                 ledger = json.loads(Path(ledger_path).read_text())
-                for handle in {event["Provider handle"] for event in ledger["events"]}:
+                for handle in dispatched_worker_handles(ledger):
                     dispatches[handle] = latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"]
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             errors.append("terminal_closure_dispatch_evidence_invalid:" + str(error))

@@ -16,6 +16,7 @@ try:
         timestamp,
         provider_json_value as provider_json_value,
         read_runtime_events,
+        dispatched_worker_handles,
         latest_worker_dispatch,
         runtime_configurations,
         launch_binding_errors,
@@ -28,6 +29,7 @@ except ModuleNotFoundError:
         timestamp,
         provider_json_value as provider_json_value,
         read_runtime_events,
+        dispatched_worker_handles,
         latest_worker_dispatch,
         runtime_configurations,
         launch_binding_errors,
@@ -289,7 +291,7 @@ def _native_terminal_observations(ledger: dict, handles: list[str]) -> list[dict
 
 def terminal_closure(ledger: dict) -> dict:
     """Project the latest native inventory into the canonical Terminal receipt."""
-    handles = sorted({row["Provider handle"] for row in ledger["events"]})
+    handles = dispatched_worker_handles(ledger)
     observations = _native_terminal_observations(ledger, handles)
     inventory = ledger["inventories"][-1]
     return {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",

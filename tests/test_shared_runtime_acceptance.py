@@ -49,6 +49,56 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "terminal_observation_stale"):
                 terminal_closure(ledger)
 
+    def test_started_worker_with_explicit_spawn_error_is_in_shipped_terminal_closure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, _, time, event, parent, *_ = fixture
+            parent[3]["payload"]["output"] = json.dumps({"isError": True, "error": "Spawn failed after child start"})
+            parent[:] = parent[:4]
+            parent.extend([
+                event(20, "response_item", type="function_call", namespace="collaboration", name="list_agents",
+                      call_id="inventory", arguments="{}"),
+                event(21, "response_item", type="function_call_output", call_id="inventory", output=json.dumps({
+                    "agents": [{"agent_name": "/root/worker", "agent_status": {"failed": "Spawn failed"}}]})),
+            ])
+            parent_path = root / "parent.jsonl"
+            parent_path.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+            closure = root / "runtime_closure.json"
+            result = subprocess.run([
+                sys.executable, str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(parent_path), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"],
+                "--ledger", run["runtime_evidence"]["ledger"], "--closure", str(closure),
+            ], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+            receipt = json.loads(closure.read_text())
+            self.assertEqual(receipt["runtime_closure"][0]["Completed worker handles"], "/root/worker")
+            self.assertEqual(receipt["terminal_observations"][0]["Provider status"], "failed")
+            self.assertEqual(receipt["terminal_observations"][0]["Last dispatch at"], time(1))
+            ledger = json.loads(Path(run["runtime_evidence"]["ledger"]).read_text())
+            self.assertEqual(ledger["events"], [])
+            self.assertEqual(ledger["failed_dispatches"][0]["Provider handle"], "/root/worker")
+            from scripts.planning_contracts import _worker_runtime_audit_errors
+            errors = _worker_runtime_audit_errors({"runtime_audits": [],
+                "terminal_observations": receipt["terminal_observations"]},
+                root / "finalization_packet.json", set())
+            self.assertNotIn("terminal_closure_worker_handle_mismatch", errors)
+
+            failure = subprocess.run([
+                sys.executable, str(preparation.ROOT / "scripts/finalize_work_record.py"),
+                "--packet", str(root / "finalization_packet.json"), "--workflow-failure", "Synthetic control failure",
+                "--provider-session", str(parent_path), "--parent-thread-id", PARENT,
+            ], capture_output=True, text=True, timeout=30)
+            self.assertEqual(failure.returncode, 2)
+            failure_receipt = json.loads((root / "finalization_failure.json").read_text())
+            self.assertEqual(failure_receipt["runtime_closure"], "terminal")
+            saved_closure = json.loads(closure.read_text())
+            self.assertEqual({row["Provider handle"] for row in saved_closure["terminal_observations"]},
+                             {"/root/worker"})
+            self.assertIn("provider closure verified for every activated handle", failure.stdout)
+            self.assertNotIn("runtime closure unverified", failure.stdout)
+
     def test_failed_workers_have_rejected_fan_in_and_verified_inactive_closure(self):
         from scripts.worker_runtime_evidence import terminal_closure
         for status in ("failed", "stopped", "interrupted", "cancelled"):

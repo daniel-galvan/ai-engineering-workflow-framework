@@ -687,6 +687,26 @@ def read_runtime_events(
             "identity_sessions": [str(source.resolve()) for source in identity_sessions]}
 
 
+def dispatched_worker_handles(ledger: dict) -> list[str]:
+    """Return every observed worker handle, including a started child whose spawn later failed."""
+    events = ledger.get("events", [])
+    failures = ledger.get("failed_dispatches", [])
+    mappings = ledger.get("thread_mappings", {})
+    if not isinstance(events, list) or not isinstance(failures, list) or not isinstance(mappings, dict):
+        raise ValueError("runtime_dispatch_ledger_invalid")
+    handles = set()
+    for row in [*events, *failures]:
+        if not isinstance(row, dict):
+            raise ValueError("runtime_dispatch_rows_invalid")
+        handle = row.get("Provider handle")
+        if handle is None:
+            continue  # A failed spawn with no observed child was never activated.
+        if not isinstance(handle, str) or not handle or handle not in mappings:
+            raise ValueError("runtime_dispatch_thread_mapping_required")
+        handles.add(handle)
+    return sorted(handles)
+
+
 def latest_worker_dispatch(ledger: dict, handle: str, *, include_failed: bool = False) -> dict:
     dispatches = [row for row in ledger["events"] if row.get("Provider handle") == handle]
     failures = [row for row in ledger.get("failed_dispatches", []) if row.get("Provider handle") == handle]
