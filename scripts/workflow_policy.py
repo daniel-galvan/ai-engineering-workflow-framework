@@ -3,7 +3,7 @@
 import re
 
 _PATH_REFERENCE_END = r"(?=$|[/\\\s\"'`|;&)>}\],.])"
-_CODEX_HOME = r"(?:\$CODEX_HOME|\$\{CODEX_HOME\}|%CODEX_HOME%|\$env:CODEX_HOME|\$\{env:CODEX_HOME\})"
+_CODEX_HOME = r"(?:\$CODEX_HOME|\$\{CODEX_HOME\}|%CODEX_HOME%|\$env:CODEX_HOME|\$\{env:CODEX_HOME\})[\"']?"
 
 FORBIDDEN_MEMORY_CONTEXT_PATTERNS = (
     ("memory_path", re.compile(r"(?i)(?:^|[/\\])MEMORY\.md" + _PATH_REFERENCE_END)),

@@ -76,6 +76,9 @@ class ParentContext(unittest.TestCase):
         for command, expected in (
             ('cat "$CODEX_HOME/memories/MEMORY.md"', "memory_path"),
             ('rg -n issue "${CODEX_HOME}/memories/notes.md"', "memory_directory"),
+            ('rg -n issue "$CODEX_HOME"/memories/notes.md', "memory_directory"),
+            ('rg -n issue "${CODEX_HOME}"/memories/notes.md', "memory_directory"),
+            (r'rg -n issue "$env:CODEX_HOME"\memories\notes.md', "memory_directory"),
         ):
             with self.subTest(command=command):
                 self.rows = self.rows[:2] + [self.call("exec_command", cmd=command)]

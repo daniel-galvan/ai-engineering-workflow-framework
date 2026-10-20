@@ -244,6 +244,9 @@ class ContextOperationAudit(unittest.TestCase):
             ('rg -n issue "${CODEX_HOME}/memories/notes.md"', "memory_directory"),
             (r'cat "%CODEX_HOME%\memories\MEMORY.md"', "memory_path"),
             (r'rg -n issue "$env:CODEX_HOME\memories\notes.md"', "memory_directory"),
+            ('rg -n issue "$CODEX_HOME"/memories/notes.md', "memory_directory"),
+            ('rg -n issue "${CODEX_HOME}"/memories/notes.md', "memory_directory"),
+            (r'rg -n issue "$env:CODEX_HOME"\memories\notes.md', "memory_directory"),
         ):
             with self.subTest(command=command):
                 trace = {"tool_trace": [{"tool": "exec_command", "arguments": {"cmd": command},
