@@ -23,8 +23,10 @@ description: >-
    This audits executed calls in the latest native turn, not quoted instructions or returned text. A rejected parent
    context is an early terminal block; do not activate workers or continue after acknowledging contamination. A
    host-required targeted search of `.codex/memories/MEMORY.md` remains nonconformant unless native execution
-   metadata proves the single `rg -n <query> <path>` command exited 1 with no output; that no-match probe may be
-   recorded as an empty probe, but matching searches and all file reads remain blocked.
+   metadata proves one `rg -n` search (optionally case-insensitive) against that absolute path exited 1 with empty
+   output, with one parsed search matching the query and target. The parser may shorten the parsed path to
+   `MEMORY.md` only when the native command record confirms the absolute target. This no-match probe may be recorded
+   as empty; any match/output and all file reads remain blocked.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
