@@ -73,6 +73,24 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["empty_memory_probes"], 1)
         self.assertNotIn("forbidden_context_reference:memory_path", result["errors"])
 
+    def test_verified_case_insensitive_probe_accepts_native_basename_path(self):
+        memory = "/Users/example/.codex/memories/MEMORY.md"
+        query = "ECHO-2806|Issue Remediation|issue_remediation"
+        command = "rg -n -i " + shlex.quote(query) + " " + memory
+        parsed = [{"type": "search", "cmd": command, "query": query, "path": "MEMORY.md"}]
+        self.rows.extend([self.call("exec_command", cmd=command),
+                          self.command_execution(command, parsed_cmd=parsed)])
+        result = self.audit()
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["empty_memory_probes"], 1)
+
+        forged = self.command_execution(command, parsed_cmd=[
+            {"type": "search", "cmd": command, "query": query, "path": "/tmp/MEMORY.md"}])
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=command), forged]
+        result = self.audit()
+        self.assertEqual(result["empty_memory_probes"], 0)
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
+
     def test_memory_search_is_not_exempt_without_exact_native_no_match_evidence(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         command = "rg -n issue " + memory

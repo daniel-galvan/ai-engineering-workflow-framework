@@ -20,10 +20,20 @@ def _verified_empty_memory_search(command: str, observation: dict) -> bool:
         argv = shlex.split(command)
     except ValueError:
         return False
-    if len(argv) != 4 or Path(argv[0]).name != "rg" or argv[1] not in {"-n", "--line-number"}:
+    if Path(argv[0]).name != "rg":
         return False
-    query, target = argv[2], Path(argv[3])
+    args, flags = argv[1:], []
+    allowed_flags = {"-n", "--line-number", "-i", "--ignore-case"}
+    while args and args[0] in allowed_flags:
+        flags.append(args.pop(0))
+    if (len(args) != 2 or not any(flag in {"-n", "--line-number"} for flag in flags)
+            or len(flags) != len(set(flags))):
+        return False
+    query, target = args[0], Path(args[1])
     if not query or not target.is_absolute() or target.parts[-3:] != (".codex", "memories", "MEMORY.md"):
+        return False
+    native_command = observation.get("command")
+    if not isinstance(native_command, list) or not native_command or native_command[-1] != command:
         return False
     parsed = observation.get("parsed_cmd")
     if (observation.get("exit_code") != 1 or isinstance(observation.get("exit_code"), bool)
@@ -32,7 +42,7 @@ def _verified_empty_memory_search(command: str, observation: dict) -> bool:
         return False
     item = parsed[0]
     return (item.get("type") == "search" and item.get("query") == query
-            and Path(str(item.get("path", ""))).name == "MEMORY.md")
+            and str(item.get("path", "")) in {str(target), target.name})
 
 
 def current_parent_session(source: Path | None = None) -> Path | None:
