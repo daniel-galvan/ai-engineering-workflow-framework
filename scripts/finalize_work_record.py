@@ -1261,7 +1261,7 @@ def finalize(
                                 if str(row.get("Runtime status", "")).lower() == "terminal"
                                 for handle in re.split(r",|;", str(row.get("Completed worker handles", "")))]
             if terminal_handles:
-                errors.extend(terminal_observation_errors(closure.get("terminal_observations"), terminal_handles))
+                errors.extend(terminal_observation_errors(closure.get("terminal_observations"), terminal_handles, require_completed=False))
             # Both workflows use the same two-phase packet protocol and native status reads.
             if terminal_handles and Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem in {"techops_issue_remediation", "feature_delivery"}:
                 try:
@@ -1397,8 +1397,8 @@ def prepare_analytical_failure(
     if not set(completed_handles) <= recorded_handles:
         raise ValueError("analytical_failure_closure_handle_mismatch: retain the exact provider handles")
     if any(str(row.get("Runtime status", "")).lower() == "terminal" for row in closure_rows):
-        errors = terminal_observation_errors(closure.get("terminal_observations", []), completed_handles)
-        errors.extend(dispatch_audit_errors({"runtime_audits": closure.get("terminal_observations", [])}, packet_path))
+        errors = terminal_observation_errors(closure.get("terminal_observations", []), sorted(recorded_handles), require_completed=False)
+        errors.extend(dispatch_audit_errors({"runtime_audits": closure.get("terminal_observations", [])}, packet_path, closure_only=True))
         if errors:
             raise ValueError(";".join(errors))
     closure_state = "terminal" if any(str(row.get("Runtime status", "")).lower() == "terminal"

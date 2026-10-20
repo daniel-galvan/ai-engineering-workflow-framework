@@ -298,14 +298,16 @@ def read_runtime_events(
             "identity_sessions": [str(source.resolve()) for source in identity_sessions]}
 
 
-def latest_worker_dispatch(ledger: dict, handle: str) -> dict:
+def latest_worker_dispatch(ledger: dict, handle: str, *, include_failed: bool = False) -> dict:
     dispatches = [row for row in ledger["events"] if row.get("Provider handle") == handle]
+    failures = [row for row in ledger.get("failed_dispatches", []) if row.get("Provider handle") == handle]
+    if include_failed:
+        dispatches += failures
     if not dispatches:
         raise ValueError("worker_trace_dispatch_unavailable:" + handle)
     latest = max(dispatches, key=lambda row: timestamp(row["Last dispatch at"]))
-    if any(row.get("Provider handle") == handle
-           and timestamp(row["Last dispatch at"]) >= timestamp(latest["Last dispatch at"])
-           for row in ledger.get("failed_dispatches", [])):
+    if not include_failed and any(timestamp(row["Last dispatch at"]) >= timestamp(latest["Last dispatch at"])
+                                  for row in failures):
         raise ValueError("latest_worker_dispatch_failed:" + handle)
     return latest
 

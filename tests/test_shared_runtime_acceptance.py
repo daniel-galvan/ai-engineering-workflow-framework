@@ -24,6 +24,61 @@ CASES = {
 
 
 class SharedRuntimeAcceptance(unittest.TestCase):
+    def test_failed_redispatch_still_requires_fresh_closure_and_cannot_accept_old_result(self):
+        from scripts.provider_runtime import latest_worker_dispatch
+        from scripts.worker_runtime_evidence import terminal_closure
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, role, time, event, parent, *_ = fixture
+            parent.extend([
+                event(20, "response_item", type="function_call", namespace="collaboration", name="followup_task",
+                      call_id="failed-retry", arguments=json.dumps({"target": "/root/worker", "message": "Retry"})),
+                event(21, "response_item", type="function_call_output", call_id="failed-retry",
+                      output=json.dumps({"status": "failed", "error": "Synthetic dispatch failure"})),
+                event(22, "response_item", type="function_call", namespace="collaboration", name="list_agents",
+                      call_id="inventory", arguments="{}"),
+                event(23, "response_item", type="function_call_output", call_id="inventory", output=json.dumps({
+                    "agents": [{"agent_name": "/root/worker", "agent_status": {"completed": "Old task completed"}}]}))])
+            (root / "parent.jsonl").write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+            ledger = read_runtime_events(root / "parent.jsonl", PARENT, run["runtime_evidence"]["run_started_at"])
+            with self.assertRaisesRegex(ValueError, "latest_worker_dispatch_failed"):
+                latest_worker_dispatch(ledger, "/root/worker")
+            closure = terminal_closure(ledger)
+            self.assertEqual(closure["terminal_observations"][0]["Last dispatch at"], time(20))
+            ledger["inventories"][-1]["Observed at"] = time(19)
+            with self.assertRaisesRegex(ValueError, "terminal_observation_stale"):
+                terminal_closure(ledger)
+
+    def test_failed_workers_have_rejected_fan_in_and_verified_inactive_closure(self):
+        from scripts.worker_runtime_evidence import terminal_closure
+        for status in ("failed", "stopped", "interrupted", "cancelled"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+                run, root, role, time, event, parent, *_ = fixture
+                parent.extend([
+                    event(20, "response_item", type="function_call", namespace="collaboration", name="list_agents",
+                          call_id="inventory", arguments="{}"),
+                    event(21, "response_item", type="function_call_output", call_id="inventory", output=json.dumps({
+                        "agents": [{"agent_name": "/root/worker", "agent_status": {status: "Synthetic inactive task"}}]}))])
+                _, ledger = self.export(fixture)
+                trace = export_worker_trace(ledger, root / "child.jsonl", role, run_id=run["run_id"], artifact_root=root)
+                self.assertEqual(trace["audit"]["status"], "rejected")
+                self.assertIn("fan_in_requires_completed_status:" + status, trace["audit"]["errors"])
+                self.assertEqual(runtime.rejected_result_errors(trace, "/root/worker", time(5)), [])
+                closure = terminal_closure(ledger)
+                observations = closure["terminal_observations"]
+                self.assertEqual(observations[0]["Provider status"], status)
+                self.assertEqual(runtime.terminal_observation_errors(observations, ["/root/worker"], require_completed=False), [])
+                self.assertTrue(runtime.terminal_observation_errors(observations, ["/root/worker"]))
+                targeted = {**observations[0], "Status source": "read_thread", "Latest turn started at": time(5),
+                            "Latest turn status": status, "Latest turn completed at": time(10), "Thread status": "idle"}
+                self.assertEqual(runtime.terminal_observation_errors([targeted], ["/root/worker"], require_completed=False), [])
+                self.assertTrue(runtime.terminal_observation_errors([targeted], ["/root/worker"]))
+                targeted["Thread status"] = "running"
+                self.assertTrue(runtime.terminal_observation_errors([targeted], ["/root/worker"], require_completed=False))
+                targeted["Thread status"], targeted["Latest turn started at"] = "idle", time(1)
+                self.assertTrue(runtime.terminal_observation_errors([targeted], ["/root/worker"], require_completed=False))
+
     def test_pending_closure_never_claims_provider_completion(self):
         from scripts.runtime_checks import terminal_observation_errors
         with tempfile.TemporaryDirectory() as directory:
@@ -387,7 +442,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertIn("runtime_dispatch_provider_session_mismatch", closure["runtime_closure"][0]["Closure evidence or blocker"])
 
     def test_workflow_failure_collects_closure_from_every_native_handle(self):
-        for status in ({"completed": "Done"}, "running"):
+        for status in ({"completed": "Done"}, {"failed": "Synthetic worker failure"}, "running"):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
                 fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
                 run, root, role, time, event, parent, _, _ = fixture

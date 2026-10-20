@@ -547,7 +547,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
                     r"(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|/root/[a-z0-9_]+(?:/[a-z0-9_]+)*)",
                     handle,
                 )
-                status = re.search(re.escape(handle) + r"=(?:completed|idle)(?=[;,.\s]|$)", evidence)
+                status = re.search(re.escape(handle) + r"=(?:completed|idle|failed|stopped|interrupted|cancelled)(?=[;,.\s]|$)", evidence)
                 if not identifier or not status:
                     fail(f"{path}: Terminal closure lacks exact provider terminal status for {handle!r}")
             try:
@@ -557,6 +557,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
             observations = markdown_table(text, "# Worker Terminal Observations")
             for error in terminal_observation_errors(
                 [item for item in observations if item.get("Provider handle", "").lower() in handles], handles,
+                require_completed=False,
             ):
                 fail(f"{path}: {error}")
         if row.get("Runtime status", "").strip().lower() == "released":

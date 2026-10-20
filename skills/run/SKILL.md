@@ -642,6 +642,8 @@ description: >-
    closure probe with the prepared collector arguments plus
    `--pending-closure <artifact-root>/runtime_closure.json`. This writes a Coordinator-owned Pending probe;
    it makes no claim about completed handles or release. Replace it with a fresh verified receipt after pre-release.
+   Closure retains every activated handle, including failed, stopped, interrupted, and cancelled workers.
+   Record their exact inactive status; accepting analytical results still requires completed worker execution.
    Run the same finalizer arguments below with `--check-packet` first. It checks
    the report, packet references, and closure shape without replacing the work
    record or consuming a pre-release attempt. Return any errors to the same
@@ -720,8 +722,8 @@ description: >-
    an ID. Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events
    before declaring child identity unavailable. Sync its ledger after dispatches and status reads, following
    `providers/codex.md#worker-identity-and-correction-observations`; derive audit times from actual events.
-   A targeted read must show no active or pending thread and a completed latest turn started at or after the last
-   dispatch. For corrections delivered during an active turn, also permit an earlier start with a provider-observed
+   A targeted closure read must show no active or pending thread and an inactive latest turn started at or after
+   the last dispatch. For corrections during an active turn, an earlier start requires provider-observed
    `Latest turn completed at` after dispatch, `Dispatch consumed: true`, and concrete `Dispatch consumption evidence`
    from the accepted corrected result. Missing inventory entries, historical completion events and worker
    self-attestation alone do not establish
@@ -730,8 +732,9 @@ description: >-
    Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
    `Provider status`, `Last dispatch at`, `Observed at`, and `Status source` (`list_agents`, `read_thread`, or
    `wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn started at`, and `Latest turn status`, and
-   `Thread status`. Use the normalized completed or idle status only from the provider response; `read_thread` with
-   `notLoaded` may qualify only with a completed latest turn and no newer dispatch. Preserve the raw response in
+   `Thread status`. Preserve the exact completed, idle, failed, stopped, interrupted, or cancelled provider status.
+   `read_thread` with `notLoaded` may qualify only with an inactive latest turn and no newer dispatch.
+   Preserve the raw response in
    current-run evidence. Do not dispatch follow-ups during collection; a later follow-up invalidates that worker's
    observation and requires another read. Record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed;
    ...` in closure evidence. `Remaining active handles: 0` means no active worker turns; it does not assert capacity

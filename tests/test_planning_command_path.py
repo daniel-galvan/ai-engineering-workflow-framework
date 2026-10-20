@@ -26,7 +26,12 @@ class PlanningCommandPath(unittest.TestCase):
             with self.subTest(playbook=playbook):
                 self.planning_path(playbook, late_parent_violation=True)
 
-    def planning_path(self, playbook, *, late_parent_violation=False):
+    def test_failed_worker_replacement_reaches_publication_with_both_handles_closed(self):
+        for playbook in ("techops_issue_remediation", "feature_delivery"):
+            with self.subTest(playbook=playbook):
+                self.planning_path(playbook, recover_failed_worker=True)
+
+    def planning_path(self, playbook, *, late_parent_violation=False, recover_failed_worker=False):
         with tempfile.TemporaryDirectory() as directory:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -82,14 +87,14 @@ class PlanningCommandPath(unittest.TestCase):
                          ("impact-analysis", "dependency_analyst", "IA"),
                          ("feature-design", "solution_architect", "FD"), ("handoff", "documenter", "DOC"))
             first_namespace, second_namespace = roles[0][2], roles[1][2]
-            completed, summaries, result_hashes = {}, {}, {}
+            completed, summaries, result_hashes, statuses, rejected_traces = {}, {}, {}, {}, {}
 
             def inventory():
                 call = "inventory-" + str(len(completed)) + "-" + datetime.now().strftime("%H%M%S%f")
                 append(parent, "response_item", type="function_call", namespace="collaboration", name="list_agents",
                        call_id=call, arguments="{}")
                 append(parent, "response_item", type="function_call_output", call_id=call,
-                       output=json.dumps({"agents": [{"agent_name": handle, "agent_status": {"completed": "Done"}}
+                       output=json.dumps({"agents": [{"agent_name": handle, "agent_status": {statuses.get(handle, "completed"): "Done"}}
                                                     for handle in completed]}))
 
             collector = ("--provider-session", parent, "--parent-thread-id", parent_id,
@@ -103,6 +108,37 @@ class PlanningCommandPath(unittest.TestCase):
                 guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
                     run["activation_packet_bundle"]["path"], "--expected-agent", role, "--expected-bundle-sha256",
                     run["activation_packet_bundle"]["sha256"], "--assignment", assignment, "--dispatch-file", activation))
+                if recover_failed_worker and index == 0:
+                    failed_handle, failed_id = "/root/failed_original", str(UUID(int=900))
+                    append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
+                           call_id="spawn-failed", arguments=json.dumps({"task_name": "failed_original",
+                           "message": guarded["activation_message"], **guarded["launch_arguments"]}))
+                    append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                           "agent_path": failed_handle, "agent_thread_id": failed_id})
+                    failed_child = provider / "failed-original.jsonl"
+                    append(failed_child, "session_meta", id=failed_id, cwd=str(repository))
+                    append(failed_child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
+                           arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
+                    append(failed_child, "response_item", type="function_call_output", call_id="bootstrap", output=activation.read_text())
+                    append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "failed",
+                           "agent_path": failed_handle, "agent_thread_id": failed_id})
+                    completed[failed_handle], statuses[failed_handle] = failed_id, "failed"
+                    inventory()
+                    rejected = root / "failed-original-trace.json"
+                    command("worker_runtime_evidence.py", *collector, "--worker-session", failed_child,
+                            "--agent", role, "--trace", rejected, expected=2)
+                    rejected_traces[rejected] = rejected.read_bytes()
+                    rejected_result = json.loads(rejected.read_text())
+                    self.assertEqual(rejected_result["audit"]["status"], "rejected")
+                    dispatch_at = rejected_result["last_dispatch_at"]
+                    recovery = ("--activation-packet-bundle", run["activation_packet_bundle"]["path"],
+                        "--expected-agent", role, "--expected-bundle-sha256", run["activation_packet_bundle"]["sha256"],
+                        "--assignment", assignment, "--rejected-trace", rejected, "--provider-handle", failed_handle,
+                        "--last-dispatch-at", dispatch_at, "--provider-status", "failed")
+                    activation = root / (worker + "-replacement-activation.txt")
+                    guarded = json.loads(command("validate_worker_runtime.py", *recovery, "--dispatch-file", activation))
+                    repeated = command("validate_worker_runtime.py", *recovery, "--dispatch-file", root / "forbidden-third-attempt.txt", expected=2)
+                    self.assertIn("activation_repair_limit_reached", repeated)
                 handle, child_id = "/root/" + worker.replace("-", "_"), str(UUID(int=index + 100))
                 append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
                        call_id="spawn-" + worker, arguments=json.dumps({"task_name": worker.replace("-", "_"),
@@ -293,6 +329,10 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
             for result_path, digest in result_hashes.items():
                 self.assertEqual(hashlib.sha256(result_path.read_bytes()).hexdigest(), digest)
+            for rejected, original in rejected_traces.items():
+                self.assertEqual(rejected.read_bytes(), original)
+            if recover_failed_worker:
+                self.assertEqual({row["Provider handle"]: row["Provider status"] for row in receipt["terminal_observations"]}["/root/failed_original"], "failed")
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), source_hash)
             changed = subprocess.run(["git", "-C", str(repository), "status", "--porcelain"], capture_output=True, text=True, check=True)
             self.assertEqual(changed.stdout, "")

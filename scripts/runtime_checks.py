@@ -259,13 +259,13 @@ def transition_error(action: str, provider_status: str, *, rejected_result: bool
 
 
 def rejected_result_errors(trace: dict, handle: str, dispatch: str) -> list[str]:
-    """A completed task can be replaced only with its independently rejected current result."""
+    """An inactive task can be replaced only with its independently rejected current result."""
     if not isinstance(trace, dict):
         return ["rejected_result_trace_invalid"]
     observation = trace.get("status_observation", {})
     if not isinstance(observation, dict) or not isinstance(trace.get("spawn"), dict):
         return ["rejected_result_trace_invalid"]
-    errors = terminal_observation_errors([observation], [handle])
+    errors = terminal_observation_errors([observation], [handle], require_completed=False)
     if trace["spawn"].get("activation_message_conformance") == "failed":
         expected = trace["spawn"].get("expected_message_sha256", "")
         observed = trace["spawn"].get("observed_message_sha256", "")
@@ -286,8 +286,8 @@ def rejected_result_errors(trace: dict, handle: str, dispatch: str) -> list[str]
     return errors
 
 
-def terminal_observation_errors(observations: object, handles: list[str]) -> list[str]:
-    """Validate current status reads, including workers omitted by live inventory."""
+def terminal_observation_errors(observations: object, handles: list[str], *, require_completed: bool = True) -> list[str]:
+    """Require completion for fan-in; closure may also prove a failed worker is inactive."""
     if not isinstance(observations, list) or not observations:
         return ["terminal_observations_required"]
     errors: list[str] = []
@@ -302,7 +302,8 @@ def terminal_observation_errors(observations: object, handles: list[str]) -> lis
         ):
             errors.append(f"terminal_observation_handle_invalid:{handle}")
         observed.add(handle)
-        if str(row.get("Provider status", "")).lower() not in {"completed", "idle"}:
+        statuses = {"completed", "idle"} if require_completed else TERMINAL_STATUSES | {"idle"}
+        if str(row.get("Provider status", "")).lower() not in statuses:
             errors.append(f"terminal_observation_not_terminal:{handle}")
         source = str(row.get("Status source", ""))
         if source not in {"list_agents", "read_thread", "wait_threads"}:
@@ -329,7 +330,8 @@ def terminal_observation_errors(observations: object, handles: list[str]) -> lis
                                   times[0].replace(microsecond=0) <= completed <= times[1] and started <= completed)
                 if started.tzinfo is None or not fresh_turn or started > times[1]:
                     errors.append(f"terminal_observation_latest_turn_stale:{handle}")
-                if row.get("Latest turn status") != "completed":
+                turn_statuses = {"completed"} if require_completed else TERMINAL_STATUSES
+                if row.get("Latest turn status") not in turn_statuses:
                     errors.append(f"terminal_observation_latest_turn_not_completed:{handle}")
                 if row.get("Thread status") not in {"idle", "notLoaded"}:
                     errors.append(f"terminal_observation_thread_not_idle:{handle}")

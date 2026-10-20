@@ -1553,8 +1553,10 @@ Fan-in and runtime closure are separate barriers. A result envelope establishes 
 of active worker turns or released capacity. Runtime closure accepts two provider-observed states:
 
 - `Released`: exact provider handles, explicit release confirmations, and no active handles.
-- `Terminal`: a runtime without a close operation reports every run worker completed or idle in a fresh status snapshot
-  after final corrections, with exact provider-returned identifiers and no active worker turns. Handles may remain
+- `Terminal`: a runtime without a close operation reports every run worker inactive in a fresh status snapshot.
+  Preserve exact completed, idle, failed, stopped, interrupted, or cancelled statuses, including rejected and replaced
+  workers. Result acceptance separately requires completed execution. The snapshot must follow every dispatch attempt,
+  including a failed redispatch, with exact provider-returned identifiers and no active worker turns. Handles may remain
   reusable and capacity release is not asserted.
 
 Use the provider adapter's supported route. A UUID in `subAgentActivity` identifies a worker, but its completion event

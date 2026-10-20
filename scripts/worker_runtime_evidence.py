@@ -62,7 +62,7 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     if observation.get("Last dispatch at") != dispatch["Last dispatch at"]:
         raise ValueError("worker_trace_dispatch_mismatch: received=" + str(observation.get("Last dispatch at"))
                          + "; expected=" + str(dispatch["Last dispatch at"]))
-    errors = terminal_observation_errors([observation], [handle])
+    errors = terminal_observation_errors([observation], [handle], require_completed=False)
     if errors:
         raise ValueError(";".join(errors))
     tool_trace = []
@@ -95,13 +95,14 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     if dispatch.get("Dispatch file"):
         binding = {**binding, "dispatch_file": dispatch["Dispatch file"],
                    "dispatch_file_sha256": dispatch["Dispatch SHA256"], "binding_agent": dispatch["Binding agent"]}
+    fan_in_status = "completed" if observation["Provider status"] in {"completed", "idle"} else observation["Provider status"]
     result = {"schema_version": 1, "worker": agent, "thread_id": thread,
               "launch": next((row.get("Launch", {}) for row in dispatches if row.get("Operation") == "spawn_agent"), {}),
               "runtime_configurations": runtime_configurations(source, thread, observation["Observed at"]),
               "last_dispatch_at": dispatch["Last dispatch at"],
               "spawn": dict(binding, agent=agent, provider_handle=handle, thread_id=thread),
               "tool_trace": tool_trace,
-              "events": [{"action": "fan_in", "provider_status": "completed", "guard_result": "allowed"}],
+              "events": [{"action": "fan_in", "provider_status": fan_in_status, "guard_result": "allowed"}],
               "trace_retrieval": str(source.resolve()), "status_observation": observation}
     if run_id is not None:
         result["run_id"] = run_id
@@ -128,7 +129,7 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     return result
 
 
-def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
+def dispatch_audit_errors(packet: dict, packet_path: Path, *, closure_only: bool = False) -> list[str]:
     bindings = packet_path.parent / "role_bindings.json"
     if not bindings.is_file():
         return []
@@ -152,7 +153,7 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
         errors = []
         for audit in packet.get("runtime_audits", []):
             handle = audit.get("Provider handle")
-            latest = latest_worker_dispatch(current, handle)["Last dispatch at"]
+            latest = latest_worker_dispatch(current, handle, include_failed=closure_only)["Last dispatch at"]
             if audit.get("Last dispatch at") != latest:
                 errors.append(f"runtime_audit_dispatch_mismatch:{audit.get('Worker')}")
             if audit.get("Thread ID") and audit["Thread ID"] != current["thread_mappings"].get(handle):
@@ -187,12 +188,13 @@ def _native_terminal_observations(ledger: dict, handles: list[str]) -> list[dict
     observations = []
     for handle in handles:
         status = agents.get(handle)
-        status = "completed" if isinstance(status, dict) and "completed" in status else status
+        if isinstance(status, dict) and len(status) == 1:
+            status = next(iter(status))
         observations.append({"Provider handle": handle, "Provider status": status,
             "Thread ID": ledger["thread_mappings"][handle], "Status source": "list_agents",
-            "Last dispatch at": latest_worker_dispatch(ledger, handle)["Last dispatch at"],
+            "Last dispatch at": latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"],
             "Observed at": inventory["Observed at"]})
-    errors = terminal_observation_errors(observations, handles)
+    errors = terminal_observation_errors(observations, handles, require_completed=False)
     if not handles or errors:
         raise ValueError("terminal_inventory_unverified:" + ";".join(errors))
     return observations

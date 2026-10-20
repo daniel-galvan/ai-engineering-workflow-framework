@@ -1245,7 +1245,7 @@ def _worker_runtime_audit_errors(
             if ledger_path:
                 ledger = json.loads(Path(ledger_path).read_text())
                 for handle in {event["Provider handle"] for event in ledger["events"]}:
-                    dispatches[handle] = latest_worker_dispatch(ledger, handle)["Last dispatch at"]
+                    dispatches[handle] = latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"]
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             errors.append("terminal_closure_dispatch_evidence_invalid:" + str(error))
         if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):

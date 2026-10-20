@@ -110,7 +110,8 @@ through `send_message` still requires evidence of consumption before acceptance.
 as `custom_tool_call`/`custom_tool_call_output` or `function_call`/`function_call_output`,
 not the app UI's `fileChange`.
 
-A targeted read must show no active or pending thread and a completed latest turn started at or after the last dispatch.
+A targeted closure read must show no active or pending thread and an inactive latest turn started at or after the
+last dispatch.
 For a correction delivered during an active turn, an earlier start is valid only with provider-observed
 `Latest turn completed at` at or after the dispatch, `Dispatch consumed: true`, and
 `Dispatch consumption evidence` identifying
@@ -124,7 +125,8 @@ dispatch and require mapped child execution plus a fresh terminal observation be
 remain failures; an empty acknowledgement or historical completion alone cannot authorize acceptance.
 Export all worker activity from its first dispatch in the current run, preserving authenticated binding reads and
 pre-correction context violations. Freshness still uses the latest dispatch. A failed required follow-up or message
-blocks export and finalization; a previous successful dispatch cannot substitute for it.
+blocks result export and successful finalization; a previous successful dispatch cannot substitute for it.
+Failure closure still records current provider-observed inactivity after the attempted dispatch.
 Missing inventory entries, historical completion events and worker self-attestation alone do not establish
 terminal status.
 If
@@ -133,8 +135,9 @@ no supported targeted read can verify a worker, retain the blocked receipt.
 Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
 `Provider status`, `Last dispatch at`, `Observed at`, and `Status source` (`list_agents`, `read_thread`, or
 `wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn started at`, `Latest turn status`, and `Thread
-status`. Use the normalized completed or idle status only from the provider response; `read_thread` with `notLoaded` may
-qualify only with a completed latest turn and no newer dispatch. Preserve the raw response in current-run evidence. Do
+status`. Preserve the provider's exact inactive status: completed, idle, failed, stopped, interrupted, or cancelled.
+`read_thread` with `notLoaded` may qualify only with an inactive latest turn and no newer dispatch. Worker result
+acceptance still requires completed execution. Preserve the raw response in current-run evidence. Do
 not dispatch follow-ups during collection; a later follow-up invalidates that worker's observation and requires another
 read. Record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed; ...` in closure evidence. `Remaining
 active handles: 0` means no active worker turns; it does not assert capacity release or handle destruction.

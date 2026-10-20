@@ -692,7 +692,7 @@ def _reentry_source(
             raise ValueError("prior_worker_runtime_closure_required")
         handles = [handle.strip() for row in rows if row["Runtime status"].lower() == "terminal"
                    for handle in re.split(r",|;", row["Completed worker handles"])]
-        if handles and terminal_observation_errors(closure.get("terminal_observations"), handles):
+        if handles and terminal_observation_errors(closure.get("terminal_observations"), handles, require_completed=False):
             raise ValueError("prior_worker_runtime_closure_required")
         return prior
     except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:

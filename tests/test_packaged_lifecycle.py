@@ -238,18 +238,21 @@ class PackagedLifecycle(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             package = self.package(directory)
 
-            def command(script, *args):
+            def command(script, *args, expected=0):
                 result = subprocess.run([sys.executable, str(package / "scripts" / script), *map(str, args)],
                                         cwd=package, capture_output=True, text=True, timeout=60)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                 return result.stdout
 
             preflight = json.loads(command("run_preflight.py"))
-            for name, result_key, expected_state in (
-                ("sentry_deterministic_finalization.json", "fix_design_result", "ready_for_implementation"),
-                ("sentry_runtime_regressions.json", "valid_awaiting_fix_design_result", "awaiting_input")):
-                with self.subTest(state=expected_state):
-                    repository = Path(directory) / expected_state
+            for name, result_key, expected_state, recover in (
+                ("sentry_deterministic_finalization.json", "fix_design_result", "ready_for_implementation", False),
+                ("sentry_runtime_regressions.json", "valid_awaiting_fix_design_result", "awaiting_input", False),
+                ("sentry_deterministic_finalization.json", "fix_design_result", "ready_for_implementation", True),
+                ("sentry_runtime_regressions.json", "valid_awaiting_fix_design_result", "awaiting_input", True)):
+                with self.subTest(state=expected_state, recover=recover):
+                    case = expected_state + ("-recovered" if recover else "")
+                    repository = Path(directory) / case
                     repository.mkdir()
                     for args in (("init", "-q"), ("config", "user.name", "Repository fixture"),
                                  ("config", "user.email", "fixture@example.invalid")):
@@ -263,7 +266,7 @@ class PackagedLifecycle(unittest.TestCase):
                         "Authority": "User", "Status": "Registered"}]}))
                     parent_id = "00000000-0000-0000-0000-000000000001"
                     turn_id = "00000000-0000-0000-0000-000000000099"
-                    parent = Path(directory) / (expected_state + "-parent.jsonl")
+                    parent = Path(directory) / (case + "-parent.jsonl")
                     parent.write_text("\n".join(json.dumps(row) for row in [
                         {"type": "session_meta", "payload": {"id": parent_id}},
                         {"type": "turn_context", "payload": {"turn_id": turn_id}}]) + "\n")
@@ -281,6 +284,7 @@ class PackagedLifecycle(unittest.TestCase):
                         "timestamp": stamp(seconds), "type": kind, "payload": payload}
                     rows = [event(0, "session_meta", id=parent_id), event(0, "turn_context", turn_id=turn_id)]
                     traces = []
+                    rejected_bytes = None
                     for index, (worker, role) in enumerate((
                         ("evidence-topology", "sentry_current_state_investigator"),
                         ("fix-design", "sentry_solution_architect")), 1):
@@ -291,6 +295,38 @@ class PackagedLifecycle(unittest.TestCase):
                             run["activation_packet_bundle"]["path"], "--expected-agent", role,
                             "--expected-bundle-sha256", run["activation_packet_bundle"]["sha256"],
                             "--assignment", assignment, "--dispatch-file", activation))
+                        if recover and index == 1:
+                            failed_handle = "/root/failed_original"
+                            failed_id = "00000000-0000-0000-0000-000000000998"
+                            rows.extend([
+                                event(1, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
+                                    arguments=json.dumps({"task_name": "failed_original", "message": guarded["activation_message"],
+                                                          **guarded["launch_arguments"]})),
+                                event(1, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                                    "agent_path": failed_handle, "agent_thread_id": failed_id}),
+                                event(4, "event_msg", item={"type": "SubAgentActivity", "kind": "failed", "agent_path": failed_handle}),
+                                event(5, "response_item", type="function_call", namespace="collaboration", name="list_agents",
+                                    call_id="failed-inventory", arguments="{}"),
+                                event(6, "response_item", type="function_call_output", call_id="failed-inventory",
+                                    output=json.dumps({"agents": [{"agent_name": failed_handle, "agent_status": {"failed": "Synthetic failure"}}]}))])
+                            parent.write_text("\n".join(map(json.dumps, rows)) + "\n")
+                            child = root / "failed-original.jsonl"
+                            child.write_text("\n".join(json.dumps(row) for row in [
+                                event(1, "session_meta", id=failed_id),
+                                event(2, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
+                                    arguments=json.dumps({"cmd": "cat " + str(activation)})),
+                                event(3, "response_item", type="function_call_output", call_id="bootstrap", output=activation.read_text())]) + "\n")
+                            rejected = root / "failed-original-trace.json"
+                            command("worker_runtime_evidence.py", "--provider-session", parent, "--parent-thread-id", parent_id,
+                                "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", run["runtime_evidence"]["ledger"],
+                                "--worker-session", child, "--agent", role, "--trace", rejected, expected=2)
+                            rejected_bytes = rejected.read_bytes()
+                            activation = root / (worker + "_replacement_activation.txt")
+                            guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
+                                run["activation_packet_bundle"]["path"], "--expected-agent", role, "--expected-bundle-sha256",
+                                run["activation_packet_bundle"]["sha256"], "--assignment", assignment, "--dispatch-file", activation,
+                                "--rejected-trace", rejected, "--provider-handle", failed_handle, "--last-dispatch-at", stamp(1),
+                                "--provider-status", "failed"))
                         handle = "/root/" + worker.replace("-", "_")
                         child_id = f"00000000-0000-0000-0000-{index + 1:012d}"
                         offset = index * 10
@@ -305,7 +341,8 @@ class PackagedLifecycle(unittest.TestCase):
                             event(offset + 5, "response_item", type="function_call_output", call_id=worker,
                                 output=json.dumps({"agents": [{"agent_name": "/root/" + previous.replace("-", "_"),
                                     "agent_status": {"completed": "Done"}}
-                                    for previous in ("evidence-topology", "fix-design")[:index]]}))])
+                                    for previous in ("evidence-topology", "fix-design")[:index]] +
+                                    ([{"agent_name": "/root/failed_original", "agent_status": {"failed": "Synthetic failure"}}] if recover else [])}))])
                         if worker == "fix-design":
                             rows.insert(-2, event(offset + 0.5, "response_item", type="function_call",
                                 namespace="collaboration", name="followup_task", arguments=json.dumps({
@@ -347,6 +384,11 @@ class PackagedLifecycle(unittest.TestCase):
                                       "--publish-response", response)
                     self.assertEqual(emitted.encode(), response.read_bytes())
                     self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
+                    if recover:
+                        self.assertEqual(rejected.read_bytes(), rejected_bytes)
+                        closure = json.loads((root / "runtime_closure.json").read_text())
+                        self.assertEqual({row["Provider handle"]: row["Provider status"] for row in closure["terminal_observations"]}[
+                            "/root/failed_original"], "failed")
 
     def test_clean_package_preflight_preparation_audits_and_terminal_publication(self):
         with tempfile.TemporaryDirectory() as directory:
