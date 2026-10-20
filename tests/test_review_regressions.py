@@ -17,6 +17,7 @@ from scripts.planning_contracts import _feature_expected_inputs
 from scripts.asset_manifest import validate_asset_manifest, _check_source_files
 from scripts.validation.markdown import table_cells
 from scripts.review_evidence import _rows
+from tests.parent_status_support import write_parent_status_session
 from tests import test_sentry_handoff as v8
 
 
@@ -37,6 +38,10 @@ class ReviewRegressions(unittest.TestCase):
             "Source or path": str(source), "Authority": "User", "Status": "Registered"}]}))
         return path
 
+    def parent_status_session(self, repository, work_item):
+        artifact_root = repository / ".thoughts" / work_item
+        return write_parent_status_session(repository.parent / "parent-status.jsonl", artifact_root)
+
     def test_fresh_restart_preserves_selected_input_before_archiving(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = self.repository(Path(directory))
@@ -48,7 +53,8 @@ class ReviewRegressions(unittest.TestCase):
             decision.write_text("Explicitly accepted decision")
             selected = self.input_file(root / "next_inputs.json", decision)
             second = prepare_run.prepare_run(repository, "ITEM-1", "sentry_issue_remediation", None, False,
-                                             input_manifest=selected, archive_stale_run=True)
+                                             input_manifest=selected, archive_stale_run=True,
+                                             provider_session=self.parent_status_session(repository, "ITEM-1"))
             row = load_manifest(Path(second["run_input_manifest"]["path"]))["inputs"][0]
             self.assertEqual(Path(row["path"]).read_text(), "Explicitly accepted decision")
             self.assertEqual(row["Original source path"], str(decision.resolve()))
@@ -74,7 +80,8 @@ class ReviewRegressions(unittest.TestCase):
             with patch.object(prepare_run, "_snapshot_input_files", side_effect=fail_capture):
                 with self.assertRaisesRegex(OSError, "cannot stage input"):
                     prepare_run.prepare_run(repository, "ITEM-1", "sentry_issue_remediation", None, False,
-                                            input_manifest=selected, archive_stale_run=True)
+                                            input_manifest=selected, archive_stale_run=True,
+                                            provider_session=self.parent_status_session(repository, "ITEM-1"))
             self.assertEqual(before, {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()})
 
     def test_fresh_restart_preserves_explicitly_selected_directories(self):
@@ -93,7 +100,8 @@ class ReviewRegressions(unittest.TestCase):
             source_file.write_text("Selected file")
             supplied = self.input_file(repository / "next.json", str(folder) + "; " + str(source_file))
             second = prepare_run.prepare_run(repository, "ITEM-1", "sentry_issue_remediation", None, False,
-                                             input_manifest=supplied, archive_stale_run=True)
+                                             input_manifest=supplied, archive_stale_run=True,
+                                             provider_session=self.parent_status_session(repository, "ITEM-1"))
             row = load_manifest(Path(second["run_input_manifest"]["path"]))["inputs"][0]
             copied = Path(row["paths"][0])
             self.assertTrue(copied.is_relative_to(root))
@@ -106,7 +114,8 @@ class ReviewRegressions(unittest.TestCase):
 
             selected_directory = self.input_file(repository / "directory.json", copied)
             third = prepare_run.prepare_run(repository, "ITEM-1", "sentry_issue_remediation", None, False,
-                                            input_manifest=selected_directory, archive_stale_run=True)
+                                            input_manifest=selected_directory, archive_stale_run=True,
+                                            provider_session=self.parent_status_session(repository, "ITEM-1"))
             single = load_manifest(Path(third["run_input_manifest"]["path"]))["inputs"][0]
             self.assertEqual((Path(single["path"]) / "decision.md").read_text(), "Explicitly selected decision")
             self.assertEqual(single["Original source path"], str(copied))
@@ -118,10 +127,14 @@ class ReviewRegressions(unittest.TestCase):
             with patch.object(prepare_run, "datetime") as clock:
                 clock.now.side_effect = [datetime(2026, 10, 15, microsecond=value, tzinfo=UTC)
                                          for value in (100, 200)]
-                record.write_text("| State | active |\n")
-                first = prepare_run._archive_existing_run(root, True)
-                record.write_text("| State | active |\n")
-                second = prepare_run._archive_existing_run(root, True)
+                record.write_text("| State | intake |\n")
+                status_context = {"verified_related_run_status_probes": 1,
+                                  "related_run_status_probe_attempts": 1,
+                                  "related_run_status_rows": [], "related_run_thread_ids": [],
+                                  "prior_run_dispatch_ledger_present": False}
+                first = prepare_run._archive_existing_run(root, True, parent_context=status_context)
+                record.write_text("| State | intake |\n")
+                second = prepare_run._archive_existing_run(root, True, parent_context=status_context)
             self.assertNotEqual(first, second)
             self.assertTrue((Path(first) / "work_record.md").is_file())
             self.assertTrue((Path(second) / "work_record.md").is_file())
@@ -141,7 +154,8 @@ class ReviewRegressions(unittest.TestCase):
             with patch.object(prepare_run.shutil, "copytree", side_effect=OSError("directory copy failed")):
                 with self.assertRaisesRegex(OSError, "directory copy failed"):
                     prepare_run.prepare_run(repository, "ITEM-1", "sentry_issue_remediation", None, False,
-                                            input_manifest=supplied, archive_stale_run=True)
+                                                input_manifest=supplied, archive_stale_run=True,
+                                                provider_session=self.parent_status_session(repository, "ITEM-1"))
             self.assertEqual(before, {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()})
 
     def test_directory_publication_failure_restores_the_old_run(self):
@@ -166,7 +180,8 @@ class ReviewRegressions(unittest.TestCase):
             with patch.object(prepare_run.shutil, "copytree", side_effect=fail_publication):
                 with self.assertRaisesRegex(OSError, "publication failed"):
                     prepare_run.prepare_run(repository, "ITEM-1", "sentry_issue_remediation", None, False,
-                                            input_manifest=supplied, archive_stale_run=True)
+                                                input_manifest=supplied, archive_stale_run=True,
+                                                provider_session=self.parent_status_session(repository, "ITEM-1"))
             self.assertEqual(before, {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()})
 
     def test_archive_move_failures_restore_existing_snapshots_and_artifacts(self):
@@ -194,7 +209,8 @@ class ReviewRegressions(unittest.TestCase):
                 with patch.object(prepare_run.shutil, "move", side_effect=fail_move):
                     with self.assertRaisesRegex(OSError, "archive move failed"):
                         prepare_run.prepare_run(repository, "ITEM-1", "sentry_issue_remediation", None, False,
-                                                input_manifest=supplied, archive_stale_run=True)
+                                                input_manifest=supplied, archive_stale_run=True,
+                                                provider_session=self.parent_status_session(repository, "ITEM-1"))
                 self.assertEqual(before, {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()})
 
     def test_file_disappearing_before_capture_is_rejected_before_any_write(self):

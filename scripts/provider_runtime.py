@@ -12,6 +12,179 @@ from pathlib import Path
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
+RELATED_RUN_STATUS_FIELDS = {"id", "status", "hostId", "kind", "updatedAt"}
+RELATED_RUN_TERMINAL_STATUSES = {"completed", "failed", "stopped", "interrupted", "cancelled", "idle", "archived"}
+
+
+def strict_json_loads(value: str):
+    """Parse JSON while rejecting ambiguous duplicate keys and non-finite constants."""
+    def unique_object(pairs):
+        result = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key: " + key)
+            result[key] = item
+        return result
+
+    return json.loads(value, object_pairs_hook=unique_object,
+                      parse_constant=lambda token: (_ for _ in ()).throw(ValueError(token)))
+
+
+def _read_status_receipt(path: Path):
+    try:
+        return strict_json_loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError("stale_run_thread_identity_invalid:" + str(error)) from error
+
+
+def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> tuple[str, ...]:
+    """Read only prior-run identity receipts needed to scope a status-only recovery query."""
+    identities = set()
+
+    def add(value, *, required=False):
+        if value is None and required:
+            raise ValueError("stale_run_thread_identity_invalid")
+        if value is not None:
+            if not isinstance(value, str) or not UUID.fullmatch(value):
+                raise ValueError("stale_run_thread_identity_invalid")
+            identities.add(value)
+
+    try:
+        if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
+            raise ValueError("stale_run_thread_identity_invalid")
+        bindings_path = artifact_root / "role_bindings.json"
+        if bindings_path.is_file():
+            bindings = _read_status_receipt(bindings_path)
+            parent_context = bindings.get("parent_context")
+            if parent_context is not None and not isinstance(parent_context, dict):
+                raise ValueError("stale_run_thread_identity_invalid")
+            if parent_context is not None:
+                add(parent_context.get("parent_thread_id"))
+        ledger_path = artifact_root / "runtime_dispatches.json"
+        if ledger_path.is_file():
+            ledger = _read_status_receipt(ledger_path)
+            if not isinstance(ledger, dict) or not isinstance(ledger.get("events"), list):
+                raise ValueError("stale_run_dispatch_rows_invalid")
+            mappings = ledger.get("thread_mappings", {})
+            if not isinstance(mappings, dict):
+                raise ValueError("stale_run_thread_mapping_invalid")
+            for value in mappings.values():
+                add(value, required=True)
+            for row in ledger["events"]:
+                if not isinstance(row, dict):
+                    raise ValueError("stale_run_dispatch_rows_invalid")
+                add(row.get("Thread ID"), required=True)
+            failures = ledger.get("failed_dispatches", [])
+            if not isinstance(failures, list):
+                raise ValueError("stale_run_dispatch_rows_invalid")
+            for row in failures:
+                if not isinstance(row, dict):
+                    raise ValueError("stale_run_dispatch_rows_invalid")
+                thread_id = row.get("Thread ID")
+                if thread_id is not None:
+                    add(thread_id, required=True)
+                elif row.get("Operation") != "spawn_agent" or row.get("Status") != "failed":
+                    raise ValueError("stale_run_thread_identity_invalid")
+        closure_path = artifact_root / "runtime_closure.json"
+        if closure_path.is_file():
+            closure = _read_status_receipt(closure_path)
+            if not isinstance(closure, dict) or not isinstance(closure.get("terminal_observations"), list):
+                raise ValueError("stale_run_closure_identity_invalid")
+            for row in closure["terminal_observations"]:
+                if not isinstance(row, dict):
+                    raise ValueError("stale_run_closure_identity_invalid")
+                add(row.get("Thread ID"), required=True)
+    except (OSError, json.JSONDecodeError, AttributeError, TypeError) as error:
+        raise ValueError("stale_run_thread_identity_invalid:" + str(error)) from error
+    identities.discard(current_thread_id)
+    return tuple(sorted(identities))
+
+
+def related_run_status_projection_source(
+    work_item: str, current_thread_id: str, prior_thread_ids: tuple[str, ...] = (),
+) -> str:
+    """Return the only permitted, redacted provider task-status lookup for this work item."""
+    if not isinstance(work_item, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", work_item):
+        raise ValueError("stale_run_status_work_item_invalid")
+    if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
+        raise ValueError("stale_run_status_thread_id_invalid")
+    if (not isinstance(prior_thread_ids, tuple)
+            or any(not isinstance(value, str) or not UUID.fullmatch(value) for value in prior_thread_ids)):
+        raise ValueError("stale_run_status_prior_thread_ids_invalid")
+    return ("const response = await tools.mcp__codex_app__list_threads({limit: 50});\n"
+            "const data = JSON.parse(response.content[0].text);\n"
+            "const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];\n"
+            f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
+            f"const related = rows.filter(row => row.id !== {json.dumps(current_thread_id)} &&\n"
+            f"  ((typeof row.title === 'string' && row.title.includes({json.dumps(work_item)}) || priorIds.includes(row.id)))\n"
+            "  .map(row => ({\n"
+            "    id: row.id, status: row.status, hostId: row.hostId, kind: row.kind,\n"
+            "    updatedAt: row.updatedAt\n"
+            "  }));\n"
+            "text(JSON.stringify(related));")
+
+
+def _related_run_status_rows(payload: dict) -> list[dict]:
+    output = payload.get("output")
+    if isinstance(output, list):
+        texts = [row.get("text") for row in output if isinstance(row, dict)
+                 and row.get("type") in {"text", "input_text", "output_text"}
+                 and isinstance(row.get("text"), str)]
+        if len(texts) != len(output) or len(texts) != 1:
+            raise ValueError("parent_related_run_status_output_invalid")
+        output = texts[0]
+    if not isinstance(output, str):
+        raise ValueError("parent_related_run_status_output_invalid")
+    try:
+        rows = strict_json_loads(output)
+    except ValueError as error:
+        raise ValueError("parent_related_run_status_output_invalid") from error
+    if not isinstance(rows, list):
+        raise ValueError("parent_related_run_status_output_invalid")
+    seen, validated = set(), []
+    for row in rows:
+        if (not isinstance(row, dict) or set(row) - RELATED_RUN_STATUS_FIELDS
+                or not {"id", "status"}.issubset(row)
+                or not isinstance(row["id"], str) or not UUID.fullmatch(row["id"])
+                or not isinstance(row["status"], str) or row["id"] in seen
+                or any(key in row and row[key] is not None and not isinstance(row[key], str)
+                       for key in {"hostId", "kind", "updatedAt"})):
+            raise ValueError("parent_related_run_status_output_invalid")
+        seen.add(row["id"])
+        validated.append(row)
+    return validated
+
+
+def stale_run_status_errors(
+    context: dict | None, prior_state: str | None, *, require_prior_dispatch_ledger: bool = True,
+) -> list[str]:
+    """Require fresh, redacted, terminal status for every known prior task/worker before archiving."""
+    if (not isinstance(context, dict)
+            or type(context.get("verified_related_run_status_probes")) is not int
+            or context["verified_related_run_status_probes"] != 1
+            or type(context.get("related_run_status_probe_attempts")) is not int
+            or context["related_run_status_probe_attempts"] != 1):
+        return ["stale_run_status_probe_required"]
+    rows = context.get("related_run_status_rows")
+    expected = context.get("related_run_thread_ids")
+    if not isinstance(rows, list) or not isinstance(expected, list):
+        return ["stale_run_status_evidence_invalid"]
+    if (any(not isinstance(value, str) or not UUID.fullmatch(value) for value in expected)
+            or len(expected) != len(set(expected))
+            or context.get("parent_thread_id") in expected):
+        return ["stale_run_status_evidence_invalid"]
+    observed = {row.get("id") for row in rows if isinstance(row, dict)}
+    errors = ["stale_run_worker_status_missing:" + thread_id for thread_id in expected
+              if thread_id not in observed]
+    for row in rows:
+        if not isinstance(row, dict):
+            errors.append("stale_run_status_evidence_invalid")
+            continue
+        if row.get("status", "").lower() not in RELATED_RUN_TERMINAL_STATUSES:
+            errors.append("stale_run_related_task_active:" + row.get("id", "unknown"))
+    if require_prior_dispatch_ledger and context.get("prior_run_dispatch_ledger_present") is not True:
+        errors.append("stale_run_dispatch_ledger_required")
+    return errors
 
 
 def _verified_empty_memory_search(command: str, observation: dict) -> bool:
@@ -98,7 +271,9 @@ def current_parent_session(source: Path | None = None) -> Path | None:
 
 def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None,
-                         expected_turn_id: str | None = None, runtime_evidence: dict | None = None) -> dict:
+                         expected_turn_id: str | None = None, runtime_evidence: dict | None = None,
+                         related_run_thread_ids: tuple[str, ...] | None = None,
+                         prior_dispatch_ledger_present: bool | None = None) -> dict:
     """Audit current-turn operations without importing messages or previous analytical content."""
     try:
         from runtime_checks import _tool_operations, context_trace_errors
@@ -115,8 +290,28 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             native = read_runtime_events(source, thread, runtime_evidence["run_started_at"],
                 tuple(Path(value) for value in runtime_evidence.get("identity_sessions", [])))
             known_children = {native["thread_mappings"][row["Provider handle"]] for row in native["events"]}
+        identity_error = None
+        try:
+            if related_run_thread_ids is None:
+                prior_ids = prior_run_status_thread_ids(artifact_root, thread) if artifact_root else ()
+            else:
+                if (not isinstance(related_run_thread_ids, tuple)
+                        or any(not isinstance(value, str) or not UUID.fullmatch(value)
+                               for value in related_run_thread_ids)):
+                    raise ValueError("stale_run_status_prior_thread_ids_invalid")
+                prior_ids = tuple(sorted(set(related_run_thread_ids) - {thread}))
+        except ValueError as error:
+            prior_ids = ()
+            identity_error = str(error)
+        ledger_present = (artifact_root is not None and (artifact_root / "runtime_dispatches.json").is_file()
+                          if prior_dispatch_ledger_present is None else prior_dispatch_ledger_present)
         turn, operations, children, errors = None, [], set(known_children), []
         command_observations: dict[str, list[dict]] = {}
+        exempt = set()
+        pending_related_run_status = {}
+        related_run_probe_attempts = 0
+        verified_related_run_status_probes = 0
+        related_run_status_rows = None
         for line in stream:
             try:
                 row = json.loads(line)
@@ -131,6 +326,13 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 turn = payload.get("turn_id")
                 operations, children, errors = [], set(known_children), []
                 command_observations = {}
+                exempt = set()
+                pending_related_run_status = {}
+                related_run_probe_attempts = 0
+                verified_related_run_status_probes = 0
+                related_run_status_rows = None
+                if identity_error:
+                    errors.append(identity_error)
             elif turn and (expected_turn_id is None or turn == expected_turn_id) and row.get("type") == "event_msg":
                 item = payload.get("item", {})
                 if item.get("type") == "SubAgentActivity" and item.get("kind") == "started":
@@ -138,12 +340,45 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 elif (payload.get("type") == "item_completed" and item.get("type") == "CommandExecution"
                       and isinstance(item.get("command"), list) and item["command"]
                       and isinstance(item["command"][-1], str)):
-                    command_observations.setdefault(item["command"][-1], []).append(item)
+                    command = item["command"][-1]
+                    command_observations.setdefault(command, []).append(item)
+            elif (turn and (expected_turn_id is None or turn == expected_turn_id)
+                  and row.get("type") == "response_item" and payload.get("type") in {
+                      "function_call_output", "custom_tool_call_output"}):
+                call_id = payload.get("call_id")
+                if call_id in pending_related_run_status:
+                    pending_related_run_status.pop(call_id)
+                    if payload.get("isError") or payload.get("status") in {"failed", "error"}:
+                        errors.append("parent_related_run_status_output_invalid")
+                    else:
+                        try:
+                            related_run_status_rows = _related_run_status_rows(payload)
+                            verified_related_run_status_probes += 1
+                        except ValueError as error:
+                            errors.append(str(error))
             elif turn and (expected_turn_id is None or turn == expected_turn_id) and row.get("type") == "response_item" and payload.get("type") in {
                     "function_call", "custom_tool_call"}:
-                calls = _tool_operations(payload)
-                if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(payload.get("input", "")):
+                raw_source = payload.get("input") if payload.get("type") == "custom_tool_call" else None
+                try:
+                    expected_projection = (related_run_status_projection_source(artifact_root.name, thread, prior_ids)
+                                           if artifact_root is not None else None)
+                except ValueError:
+                    expected_projection = None
+                exact_status_projection = raw_source == expected_projection and expected_projection is not None
+                calls = (
+                    [("mcp__codex_app__list_threads", {"limit": 50})]
+                    if exact_status_projection else _tool_operations(payload)
+                )
+                if (not calls and payload.get("type") == "custom_tool_call"
+                        and "tools.mcp__codex_app__list_threads({limit: 50})" in str(raw_source or "")):
+                    calls = [("mcp__codex_app__list_threads", {})]
+                if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(raw_source or ""):
                     errors.append("parent_tool_arguments_unavailable")
+                status_projection_candidate = (
+                    exact_status_projection and len(calls) == 1
+                    and calls[0][0].rsplit("__", 1)[-1] == "list_threads"
+                    and calls[0][1] == {"limit": 50}
+                    and isinstance(payload.get("call_id"), str) and payload["call_id"])
                 for name, arguments in calls:
                     if name == "exec_command":
                         operations.append({"type": "function_call", "name": name, "arguments": arguments})
@@ -161,7 +396,16 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                             if identity not in children and "codex://threads/" + str(identity) not in input_paths:
                                 errors.append("parent_unassigned_thread_read:" + str(identity))
                     elif name.rsplit("__", 1)[-1] in {"list_threads", "list_archived_threads"}:
-                        errors.append("parent_unassigned_thread_discovery")
+                        if (name.rsplit("__", 1)[-1] == "list_threads" and status_projection_candidate
+                                and related_run_probe_attempts == 0):
+                            exempt.add(len(operations))
+                            pending_related_run_status[payload["call_id"]] = True
+                            related_run_probe_attempts += 1
+                        else:
+                            errors.append("parent_unassigned_thread_discovery")
+                        operations.append({"type": "function_call", "name": name, "arguments": arguments})
+        if pending_related_run_status:
+            errors.append("parent_related_run_status_output_missing")
         if not isinstance(turn, str) or not UUID.fullmatch(turn):
             raise ValueError("provider_current_turn_unavailable")
         if expected_turn_id and turn != expected_turn_id:
@@ -174,7 +418,6 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         command = arguments.get("cmd") if operation.get("name") == "exec_command" else None
         if isinstance(command, str):
             operation_indexes.setdefault(command, []).append(index)
-    exempt = set()
     empty_memory_probes = 0
     for command, indexes in operation_indexes.items():
         observations = command_observations.get(command, [])
@@ -188,7 +431,12 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                       input_paths=input_paths, artifact_root=artifact_root))
     return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
             "parent_thread_id": thread, "turn_id": turn, "errors": list(dict.fromkeys(errors)),
-            "context_violations": details, "empty_memory_probes": empty_memory_probes}
+            "context_violations": details, "empty_memory_probes": empty_memory_probes,
+            "verified_related_run_status_probes": verified_related_run_status_probes,
+            "related_run_status_probe_attempts": related_run_probe_attempts,
+            "related_run_status_rows": related_run_status_rows,
+            "related_run_thread_ids": list(prior_ids),
+            "prior_run_dispatch_ledger_present": bool(ledger_present)}
 
 
 def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
@@ -204,7 +452,9 @@ def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
         audit_root = Path(manifest["activation_packet_bundle"]["path"]).resolve().parent
         current = parent_context_audit(Path(parent["provider_session"]), artifact_root=audit_root,
             input_paths=tuple(parent["input_paths"]), expected_thread_id=parent["parent_thread_id"],
-            runtime_evidence=manifest.get("runtime_evidence"))
+            runtime_evidence=manifest.get("runtime_evidence"),
+            related_run_thread_ids=tuple(parent.get("related_run_thread_ids", [])),
+            prior_dispatch_ledger_present=parent.get("prior_run_dispatch_ledger_present", False))
         errors = []
         if current["status"] != "passed":
             errors.append("parent_context_nonconformant:" + ";".join(current["errors"]))

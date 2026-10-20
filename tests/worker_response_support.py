@@ -27,9 +27,19 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
     def event(seconds, kind, **payload):
         return {"timestamp": (base + timedelta(seconds=seconds)).isoformat(), "type": kind, "payload": payload}
 
-    parent = root / "worker_response_parent.jsonl"
-    parent_rows = [
-        event(0, "session_meta", id=PARENT),
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    parent_context = bindings.get("parent_context")
+    parent_thread_id = parent_context["parent_thread_id"] if parent_context else PARENT
+    parent = (Path(parent_context["provider_session"]) if parent_context
+              else root / "worker_response_parent.jsonl")
+    if parent.exists():
+        parent_rows = [json.loads(line) for line in parent.read_text().splitlines()]
+        if (not parent_rows or parent_rows[0].get("type") != "session_meta"
+                or parent_rows[0].get("payload", {}).get("id") != parent_thread_id):
+            raise ValueError("fixture_parent_session_mismatch")
+    else:
+        parent_rows = [event(0, "session_meta", id=parent_thread_id)]
+    parent_rows.extend([
         event(1, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
               call_id="spawn", arguments=json.dumps({"task_name": "worker", "message": message,
                   "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"]})),
@@ -37,7 +47,7 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
               "agent_path": "/root/worker", "agent_thread_id": CHILD}),
         event(2, "response_item", type="function_call_output", call_id="spawn", output=""),
         event(4, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": "/root/worker"}),
-    ]
+    ])
     if count:
         parent_rows.extend([
             event(dispatch_seconds, "response_item", type="function_call", namespace="collaboration",
@@ -68,7 +78,7 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
         "Observed at": stamp(dispatch_seconds + 5), "Status source": "read_thread", "Last dispatch at": stamp(dispatch_seconds),
         "Latest turn started at": stamp(dispatch_seconds + 2), "Latest turn completed at": stamp(dispatch_seconds + 3),
         "Latest turn status": "completed", "Thread status": "idle"}
-    ledger = provider_runtime.read_runtime_events(parent, PARENT, run["runtime_evidence"]["run_started_at"])
+    ledger = provider_runtime.read_runtime_events(parent, parent_thread_id, run["runtime_evidence"]["run_started_at"])
     trace = export_worker_trace(ledger, child, role, observation, run_id=run["run_id"], artifact_root=root)
     Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
     trace_path = root / "worker_response_trace.json"

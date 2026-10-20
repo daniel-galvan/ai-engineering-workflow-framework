@@ -3,11 +3,19 @@
 import json
 import shlex
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
 from scripts.prepare_run import prepare_run
-from scripts.provider_runtime import parent_context_audit
+from scripts.provider_runtime import (
+    parent_context_audit,
+    prior_run_status_thread_ids,
+    related_run_status_projection_source,
+    stale_run_status_errors,
+    strict_json_loads,
+)
+from scripts.worker_runtime_evidence import strict_json_loads as worker_strict_json_loads
 from scripts.validate_worker_runtime import activation_packet_errors
 
 
@@ -140,6 +148,143 @@ class ParentContext(unittest.TestCase):
         self.assertIn("parent_unassigned_thread_read:" + PARENT, self.audit()["errors"])
         self.rows.append(self.call("mcp__codex_app__list_threads", limit=10))
         self.assertIn("parent_unassigned_thread_discovery", self.audit()["errors"])
+
+    def test_only_one_exact_redacted_related_run_status_projection_is_allowed(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        projection = related_run_status_projection_source(artifact_root.name, PARENT)
+        status_call = {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "exec", "call_id": "status-call", "input": projection}}
+        status_output = {"type": "response_item", "payload": {
+            "type": "custom_tool_call_output", "call_id": "status-call",
+            "output": [{"type": "text", "text": "[]"}]}}
+        self.rows.extend([status_call, status_output])
+
+        result = self.audit(artifact_root=artifact_root)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["verified_related_run_status_probes"], 1)
+        self.assertEqual(result["related_run_status_rows"], [])
+        self.assertIn("parent_unassigned_thread_discovery", self.audit()["errors"])
+
+        self.rows.extend([
+            {"type": "response_item", "payload": {
+                "type": "custom_tool_call", "name": "exec", "call_id": "status-call-2", "input": projection}},
+            {"type": "response_item", "payload": {
+                "type": "custom_tool_call_output", "call_id": "status-call-2",
+                "output": [{"type": "text", "text": "[]"}]}}])
+        result = self.audit(artifact_root=artifact_root)
+        self.assertIn("parent_unassigned_thread_discovery", result["errors"])
+        self.assertEqual(result["verified_related_run_status_probes"], 1)
+
+        self.rows = self.rows[:2] + [{"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "exec",
+            "call_id": "bad-status-call",
+            "input": projection.replace("text(JSON.stringify(related));", "text(response.content[0].text);")}}]
+        result = self.audit(artifact_root=artifact_root)
+        self.assertIn("parent_unassigned_thread_discovery", result["errors"])
+
+        self.rows = self.rows[:2] + [status_call, status_output,
+            self.call("mcp__codex_app__read_thread", threadId=CHILD)]
+        result = self.audit(artifact_root=artifact_root)
+        self.assertIn("parent_unassigned_thread_read:" + CHILD, result["errors"])
+
+    def test_related_status_probe_requires_correlated_minimal_output(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        artifact_root.mkdir(parents=True)
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "thread_mappings": {"/root/prior-worker": CHILD}, "events": [], "failed_dispatches": [],
+        }))
+        projection = related_run_status_projection_source(artifact_root.name, PARENT, (CHILD,))
+        call = {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "exec", "call_id": "status-call", "input": projection}}
+        output = {"type": "response_item", "payload": {
+            "type": "custom_tool_call_output", "call_id": "status-call",
+            "output": [{"type": "text", "text": json.dumps([
+                {"id": CHILD, "status": "completed", "hostId": "local", "kind": "codex",
+                 "updatedAt": "2026-10-01T00:00:00Z"}])}]}}
+        self.rows.extend([call, output])
+        result = self.audit(artifact_root=artifact_root)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["related_run_thread_ids"], [CHILD])
+
+        self.rows = self.rows[:2] + [call]
+        self.assertIn("parent_related_run_status_output_missing", self.audit(artifact_root=artifact_root)["errors"])
+
+        self.rows = self.rows[:2] + [call, {"type": "response_item", "payload": {
+            **output["payload"], "call_id": "another-call"}}]
+        self.assertIn("parent_related_run_status_output_missing", self.audit(artifact_root=artifact_root)["errors"])
+
+        for unsafe in (
+            [{"id": CHILD, "status": "completed", "summary": "private task content"}],
+            [{"id": CHILD, "status": "running"}],
+        ):
+            with self.subTest(unsafe=unsafe):
+                self.rows = self.rows[:2] + [call, {"type": "response_item", "payload": {
+                    "type": "custom_tool_call_output", "call_id": "status-call",
+                    "output": [{"type": "text", "text": json.dumps(unsafe)}]}}]
+                result = self.audit(artifact_root=artifact_root)
+                if "summary" in unsafe[0]:
+                    self.assertIn("parent_related_run_status_output_invalid", result["errors"])
+                else:
+                    self.assertEqual(result["status"], "passed")
+                    self.assertEqual(stale_run_status_errors(result, "active"),
+                                     ["stale_run_related_task_active:" + CHILD])
+
+        duplicate_status = ('[{"id":"' + CHILD + '","status":"running","status":"completed"}]')
+        self.rows = self.rows[:2] + [call, {"type": "response_item", "payload": {
+            "type": "custom_tool_call_output", "call_id": "status-call",
+            "output": [{"type": "text", "text": duplicate_status}]}}]
+        self.assertIn("parent_related_run_status_output_invalid", self.audit(artifact_root=artifact_root)["errors"])
+
+    def test_stale_archive_status_requires_all_known_workers_to_be_terminal(self):
+        context = {
+            "verified_related_run_status_probes": 1,
+            "related_run_status_probe_attempts": 1,
+            "related_run_status_rows": [{"id": CHILD, "status": "completed"}],
+            "related_run_thread_ids": [CHILD],
+            "prior_run_dispatch_ledger_present": True,
+        }
+        self.assertEqual(stale_run_status_errors(context, "active"), [])
+        active = {**context, "related_run_status_rows": [{"id": CHILD, "status": "running"}]}
+        self.assertEqual(stale_run_status_errors(active, "active"), ["stale_run_related_task_active:" + CHILD])
+        missing = {**context, "related_run_status_rows": []}
+        self.assertEqual(stale_run_status_errors(missing, "active"), ["stale_run_worker_status_missing:" + CHILD])
+        missing_ledger = {**context, "prior_run_dispatch_ledger_present": False}
+        self.assertEqual(stale_run_status_errors(missing_ledger, "active"), ["stale_run_dispatch_ledger_required"])
+        self.assertEqual(stale_run_status_errors(None, "active"), ["stale_run_status_probe_required"])
+
+    def test_prior_worker_identity_collection_fails_closed_on_malformed_receipts(self):
+        self.assertIs(worker_strict_json_loads, strict_json_loads)
+        with self.assertRaisesRegex(ValueError, "NaN"):
+            strict_json_loads('{"value":NaN}')
+
+        artifact_root = self.root / ".thoughts" / "ITEM-1"
+        artifact_root.mkdir(parents=True)
+        ledger = artifact_root / "runtime_dispatches.json"
+        ledger.write_text(json.dumps({"thread_mappings": {},
+            "events": [{"Operation": "spawn_agent", "Provider handle": "/root/worker"}],
+            "failed_dispatches": []}))
+        with self.assertRaisesRegex(ValueError, "stale_run_thread_identity_invalid"):
+            prior_run_status_thread_ids(artifact_root, PARENT)
+
+        ledger.write_text(json.dumps({"thread_mappings": {}, "events": [],
+            "failed_dispatches": [{"Operation": "spawn_agent", "Provider handle": "/root/worker",
+                                   "Status": "failed"}]}))
+        self.assertEqual(prior_run_status_thread_ids(artifact_root, PARENT), ())
+
+        ledger.write_text('{"thread_mappings":{"/root/worker":"' + CHILD + '","/root/worker":"' +
+                          PARENT + '"},"events":[],"failed_dispatches":[]}')
+        with self.assertRaisesRegex(ValueError, "stale_run_thread_identity_invalid"):
+            prior_run_status_thread_ids(artifact_root, "00000000-0000-0000-0000-000000000004")
+
+    def test_shipped_status_projection_matches_the_audit_allowlist(self):
+        skill = (Path(__file__).resolve().parents[1] / "skills" / "run" / "SKILL.md").read_text()
+        section = skill.split("this exact projection", 1)[1]
+        snippet = section.split("```javascript\n", 1)[1].split("\n   ```", 1)[0]
+        prior_id = "00000000-0000-0000-0000-000000000004"
+        expected = related_run_status_projection_source("ECHO-2806", PARENT, (prior_id,))
+        expected = expected.replace(json.dumps(PARENT), '"PARENT-THREAD-UUID"')
+        expected = expected.replace(json.dumps([prior_id]), '["PRIOR-WORKER-THREAD-UUID"]')
+        self.assertEqual(textwrap.dedent(snippet).strip(), expected)
 
     def test_missing_turn_wrong_parent_and_unparsed_calls_cannot_pass(self):
         with self.assertRaisesRegex(ValueError, "parent_mismatch"):

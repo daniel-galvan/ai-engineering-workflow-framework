@@ -63,6 +63,16 @@ WORKER_RUNTIME_GUARD = ROOT / "scripts" / "validate_worker_runtime.py"
 RUN_INPUTS_FILENAME = "run_inputs.json"
 RUN_BUDGET_FILENAME = "run_budget.json"
 TERMINAL_STATES = {"awaiting_input", "blocked", "ready_for_implementation", "completed"}
+UNINITIALIZED_WORK_RECORD_STATE = (
+    "`intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / `ready_for_implementation` / "
+    "`implementation` / `code_review` / `validation` / `handoff` / `completed`"
+)
+ORPHANED_RUN_RECEIPTS = {
+    "asset_manifest.json", "finalization_failure.json", "finalization_packet.json",
+    "fix_design_result.json", "handoff_delivery.json", "pre_release_check.json",
+    "role_bindings.json", "run_budget.json", "run_inputs.json", "runtime_closure.json", "runtime_dispatches.json",
+    "worker_activation_packets.json",
+}
 SENTRY_AGENTS = (
     "sentry_orchestrator",
     "sentry_current_state_investigator",
@@ -785,15 +795,32 @@ def _archive_recovery(artifact_root: Path, run_id: str) -> Path:
 
 def _archive_existing_run(
     artifact_root: Path, archive_stale_run: bool, run_inputs: dict[str, object] | None = None,
+    parent_context: dict | None = None,
 ) -> str | None:
     record = artifact_root / "work_record.md"
     if not record.is_file():
+        if artifact_root.is_dir() and any((artifact_root / name).is_file() for name in ORPHANED_RUN_RECEIPTS):
+            raise ValueError("orphaned_run_control_receipts_without_work_record")
         return None
     text = record.read_text()
     state = _table_value(text, "State")
     if state not in TERMINAL_STATES:
         if not archive_stale_run:
             raise ValueError("existing_run_not_terminal")
+    try:
+        from provider_runtime import stale_run_status_errors
+    except ModuleNotFoundError:
+        from scripts.provider_runtime import stale_run_status_errors
+    unstarted_template = (state == UNINITIALIZED_WORK_RECORD_STATE
+                          and not _table_value(text, "Run ID")
+                          and not (artifact_root / "runtime_dispatches.json").is_file())
+    status_errors = stale_run_status_errors(
+        parent_context, state, require_prior_dispatch_ledger=not (state == "intake" or unstarted_template),
+    )
+    if status_errors:
+        reason = "stale_run_archive_blocked" if state not in TERMINAL_STATES else "prior_run_archive_blocked"
+        raise ValueError(reason + ":" + ";".join(status_errors))
+    if state not in TERMINAL_STATES:
         run_id = datetime.now(UTC).strftime("stale-%Y%m%dT%H%M%S%fZ")
     else:
         run_id = _table_value(text, "Run ID")
@@ -993,7 +1020,11 @@ def prepare_run(
             control["identity_sessions"] = list(dict.fromkeys([
                 *control.get("identity_sessions", []), previous_parent["provider_session"]]))
         parent_context = parent_context_audit(provider_session, artifact_root=artifact_root,
-            input_paths=tuple(assigned), expected_thread_id=previous_parent.get("parent_thread_id"), runtime_evidence=control)
+            input_paths=tuple(assigned), expected_thread_id=previous_parent.get("parent_thread_id"),
+            runtime_evidence=control,
+            related_run_thread_ids=(tuple(previous_parent["related_run_thread_ids"])
+                                    if "related_run_thread_ids" in previous_parent else None),
+            prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"))
         if parent_context["status"] != "passed":
             raise ValueError("parent_context_nonconformant:" + ";".join(parent_context["errors"]))
         if previous_parent and previous_parent["parent_thread_id"] != parent_context["parent_thread_id"]:
@@ -1001,7 +1032,10 @@ def prepare_run(
         if previous_parent:
             previous_context = parent_context_audit(Path(previous_parent["provider_session"]), artifact_root=artifact_root,
                 input_paths=tuple(previous_parent["input_paths"]), expected_thread_id=previous_parent["parent_thread_id"],
-                expected_turn_id=previous_parent["turn_id"], runtime_evidence=previous_run_bindings.get("runtime_evidence"))
+                expected_turn_id=previous_parent["turn_id"], runtime_evidence=previous_run_bindings.get("runtime_evidence"),
+                related_run_thread_ids=(tuple(previous_parent["related_run_thread_ids"])
+                                        if "related_run_thread_ids" in previous_parent else None),
+                prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"))
             if previous_context["status"] != "passed":
                 raise ValueError("continuation_parent_context_nonconformant:" + ";".join(previous_context["errors"]))
     if playbook == "sentry_issue_remediation" and validated_supplied:
@@ -1050,7 +1084,9 @@ def prepare_run(
                            "Selected playbook defaults" if goal_defaults_used else "Current user request",
                            str(PLAYBOOK_DEFAULT_GOALS[playbook]["authority"]) if goal_defaults_used else "Explicit user outcome")
     artifact_root.mkdir(parents=True, exist_ok=True)
-    archived = None if continuation else _archive_existing_run(artifact_root, archive_stale_run, validated_supplied)
+    archived = None if continuation else _archive_existing_run(
+        artifact_root, archive_stale_run, validated_supplied, parent_context,
+    )
     if prior:
         archived_path = _archive_recovery(artifact_root, prior["identity"]["Run ID"])
         archived = str(archived_path)

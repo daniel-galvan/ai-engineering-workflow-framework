@@ -20,6 +20,7 @@ try:
         runtime_configurations,
         launch_binding_errors,
         worker_binding,
+        strict_json_loads,
         validate_prepared_provider_source,
     )
 except ModuleNotFoundError:
@@ -31,6 +32,7 @@ except ModuleNotFoundError:
         runtime_configurations,
         launch_binding_errors,
         worker_binding,
+        strict_json_loads,
         validate_prepared_provider_source,
     )
 
@@ -70,18 +72,6 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
     if len(parts) != len(content) or not parts:
         raise ValueError("worker_final_response_invalid")
     return "".join(parts)
-
-
-def strict_json_loads(value: str):
-    def unique_object(pairs):
-        result = {}
-        for key, item in pairs:
-            if key in result:
-                raise ValueError("duplicate JSON key: " + key)
-            result[key] = item
-        return result
-    return json.loads(value, object_pairs_hook=unique_object,
-                      parse_constant=lambda token: (_ for _ in ()).throw(ValueError(token)))
 
 
 def _materialize_worker_response(root: Path, role: str, dispatch_at: str, response: str,

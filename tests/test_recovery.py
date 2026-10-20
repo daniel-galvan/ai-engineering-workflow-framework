@@ -13,6 +13,7 @@ from unittest.mock import patch
 from scripts import prepare_run as prepare
 from scripts import validate_worker_runtime as runtime
 from scripts.merge_techops_result import merge_result
+from tests.parent_status_support import write_parent_status_session
 from tests.worker_response_support import stage_worker_response
 
 
@@ -37,13 +38,22 @@ class V6Recovery(unittest.TestCase):
                         "Source or path": "Current request", "Authority": "User",
                         "Classification": "work item", "Expected use": "Investigate", "Status": "Registered"}]}))
 
-    def prepare(self, continuation=False, archive=False):
+    def prepare(self, continuation=False, archive=False, status_rows=None):
         start = datetime.fromisoformat(START.replace("Z", "+00:00")) + timedelta(microseconds=self.preparation_count)
         self.preparation_count += 1
+        provider_session = None
+        if archive:
+            artifact_root = self.root / ".thoughts" / "ISSUE-1"
+            provider_session = write_parent_status_session(
+                self.root / "parent-status.jsonl", artifact_root, status_rows,
+                timestamp=(datetime.fromisoformat(START.replace("Z", "+00:00")).replace(microsecond=0)
+                           - timedelta(seconds=1)).isoformat(),
+            )
         with patch.object(prepare, "datetime", wraps=datetime) as clock:
             clock.now.return_value = start
             return prepare.prepare_run(self.root, "ISSUE-1", "techops_issue_remediation", None, continuation,
-                                       archive_stale_run=archive, input_manifest=self.inputs)
+                                       archive_stale_run=archive, input_manifest=self.inputs,
+                                       provider_session=provider_session)
 
     def command(self, script, *arguments):
         return subprocess.run([sys.executable, str(ROOT / "scripts" / script), *map(str, arguments)],
@@ -78,6 +88,73 @@ class V6Recovery(unittest.TestCase):
         continued = self.prepare(continuation=True)
         messages = json.loads(Path(continued["activation_packet_bundle"]["path"]).read_text())["packets"]
         self.assertTrue(all(row["run_id"] == envelope["run_id"] for row in messages.values()))
+
+    def test_stale_archive_requires_correlated_terminal_status_for_each_ledger_worker(self):
+        prior = self.prepare()
+        root = Path(prior["artifact_root"])
+        record = root / "work_record.md"
+        original = record.read_text()
+        record.write_text(original.replace("| State | intake |", "| State | active |"))
+        (root / "runtime_dispatches.json").write_text(json.dumps({
+            "thread_mappings": {HANDLE: CHILD}, "events": [], "failed_dispatches": [],
+        }))
+        before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+
+        for rows, expected in (
+            ([{"id": CHILD, "status": "running"}], "stale_run_related_task_active:" + CHILD),
+            ([], "stale_run_worker_status_missing:" + CHILD),
+        ):
+            with self.subTest(expected=expected), self.assertRaisesRegex(ValueError, expected):
+                self.prepare(archive=True, status_rows=rows)
+            self.assertEqual(before, {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()})
+            self.assertFalse(any(path.name.startswith("stale-") for path in (root / "runs").glob("*")))
+
+        archived = self.prepare(archive=True, status_rows=[{"id": CHILD, "status": "completed"}])
+        stale = Path(archived["archived_prior_run"])
+        archived_ledger = json.loads((stale / "runtime_dispatches.json").read_text())
+        self.assertEqual(archived_ledger["thread_mappings"], {HANDLE: CHILD})
+        self.assertNotEqual(Path(archived["work_record"]).resolve(), (stale / "work_record.md").resolve())
+
+    def test_terminal_work_record_cannot_hide_an_active_worker_during_archive(self):
+        prior = self.prepare()
+        root = Path(prior["artifact_root"])
+        record = root / "work_record.md"
+        record.write_text(record.read_text().replace(
+            "| State | `intake` / `classified` / `in_progress` / `awaiting_input` / `blocked` / "
+            "`ready_for_implementation` / `implementation` / `code_review` / `validation` / `handoff` / `completed` |",
+            "| State | completed |",
+        ))
+        (root / "runtime_dispatches.json").write_text(json.dumps({
+            "thread_mappings": {HANDLE: CHILD}, "events": [], "failed_dispatches": [],
+        }))
+        before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        with self.assertRaisesRegex(ValueError, "prior_run_archive_blocked:stale_run_related_task_active"):
+            self.prepare(archive=True, status_rows=[{"id": CHILD, "status": "running"}])
+        self.assertEqual(before, {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()})
+        self.assertFalse(any(path.name.startswith("stale-") for path in (root / "runs").glob("*")))
+
+        archived = self.prepare(archive=True, status_rows=[{"id": CHILD, "status": "completed"}])
+        self.assertTrue(Path(archived["archived_prior_run"]).is_dir())
+
+    def test_orphaned_run_receipts_without_record_block_fresh_preparation(self):
+        root = self.root / ".thoughts" / "ISSUE-1"
+        root.mkdir(parents=True)
+        for name, content in (
+            ("runtime_dispatches.json", json.dumps({"thread_mappings": {HANDLE: CHILD},
+                "events": [], "failed_dispatches": []})),
+            ("run_inputs.json", json.dumps({"schema_version": 1, "inputs": []})),
+        ):
+            with self.subTest(name=name):
+                receipt = root / name
+                receipt.write_text(content)
+                before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+
+                with self.assertRaisesRegex(ValueError, "orphaned_run_control_receipts_without_work_record"):
+                    self.prepare()
+
+                self.assertEqual(before, {path.relative_to(root): path.read_bytes()
+                                          for path in root.rglob("*") if path.is_file()})
+                receipt.unlink()
 
     def test_activation_rejects_missing_and_wrong_run_identity(self):
         run = self.prepare()

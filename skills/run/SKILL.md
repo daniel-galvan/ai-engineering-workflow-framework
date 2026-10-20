@@ -325,13 +325,42 @@ description: >-
    and report its errors and receipt path. The receipt does not certify worker release or make `work_record.md`
    terminal; reconcile runtime handles before a new run. A genuinely unavailable required source yields
    `awaiting_input` and no implementation plan; a malformed manifest is a contract failure, not an access gap.
-   Capture the current turn start before checking provider-visible tasks. If a new `Start` returns
-   `existing_run_not_terminal`, check provider-visible tasks and worker handles. Exclude the task created for the
-   current invocation: a task created at or after the captured current turn start is the current run and MUST NOT be
-   classified as a related run. A provider-visible task can block startup only when it predates the current turn and is
-   independently active. When the prior task is idle, every visible child worker is terminal, and no artifact writer
-   remains, rerun once with `--archive-stale-run`. This preserves every stale artifact under `runs/stale-<timestamp>/`
-   and creates a fresh run.
+   Capture the current turn start before checking provider-visible tasks. The current-task rule is:
+   `task created at or after the captured current turn start`
+   is the current run and MUST NOT be classified as a related run. After the initial passing preflight, inspect only
+   status metadata for provider-visible tasks and sibling artifact roots; do not read prior thread content, task
+   summaries, or stale run files. From the stale artifact's `role_bindings.json` and `runtime_dispatches.json`, use only
+   the prior parent and worker thread IDs; do not read analytical fields. The parent-context audit permits one exact
+   `list_threads({limit: 50})` status projection for the current work item per turn. Emit no task title or summary; use
+   this exact projection, replacing `ECHO-2806` with the current work-item key, `PARENT-THREAD-UUID` with the
+   provider-verified current parent thread ID, and `PRIOR-WORKER-THREAD-UUID` with the JSON array of prior parent and
+   worker thread IDs (use `[]` when empty):
+   ```javascript
+   const response = await tools.mcp__codex_app__list_threads({limit: 50});
+   const data = JSON.parse(response.content[0].text);
+   const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];
+   const priorIds = ["PRIOR-WORKER-THREAD-UUID"];
+   const related = rows.filter(row => row.id !== "PARENT-THREAD-UUID" &&
+     ((typeof row.title === 'string' && row.title.includes("ECHO-2806") || priorIds.includes(row.id)))
+     .map(row => ({
+       id: row.id, status: row.status, hostId: row.hostId, kind: row.kind,
+       updatedAt: row.updatedAt
+     }));
+   text(JSON.stringify(related));
+   ```
+   Direct inventory output, extra tool calls in the wrapper, a different projection, or a query before the initial
+   passing preflight remains an unassigned discovery and must stop the run. The provider result must be correlated to
+   that exact call and contain only status metadata. Before `--archive-stale-run` can move a nonterminal run, every
+   prior parent or worker thread ID from the ledger must appear in the result and have a terminal status; a missing,
+   active, malformed, or unavailable status blocks archival and leaves old artifacts in place. The projection
+   also blocks on malformed dispatch or closure identity receipts; only a failed `spawn_agent` with no worker thread
+   ID is exempt because the provider never created an observable worker task.
+   excludes the current parent thread by its exact provider ID. A different provider-visible task can block startup
+   only when it predates the current turn and is independently active. Do not read old threads to prove worker status;
+   if every visible worker
+   handle cannot be verified terminal from permitted status evidence, stop with `run_already_active`. When the prior
+   task is idle, every visible child worker is terminal, and no artifact writer remains, rerun once with
+   `--archive-stale-run`. This preserves every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run.
    An unavailable old release receipt keeps the old run blocked but does not by itself prove an active worker or bar a
    separate read-only planning run. Confirm new-run capacity by activating its first required worker; if that fails,
    stop with the exact runtime reason. If worker or writer activity is present or cannot be verified, stop with

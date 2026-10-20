@@ -24,6 +24,7 @@ from scripts.prepare_run import (
     resolve_bindings,
 )
 from scripts.run_input_manifest import DEFAULT_PRECEDENCE_RULE, load_manifest
+from tests.parent_status_support import write_parent_status_session
 
 
 def self_test() -> None:
@@ -169,9 +170,14 @@ def self_test() -> None:
                 "| State | intake |", "| State | completed |"
             )
         )
+        prior_ledger = Path(first["artifact_root"]) / "runtime_dispatches.json"
+        prior_ledger.write_text(json.dumps({"thread_mappings": {}, "events": [], "failed_dispatches": []}))
+        parent_session = write_parent_status_session(
+            execution / "parent-status.jsonl", Path(first["artifact_root"]),
+        )
         second = prepare_run(
             execution, "ITEM-1", "sentry_issue_remediation", None, False,
-            input_manifest=input_source,
+            input_manifest=input_source, provider_session=parent_session,
         )
         assert second["archived_prior_run"].endswith("runs/run-1")
         assert Path(second["work_record"]).is_file()
@@ -190,14 +196,17 @@ def self_test() -> None:
             assert str(error) == "existing_run_not_terminal"
         else:
             raise AssertionError("unverified nonterminal run must block")
-        recovered = prepare_run(
-            execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
-            archive_stale_run=True, input_manifest=input_source,
-        )
-        archived_stale = Path(recovered["archived_prior_run"])
-        assert archived_stale.name.startswith("stale-")
-        assert (archived_stale / "normalized_evidence.md").read_text() == "preserved stale evidence\n"
-        assert _table_value(Path(recovered["work_record"]).read_text(), "State") == "intake"
+        try:
+            prepare_run(
+                execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
+                archive_stale_run=True, input_manifest=input_source,
+            )
+        except ValueError as error:
+            assert str(error) == "stale_run_archive_blocked:stale_run_status_probe_required"
+        else:
+            raise AssertionError("stale archive without provider status evidence must block")
+        assert stale_artifact.read_text() == "preserved stale evidence\n"
+        assert not list((Path(stale["artifact_root"]) / "runs").glob("stale-*"))
         try:
             prepare_run(execution, "ITEM-2", "playbooks/unknown.md", None, False)
         except ValueError as error:
