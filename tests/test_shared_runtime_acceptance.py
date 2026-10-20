@@ -581,7 +581,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             status.update({"Latest turn started at": fixture[3](1), "Dispatch consumed": True,
                            "Dispatch consumption evidence": "Corrected artifact write and validation after dispatch"})
             trace, _ = self.export(fixture)
-            self.assertIn("forbidden_context_reference:memory_directory", trace["audit"]["errors"])
+            self.assertIn("forbidden_context_reference:memory_path", trace["audit"]["errors"])
 
     def test_previous_instruction_output_is_audited_after_contract_change(self):
         with tempfile.TemporaryDirectory() as directory:

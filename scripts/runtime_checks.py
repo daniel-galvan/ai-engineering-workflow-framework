@@ -15,6 +15,11 @@ import tokenize
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from workflow_policy import FORBIDDEN_MEMORY_CONTEXT_PATTERNS
+except ModuleNotFoundError:
+    from scripts.workflow_policy import FORBIDDEN_MEMORY_CONTEXT_PATTERNS
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE_STATUSES = {"pending_init", "running", "in_progress", "awaiting_dependency"}
@@ -24,9 +29,7 @@ TRACE_METADATA_KEYS = {
     "description", "expected_errors", "source_task", "source_thread", "fixture", "schema_version",
 }
 FORBIDDEN_CONTEXT_PATTERNS = (
-    ("memory_path", re.compile(r"(?i)(?:^|[/\\])memory\.md(?:$|[/\\])")),
-    ("memory_directory", re.compile(r"(?i)(?:^|[/\\])\.codex[/\\]memories(?:$|[/\\])")),
-    ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries(?:$|[/\\])")),
+    *FORBIDDEN_MEMORY_CONTEXT_PATTERNS,
     ("archived_artifact", re.compile(r"(?i)(?:^|[\s/\\\"'])\.thoughts[/\\][^/\\]+[/\\]runs(?:$|[\s/\\\"'])")),
     ("archived_artifact", re.compile(r"(?i)\.thoughts[/\\][^/\\\s]+(?:[_-]v[0-9]+|[_-]backup|[_-]archive)(?:$|[/\\\s])")),
     ("memory_citation", re.compile(r"(?i)<oai-mem-citation>")),

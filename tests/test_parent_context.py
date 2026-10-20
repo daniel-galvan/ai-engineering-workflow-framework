@@ -72,6 +72,15 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["turn_id"], TURN)
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
+    def test_codex_home_memory_paths_are_rejected_when_quoted(self):
+        for command, expected in (
+            ('cat "$CODEX_HOME/memories/MEMORY.md"', "memory_path"),
+            ('rg -n issue "${CODEX_HOME}/memories/notes.md"', "memory_directory"),
+        ):
+            with self.subTest(command=command):
+                self.rows = self.rows[:2] + [self.call("exec_command", cmd=command)]
+                self.assertIn("forbidden_context_reference:" + expected, self.audit()["errors"])
+
     def test_verified_no_match_memory_probe_is_distinct_from_a_memory_read(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         command = "rg -n 'ECHO-2806|planning' " + memory

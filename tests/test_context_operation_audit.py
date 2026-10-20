@@ -238,6 +238,35 @@ class ContextOperationAudit(unittest.TestCase):
             trace = {"tool_trace": self.paired(code, "Current report\n/Users/example/.codex/memories/MEMORY.md")}
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
 
+    def test_codex_home_memory_paths_are_rejected_when_quoted(self):
+        for command, expected in (
+            ('cat "$CODEX_HOME/memories/MEMORY.md"', "memory_path"),
+            ('rg -n issue "${CODEX_HOME}/memories/notes.md"', "memory_directory"),
+            (r'cat "%CODEX_HOME%\memories\MEMORY.md"', "memory_path"),
+            (r'rg -n issue "$env:CODEX_HOME\memories\notes.md"', "memory_directory"),
+        ):
+            with self.subTest(command=command):
+                trace = {"tool_trace": [{"tool": "exec_command", "arguments": {"cmd": command},
+                                          "result": {"output": ""}}]}
+                self.assertIn("forbidden_context_reference:" + expected,
+                              runtime.context_trace_errors(trace))
+
+    def test_spike_report_context_uses_the_shared_memory_path_rules(self):
+        from scripts.run_input_manifest import default_manifest
+        from scripts.validation.common import FORBIDDEN_REPORT_CONTEXT_PATTERNS
+        from scripts.validation.playbooks import _spike_report_context_errors
+        from scripts.workflow_policy import FORBIDDEN_MEMORY_CONTEXT_PATTERNS
+
+        self.assertTrue(all(any(label == shared_label and pattern is shared_pattern
+                                for label, pattern in FORBIDDEN_REPORT_CONTEXT_PATTERNS)
+                            for shared_label, shared_pattern in FORBIDDEN_MEMORY_CONTEXT_PATTERNS))
+        manifest = self.repository / "run_inputs.json"
+        manifest.write_text(json.dumps(default_manifest("ITEM-1", "technical_spike", self.repository)))
+        rows = [{"Evidence ID": "SRC-001", "Method or source":
+                 'cat "${CODEX_HOME}/memories/MEMORY.md"'}]
+        errors = _spike_report_context_errors(rows, [], manifest)
+        self.assertTrue(any("forbidden context: memory_path" in error for error in errors))
+
     def test_python_inventory_inspection_is_data_but_writes_are_not_allowed(self):
         manifest = self.root / "asset_manifest.json"
         manifest.write_text('{}')

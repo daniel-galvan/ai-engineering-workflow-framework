@@ -2,6 +2,18 @@
 
 import re
 
+_PATH_REFERENCE_END = r"(?=$|[/\\\s\"'`|;&)>}\],.])"
+_CODEX_HOME = r"(?:\$CODEX_HOME|\$\{CODEX_HOME\}|%CODEX_HOME%|\$env:CODEX_HOME|\$\{env:CODEX_HOME\})"
+
+FORBIDDEN_MEMORY_CONTEXT_PATTERNS = (
+    ("memory_path", re.compile(r"(?i)(?:^|[/\\])MEMORY\.md" + _PATH_REFERENCE_END)),
+    ("memory_directory", re.compile(
+        r"(?i)(?:^|[/\\])\.codex[/\\]memories" + _PATH_REFERENCE_END
+        + r"|" + _CODEX_HOME + r"[/\\]memories" + _PATH_REFERENCE_END
+    )),
+    ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries" + _PATH_REFERENCE_END)),
+)
+
 PROMPT_TEMPLATES = {
     "feature_delivery": "feature_delivery_run_prompt.md",
     "sentry_issue_remediation": "sentry_issue_run_prompt.md",

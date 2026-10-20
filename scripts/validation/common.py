@@ -15,12 +15,14 @@ try:
         FEATURE_ASSESSMENT_DISPOSITIONS as FEATURE_ASSESSMENT_DISPOSITIONS,
         TECHNICAL_SPIKE_DISPOSITIONS as TECHNICAL_SPIKE_DISPOSITIONS,
         NO_ACTIVE_HANDLES as NO_ACTIVE_HANDLES,
+        FORBIDDEN_MEMORY_CONTEXT_PATTERNS as FORBIDDEN_MEMORY_CONTEXT_PATTERNS,
     )
 except ModuleNotFoundError:
     from scripts.workflow_policy import (
         FEATURE_ASSESSMENT_DISPOSITIONS as FEATURE_ASSESSMENT_DISPOSITIONS,
         TECHNICAL_SPIKE_DISPOSITIONS as TECHNICAL_SPIKE_DISPOSITIONS,
         NO_ACTIVE_HANDLES as NO_ACTIVE_HANDLES,
+        FORBIDDEN_MEMORY_CONTEXT_PATTERNS as FORBIDDEN_MEMORY_CONTEXT_PATTERNS,
     )
 
 
@@ -61,9 +63,7 @@ EXTERNAL_DOCUMENT_MARKER = re.compile(
 )
 
 FORBIDDEN_REPORT_CONTEXT_PATTERNS = (
-    ("memory_path", re.compile(r"(?i)(?:^|[/\\])memory\.md(?:$|[/\\])")),
-    ("memory_directory", re.compile(r"(?i)(?:^|[/\\])\.codex[/\\]memories(?:$|[/\\])")),
-    ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries(?:$|[/\\])")),
+    *FORBIDDEN_MEMORY_CONTEXT_PATTERNS,
     ("archived_artifact", re.compile(r"(?i)(?:^|[/\\])\.thoughts[/\\][^/\\]+[/\\]runs[/\\]")),
     ("memory_citation", re.compile(r"(?i)<oai-mem-citation>")),
 )
