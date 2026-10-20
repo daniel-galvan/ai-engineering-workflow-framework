@@ -294,8 +294,11 @@ class PlanningCommandPath(unittest.TestCase):
                 inventory()
                 trace = root / (worker + "-trace.json")
                 command("worker_runtime_evidence.py", *collector, "--worker-session", child, "--agent", role, "--trace", trace)
+                audit = next(row for row in json.loads(packet_path.read_text())["runtime_audits"]
+                             if row.get("Worker") == worker)
+                self.assertEqual(Path(audit["Trace path"]), trace.resolve())
                 if worker != "handoff":
-                    command("merge_techops_result.py", "--packet", packet_path, "--agent", role, "--trace", trace)
+                    command("merge_techops_result.py", "--packet", packet_path, "--agent", role)
                     contract = run["worker_contracts"][role]
                     for field in ("output", "result"):
                         path = Path(contract[field])

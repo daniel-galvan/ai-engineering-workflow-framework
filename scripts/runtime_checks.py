@@ -686,16 +686,20 @@ def _authorized_read(row: dict, assigned: list[str]) -> bool:
                 and any(path in tokens for path in assigned))
 
 
-def _literal_argument(node: ast.AST):
+def _literal_argument(node: ast.AST, constants: dict[str, str] | None = None):
+    constants = constants or {}
     if isinstance(node, ast.Constant):
         return node.value
     if isinstance(node, ast.Dict):
-        return {(key.id if isinstance(key, ast.Name) else _literal_argument(key)): _literal_argument(value)
+        return {(key.id if isinstance(key, ast.Name) else _literal_argument(key, constants)):
+                _literal_argument(value, constants)
                 for key, value in zip(node.keys, node.values)}
     if isinstance(node, (ast.List, ast.Tuple)):
-        return [_literal_argument(value) for value in node.elts]
+        return [_literal_argument(value, constants) for value in node.elts]
     if isinstance(node, ast.Name) and node.id in {"true", "false", "null"}:
         return {"true": True, "false": False, "null": None}[node.id]
+    if isinstance(node, ast.Name) and node.id in constants:
+        return constants[node.id]
     raise ValueError("nonliteral tool argument")
 
 
@@ -715,7 +719,8 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
         return [("apply_patch", {"patch": source})]
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
-        operations, index = [], 0
+        operations, constants, declared, index, brace_depth = [], {}, set(), 0, 0
+        unsafe_bindings = False
         while index < len(tokens):
             # JavaScript comments must not create operations from quoted examples.
             if tokens[index].string == "//":
@@ -729,6 +734,43 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
                     index += 1
                 index += 2
                 continue
+            if tokens[index].type == tokenize.NAME and tokens[index].string in {"const", "let", "var"}:
+                if index + 1 < len(tokens) and tokens[index + 1].type == tokenize.NAME:
+                    name = tokens[index + 1].string
+                    unique_top_level_const = (tokens[index].string == "const" and name not in declared
+                                              and brace_depth == 0 and not unsafe_bindings)
+                    declared.add(name)
+                    boundary = index + 4
+                    literal_statement = (boundary < len(tokens) and tokens[boundary].string == ";")
+                    if (boundary + 1 < len(tokens) and tokens[boundary].type in {tokenize.NL, tokenize.NEWLINE}
+                            and tokens[boundary + 1].type == tokenize.NAME
+                            and tokens[boundary + 1].string in {"await", "const", "let", "var", "tools"}):
+                        literal_statement = True
+                    if (unique_top_level_const and index + 3 < len(tokens)
+                            and tokens[index + 2].string == "=" and tokens[index + 3].type == tokenize.STRING
+                            and literal_statement):
+                        try:
+                            value = ast.literal_eval(tokens[index + 3].string)
+                        except (SyntaxError, ValueError):
+                            value = None
+                        if isinstance(value, str):
+                            constants[name] = value
+                        index += 4
+                        continue
+                    constants.pop(name, None)
+                    index += 2
+                    continue
+                constants.clear()
+                unsafe_bindings = True
+            if (tokens[index].type == tokenize.NAME and tokens[index].string == "function"
+                    or tokens[index].string == "=" and index + 1 < len(tokens)
+                    and tokens[index + 1].string == ">"):
+                constants.clear()
+                unsafe_bindings = True
+            if (tokens[index].type == tokenize.NAME and tokens[index].string in constants
+                    and index + 1 < len(tokens)
+                    and tokens[index + 1].string in {"=", "+=", "-=", "*=", "/=", "%=", "++", "--"}):
+                constants.pop(tokens[index].string, None)
             if tokens[index].type == tokenize.NAME and tokens[index].string in {"eval", "Function", "globalThis", "constructor"}:
                 return []
             if (tokens[index].type == tokenize.NAME and tokens[index].string == "tools"
@@ -747,7 +789,8 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
                 if depth:
                     return []
                 argument = tokenize.untokenize([(token.type, token.string) for token in tokens[start:index - 1]])
-                value = _literal_argument(ast.parse(argument, mode="eval").body)
+                value = _literal_argument(ast.parse(argument, mode="eval").body,
+                                          constants if brace_depth == 0 else {})
                 if name == "apply_patch" and isinstance(value, str):
                     value = {"patch": value}
                 if not isinstance(value, dict):
@@ -756,6 +799,8 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
                 continue
             if tokens[index].type == tokenize.ERRORTOKEN and tokens[index].string.strip():
                 return []
+            if tokens[index].type == tokenize.OP:
+                brace_depth += (tokens[index].string == "{") - (tokens[index].string == "}")
             index += 1
         return operations
     except (ValueError, SyntaxError, TypeError, tokenize.TokenError, IndentationError):

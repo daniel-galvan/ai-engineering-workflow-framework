@@ -82,6 +82,51 @@ class ParentContext(unittest.TestCase):
             "input": "await tools.exec_command(argumentsFromElsewhere)"}})
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_literal_const_tool_arguments_are_audited_but_dynamic_values_fail_closed(self):
+        patch = ("*** Begin Patch\n*** Add File: " + str(self.root / ".thoughts" / "ITEM-1" / "runs" /
+                 "current" / "receipt.json") + "\n+{}\n*** End Patch")
+        self.rows.append({"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+            "input": "const patch = " + json.dumps(patch) + "; await tools.apply_patch(patch);"}})
+        result = self.audit(artifact_root=self.root / ".thoughts" / "ITEM-1")
+        self.assertNotIn("parent_tool_arguments_unavailable", result["errors"])
+        self.assertIn("forbidden_context_reference:archived_artifact", result["errors"])
+
+        self.rows[-1]["payload"]["input"] = "const patch = buildPatch(); await tools.apply_patch(patch);"
+        self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
+        for source in (
+            "const patch = 'safe' + 'unreviewed'; await tools.apply_patch(patch);",
+            "const command = 'cat ' + '/repo/.codex/memories/MEMORY.md'; "
+            "await tools.exec_command({cmd: command});",
+            "const patch = 'safe'\n+ 'unreviewed'; await tools.apply_patch(patch);",
+        ):
+            self.rows[-1]["payload"]["input"] = source
+            self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
+        self.rows[-1]["payload"]["input"] = "const patch = 'safe'\nawait tools.apply_patch(patch);"
+        self.assertEqual(self.audit()["status"], "passed")
+
+        for source in (
+            "const patch = 'safe'; patch = buildPatch(); await tools.apply_patch(patch);",
+            "const patch = 'safe'; { let patch = buildPatch(); } await tools.apply_patch(patch);",
+            "const patch = 'safe'; function apply(patch) { tools.apply_patch(patch); }",
+            "const patch = 'safe'; const target = { apply(patch) { tools.apply_patch(patch); } };",
+        ):
+            self.rows[-1]["payload"]["input"] = source
+            self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
+    def test_preparation_accepts_literal_const_manifest_creation(self):
+        inputs = self.root / "inputs.json"
+        inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
+            "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
+        patch = ("*** Begin Patch\n*** Add File: " + str(self.root / "inputs.json") + "\n+{}\n*** End Patch")
+        self.rows.append({"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+            "input": "const patch = " + json.dumps(patch) + "; await tools.apply_patch(patch);"}})
+        self.assertEqual(self.audit()["status"], "passed")
+        run = prepare_run(self.root, "ITEM-1", "feature_delivery", None, False,
+                          input_manifest=inputs, provider_session=self.source)
+        self.assertEqual(run["status"], "prepared")
+
     def test_preparation_is_transactional_and_activation_rechecks_later_reads(self):
         inputs = self.root / "inputs.json"
         inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
