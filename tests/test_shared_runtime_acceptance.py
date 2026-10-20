@@ -362,6 +362,30 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(json.loads((root / "native_trace.json").read_text())["audit"]["status"], "passed")
 
+    def test_dispatch_validation_and_failure_closure_reject_a_different_parent_source(self):
+        from scripts.worker_runtime_evidence import dispatch_audit_errors
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, *_ = fixture
+            _, ledger = self.export(fixture)
+            bindings_path = root / "role_bindings.json"
+            bindings = json.loads(bindings_path.read_text())
+            bindings["parent_context"] = {"parent_thread_id": PARENT, "provider_session": str(root / "parent.jsonl")}
+            bindings_path.write_text(json.dumps(bindings))
+            path = Path(run["runtime_evidence"]["ledger"])
+            alternate = root / "alternate.jsonl"
+            alternate.write_bytes((root / "parent.jsonl").read_bytes())
+            ledger["provider_session"] = str(alternate)
+            path.write_text(json.dumps(ledger))
+            before = path.read_bytes()
+            errors = dispatch_audit_errors({"runtime_audits": []}, root / "finalization_packet.json")
+            self.assertTrue(any("runtime_dispatch_provider_session_mismatch" in error for error in errors))
+            self.assertEqual(finalizer.collect_failure_closure(root / "finalization_packet.json"), "unverified")
+            self.assertEqual(path.read_bytes(), before)
+            closure = json.loads((root / "runtime_closure.json").read_text())
+            self.assertEqual(closure["runtime_closure"][0]["Runtime status"], "Blocked")
+            self.assertIn("runtime_dispatch_provider_session_mismatch", closure["runtime_closure"][0]["Closure evidence or blocker"])
+
     def test_workflow_failure_collects_closure_from_every_native_handle(self):
         for status in ({"completed": "Done"}, "running"):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:

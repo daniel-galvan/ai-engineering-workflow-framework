@@ -1622,20 +1622,29 @@ def collect_failure_closure(packet_path: Path, provider_session: Path | None = N
     ledger_path = Path(bindings.get("runtime_evidence", {}).get("ledger", root / "runtime_dispatches.json"))
     try:
         from worker_runtime_evidence import read_runtime_events, terminal_closure
+        from provider_runtime import validate_prepared_provider_source
     except ModuleNotFoundError:
         from scripts.worker_runtime_evidence import read_runtime_events, terminal_closure
+        from scripts.provider_runtime import validate_prepared_provider_source
     try:
         if ledger_path.resolve().parent != root.resolve():
             raise ValueError("runtime_dispatch_ledger_outside_current_run")
+        if provider_session is None and not ledger_path.is_file() and bindings.get("parent_context"):
+            parent = bindings["parent_context"]
+            provider_session, parent_thread_id = Path(parent["provider_session"]), parent["parent_thread_id"]
         if provider_session is not None:
             if not parent_thread_id:
                 raise ValueError("provider_parent_thread_id_required")
+            validate_prepared_provider_source(bindings, provider_session, parent_thread_id,
+                                              bindings["runtime_evidence"]["run_started_at"])
             current = read_runtime_events(provider_session, parent_thread_id,
                                           bindings["runtime_evidence"]["run_started_at"])
         else:
             if not ledger_path.is_file():
                 raise ValueError("runtime_dispatch_ledger_missing: supply current provider session and parent thread ID")
             saved = json.loads(ledger_path.read_text())
+            validate_prepared_provider_source(bindings, Path(saved["provider_session"]), saved["parent_thread_id"],
+                                              saved["run_started_at"])
             current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
                 saved["run_started_at"], tuple(Path(p) for p in saved.get("identity_sessions", [])))
         ledger_path.write_text(json.dumps(current, indent=2) + "\n")
@@ -1918,8 +1927,12 @@ def main() -> int:
         self_test()
         return 0
     if args.packet and (args.workflow_failure or args.verify_response):
-        package_errors = prepared_package_errors(args.packet.resolve().parent)
+        _, status = _finalization_status(args.packet.resolve())
+        failure_report = args.workflow_failure or args.verify_response and status.get("status") == "failed"
+        package_errors = prepared_package_errors(args.packet.resolve().parent, check_parent_context=not failure_report)
         if package_errors:
+            if args.verify_response:
+                (args.packet.resolve().parent / "handoff_delivery.json").unlink(missing_ok=True)
             print(json.dumps({"status": "blocked", "errors": package_errors}))
             return 2
     if args.verify_response:

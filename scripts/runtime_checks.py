@@ -39,8 +39,8 @@ except ModuleNotFoundError:
     from scripts.provider_runtime import worker_binding, DELIVERY_WORKERS, launch_binding_errors
 
 
-def prepared_package_errors(root: Path) -> list[str]:
-    """Reject package or lifecycle drift from the prepared run."""
+def prepared_package_errors(root: Path, *, check_parent_context: bool = True) -> list[str]:
+    """Reject package, lifecycle, profile or parent-context drift from the prepared run."""
     try:
         manifest = json.loads((root / "role_bindings.json").read_text())
         package = manifest.get("framework_package")
@@ -55,6 +55,12 @@ def prepared_package_errors(root: Path) -> list[str]:
             profile = json.loads((root / "finalization_packet.json").read_text())["identity"].get("Requested profile")
             if profile != manifest["execution_profile"]:
                 return ["prepared_execution_profile_mismatch:expected=" + manifest["execution_profile"] + ";received=" + str(profile)]
+        if check_parent_context:
+            try:
+                from provider_runtime import prepared_parent_context_errors
+            except ModuleNotFoundError:
+                from scripts.provider_runtime import prepared_parent_context_errors
+            return prepared_parent_context_errors(root, manifest)
         return []
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return ["prepared_framework_package_invalid"]
@@ -612,6 +618,11 @@ def _verified_dispatch_content(trace: dict) -> str | None:
 
 
 def _authorized_read(row: dict, assigned: list[str]) -> bool:
+    operations = _tool_operations(row)
+    if operations and all(name == "exec_command" for name, _ in operations):
+        targets = [_read_targets(arguments.get("cmd", "")) for _, arguments in operations]
+        if all(targets) and all(path in assigned for group in targets for path in group):
+            return True
     arguments = row.get("arguments", {})
     if isinstance(arguments, str):
         try:
@@ -665,6 +676,8 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     source = row.get("input")
     if row.get("type") != "custom_tool_call" or not isinstance(source, str):
         return []
+    if row.get("name", "").rsplit(".", 1)[-1] == "apply_patch":
+        return [("apply_patch", {"patch": source})]
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
         operations, index = [], 0
@@ -700,6 +713,8 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
                     return []
                 argument = tokenize.untokenize([(token.type, token.string) for token in tokens[start:index - 1]])
                 value = _literal_argument(ast.parse(argument, mode="eval").body)
+                if name == "apply_patch" and isinstance(value, str):
+                    value = {"patch": value}
                 if not isinstance(value, dict):
                     return []
                 operations.append((name, value))

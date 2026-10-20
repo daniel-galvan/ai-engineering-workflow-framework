@@ -73,6 +73,23 @@ class PackagedLifecycle(unittest.TestCase):
             rejected = command("validate_worker_runtime.py", *activation, expected=2)
             self.assertTrue(any("parent_context_nonconformant" in error for error in rejected["errors"]))
             self.assertEqual(packet.read_bytes(), before)
+            collector = ("--provider-session", source, "--parent-thread-id", rows[0]["payload"]["id"],
+                         "--started-at", run["runtime_evidence"]["run_started_at"],
+                         "--ledger", run["runtime_evidence"]["ledger"])
+            rejected = command("worker_runtime_evidence.py", *collector, "--parent-thread-id",
+                               "00000000-0000-0000-0000-000000000099", expected=2)
+            self.assertEqual(rejected["reason"], "runtime_dispatch_parent_mismatch")
+            alternate = Path(directory) / "alternate.jsonl"
+            alternate.write_bytes(source.read_bytes())
+            rejected = command("worker_runtime_evidence.py", *collector, "--provider-session", alternate, expected=2)
+            self.assertEqual(rejected["reason"], "runtime_dispatch_provider_session_mismatch")
+            self.assertFalse(Path(run["runtime_evidence"]["ledger"]).exists())
+            with source.open("a") as stream:
+                stream.write(json.dumps({"type": "turn_context", "payload": {
+                    "turn_id": "00000000-0000-0000-0000-000000000003"}}) + "\n")
+            rejected = command("validate_worker_runtime.py", *activation, expected=2)
+            self.assertTrue(any("parent_context_turn_mismatch" in error for error in rejected["errors"]))
+            self.assertEqual(packet.read_bytes(), before)
 
     def test_shipped_commands_register_analysis_and_publish_closed_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -244,9 +261,15 @@ class PackagedLifecycle(unittest.TestCase):
                     inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001",
                         "Input or artifact": "Synthetic occurrence", "Source or path": "User",
                         "Authority": "User", "Status": "Registered"}]}))
+                    parent_id = "00000000-0000-0000-0000-000000000001"
+                    turn_id = "00000000-0000-0000-0000-000000000099"
+                    parent = Path(directory) / (expected_state + "-parent.jsonl")
+                    parent.write_text("\n".join(json.dumps(row) for row in [
+                        {"type": "session_meta", "payload": {"id": parent_id}},
+                        {"type": "turn_context", "payload": {"turn_id": turn_id}}]) + "\n")
                     run = json.loads(command("prepare_run.py", "--execution-repository", repository,
                         "--work-item", "ITEM-1", "--playbook", "sentry_issue_remediation",
-                        "--input-manifest", inputs))
+                        "--input-manifest", inputs, "--provider-session", parent))
                     root = Path(run["artifact_root"])
                     fixture = json.loads((package / "tests/fixtures" / name).read_text())
                     fix = fixture[result_key]
@@ -256,9 +279,7 @@ class PackagedLifecycle(unittest.TestCase):
                     stamp = lambda seconds: (start + timedelta(seconds=seconds)).isoformat()
                     event = lambda seconds, kind, **payload: {
                         "timestamp": stamp(seconds), "type": kind, "payload": payload}
-                    parent_id = "00000000-0000-0000-0000-000000000001"
-                    parent = root / "parent.jsonl"
-                    rows = [event(0, "session_meta", id=parent_id)]
+                    rows = [event(0, "session_meta", id=parent_id), event(0, "turn_context", turn_id=turn_id)]
                     traces = []
                     for index, (worker, role) in enumerate((
                         ("evidence-topology", "sentry_current_state_investigator"),
@@ -311,6 +332,9 @@ class PackagedLifecycle(unittest.TestCase):
                     command("worker_runtime_evidence.py", "--provider-session", parent,
                         "--parent-thread-id", parent_id, "--started-at", run["runtime_evidence"]["run_started_at"],
                         "--ledger", run["runtime_evidence"]["ledger"], "--closure", root / "runtime_closure.json")
+                    with parent.open("a") as stream:
+                        stream.write(json.dumps(event(26, "response_item", type="function_call", name="exec_command",
+                            arguments=json.dumps({"cmd": "cat " + str(root / "normalized_evidence.md")}))) + "\n")
                     command("finalize_sentry_planning.py", "--artifact-root", root,
                         "--evidence-handle", "/root/evidence_topology", "--coordinator-model-effort",
                         "Not exposed / Not exposed", "--framework-revision", preflight["framework_revision"],

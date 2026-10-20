@@ -161,25 +161,6 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         return ["activation_packet_agent_unavailable"]
     packet = packets[expected_agent]
     errors: list[str] = prepared_package_errors(path.parent) if (path.parent / "role_bindings.json").is_file() else []
-    try:
-        bindings_path = path.parent / "role_bindings.json"
-        parent = json.loads(bindings_path.read_text()).get("parent_context") if bindings_path.is_file() else None
-        if parent:
-            try:
-                from provider_runtime import parent_context_audit
-            except ModuleNotFoundError:
-                from scripts.provider_runtime import parent_context_audit
-            current = parent_context_audit(Path(parent["provider_session"]), artifact_root=path.parent,
-                input_paths=tuple(parent["input_paths"]), expected_thread_id=parent["parent_thread_id"])
-            if current["status"] != "passed":
-                errors.append("parent_context_nonconformant:" + ";".join(current["errors"]))
-            if current["turn_id"] != parent["turn_id"]:
-                errors.append("parent_context_turn_mismatch:expected=" + parent["turn_id"]
-                              + ";received=" + current["turn_id"] + ";prepare the current continuation")
-            if parent["run_id"] != packet.get("run_id"):
-                errors.append("parent_context_run_mismatch")
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
-        errors.append("parent_context_evidence_invalid:" + str(error))
     failure_path = path.parent / "finalization_failure.json"
     if failure_path.is_file():
         try:

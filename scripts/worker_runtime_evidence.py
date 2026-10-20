@@ -20,6 +20,7 @@ try:
         runtime_configurations,
         launch_binding_errors,
         worker_binding,
+        validate_prepared_provider_source,
     )
 except ModuleNotFoundError:
     from scripts.provider_runtime import (
@@ -30,6 +31,7 @@ except ModuleNotFoundError:
         runtime_configurations,
         launch_binding_errors,
         worker_binding,
+        validate_prepared_provider_source,
     )
 
 
@@ -131,16 +133,16 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
     if not bindings.is_file():
         return []
     try:
-        contract = json.loads(bindings.read_text()).get("runtime_evidence")
+        manifest = json.loads(bindings.read_text())
+        contract = manifest.get("runtime_evidence")
         if not contract:
             return []  # Existing packets retain their previous validation contract.
         ledger = Path(contract["ledger"])
         if ledger.resolve().parent != packet_path.parent.resolve():
             raise ValueError("runtime_dispatch_ledger_outside_current_run")
         saved = json.loads(ledger.read_text())
-        if (contract.get("run_started_at")
-                and timestamp(saved["run_started_at"]) != timestamp(contract["run_started_at"])):
-            raise ValueError("runtime_dispatch_run_start_mismatch")
+        validate_prepared_provider_source(manifest, Path(saved["provider_session"]), saved["parent_thread_id"],
+                                          saved["run_started_at"])
         current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
                                       saved["run_started_at"], tuple(Path(value) for value in saved.get("identity_sessions", [])))
         if (saved["events"] != current["events"] or saved["thread_mappings"] != current["thread_mappings"]
@@ -160,7 +162,6 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
                     from runtime_checks import worker_binding
                 except ModuleNotFoundError:
                     from scripts.runtime_checks import worker_binding
-                manifest = json.loads(bindings.read_text())
                 role = worker_binding(manifest, audit["Worker"])
                 expected = manifest["bindings"][role]
                 launch = next((row.get("Launch", {}) for row in current["events"]
@@ -276,15 +277,13 @@ def main() -> int:
     try:
         bindings_path = args.ledger.parent / "role_bindings.json"
         if bindings_path.is_file():
-            contract = json.loads(bindings_path.read_text()).get("runtime_evidence", {})
+            bindings = json.loads(bindings_path.read_text())
+            validate_prepared_provider_source(bindings, args.provider_session, args.parent_thread_id, args.started_at)
+            contract = bindings.get("runtime_evidence", {})
             expected = contract.get("ledger")
             if expected and args.ledger.resolve() != Path(expected).resolve():
                 raise ValueError("runtime_dispatch_ledger_mismatch:expected=" + str(expected)
                                  + ";received=" + str(args.ledger.resolve()))
-            expected_start = contract.get("run_started_at")
-            if expected_start and timestamp(args.started_at) != timestamp(expected_start):
-                raise ValueError("runtime_dispatch_run_start_mismatch:expected=" + expected_start
-                                 + ";received=" + args.started_at)
         result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at,
                                      tuple(args.identity_session))
         if args.ledger.exists():

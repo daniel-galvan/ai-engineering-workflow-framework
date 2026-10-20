@@ -49,6 +49,13 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 for name, arguments in calls:
                     if name == "exec_command":
                         operations.append({"type": "function_call", "name": name, "arguments": arguments})
+                    elif name == "apply_patch":
+                        if not isinstance(arguments.get("patch"), str):
+                            errors.append("parent_tool_arguments_unavailable")
+                            continue
+                        targets = re.findall(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$",
+                                             arguments["patch"], re.M)
+                        operations.append({"type": "function_call", "name": name, "arguments": {"paths": targets}})
                     elif name.rsplit("__", 1)[-1] in {"read_thread", "wait_threads"}:
                         targets = (arguments.get("targets", []) if name.endswith("wait_threads") else [arguments])
                         for target in targets:
@@ -65,6 +72,43 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
     return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
             "parent_thread_id": thread, "turn_id": turn, "errors": list(dict.fromkeys(errors)),
             "context_violations": details}
+
+
+def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
+    """Recheck the bound current turn at every acceptance boundary, without importing its answers."""
+    parent = manifest.get("parent_context")
+    if not parent:
+        return []
+    try:
+        # Sentry stages output in a temporary directory; the prepared activation root remains canonical.
+        audit_root = Path(manifest["activation_packet_bundle"]["path"]).resolve().parent
+        current = parent_context_audit(Path(parent["provider_session"]), artifact_root=audit_root,
+            input_paths=tuple(parent["input_paths"]), expected_thread_id=parent["parent_thread_id"])
+        errors = []
+        if current["status"] != "passed":
+            errors.append("parent_context_nonconformant:" + ";".join(current["errors"]))
+        if current["turn_id"] != parent["turn_id"]:
+            errors.append("parent_context_turn_mismatch:expected=" + parent["turn_id"]
+                          + ";received=" + current["turn_id"] + ";prepare the current continuation")
+        identity = json.loads((root / "finalization_packet.json").read_text())["identity"]
+        if parent["run_id"] != manifest.get("run_id") or parent["run_id"] != identity["Run ID"]:
+            errors.append("parent_context_run_mismatch")
+        return errors
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
+        return ["parent_context_evidence_invalid:" + str(error)]
+
+
+def validate_prepared_provider_source(bindings: dict, source: Path, parent_thread_id: str, started_at: str) -> None:
+    """Keep trace and failure-closure collection on the same prepared parent and run interval."""
+    parent = bindings.get("parent_context")
+    if parent:
+        if parent_thread_id != parent["parent_thread_id"]:
+            raise ValueError("runtime_dispatch_parent_mismatch")
+        if source.resolve() != Path(parent["provider_session"]).resolve():
+            raise ValueError("runtime_dispatch_provider_session_mismatch")
+    expected_start = bindings.get("runtime_evidence", {}).get("run_started_at")
+    if expected_start and timestamp(started_at) != timestamp(expected_start):
+        raise ValueError("runtime_dispatch_run_start_mismatch:expected=" + expected_start + ";received=" + started_at)
 
 
 def worker_binding(bindings: dict, worker: str) -> str:

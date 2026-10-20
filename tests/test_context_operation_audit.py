@@ -23,6 +23,45 @@ class ContextOperationAudit(unittest.TestCase):
     setUp = fixtures.FrameworkCorrections.setUp
     dispatch_trace = fixtures.FrameworkCorrections.dispatch_trace
 
+    def test_parent_allows_explicit_continuity_reads_but_never_exempts_appended_operations(self):
+        from scripts.provider_runtime import parent_context_audit
+        source = self.repository / "parent.jsonl"
+        approved = "/repo/.thoughts/OLD/runs/accepted/implementation_plan.md"
+        header = [{"type": "session_meta", "payload": {"id": SOURCE}},
+                  {"type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000002"}}]
+        for command in ("sed -n '1,30p' " + approved, "cat " + approved + "; git status --short"):
+            call = {"type": "custom_tool_call", "name": "exec", "input":
+                    "const result = await tools.exec_command(" + json.dumps({"cmd": command}) + "); text(result.output);"}
+            source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
+            self.assertEqual(parent_context_audit(source, artifact_root=self.root, input_paths=(approved,))["status"], "passed")
+            self.assertIn("forbidden_context_reference:archived_artifact", parent_context_audit(source, artifact_root=self.root)["errors"])
+            call["input"] += "await tools.exec_command({cmd:'cat /repo/.thoughts/OTHER/runs/old/analysis.md'});"
+            source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
+            self.assertIn("forbidden_context_reference:archived_artifact",
+                          parent_context_audit(source, artifact_root=self.root, input_paths=(approved,))["errors"])
+
+    def test_parent_patch_operations_are_parsed_without_treating_written_prose_as_reads(self):
+        from scripts.provider_runtime import parent_context_audit
+        source = self.repository / "parent.jsonl"
+        header = [{"type": "session_meta", "payload": {"id": SOURCE}},
+                  {"type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000002"}}]
+        patch = "*** Begin Patch\n*** Add File: " + str(self.root / "notes.md") + "\n+Do not read MEMORY.md or .thoughts/OLD/runs/analysis.md\n*** End Patch"
+        for direct in (False, True):
+            with self.subTest(direct=direct):
+                call = {"type": "custom_tool_call", "name": "apply_patch" if direct else "exec",
+                        "input": patch if direct else "text(await tools.apply_patch(" + json.dumps(patch) + "));"}
+                source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
+                self.assertEqual(parent_context_audit(source, artifact_root=self.root)["status"], "passed")
+                forbidden = dict(call)
+                forbidden["input"] = forbidden["input"].replace(str(self.root / "notes.md"), str(self.root / "runs/old/notes.md"))
+                source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": forbidden}]))
+                self.assertIn("forbidden_context_reference:archived_artifact",
+                              parent_context_audit(source, artifact_root=self.root)["errors"])
+        call["input"] = "await tools.apply_patch(" + json.dumps(patch) + "); await tools.exec_command({cmd:'cat /repo/.codex/memories/MEMORY.md'});"
+        call["name"] = "exec"
+        source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
+        self.assertIn("forbidden_context_reference:memory_path", parent_context_audit(source, artifact_root=self.root)["errors"])
+
     def paired(self, source, output):
         return [{"type": "custom_tool_call", "name": "functions.exec", "call_id": "read-1", "input": source},
                 {"type": "custom_tool_call_output", "call_id": "read-1", "output": output}]

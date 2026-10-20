@@ -21,7 +21,12 @@ class PlanningCommandPath(unittest.TestCase):
     def test_feature_ready_plan_through_actual_shipped_commands(self):
         self.planning_path("feature_delivery")
 
-    def planning_path(self, playbook):
+    def test_late_parent_violation_blocks_success_but_preserves_failure_delivery(self):
+        for playbook in ("techops_issue_remediation", "feature_delivery"):
+            with self.subTest(playbook=playbook):
+                self.planning_path(playbook, late_parent_violation=True)
+
+    def planning_path(self, playbook, *, late_parent_violation=False):
         with tempfile.TemporaryDirectory() as directory:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -51,10 +56,10 @@ class PlanningCommandPath(unittest.TestCase):
                 "Use only this controlled offline case and supplied source. Plan DEMO-1 in standard/planning: increment(2) returns 1 and must return 3. "
                 "Read-only source inspection; do not run product tests or builds."}])
 
-            def command(script, *arguments):
+            def command(script, *arguments, expected=0):
                 result = subprocess.run([sys.executable, str(package / "scripts" / script), *map(str, arguments)],
                                         cwd=package, capture_output=True, text=True, timeout=60)
-                self.assertEqual(result.returncode, 0, script + "\n" + result.stdout + result.stderr)
+                self.assertEqual(result.returncode, expected, script + "\n" + result.stdout + result.stderr)
                 return result.stdout
 
             preflight = json.loads(command("run_preflight.py", "--provider-session", parent))
@@ -257,6 +262,35 @@ class PlanningCommandPath(unittest.TestCase):
             emitted = command("finalize_work_record.py", "--packet", packet_path, "--publish-response", response)
             self.assertEqual(emitted.encode(), response.read_bytes())
             self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
+            if late_parent_violation:
+                append(parent, "response_item", type="custom_tool_call", name="exec", input=
+                       'await tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})')
+                before = packet_path.read_bytes()
+                late_trace = root / "late-documenter-trace.json"
+                blocked = command("worker_runtime_evidence.py", *collector, "--worker-session", child,
+                                  "--agent", role, "--trace", late_trace, expected=2)
+                self.assertIn("parent_context_nonconformant", blocked)
+                self.assertEqual(json.loads(late_trace.read_text())["audit"]["status"], "passed")
+                self.assertNotIn(role, json.loads(Path(run["runtime_evidence"]["ledger"]).read_text()).get("rejected_results", {}))
+                self.assertEqual(packet_path.read_bytes(), before)
+                blocked = command("merge_techops_result.py", "--packet", packet_path, "--agent", roles[0][1], expected=2)
+                self.assertIn("parent_context_nonconformant", blocked)
+                self.assertEqual(packet_path.read_bytes(), before)
+                blocked = command("finalize_work_record.py", *finalize, "--check-packet", expected=2)
+                self.assertIn("parent_context_nonconformant", blocked)
+                blocked = command("finalize_work_record.py", "--packet", packet_path, "--publish-response", response, expected=2)
+                self.assertIn("parent_context_nonconformant", blocked)
+                self.assertFalse((root / "handoff_delivery.json").exists())
+                Path(run["runtime_evidence"]["ledger"]).unlink()
+                command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
+                        "parent_context_nonconformant: current parent read unassigned memory", expected=2)
+                failure = root / "handoff_failure.md"
+                published = command("finalize_work_record.py", "--packet", packet_path, "--publish-response", failure)
+                self.assertEqual(published.encode(), failure.read_bytes())
+                receipt = json.loads((root / "finalization_failure.json").read_text())
+                self.assertEqual(receipt["runtime_closure"], "terminal")
+                self.assertTrue(Path(run["runtime_evidence"]["ledger"]).is_file())
+                self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
             for result_path, digest in result_hashes.items():
                 self.assertEqual(hashlib.sha256(result_path.read_bytes()).hexdigest(), digest)
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), source_hash)

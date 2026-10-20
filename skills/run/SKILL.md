@@ -233,7 +233,9 @@ description: >-
    Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
    `--input-manifest <path>`. Pass the exact current parent record with `--provider-session <path>` when available;
    live Sentry requires it. Preparation repeats the parent audit against approved inputs before changing artifacts.
-   Each later activation rechecks the bound parent turn; a new forbidden read blocks downstream activation.
+   Activation, result acceptance, finalization, and successful publication recheck the bound parent turn.
+   A new forbidden read blocks success; report it through the packaged workflow-failure path and collect closure.
+   Runtime collection must use the bound parent identity and exact native record, including on failure paths.
    Pass `--execution-profile <standard|deep>` to bind the requested profile before workers run;
    fresh runs default to standard.
    Pass `--lifecycle <declared-lifecycle>` to verify the requested stage. Fresh preparation starts in planning;
