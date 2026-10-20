@@ -5,12 +5,34 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 from datetime import datetime
 from pathlib import Path
 
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
+
+
+def _verified_empty_memory_search(command: str, observation: dict) -> bool:
+    """Recognize only a native, no-result search of the host memory index."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return False
+    if len(argv) != 4 or Path(argv[0]).name != "rg" or argv[1] not in {"-n", "--line-number"}:
+        return False
+    query, target = argv[2], Path(argv[3])
+    if not query or not target.is_absolute() or target.parts[-3:] != (".codex", "memories", "MEMORY.md"):
+        return False
+    parsed = observation.get("parsed_cmd")
+    if (observation.get("exit_code") != 1 or isinstance(observation.get("exit_code"), bool)
+            or observation.get("aggregated_output") != "" or observation.get("status") != "failed"
+            or not isinstance(parsed, list) or len(parsed) != 1 or not isinstance(parsed[0], dict)):
+        return False
+    item = parsed[0]
+    return (item.get("type") == "search" and item.get("query") == query
+            and Path(str(item.get("path", ""))).name == "MEMORY.md")
 
 
 def current_parent_session(source: Path | None = None) -> Path | None:
@@ -84,6 +106,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 tuple(Path(value) for value in runtime_evidence.get("identity_sessions", [])))
             known_children = {native["thread_mappings"][row["Provider handle"]] for row in native["events"]}
         turn, operations, children, errors = None, [], set(known_children), []
+        command_observations: dict[str, list[dict]] = {}
         for line in stream:
             try:
                 row = json.loads(line)
@@ -97,10 +120,15 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     break
                 turn = payload.get("turn_id")
                 operations, children, errors = [], set(known_children), []
+                command_observations = {}
             elif turn and (expected_turn_id is None or turn == expected_turn_id) and row.get("type") == "event_msg":
                 item = payload.get("item", {})
                 if item.get("type") == "SubAgentActivity" and item.get("kind") == "started":
                     children.add(item.get("agent_thread_id"))
+                elif (payload.get("type") == "item_completed" and item.get("type") == "CommandExecution"
+                      and isinstance(item.get("command"), list) and item["command"]
+                      and isinstance(item["command"][-1], str)):
+                    command_observations.setdefault(item["command"][-1], []).append(item)
             elif turn and (expected_turn_id is None or turn == expected_turn_id) and row.get("type") == "response_item" and payload.get("type") in {
                     "function_call", "custom_tool_call"}:
                 calls = _tool_operations(payload)
@@ -128,12 +156,29 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             raise ValueError("provider_current_turn_unavailable")
         if expected_turn_id and turn != expected_turn_id:
             raise ValueError("provider_bound_turn_unavailable")
+    # A query-only memory probe is harmless only when the provider's native execution record
+    # proves one exact rg search returned no matches. Keep all other memory references blocked.
+    operation_indexes: dict[str, list[int]] = {}
+    for index, operation in enumerate(operations):
+        arguments = operation.get("arguments", {})
+        command = arguments.get("cmd") if operation.get("name") == "exec_command" else None
+        if isinstance(command, str):
+            operation_indexes.setdefault(command, []).append(index)
+    exempt = set()
+    empty_memory_probes = 0
+    for command, indexes in operation_indexes.items():
+        observations = command_observations.get(command, [])
+        if (len(indexes) == 1 and len(observations) == 1
+                and _verified_empty_memory_search(command, observations[0])):
+            exempt.add(indexes[0])
+            empty_memory_probes += 1
+    audited_operations = [operation for index, operation in enumerate(operations) if index not in exempt]
     details = []
-    errors.extend(context_trace_errors({"tool_trace": operations}, details=details,
+    errors.extend(context_trace_errors({"tool_trace": audited_operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
     return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
             "parent_thread_id": thread, "turn_id": turn, "errors": list(dict.fromkeys(errors)),
-            "context_violations": details}
+            "context_violations": details, "empty_memory_probes": empty_memory_probes}
 
 
 def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:

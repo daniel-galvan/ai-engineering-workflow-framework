@@ -21,7 +21,10 @@ description: >-
    Native Codex preflight resolves the current parent record from its runtime identity and turn metadata.
    An optional `--provider-session <path>` must match that resolved record; it cannot select an older fragment.
    This audits executed calls in the latest native turn, not quoted instructions or returned text. A rejected parent
-   context is an early terminal block; do not activate workers or continue after acknowledging contamination.
+   context is an early terminal block; do not activate workers or continue after acknowledging contamination. A
+   host-required targeted search of `.codex/memories/MEMORY.md` remains nonconformant unless native execution
+   metadata proves the single `rg -n <query> <path>` command exited 1 with no output; that no-match probe may be
+   recorded as an empty probe, but matching searches and all file reads remain blocked.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search

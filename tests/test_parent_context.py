@@ -1,6 +1,7 @@
 """Native parent context boundaries before preparation and worker activation."""
 
 import json
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,20 @@ class ParentContext(unittest.TestCase):
         return {"type": "response_item", "timestamp": "2026-10-01T00:00:02Z",
                 "payload": {"type": "function_call", "name": name, "arguments": json.dumps(arguments)}}
 
+    def command_execution(self, command, *, exit_code=1, output="", status=None, parsed_cmd=None):
+        argv = shlex.split(command)
+        query_path = argv[-1]
+        query = argv[2]
+        return {"type": "event_msg", "timestamp": "2026-10-01T00:00:03Z",
+                "payload": {"type": "item_completed", "item": {
+                    "type": "CommandExecution", "id": "exec-00000000-0000-0000-0000-000000000001",
+                    "command": ["/bin/bash", "-lc", command],
+                    "status": status if status is not None else ("failed" if exit_code else "completed"),
+                    "exit_code": exit_code, "aggregated_output": output,
+                    "parsed_cmd": parsed_cmd if parsed_cmd is not None else [
+                        {"type": "search", "cmd": command, "query": query, "path": query_path}],
+                }}}
+
     def audit(self, **kwargs):
         self.source.write_text("".join(json.dumps(row) + "\n" for row in self.rows))
         return parent_context_audit(self.source, **kwargs)
@@ -48,6 +63,43 @@ class ParentContext(unittest.TestCase):
         result = self.audit()
         self.assertEqual(result["turn_id"], TURN)
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
+
+    def test_verified_no_match_memory_probe_is_distinct_from_a_memory_read(self):
+        memory = "/Users/example/.codex/memories/MEMORY.md"
+        command = "rg -n 'ECHO-2806|planning' " + memory
+        self.rows.extend([self.call("exec_command", cmd=command), self.command_execution(command)])
+        result = self.audit()
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["empty_memory_probes"], 1)
+        self.assertNotIn("forbidden_context_reference:memory_path", result["errors"])
+
+    def test_memory_search_is_not_exempt_without_exact_native_no_match_evidence(self):
+        memory = "/Users/example/.codex/memories/MEMORY.md"
+        command = "rg -n issue " + memory
+        variants = (
+            None,
+            self.command_execution(command, exit_code=0),
+            self.command_execution(command, output="matched text"),
+            self.command_execution(command, status="completed"),
+            self.command_execution(command, parsed_cmd=[
+                {"type": "search", "query": "issue", "path": "MEMORY.md"},
+                {"type": "search", "query": "issue", "path": "MEMORY.md"},
+            ]),
+        )
+        for observation in variants:
+            with self.subTest(observation=observation is not None):
+                self.rows = self.rows[:2] + [self.call("exec_command", cmd=command)]
+                if observation is not None:
+                    self.rows.append(observation)
+                result = self.audit()
+                self.assertEqual(result["empty_memory_probes"], 0)
+                self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                                    for error in result["errors"]))
+
+        piped = command + " | head -20"
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=piped), self.command_execution(piped)]
+        self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                            for error in self.audit()["errors"]))
 
     def test_approved_continuity_read_is_allowed_but_write_and_unassigned_read_are_not(self):
         artifact = self.root / ".thoughts" / "ITEM-1"
