@@ -51,6 +51,10 @@ def prepared_package_errors(root: Path) -> list[str]:
             lifecycle = json.loads((root / "finalization_packet.json").read_text())["identity"].get("Lifecycle")
             if lifecycle != manifest["lifecycle"]:
                 return ["prepared_lifecycle_mismatch:expected=" + manifest["lifecycle"] + ";received=" + str(lifecycle)]
+        if manifest.get("execution_profile"):
+            profile = json.loads((root / "finalization_packet.json").read_text())["identity"].get("Requested profile")
+            if profile != manifest["execution_profile"]:
+                return ["prepared_execution_profile_mismatch:expected=" + manifest["execution_profile"] + ";received=" + str(profile)]
         return []
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return ["prepared_framework_package_invalid"]

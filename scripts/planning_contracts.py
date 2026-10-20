@@ -643,11 +643,10 @@ def _feature_delivery_packet_contract_errors(
             if disposition["implementation_plan_action"] == "omit" and plan.exists():
                 errors.append("feature_omitted_plan_present")
     title = str(packet.get("work_item", {}).get("Title", "")).strip()
-    if not title or title.lower().startswith("unknown"):
+    if not pre_handoff and (not title or title.lower().startswith("unknown")):
         errors.append("Feature Delivery finalization requires the recovered work-item title")
-    profiles = [str(identity.get(field, "")).strip().lower() for field in (
-        "Requested profile", "Activated profile", "Executed profile",
-    )]
+    profile_fields = ("Requested profile",) if pre_handoff else ("Requested profile", "Activated profile", "Executed profile")
+    profiles = [str(identity.get(field, "")).strip().lower() for field in profile_fields]
     invalid_profiles = sorted({profile for profile in profiles if profile not in {"standard", "deep"}})
     if invalid_profiles:
         errors.append(
@@ -657,7 +656,7 @@ def _feature_delivery_packet_contract_errors(
         return errors
     if len(set(profiles)) != 1:
         errors.append("Feature Delivery Requested, Activated, and Executed profiles must match")
-    if str(identity.get("Profile status", "")).strip().lower() != "executed":
+    if not pre_handoff and str(identity.get("Profile status", "")).strip().lower() != "executed":
         errors.append("Feature Delivery terminal planning requires Profile status executed")
 
     expected_outcomes = {
@@ -678,7 +677,7 @@ def _feature_delivery_packet_contract_errors(
                 f"Feature Delivery {state} requires Engineering outcome {engineering_outcome}"
             )
 
-    profile = profiles[2]
+    profile = profiles[0]
     contract = dict(FEATURE_DELIVERY_WORKER_ROLES[(profile, "planning")])
     if pre_handoff:
         contract.pop("handoff", None)
@@ -699,7 +698,7 @@ def _feature_delivery_packet_contract_errors(
     ):
         contract["repository-integration"] = "repository_integrator"
 
-    missing_ledgers = sorted(worker for worker in contract if not rows_by_worker.get(worker))
+    missing_ledgers = sorted(worker for worker in contract if not rows_by_worker.get(worker)) if not pre_handoff else []
     if missing_ledgers:
         errors.append(
             "Feature Delivery handoff requires execution-ledger rows for: "

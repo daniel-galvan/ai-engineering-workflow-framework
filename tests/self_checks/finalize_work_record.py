@@ -912,6 +912,7 @@ def self_test() -> None:
             [sys.executable, str(ROOT / "scripts" / "prepare_run.py"),
              "--execution-repository", str(spike_execution), "--work-item", "SPIKE-1",
              "--playbook", "technical_spike", "--input-manifest", str(spike_inputs),
+             "--execution-profile", "deep",
              "--started-at", "2099-09-07T12:00:00Z", "--timebox-minutes", "25",
              "--primary-question", "Can the supplied evidence answer the Spike question?",
              "--success-criterion", "An evidence-backed answer or explicit unknown is recorded."],

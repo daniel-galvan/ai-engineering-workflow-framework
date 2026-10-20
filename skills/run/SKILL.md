@@ -234,6 +234,8 @@ description: >-
    `--input-manifest <path>`. Pass the exact current parent record with `--provider-session <path>` when available;
    live Sentry requires it. Preparation repeats the parent audit against approved inputs before changing artifacts.
    Each later activation rechecks the bound parent turn; a new forbidden read blocks downstream activation.
+   Pass `--execution-profile <standard|deep>` to bind the requested profile before workers run;
+   fresh runs default to standard.
    Pass `--lifecycle <declared-lifecycle>` to verify the requested stage. Fresh preparation starts in planning;
    approved reentry selects remediation and continuation retains its bound lifecycle. Preparation writes the
    lifecycle into the packet and hashed worker envelopes before activation. Editing the packet's lifecycle cannot
@@ -615,9 +617,9 @@ description: >-
    Deep planning and remediation retain their playbook-defined Documenter stage. On those paths, require the final
    Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
-   field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision. While that
-   Documenter remains active, create a pending closure probe using the
-   `templates/runtime_closure.json` schema.
+   field and the prompt template's frontmatter version; a framework commit is not a prompt-template revision.
+   Create the pending closure probe before pre-release with the packaged collector's
+   `--pending-closure` command described below.
    For Technical Spike, the Documenter must first write `spike_report.candidate.md` from the framework template and run
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet <artifact-root>/finalization_packet.json
    --publish-technical-spike-report <artifact-root>/spike_report.candidate.md`. Require exit status zero and the exact
@@ -635,9 +637,9 @@ description: >-
    the exact mismatch to the same Documenter and correct it before spending a
    pre-release correction attempt; the packaged finalizer repeats this check.
    Keep the Documenter handle open after collecting its result. Build the
-   closure probe from `templates/runtime_closure.json` with string values:
-   `Runtime status: Pending`, `Remaining active handles: Unknown`, and provider
-   release pending. Never mark it Released before a provider close confirmation.
+   closure probe with the prepared collector arguments plus
+   `--pending-closure <artifact-root>/runtime_closure.json`. This writes a Coordinator-owned Pending probe;
+   it makes no claim about completed handles or release. Replace it with a fresh verified receipt after pre-release.
    Run the same finalizer arguments below with `--check-packet` first. It checks
    the report, packet references, and closure shape without replacing the work
    record or consuming a pre-release attempt. Return any errors to the same

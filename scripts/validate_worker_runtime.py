@@ -237,6 +237,9 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
             if packet.get("lifecycle") and packet["lifecycle"] != current["identity"].get("Lifecycle"):
                 errors.append("worker_lifecycle_mismatch:expected=" + packet["lifecycle"]
                               + ";received=" + str(current["identity"].get("Lifecycle")))
+            if packet.get("execution_profile") and packet["execution_profile"] != current["identity"].get("Requested profile"):
+                errors.append("worker_execution_profile_mismatch:expected=" + packet["execution_profile"]
+                              + ";received=" + str(current["identity"].get("Requested profile")))
         except (OSError, ValueError, KeyError, TypeError):
             errors.append("worker_run_identity_unavailable")
     elif isinstance(contract, dict) and "run_id" in str(contract.get("result_instructions", "")):
@@ -303,7 +306,7 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                         completed = {row.get("Worker") for row in planning.get("worker_results", [])
                                      if row.get("Outcome") == "complete"}
                         required = {"issue-evidence", "failure-path", "fix-design"}
-                        if planning.get("identity", {}).get("Executed profile") == "deep":
+                        if planning.get("identity", {}).get("Requested profile") == "deep":
                             required.update({"repository-integration", "planning-review"})
                         if not required <= completed:
                             errors.append("techops_pre_handoff_workers_incomplete")

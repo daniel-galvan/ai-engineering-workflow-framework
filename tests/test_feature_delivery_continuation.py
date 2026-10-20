@@ -59,7 +59,7 @@ class FeatureDeliveryContinuation(unittest.TestCase):
             root = Path(directory)
             (root / "plan.md").write_text("approved plan\n")
             result = preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, False,
-                                             input_manifest=self.inputs(root))
+                                             input_manifest=self.inputs(root), execution_profile="deep")
             artifact_root = Path(result["artifact_root"])
             packet_path = artifact_root / "finalization_packet.json"
             prior = json.loads(packet_path.read_text())

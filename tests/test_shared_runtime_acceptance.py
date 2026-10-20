@@ -24,6 +24,41 @@ CASES = {
 
 
 class SharedRuntimeAcceptance(unittest.TestCase):
+    def test_pending_closure_never_claims_provider_completion(self):
+        from scripts.runtime_checks import terminal_observation_errors
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, *_ = fixture
+            self.export(fixture)
+            closure = root / "runtime_closure.json"
+            arguments = [sys.executable, str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"],
+                "--ledger", run["runtime_evidence"]["ledger"], "--pending-closure", str(closure)]
+            result = subprocess.run(arguments, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            receipt = json.loads(closure.read_text())
+            self.assertEqual(receipt["runtime_closure"][0]["Runtime status"], "Pending")
+            self.assertEqual(receipt["runtime_closure"][0]["Completed worker handles"], "Unknown")
+            self.assertEqual(terminal_observation_errors(receipt.get("terminal_observations"), ["/root/worker"]),
+                             ["terminal_observations_required"])
+            before = closure.read_bytes()
+            rejected = subprocess.run(arguments + ["--closure", str(closure)], capture_output=True, text=True)
+            self.assertEqual(rejected.returncode, 2)
+            self.assertEqual(closure.read_bytes(), before)
+            outside = Path(directory) / "outside.json"
+            rejected = subprocess.run(arguments[:-1] + [str(outside)], capture_output=True, text=True)
+            self.assertEqual(rejected.returncode, 2)
+            self.assertIn("runtime_closure_outside_current_run", rejected.stdout)
+            self.assertFalse(outside.exists())
+            receipt["runtime_closure"][0]["Runtime status"] = "Terminal"
+            closure.write_text(json.dumps(receipt))
+            before = closure.read_bytes()
+            rejected = subprocess.run(arguments, capture_output=True, text=True)
+            self.assertEqual(rejected.returncode, 2)
+            self.assertIn("runtime_pending_closure_would_replace_evidence", rejected.stdout)
+            self.assertEqual(closure.read_bytes(), before)
+
     def fixture(self, directory, playbook="feature_delivery", role="current_state_investigator", remediation=False):
         repository = Path(directory)
         inputs = repository / "inputs.json"

@@ -413,6 +413,7 @@ def _initial_packet(
     packet["identity"].update({
         "Run ID": manifest["run_id"],
         "Lifecycle": manifest.get("lifecycle", packet["identity"]["Lifecycle"]),
+        "Requested profile": manifest["execution_profile"],
         "Playbook / version": f"playbooks/{playbook}.md / {_document_version(playbook_path)}",
         "Plugin package / version": f"{plugin['name']} / {plugin['version']}",
         "Provider/runtime configuration": str(runtime_agents) if runtime_agents else "Not provided",
@@ -523,6 +524,7 @@ def _write_activation_packets(
             "agent": agent,
             "run_id": manifest["run_id"],
             "lifecycle": manifest["lifecycle"],
+            "execution_profile": manifest["execution_profile"],
             "finalization_packet": str(artifact_root / "finalization_packet.json"),
             "definition": binding["definition"],
             "definition_sha256": binding["definition_sha256"],
@@ -862,6 +864,7 @@ def prepare_run(
     planning_recovery: bool = False,
     provider_session: Path | None = None,
     lifecycle: str | None = None,
+    execution_profile: str | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
@@ -919,6 +922,21 @@ def prepare_run(
     repository_row["Repository role"] = "Source checkout"
     repository_row["Declared path"] = str(execution_repository.resolve())
     artifact_root = resolved_execution_repository / ".thoughts" / work_item
+    previous_profile = None
+    if continuation and (artifact_root / "role_bindings.json").is_file():
+        previous_profile = json.loads((artifact_root / "role_bindings.json").read_text()).get("execution_profile")
+    if continuation and (artifact_root / "finalization_packet.json").is_file():
+        recorded_profile = json.loads((artifact_root / "finalization_packet.json").read_text()).get("identity", {}).get("Requested profile")
+        if previous_profile and recorded_profile != previous_profile:
+            raise ValueError("prepared_execution_profile_mismatch:expected=" + previous_profile + ";received=" + str(recorded_profile))
+        previous_profile = previous_profile or recorded_profile
+        if previous_profile not in {"standard", "deep"}:
+            previous_profile = None
+    if execution_profile is not None and execution_profile not in {"standard", "deep"}:
+        raise ValueError("execution_profile_invalid:" + execution_profile)
+    if previous_profile and execution_profile and execution_profile != previous_profile:
+        raise ValueError("execution_profile_conflict:expected=" + previous_profile + ";received=" + execution_profile)
+    resolved_profile = execution_profile or previous_profile or "standard"
     previous_lifecycle = None
     if continuation and not remediation_reentry:
         previous_bindings = artifact_root / "role_bindings.json"
@@ -1044,6 +1062,7 @@ def prepare_run(
     manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
     manifest["run_input_manifest"]["precedence_rule"] = run_inputs["precedence_rule"]
     manifest["lifecycle"] = resolved_lifecycle
+    manifest["execution_profile"] = resolved_profile
     if budget:
         budget_path = artifact_root / RUN_BUDGET_FILENAME
         budget_path.write_text(json.dumps(budget, indent=2, sort_keys=True) + "\n")
@@ -1306,12 +1325,13 @@ def prepare_run(
                                     repository_row, resolved_runtime_agents, manifest, manifest_path)
         for field in ("Run input manifest", "Run input manifest hash", "Framework commit / status",
                       "Playbook / version", "Plugin package / version", "Role-policy baseline ID",
-                      "Role binding manifest", "Provider/runtime configuration", "Provider configuration source/status", "Lifecycle"):
+                      "Role binding manifest", "Provider/runtime configuration", "Provider configuration source/status", "Lifecycle", "Requested profile"):
             packet["identity"][field] = refreshed["identity"][field]
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
     return {
         "status": "prepared",
         "lifecycle": resolved_lifecycle,
+        "execution_profile": resolved_profile,
         "artifact_root": str(artifact_root),
         "legacy_artifact_root": str(legacy_root) if legacy_root != artifact_root and legacy_root.exists() else None,
         "work_record": str(record),
@@ -1348,6 +1368,8 @@ def main() -> int:
     parser.add_argument("--provider-session", type=Path, help="Exact current parent record for context audit and live source observations")
     parser.add_argument("--lifecycle", choices=("planning", "remediation"),
                         help="Declared lifecycle; must match the initial planning stage or approved continuation/reentry")
+    parser.add_argument("--execution-profile", choices=("standard", "deep"),
+                        help="Bind the requested worker profile; defaults to standard for a fresh run")
     parser.add_argument("--continuation", action="store_true")
     parser.add_argument("--remediation-reentry", action="store_true",
                         help="Start a new Feature Delivery remediation lifecycle, preserving planning history")
@@ -1393,6 +1415,7 @@ def main() -> int:
             args.planning_recovery,
             args.provider_session,
             args.lifecycle,
+            args.execution_profile,
         )
     except (OSError, ValueError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

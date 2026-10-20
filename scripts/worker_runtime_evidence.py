@@ -263,8 +263,12 @@ def main() -> int:
     parser.add_argument("--agent")
     parser.add_argument("--trace", type=Path)
     parser.add_argument("--closure", type=Path, help="Build a Terminal receipt from the current native provider inventory")
+    parser.add_argument("--pending-closure", type=Path, help="Create an unverified closure probe before pre-release")
     args = parser.parse_args()
-    if args.closure and any((args.worker_session, args.observation, args.agent, args.trace)):
+    if args.closure and args.pending_closure:
+        parser.error("pending and Terminal closure are separate modes")
+    closure_path = args.closure or args.pending_closure
+    if closure_path and any((args.worker_session, args.observation, args.agent, args.trace)):
         parser.error("closure collection and trace export are separate modes")
     if any((args.worker_session, args.observation, args.agent, args.trace)) and not all(
             (args.worker_session, args.agent, args.trace)):
@@ -290,11 +294,19 @@ def main() -> int:
                 if any(row["run_id"] != packet["identity"]["Run ID"] for row in pending.values()):
                     raise ValueError("worker_rejection_receipt_run_mismatch")
                 result["rejected_results"] = pending
-        if args.closure:
-            if args.closure.resolve().parent != args.ledger.resolve().parent:
+        if closure_path:
+            if closure_path.resolve().parent != args.ledger.resolve().parent:
                 raise ValueError("runtime_closure_outside_current_run")
-            receipt = terminal_closure(result)
-            args.closure.write_text(json.dumps(receipt, indent=2) + "\n")
+            if args.pending_closure and closure_path.exists():
+                previous = json.loads(closure_path.read_text())
+                if (previous.get("terminal_observations") or not previous.get("runtime_closure")
+                        or any(row.get("Runtime status") != "Pending" for row in previous["runtime_closure"])):
+                    raise ValueError("runtime_pending_closure_would_replace_evidence")
+            receipt = terminal_closure(result) if args.closure else {"runtime_closure": [{
+                "Run or stage": "Current run", "Receipt owner": "Coordinator", "Completed worker handles": "Unknown",
+                "Runtime status": "Pending", "Remaining active handles": "Unknown",
+                "Closure evidence or blocker": "Pending final provider observation after pre-release"}]}
+            closure_path.write_text(json.dumps(receipt, indent=2) + "\n")
         if args.trace:
             if args.trace.resolve().parent != args.ledger.resolve().parent:
                 raise ValueError("worker_trace_outside_current_run")
