@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import tempfile
 from pathlib import Path
 
 
@@ -137,7 +138,8 @@ def dispatch_audit_errors(packet: dict, packet_path: Path) -> list[str]:
         if ledger.resolve().parent != packet_path.parent.resolve():
             raise ValueError("runtime_dispatch_ledger_outside_current_run")
         saved = json.loads(ledger.read_text())
-        if contract.get("run_started_at") and saved["run_started_at"] != contract["run_started_at"]:
+        if (contract.get("run_started_at")
+                and timestamp(saved["run_started_at"]) != timestamp(contract["run_started_at"])):
             raise ValueError("runtime_dispatch_run_start_mismatch")
         current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
                                       saved["run_started_at"], tuple(Path(value) for value in saved.get("identity_sessions", [])))
@@ -207,6 +209,47 @@ def terminal_closure(ledger: dict) -> dict:
         "terminal_observations": observations}
 
 
+def register_worker_audit(packet_path: Path, agent: str, trace_path: Path) -> None:
+    """Register passed TechOps/Feature receipts without accepting analytical content."""
+    root = packet_path.parent.resolve()
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"}:
+        return  # Sentry retains its finalizer-owned audit assembly.
+    try:
+        from planning_contracts import worker_audit_record
+        from validate_worker_runtime import prepared_package_errors, _pending_rejections
+        from provider_runtime import DELIVERY_WORKERS
+    except ModuleNotFoundError:
+        from scripts.planning_contracts import worker_audit_record
+        from scripts.validate_worker_runtime import prepared_package_errors, _pending_rejections
+        from scripts.provider_runtime import DELIVERY_WORKERS
+    errors = prepared_package_errors(root)
+    if errors:
+        raise ValueError(";".join(errors))
+    role = worker_binding(bindings, agent)
+    if role in _pending_rejections(root):
+        raise ValueError("worker_result_recovery_authorization_required:" + role)
+    contract = bindings.get("worker_contracts", {}).get(role, {})
+    worker = contract.get("worker_id") or contract.get("worker") or next(
+        (worker for worker, binding in DELIVERY_WORKERS.items() if binding == role), role)
+    audit = worker_audit_record(packet_path, worker, trace_path)
+    packet = json.loads(packet_path.read_text())
+    packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
+                                if row.get("Worker") != worker] + [audit]
+    with tempfile.NamedTemporaryFile("w", dir=root, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(packet, stream, indent=2)
+            stream.write("\n")
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        temporary.replace(packet_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider-session", type=Path, required=True)
@@ -227,6 +270,17 @@ def main() -> int:
             (args.worker_session, args.agent, args.trace)):
         parser.error("trace export requires --worker-session, --agent and --trace")
     try:
+        bindings_path = args.ledger.parent / "role_bindings.json"
+        if bindings_path.is_file():
+            contract = json.loads(bindings_path.read_text()).get("runtime_evidence", {})
+            expected = contract.get("ledger")
+            if expected and args.ledger.resolve() != Path(expected).resolve():
+                raise ValueError("runtime_dispatch_ledger_mismatch:expected=" + str(expected)
+                                 + ";received=" + str(args.ledger.resolve()))
+            expected_start = contract.get("run_started_at")
+            if expected_start and timestamp(args.started_at) != timestamp(expected_start):
+                raise ValueError("runtime_dispatch_run_start_mismatch:expected=" + expected_start
+                                 + ";received=" + args.started_at)
         result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at,
                                      tuple(args.identity_session))
         if args.ledger.exists():
@@ -286,6 +340,8 @@ def main() -> int:
                               "trace": str(args.trace), "ledger": str(args.ledger),
                               "context_violations": trace["audit"].get("context_violations", [])}))
             return 2
+        if args.trace and (args.trace.parent / "role_bindings.json").is_file():
+            register_worker_audit(packet_path, args.agent, args.trace)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}))
         return 2

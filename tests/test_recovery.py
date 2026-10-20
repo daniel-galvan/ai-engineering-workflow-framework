@@ -6,8 +6,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import prepare_run as prepare
 from scripts import validate_worker_runtime as runtime
@@ -27,6 +28,7 @@ class V6Recovery(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
+        self.preparation_count = 0
         self.inputs = self.root / "inputs.json"
         self.inputs.write_text(json.dumps({"schema_version": 1, "status": "explicit",
             "precedence_rule": prepare.DEFAULT_PRECEDENCE_RULE,
@@ -35,8 +37,12 @@ class V6Recovery(unittest.TestCase):
                         "Classification": "work item", "Expected use": "Investigate", "Status": "Registered"}]}))
 
     def prepare(self, continuation=False, archive=False):
-        return prepare.prepare_run(self.root, "ISSUE-1", "techops_issue_remediation", None, continuation,
-                                   archive_stale_run=archive, input_manifest=self.inputs)
+        start = datetime.fromisoformat(START.replace("Z", "+00:00")) + timedelta(microseconds=self.preparation_count)
+        self.preparation_count += 1
+        with patch.object(prepare, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = start
+            return prepare.prepare_run(self.root, "ISSUE-1", "techops_issue_remediation", None, continuation,
+                                       archive_stale_run=archive, input_manifest=self.inputs)
 
     def command(self, script, *arguments):
         return subprocess.run([sys.executable, str(ROOT / "scripts" / script), *map(str, arguments)],
@@ -340,8 +346,7 @@ class V6Recovery(unittest.TestCase):
         envelope = bundle["packets"]["current_state_investigator"]
         packet_path = Path(run["finalization_packet"])
         packet = json.loads(packet_path.read_text())
-        packet["runtime_audits"] = [{"Worker": "issue-evidence", "Trace path": str(corrected_path)}]
-        packet_path.write_text(json.dumps(packet))
+        self.assertEqual(packet["runtime_audits"][0]["Trace path"], str(corrected_path))
         merge_result(Path(envelope["finalization_packet"]), "current_state_investigator")
         self.assertEqual(json.loads(Path(envelope["finalization_packet"]).read_text())[
             "worker_results"][0]["Outcome"], "complete")

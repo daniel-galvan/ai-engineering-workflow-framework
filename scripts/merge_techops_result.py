@@ -173,19 +173,11 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
     packet = json.loads(packet_path.read_text())
     worker, _ = workers[agent]
     if trace is not None:
-        trace = trace.resolve()
-        if trace.parent != root:
-            raise ValueError("worker_trace_outside_current_run:" + worker)
-        saved = json.loads(trace.read_text())
-        audit = {**saved["status_observation"], "Worker": worker, "Provider status": "completed",
-                 "Trace path": str(trace), "Trace retrieval": saved["trace_retrieval"]}
         try:
-            from planning_contracts import _worker_runtime_audit_errors
+            from planning_contracts import worker_audit_record
         except ModuleNotFoundError:
-            from scripts.planning_contracts import _worker_runtime_audit_errors
-        errors = _worker_runtime_audit_errors({"runtime_audits": [audit]}, packet_path, {worker})
-        if errors:
-            raise ValueError(";".join(errors))
+            from scripts.planning_contracts import worker_audit_record
+        audit = worker_audit_record(packet_path, worker, trace)
         packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
                                     if row.get("Worker") != worker] + [audit]
     if contract.get("result_hash_required"):

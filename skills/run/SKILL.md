@@ -468,8 +468,10 @@ description: >-
    valid worker output for that reason. An actually rejected trace still requires the guarded recovery protocol.
    Do not reconstruct accepted evidence, outcomes or references from prose. The merger preserves immutable identity
    and Coordinator audits; it does not grant readiness or implementation approval. The merger accepts analytical
-   roles only. Documenter writes the prepared packet directly; audit its trace and validate that packet through
-   `--check-packet`, not the analytical merger. Preserve accepted worker-owned evidence, claims, decisions and actions
+   roles only. Documenter writes the prepared packet directly. Collect its completed trace with
+   `worker_runtime_evidence.py --agent documenter` and the prepared collector arguments: the collector automatically
+   validates and registers the `handoff` audit in the packet. Then validate that packet through `--check-packet`,
+   not the analytical merger. Preserve accepted worker-owned evidence, claims, decisions and actions
    exactly. Return changed references to their owning worker; never attach extra IDs merely to satisfy validation.
    For TechOps planning, resolve State to ready_for_implementation, awaiting_input, or blocked before pre-release;
    Workflow outcome must be completed or blocked. Keep the plan unapproved. Do not use handoff/incomplete as a final
@@ -524,9 +526,12 @@ description: >-
    replacement, and an active worker cannot be replaced. Use a new provider handle, retain the rejected artifacts,
    and keep the same run identity and typed inputs. Allow one recovery attempt total per rejected stage, whether
    correction or replacement; if it fails or isolation cannot be enforced, use the terminal failure route.
-   Keep one `runtime_audits` row per
-   completed worker, including handoff, with `Worker`, the status observation fields above, `Trace path`, and `Trace
-   retrieval`. On genuine trace unavailability use an empty path and `unavailable:<attempted route and concrete
+   For prepared TechOps and Feature Delivery, a passed collector export automatically registers one `runtime_audits`
+   row per completed worker, including handoff, from its validated trace and status observation. Repeating the export
+   is idempotent. It registers the audit, not the analytical result; analytical acceptance still requires the merger.
+   A registration error is Coordinator bookkeeping: preserve the passed trace and output, correct the reported
+   receipt problem, and rerun the collector. Do not relabel a passed trace as a worker rejection.
+   On genuine trace unavailability use an empty path and `unavailable:<attempted route and concrete
    failure>`; also retain `context-unverified` in that worker result. Any correction invalidates the audit; reread and
    recheck its latest turn. Before Documenter activation, populate the analytical packet with the accepted checks and
    runtime audits. Its activation guard rejects missing analytical workers or checks. Return technical errors to their

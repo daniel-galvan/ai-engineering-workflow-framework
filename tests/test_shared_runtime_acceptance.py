@@ -129,6 +129,44 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             merge_result(packet_path, role, trace=path)
             self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
 
+    def test_collector_registers_documenter_audit_without_coordinator_packet_edits(self):
+        for playbook in ("feature_delivery", "techops_issue_remediation"):
+            with self.subTest(playbook=playbook), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, playbook, "documenter")
+                run, root, role, *_ = fixture
+                trace, _ = self.export(fixture)
+                observation = root / "observation.json"
+                observation.write_text(json.dumps(trace["status_observation"]))
+                command = [sys.executable, str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                    "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                    "--started-at", run["runtime_evidence"]["run_started_at"],
+                    "--ledger", run["runtime_evidence"]["ledger"], "--worker-session", str(root / "child.jsonl"),
+                    "--observation", str(observation), "--agent", role, "--trace", str(root / "trace.json")]
+                packet_path = Path(run["finalization_packet"])
+                before = json.loads(packet_path.read_text())
+                wrong = command.copy()
+                wrong[wrong.index("--ledger") + 1] = str(root / "wrong.json")
+                result = subprocess.run(wrong, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("runtime_dispatch_ledger_mismatch:expected=", result.stdout)
+                self.assertFalse((root / "wrong.json").exists())
+                self.assertEqual(json.loads(packet_path.read_text()), before)
+                wrong = command.copy()
+                start = datetime.fromisoformat(run["runtime_evidence"]["run_started_at"].replace("Z", "+00:00"))
+                wrong[wrong.index("--started-at") + 1] = (start - timedelta(seconds=1)).isoformat()
+                result = subprocess.run(wrong, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("runtime_dispatch_run_start_mismatch:expected=", result.stdout)
+                self.assertFalse(Path(run["runtime_evidence"]["ledger"]).exists())
+                command[command.index("--started-at") + 1] = start.isoformat()
+                for _ in range(2):
+                    result = subprocess.run(command, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    packet = json.loads(packet_path.read_text())
+                    self.assertEqual([row["Worker"] for row in packet["runtime_audits"]], ["handoff"])
+                    self.assertEqual({key: value for key, value in packet.items() if key != "runtime_audits"},
+                                     {key: value for key, value in before.items() if key != "runtime_audits"})
+
     def test_malformed_result_is_a_rejected_trace_eligible_for_bounded_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "dependency_analyst")
@@ -258,7 +296,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 self.assertEqual(trace["status_observation"]["Status source"], "list_agents")
                 result = subprocess.run([sys.executable, str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
                     "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
-                    "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", str(root / "ledger.json"),
+                    "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", run["runtime_evidence"]["ledger"],
                     "--worker-session", str(root / "child.jsonl"), "--agent", role,
                     "--trace", str(root / "native_trace.json")], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

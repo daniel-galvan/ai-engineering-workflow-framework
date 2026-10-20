@@ -1210,6 +1210,20 @@ def _techops_planning_contract_errors(
     return list(dict.fromkeys(errors))
 
 
+def worker_audit_record(packet_path: Path, worker: str, trace_path: Path) -> dict:
+    """Derive Coordinator bookkeeping only from a revalidated current-run trace."""
+    trace_path = trace_path.resolve()
+    if trace_path.parent != packet_path.parent.resolve():
+        raise ValueError("worker_trace_outside_current_run:" + worker)
+    trace = json.loads(trace_path.read_text())
+    audit = {**trace["status_observation"], "Worker": worker, "Provider status": "completed",
+             "Trace path": str(trace_path), "Trace retrieval": trace["trace_retrieval"]}
+    errors = _worker_runtime_audit_errors({"runtime_audits": [audit]}, packet_path, {worker})
+    if errors:
+        raise ValueError(";".join(errors))
+    return audit
+
+
 def _worker_runtime_audit_errors(
     packet: dict[str, object], packet_path: Path, completed: set[str],
 ) -> list[str]:

@@ -184,6 +184,10 @@ class PackagedLifecycle(unittest.TestCase):
                         command("worker_runtime_evidence.py", *collector, "--worker-session", child,
                                 "--agent", "current_state_investigator", "--trace", trace)
                         self.assertEqual((root / "trace.json").read_bytes(), rejected_bytes)
+                    exported = json.loads(packet.read_text())
+                    self.assertEqual(exported["runtime_audits"][0]["Worker"], worker)
+                    self.assertFalse(any(row.get("Worker") == worker and row.get("Outcome") == "complete"
+                                         for row in exported.get("worker_results", [])))
                     command("merge_techops_result.py", "--packet", packet, "--agent",
                             "current_state_investigator", "--trace", trace)
                     accepted = json.loads(packet.read_text())
