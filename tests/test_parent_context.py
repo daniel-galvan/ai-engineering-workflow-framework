@@ -111,6 +111,31 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["empty_memory_probes"], 0)
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
+    def test_no_match_probe_can_share_native_run_skill_bootstrap_command(self):
+        framework = self.root / "framework"
+        skill = framework / "skills" / "run" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("# Active run instructions\n" * 4)
+        memory = Path("/Users/example/.codex/memories/MEMORY.md")
+        query = "ECHO-2806|Issue Remediation|techops_issue_remediation"
+        search = "rg -n " + shlex.quote(query) + " " + str(memory)
+        command = "cat " + shlex.quote(str(skill)) + " && " + search
+        observation = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "CommandExecution", "command": ["/bin/bash", "-lc", command],
+            "status": "failed", "exit_code": 1, "aggregated_output": skill.read_text(),
+            "parsed_cmd": [{"type": "read", "cmd": "cat " + str(skill), "path": str(skill)},
+                           {"type": "search", "cmd": search, "query": query, "path": "MEMORY.md"}]}}}
+        self.rows.extend([self.call("exec_command", cmd=command), observation])
+        result = self.audit(framework_root=framework, require_preflight_order=True)
+        self.assertEqual(result["status"], "passed", result)
+        self.assertEqual(result["empty_memory_probes"], 1)
+
+        observation["payload"]["item"]["aggregated_output"] += "match from memory"
+        result = self.audit(framework_root=framework, require_preflight_order=True)
+        self.assertEqual(result["empty_memory_probes"], 0)
+        self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
+                            for error in result["errors"]))
+
     def test_memory_search_is_not_exempt_without_exact_native_no_match_evidence(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         command = "rg -n issue " + memory

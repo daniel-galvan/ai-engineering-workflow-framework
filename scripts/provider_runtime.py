@@ -200,10 +200,29 @@ def stale_run_status_errors(
     return errors
 
 
-def _verified_empty_memory_search(command: str, observation: dict) -> bool:
+def _verified_empty_memory_search(command: str, observation: dict,
+                                 framework_root: Path | None = None) -> bool:
     """Recognize only a native, no-result search of the host memory index."""
     try:
-        argv = shlex.split(command)
+        commands = command.split(" && ")
+        if len(commands) == 2:
+            if framework_root is None:
+                return False
+            bootstrap = shlex.split(commands[0])
+            skill = (framework_root.expanduser().resolve() / "skills" / "run" / "SKILL.md").resolve()
+            if (len(bootstrap) != 2 or Path(bootstrap[0]).name != "cat"
+                    or Path(bootstrap[1]).resolve() != skill):
+                return False
+            search_command = commands[1]
+            parsed_count = 2
+            expected_bootstrap_path = str(skill)
+        elif len(commands) == 1:
+            search_command = command
+            parsed_count = 1
+            expected_bootstrap_path = None
+        else:
+            return False
+        argv = shlex.split(search_command)
     except ValueError:
         return False
     if Path(argv[0]).name != "rg":
@@ -223,12 +242,27 @@ def _verified_empty_memory_search(command: str, observation: dict) -> bool:
         return False
     parsed = observation.get("parsed_cmd")
     if (observation.get("exit_code") != 1 or isinstance(observation.get("exit_code"), bool)
-            or observation.get("aggregated_output") != "" or observation.get("status") != "failed"
-            or not isinstance(parsed, list) or len(parsed) != 1 or not isinstance(parsed[0], dict)):
+            or observation.get("status") != "failed"
+            or not isinstance(parsed, list) or len(parsed) != parsed_count
+            or not all(isinstance(item, dict) for item in parsed)):
         return False
-    item = parsed[0]
-    return (item.get("type") == "search" and item.get("query") == query
-            and str(item.get("path", "")) in {str(target), target.name})
+    item = parsed[-1]
+    if not (item.get("type") == "search" and item.get("query") == query
+            and str(item.get("path", "")) in {str(target), target.name}):
+        return False
+    if expected_bootstrap_path is None:
+        return observation.get("aggregated_output") == ""
+    bootstrap_item = parsed[0]
+    try:
+        skill_text = Path(expected_bootstrap_path).read_text()
+    except OSError:
+        return False
+    output = observation.get("aggregated_output")
+    return (bootstrap_item.get("type") == "read"
+            and isinstance(bootstrap_item.get("path"), str)
+            and Path(bootstrap_item["path"]).resolve() == Path(expected_bootstrap_path)
+            and isinstance(output, str) and len(output) == min(len(skill_text), 65536)
+            and output == skill_text[:len(output)])
 
 
 def current_parent_session(source: Path | None = None) -> Path | None:
@@ -437,7 +471,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
     for command, indexes in operation_indexes.items():
         observations = command_observations.get(command, [])
         if (len(indexes) == 1 and len(observations) == 1
-                and _verified_empty_memory_search(command, observations[0])):
+                and _verified_empty_memory_search(command, observations[0], framework_root)):
             exempt.add(indexes[0])
             empty_memory_probes += 1
     audited_operations = [operation for index, operation in enumerate(operations) if index not in exempt]
