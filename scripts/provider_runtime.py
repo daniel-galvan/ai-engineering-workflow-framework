@@ -473,17 +473,22 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         if isinstance(command, str):
             operation_indexes.setdefault(command, []).append(index)
     empty_memory_probes = 0
+    preflight_memory_probes = set()
     for command, indexes in operation_indexes.items():
         observations = command_observations.get(command, [])
         if (len(indexes) == 1 and len(observations) == 1
                 and _verified_empty_memory_search(command, observations[0], framework_root)):
             exempt.add(indexes[0])
             empty_memory_probes += 1
+            # A host-mandated no-match search is not framework discovery. Only its standalone form may precede
+            # preflight; combined commands remain subject to normal ordering checks.
+            if len(command.split(" && ")) == 1:
+                preflight_memory_probes.add(command)
     audited_operations = [operation for index, operation in enumerate(operations) if index not in exempt]
     if require_preflight_order and framework_root is not None:
-        # Empty memory searches may be harmless for context isolation, but they remain real
-        # operations for sequencing: they cannot be hidden inside a preflight bootstrap call.
-        errors.extend(_preflight_order_errors(sequenced_operations, framework_root, command_observations))
+        # Only the separately verified, standalone no-match host probe may precede preflight.
+        errors.extend(_preflight_order_errors(sequenced_operations, framework_root, command_observations,
+                                              preflight_memory_probes))
     details = []
     errors.extend(context_trace_errors({"tool_trace": audited_operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
@@ -498,7 +503,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
 
 
 def _preflight_order_errors(operations: list[dict], framework_root: Path,
-                            command_observations: dict[str, list[dict]]) -> list[str]:
+                            command_observations: dict[str, list[dict]],
+                            empty_memory_probes: set[str] | None = None) -> list[str]:
     """Require package preflight before current-turn repository or workflow operations."""
     roots = sorted({str(framework_root.expanduser().absolute()).rstrip("/"),
                     str(framework_root.expanduser().resolve()).rstrip("/")}, key=len, reverse=True)
@@ -506,6 +512,7 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
     bootstrap = re.compile(rf"^\s*cat\s+(?:{root}/)?skills/run/SKILL\.md\s*$")
     preflight_path = (framework_root.expanduser().resolve() / "scripts" / "run_preflight.py").resolve()
     completed_preflight = False
+    empty_memory_probes = empty_memory_probes or set()
     for operation in operations:
         if operation.get("name") != "exec_command":
             if not completed_preflight:
@@ -513,6 +520,8 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
             continue
         command = operation.get("arguments", {}).get("cmd")
         if not isinstance(command, str):
+            continue
+        if not completed_preflight and command in empty_memory_probes:
             continue
         try:
             argv = shlex.split(command)

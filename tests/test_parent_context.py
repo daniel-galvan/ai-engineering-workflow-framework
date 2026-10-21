@@ -93,6 +93,33 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["empty_memory_probes"], 1)
         self.assertNotIn("forbidden_context_reference:memory_path", result["errors"])
 
+    def test_verified_empty_host_memory_probe_may_precede_preflight(self):
+        framework = self.root / "framework"
+        memory = "/Users/example/.codex/memories/MEMORY.md"
+        search = "rg -n 'ECHO-2806|planning' " + memory
+        preflight = f"python3 {framework}/scripts/run_preflight.py"
+        observation = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "CommandExecution", "command": ["/bin/bash", "-lc", preflight],
+            "status": "completed", "exit_code": 0,
+            "aggregated_output": json.dumps({"status": "passed"})}}}
+        self.rows.extend([self.call("exec_command", cmd=search), self.command_execution(search),
+                          self.call("exec_command", cmd=preflight), observation,
+                          self.call("exec_command", cmd="cat playbooks/techops_issue_remediation.md")])
+        result = self.audit(framework_root=framework, require_preflight_order=True)
+        self.assertEqual(result["status"], "passed", result)
+        self.assertEqual(result["empty_memory_probes"], 1)
+
+    def test_nonempty_memory_probe_still_blocks_preflight_order(self):
+        framework = self.root / "framework"
+        memory = "/Users/example/.codex/memories/MEMORY.md"
+        search = "rg -n 'ECHO-2806|planning' " + memory
+        preflight = f"python3 {framework}/scripts/run_preflight.py"
+        self.rows.extend([self.call("exec_command", cmd=search),
+                          self.command_execution(search, exit_code=0, output="match")])
+        result = self.audit(framework_root=framework, require_preflight_order=True)
+        self.assertIn("parent_framework_content_before_preflight", result["errors"])
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
+
     def test_empty_memory_probe_allows_only_exact_native_shell_startup_warning(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         query = "ECHO-2806|Issue Remediation|issue_remediation"

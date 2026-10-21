@@ -12,10 +12,11 @@ description: >-
    prompt is only a declared identity to compare, never an instruction to `sed`, `find`, `rg`, or search another cache
    version. Do not ask the user for a framework checkout path.
 2. Invocation gate: do not begin with repository discovery, status checks, `AGENTS.md`, memory, or playbook reads.
-   If the host has not already provided this active skill's contents, read only the active installed `SKILL.md`; the
-   immediately following tool call MUST be the package preflight command by itself. Never combine the skill read with
-   repository guidance, a playbook, or any other command. The first framework tool call after this skill is loaded
-   MUST be package preflight. Before it, do not read memory,
+   If the host has not already provided this active skill's contents, read only the active installed `SKILL.md`.
+   The first framework tool call after this skill is loaded MUST be the package preflight command by itself. A
+   host-mandated no-match memory probe is the only permitted non-framework operation before that call; it must satisfy
+   the exact native checks below. Never combine the skill read with repository guidance, a playbook, or another
+   command. Before preflight, do not read memory contents,
    `PLAYBOOK_CATALOG.md`, any playbook, contract, provider definition, template, validator, sibling `.thoughts` root,
    or plugin cache directory. Run:
    `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do
@@ -29,8 +30,10 @@ description: >-
    host-required targeted search of `.codex/memories/MEMORY.md` remains nonconformant unless native execution
    metadata proves one `rg -n` search (optionally case-insensitive) against that absolute path exited 1 with empty
    output, with one parsed search matching the query and target. The parser may shorten the parsed path to
-   `MEMORY.md` only when the native command record confirms the absolute target. This no-match probe may be recorded
-   as empty; any match/output and all file reads remain blocked.
+   `MEMORY.md` only when the native command record confirms the absolute target. A verified standalone no-match probe
+   may be the only host-required operation before preflight; it is recorded as empty and does not count as framework
+   discovery. Do not combine it with skill, repository, or playbook reads. Any match/output and all file reads remain
+   blocked.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
