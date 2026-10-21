@@ -28,8 +28,8 @@ description: >-
    This audits executed calls in the latest native turn, not quoted instructions or returned text. A rejected parent
    context is an early terminal block; do not activate workers or continue after acknowledging contamination. A
    host-required targeted search of `.codex/memories/MEMORY.md` remains nonconformant unless native execution
-   metadata proves one `rg -n` search (optionally case-insensitive) against that absolute path exited 1 with empty
-   output, with one parsed search matching the query and target. The parser may shorten the parsed path to
+   metadata proves one `rg -n` search (optionally case-insensitive and/or fixed-string) against that absolute path
+   exited 1 with empty output, with one parsed search matching the query and target. The parser may shorten the path to
    `MEMORY.md` only when the native command record confirms the absolute target. A verified standalone no-match probe
    may be the only host-required operation before preflight; it is recorded as empty and does not count as framework
    discovery. Do not combine it with skill, repository, or playbook reads. Any match/output and all file reads remain

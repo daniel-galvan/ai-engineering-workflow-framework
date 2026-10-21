@@ -232,7 +232,7 @@ def _verified_empty_memory_search(command: str, observation: dict,
     if Path(argv[0]).name != "rg":
         return False
     args, flags = argv[1:], []
-    allowed_flags = {"-n", "--line-number", "-i", "--ignore-case"}
+    allowed_flags = {"-n", "--line-number", "-i", "--ignore-case", "-F", "--fixed-strings"}
     while args and args[0] in allowed_flags:
         flags.append(args.pop(0))
     if (len(args) != 2 or not any(flag in {"-n", "--line-number"} for flag in flags)

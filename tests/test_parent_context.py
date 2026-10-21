@@ -93,6 +93,17 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["empty_memory_probes"], 1)
         self.assertNotIn("forbidden_context_reference:memory_path", result["errors"])
 
+    def test_verified_fixed_string_no_match_memory_probe_is_distinct_from_a_memory_read(self):
+        memory = "/Users/example/.codex/memories/MEMORY.md"
+        command = "rg -n -F 'ECHO-2806' " + memory
+        parsed = [{"type": "search", "cmd": "rg -n -F ECHO-2806 " + memory,
+                  "query": "ECHO-2806", "path": "MEMORY.md"}]
+        self.rows.extend([self.call("exec_command", cmd=command),
+                          self.command_execution(command, parsed_cmd=parsed)])
+        result = self.audit()
+        self.assertEqual(result["status"], "passed", result)
+        self.assertEqual(result["empty_memory_probes"], 1)
+
     def test_verified_empty_host_memory_probe_may_precede_preflight(self):
         framework = self.root / "framework"
         memory = "/Users/example/.codex/memories/MEMORY.md"
