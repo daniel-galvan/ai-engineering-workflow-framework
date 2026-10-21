@@ -11,7 +11,11 @@ description: >-
    (`Path(active_SKILL.md).parents[2]`); do not open or search a user-supplied cache path. A versioned path in the
    prompt is only a declared identity to compare, never an instruction to `sed`, `find`, `rg`, or search another cache
    version. Do not ask the user for a framework checkout path.
-2. The first framework tool call after this skill is loaded MUST be package preflight. Before it, do not read memory,
+2. Invocation gate: do not begin with repository discovery, status checks, `AGENTS.md`, memory, or playbook reads.
+   If the host has not already provided this active skill's contents, read only the active installed `SKILL.md`; the
+   immediately following tool call MUST be the package preflight command by itself. Never combine the skill read with
+   repository guidance, a playbook, or any other command. The first framework tool call after this skill is loaded
+   MUST be package preflight. Before it, do not read memory,
    `PLAYBOOK_CATALOG.md`, any playbook, contract, provider definition, template, validator, sibling `.thoughts` root,
    or plugin cache directory. Run:
    `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do

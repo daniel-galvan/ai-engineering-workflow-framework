@@ -203,6 +203,10 @@ def stale_run_status_errors(
 def _verified_empty_memory_search(command: str, observation: dict,
                                  framework_root: Path | None = None) -> bool:
     """Recognize only a native, no-result search of the host memory index."""
+    path_alias_warning = (
+        "WARNING: proceeding, even though we could not create PATH aliases: "
+        "Operation not permitted (os error 1)\n"
+    )
     try:
         commands = command.split(" && ")
         if len(commands) == 2:
@@ -251,18 +255,18 @@ def _verified_empty_memory_search(command: str, observation: dict,
             and str(item.get("path", "")) in {str(target), target.name}):
         return False
     if expected_bootstrap_path is None:
-        return observation.get("aggregated_output") == ""
+        return observation.get("aggregated_output") in {"", path_alias_warning}
     bootstrap_item = parsed[0]
     try:
         skill_text = Path(expected_bootstrap_path).read_text()
     except OSError:
         return False
     output = observation.get("aggregated_output")
+    expected_output = skill_text[:min(len(skill_text), 65536)]
     return (bootstrap_item.get("type") == "read"
             and isinstance(bootstrap_item.get("path"), str)
             and Path(bootstrap_item["path"]).resolve() == Path(expected_bootstrap_path)
-            and isinstance(output, str) and len(output) == min(len(skill_text), 65536)
-            and output == skill_text[:len(output)])
+            and output in {expected_output, path_alias_warning + expected_output})
 
 
 def current_parent_session(source: Path | None = None) -> Path | None:

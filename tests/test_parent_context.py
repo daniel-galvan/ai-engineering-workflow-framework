@@ -93,6 +93,24 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["empty_memory_probes"], 1)
         self.assertNotIn("forbidden_context_reference:memory_path", result["errors"])
 
+    def test_empty_memory_probe_allows_only_exact_native_shell_startup_warning(self):
+        memory = "/Users/example/.codex/memories/MEMORY.md"
+        query = "ECHO-2806|Issue Remediation|issue_remediation"
+        command = "rg -n -i " + shlex.quote(query) + " " + memory
+        warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                   "Operation not permitted (os error 1)\n")
+        parsed = [{"type": "search", "cmd": command, "query": query, "path": "MEMORY.md"}]
+        self.rows.extend([self.call("exec_command", cmd=command),
+                          self.command_execution(command, output=warning, parsed_cmd=parsed)])
+        result = self.audit()
+        self.assertEqual(result["status"], "passed", result)
+        self.assertEqual(result["empty_memory_probes"], 1)
+
+        self.rows[-1]["payload"]["item"]["aggregated_output"] += "MEMORY.md:7: ECHO-2806"
+        result = self.audit()
+        self.assertEqual(result["empty_memory_probes"], 0)
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
+
     def test_verified_case_insensitive_probe_accepts_native_basename_path(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         query = "ECHO-2806|Issue Remediation|issue_remediation"
