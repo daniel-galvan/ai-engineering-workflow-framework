@@ -16,7 +16,10 @@ description: >-
    The first framework tool call after this skill is loaded MUST be the package preflight command by itself. A
    host-mandated no-match memory probe is the only permitted non-framework operation before that call; it must satisfy
    the exact native checks below. Never combine the skill read with repository guidance, a playbook, or another
-   command. Before preflight, do not read memory contents,
+   command. After preflight, never call `list_threads` directly: its raw output includes unassigned chat content.
+   For the related-run check, execute only step 7's exact status-only JavaScript projection through `functions.exec`.
+   A direct inventory call makes preparation reject this turn with `parent_unassigned_thread_discovery`.
+   Before preflight, do not read memory contents,
    `PLAYBOOK_CATALOG.md`, any playbook, contract, provider definition, template, validator, sibling `.thoughts` root,
    or plugin cache directory. Run:
    `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do
