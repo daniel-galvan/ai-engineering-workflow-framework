@@ -294,11 +294,25 @@ class ParentContext(unittest.TestCase):
             "type": "custom_tool_call_output", "call_id": "status-call",
             "output": [{"type": "text", "text": json.dumps([
                 {"id": CHILD, "status": "completed", "hostId": "local", "kind": "codex",
-                 "updatedAt": "2026-10-01T00:00:00Z"}])}]}}
+                 "updatedAt": 1792624353}])}]}}
         self.rows.extend([call, output])
         result = self.audit(artifact_root=artifact_root)
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["related_run_thread_ids"], [CHILD])
+
+        self.rows = self.rows[:2] + [call, {"type": "response_item", "payload": {
+            **output["payload"], "output": [{"type": "text", "text": json.dumps([
+                {"id": CHILD, "status": "notLoaded", "updatedAt": 1792624353}])}]}}]
+        result = self.audit(artifact_root=artifact_root)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(stale_run_status_errors(result, "active"), ["stale_run_related_task_active:" + CHILD])
+
+        for invalid in (True, [], {}, 3.5):
+            with self.subTest(updatedAt=invalid):
+                self.rows = self.rows[:2] + [call, {"type": "response_item", "payload": {
+                    **output["payload"], "output": [{"type": "text", "text": json.dumps([
+                        {"id": CHILD, "status": "completed", "updatedAt": invalid}])}]}}]
+                self.assertIn("parent_related_run_status_output_invalid", self.audit(artifact_root=artifact_root)["errors"])
 
         self.rows = self.rows[:2] + [call]
         self.assertIn("parent_related_run_status_output_missing", self.audit(artifact_root=artifact_root)["errors"])
@@ -347,7 +361,8 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(stale_run_status_errors(None, "active"), ["stale_run_status_probe_required"])
 
     def test_prior_worker_identity_collection_fails_closed_on_malformed_receipts(self):
-        self.assertIs(worker_strict_json_loads, strict_json_loads)
+        # CLI and package imports can load the shared helper under different module names.
+        self.assertEqual(worker_strict_json_loads.__code__, strict_json_loads.__code__)
         with self.assertRaisesRegex(ValueError, "NaN"):
             strict_json_loads('{"value":NaN}')
 
@@ -516,6 +531,27 @@ class ParentContext(unittest.TestCase):
         run = prepare_run(self.root, "ITEM-1", "feature_delivery", None, False,
                           input_manifest=inputs, provider_session=self.source)
         self.assertEqual(run["status"], "prepared")
+
+    def test_staging_manifest_at_repository_root_preserves_work_item_isolation(self):
+        for sibling in (True, False):
+            with self.subTest(sibling_work_item=sibling):
+                inputs = self.root / (".thoughts/ITEM-1-inputs.json" if sibling else "ITEM-1-inputs.json")
+                inputs.parent.mkdir(parents=True, exist_ok=True)
+                inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
+                    "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
+                patch = "*** Begin Patch\n*** Add File: " + str(inputs) + "\n+{}\n*** End Patch"
+                self.rows = self.rows[:2] + [self.call("apply_patch", patch=patch),
+                    self.call("exec_command", cmd="python3 prepare_run.py --input-manifest " + str(inputs))]
+                self.audit()
+                if sibling:
+                    with self.assertRaisesRegex(ValueError, "forbidden_context_reference:archived_artifact"):
+                        prepare_run(self.root, "ITEM-1", "techops_issue_remediation", None, False,
+                                    input_manifest=inputs, provider_session=self.source)
+                    self.assertFalse((self.root / ".thoughts/ITEM-1").exists())
+                else:
+                    run = prepare_run(self.root, "ITEM-1", "techops_issue_remediation", None, False,
+                                      input_manifest=inputs, provider_session=self.source)
+                    self.assertEqual(run["status"], "prepared")
 
     def test_preparation_is_transactional_and_activation_rechecks_later_reads(self):
         inputs = self.root / "inputs.json"

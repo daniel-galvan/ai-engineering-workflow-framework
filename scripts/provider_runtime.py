@@ -167,6 +167,7 @@ def _related_run_status_rows(payload: dict) -> list[dict]:
                 or not isinstance(row["id"], str) or not UUID.fullmatch(row["id"])
                 or not isinstance(row["status"], str) or row["id"] in seen
                 or any(key in row and row[key] is not None and not isinstance(row[key], str)
+                       and not (key == "updatedAt" and type(row[key]) is int)
                        for key in {"hostId", "kind", "updatedAt"})):
             raise ValueError("parent_related_run_status_output_invalid")
         seen.add(row["id"])

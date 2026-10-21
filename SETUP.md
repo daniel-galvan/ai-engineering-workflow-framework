@@ -87,6 +87,12 @@ Use $ai-engineering-workflows:run.
 Work item: <stable ID or URL>
 ```
 
+For an app-server client, resolve the enabled `ai-engineering-workflows:run` entry with `skills/list` for the execution
+directory, and verify the package with `plugin/read`. Send a typed `skill` input in `turn/start`, using that entry's
+returned name and path alongside the populated prompt. A plain-text skill name, an enabled-plugin flag, or an absent
+standalone skill directory does not establish whether the plugin skill is loaded. Do not hardcode the resolved cache
+path into the prompt. Preserve the caller's approval policy and review routing, and handle pending client requests.
+
 The plugin uses the framework snapshot bundled with its installed version. After any tracked repository content change,
 update the cache-busting suffix in `.codex-plugin/plugin.json` before packaging or installing the snapshot. Run the
 framework validator and preflight self-test, then rerun the `codex plugin add` command above. Reusing build metadata

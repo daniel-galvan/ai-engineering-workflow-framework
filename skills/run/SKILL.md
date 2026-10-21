@@ -65,7 +65,11 @@ description: >-
    supplies a complete compatible override pair. Reject explicit placeholders such as `<...>`, `None`, or
    `Not provided` with `run_prompt_incomplete:<field>`. Do not create a temporary input manifest, invoke
    `prepare_run.py`, or perform context discovery before this gate passes.
-4. Use the current repository unless the user explicitly names another repository. Preparation resolves its main Git
+4. The execution repository is the source repository being investigated or remediated, including for planning-only
+   runs. When a maintenance Coordinator launches a run from the framework checkout for another source repository,
+   explicitly pass that source repository as `--execution-repository`; do not use the framework checkout as its artifact
+   root. Product-source edit prohibitions do not relocate the run's artifacts into the framework repository.
+   Use the current repository unless the user explicitly names another repository. Preparation resolves its main Git
    checkout as the execution repository and durable artifact root; the active equivalent worktree remains the source
    checkout. Use returned `execution_repository`, `source_checkout`, and `artifact_root` paths unchanged. Never create
    `.thoughts` in a linked worktree, even when that worktree was named explicitly. Non-Git record folders retain their
@@ -211,8 +215,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `Authorized operations: ["test_run"]` or `["build_run"]`, only when the user has actually authorized those actions.
    A delegated objective cannot grant that authorization. Check executed commands against these constraints before
    fan-in; reject unauthorized results rather than merging them. Keep the full restrictions in every assignment.
-   Use `apply_patch` to create the temporary JSON file when no manifest file already exists, preferably outside
-   the execution repository (for example under `/tmp`) so preparation cannot make the source checkout appear dirty.
+   Use `apply_patch` to create the temporary JSON file when no manifest file already exists. Keep it in a uniquely
+   named file at the execution repository root, outside `.thoughts`, so it belongs to the target source repository
+   without looking like another work-item root. Never use `.thoughts/<WORK-ITEM-ID>-inputs.json`: the context audit
+   treats that sibling as another work-item root. The framework package remains separate from these run artifacts.
    The manifest has top-level `schema_version: 1`, `status: "explicit"`, a non-empty `inputs` list, and the canonical
    `precedence_rule`; if that key is omitted, preparation applies the canonical default, while an explicit empty value
    remains invalid. Pass the file to `scripts/prepare_run.py` with

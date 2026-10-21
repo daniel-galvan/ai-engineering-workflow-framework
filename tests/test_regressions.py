@@ -63,6 +63,20 @@ class V4Regressions(unittest.TestCase):
         self.assertFalse((worktree / ".thoughts").exists())
         self.assertEqual(prepare.resolve_repository_paths(worktree), (main, worktree))
 
+    def test_explicit_source_repository_owns_artifacts_from_framework_coordinator(self):
+        main, _ = self.repository()
+        with patch.object(Path, "cwd", return_value=prepare.ROOT):
+            result = self.prepare(main)
+        root = main / ".thoughts/ISSUE-1"
+        self.assertEqual(result["execution_repository"], str(main))
+        self.assertEqual(result["source_checkout"], str(main))
+        self.assertEqual(result["artifact_root"], str(root))
+        for contract in result["worker_contracts"].values():
+            self.assertEqual(Path(contract["output"]).parent, root)
+        for name in ("work_record.md", "run_inputs.json", "finalization_packet.json",
+                     "role_bindings.json", "worker_activation_packets.json"):
+            self.assertTrue((root / name).is_file())
+
     def test_legacy_continuation_is_not_silently_relocated(self):
         main, worktree = self.repository()
         legacy = worktree / ".thoughts/ISSUE-1"
