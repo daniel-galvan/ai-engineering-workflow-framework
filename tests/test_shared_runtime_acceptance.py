@@ -27,6 +27,67 @@ CASES = {
 
 
 class SharedRuntimeAcceptance(unittest.TestCase):
+    def test_failure_before_worker_dispatch_has_verified_zero_handle_closure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, _, _, _, parent, *_ = fixture
+            parent[:] = parent[:1]
+            parent_path = root / "parent.jsonl"
+            parent_path.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+
+            result = subprocess.run([sys.executable, str(preparation.ROOT / "scripts/finalize_work_record.py"),
+                "--packet", str(root / "finalization_packet.json"), "--workflow-failure", "run_input_manifest_required",
+                "--provider-session", str(parent_path), "--parent-thread-id", PARENT],
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            closure = json.loads((root / "runtime_closure.json").read_text())
+            receipt = json.loads((root / "finalization_failure.json").read_text())
+            self.assertEqual(receipt["runtime_closure"], "terminal")
+            self.assertEqual(closure["terminal_observations"], [])
+            row = closure["runtime_closure"][0]
+            self.assertEqual(row["Runtime status"], "Terminal")
+            self.assertEqual(row["Completed worker handles"], "None dispatched")
+            self.assertEqual(row["Remaining active handles"], "0")
+            self.assertIn("verified current provider ledger shows no worker handles were activated",
+                          row["Closure evidence or blocker"])
+            self.assertIn("No worker handles were dispatched", result.stdout)
+            self.assertIn("provider ledger verified; no worker handles were dispatched", result.stdout)
+            self.assertNotIn("Prepared workers without an accepted result", result.stdout)
+
+    def test_zero_dispatch_closure_rejects_unmapped_or_open_worker_activity(self):
+        from scripts.worker_runtime_evidence import terminal_closure
+
+        for mutate, error in (
+            (lambda ledger: ledger["thread_mappings"].update({"/root/orphan": CHILD}),
+             "runtime_zero_dispatch_has_worker_identity"),
+            (lambda ledger: ledger["timing"].update({"open_worker_intervals": 1}),
+             "runtime_zero_dispatch_has_open_worker_intervals"),
+        ):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+                run, root, _, _, _, parent, *_ = fixture
+                parent[:] = parent[:1]
+                parent_path = root / "parent.jsonl"
+                parent_path.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+                ledger = read_runtime_events(parent_path, PARENT, run["runtime_evidence"]["run_started_at"])
+                mutate(ledger)
+                with self.assertRaisesRegex(ValueError, error):
+                    terminal_closure(ledger)
+
+    def test_zero_dispatch_closure_rejects_malformed_caller_audits(self):
+        from scripts.planning_contracts import terminal_closure_dispatch_errors
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, _, _, _, parent, *_ = fixture
+            parent[:] = parent[:1]
+            parent_path = root / "parent.jsonl"
+            parent_path.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+            ledger = read_runtime_events(parent_path, PARENT, run["runtime_evidence"]["run_started_at"])
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            errors = terminal_closure_dispatch_errors(Path(run["finalization_packet"]), [], audits={})
+            self.assertIn("terminal_zero_dispatch_evidence_invalid", errors)
+
     def test_failure_handoff_does_not_claim_a_terminal_receipt_for_other_dispatches(self):
         for stale_handle, stale_dispatch in (("/root/old_worker", False), ("/root/worker", True)):
             with self.subTest(stale_handle=stale_handle, stale_dispatch=stale_dispatch), tempfile.TemporaryDirectory() as directory:

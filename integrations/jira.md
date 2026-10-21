@@ -33,6 +33,29 @@ retrieval policy.
   during a run. Preserve those states instead of presenting them as complete
   context.
 
+## TechOps Issue Remediation Source-Access Gate
+
+Before preparing a Jira-backed TechOps Issue Remediation run, read the exact supplied issue through an available
+configured connector. The launcher performs this narrow check before repository analysis or input-manifest creation.
+Use the direct Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route.
+A resource or account lookup does not prove exact-issue access. On authentication failure or when no issue-read
+operation exists, try at most one distinct configured Jira connector, never another operation on the failed route.
+Preserve `not_found` and `permission_denied` as item-specific outcomes. If no route can read the exact issue, record the
+attempted source and operation, a safe provider code (or `OPERATION_UNAVAILABLE`), and one access-restoration action
+with this blocked source-access receipt:
+
+```bash
+python3 <framework-root>/scripts/source_access_receipt.py --source Jira --work-item <key> \
+  --operation <attempted-operation> --provider-code <SAFE_ERROR_CODE> \
+  --started-at <current-turn-RFC3339-start>
+```
+
+Exit status 2 with a JSON `status: blocked` receipt is expected; a parser error is not a receipt. Stop before
+repository analysis, input-manifest creation, preparation, artifact-root or work-record creation, and worker
+activation. Do not use historical issue data as a substitute. A successful issue read establishes only item access;
+report-bearing comments and other evidence required by the TechOps playbook
+must still be collected and reconciled after initialization.
+
 ## Feature Delivery Source-Access Gate
 
 Before initializing a Jira-backed Feature Delivery run, read the exact supplied issue through an available configured

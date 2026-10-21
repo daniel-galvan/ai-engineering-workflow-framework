@@ -469,7 +469,7 @@ class V6Recovery(unittest.TestCase):
         report = self.command("finalize_work_record.py", "--packet", packet,
                               "--workflow-failure", "forbidden_context_reference:archived_artifact")
         self.assertEqual(report.returncode, 2, report.stderr)
-        for phrase in ("No accepted worker result", "Prepared workers without an accepted result",
+        for phrase in ("No accepted worker result", "Dispatched workers without an accepted result",
                        "Unaccepted worker artifact", "runtime closure unverified", str(trace), contract["output"],
                        contract["result"], "handoff_failure.md", "Recorded engineering state: unknown"):
             self.assertIn(phrase, report.stdout)

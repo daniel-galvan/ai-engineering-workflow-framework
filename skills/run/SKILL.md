@@ -125,7 +125,20 @@ description: >-
    Pilot Standard Sentry and TechOps planning may continue with a context-unverified result only after evidenced
    retrieval failure and when every other contract gate passes; trace-unavailable evidence is never stronger than
    self-attestation.
-5a. For Jira-backed Feature Delivery, before loading the full playbook, contracts, or template, select an available
+5a. For Jira-backed TechOps Issue Remediation, before loading the full playbook, contracts, or template, select an
+available Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
+Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route. A resource or
+account lookup is not this probe. If authentication fails or no issue-read operation exists, try at most one distinct
+configured Jira connector; never retry the failed route through another operation. Preserve `not_found` and
+`permission_denied` as item-specific results rather than connector-wide failures. If no route reads the exact issue,
+run the blocked receipt command in the Jira Integration's
+[TechOps source-access gate](../../integrations/jira.md#techops-issue-remediation-source-access-gate),
+using `OPERATION_UNAVAILABLE` when no provider code exists. Copy its JSON receipt and give one access-restoration
+action. Stop before repository analysis, before creating an input manifest, before `prepare_run.py`, and before artifact
+root or work-record creation; make zero worker activation attempts. Create no artifact root or work record. Do not
+substitute historical Jira data. A successful issue read does not prove access
+to report-bearing comments; collect those under the TechOps playbook's evidence requirements after initialization.
+5b. For Jira-backed Feature Delivery, before loading the full playbook, contracts, or template, select an available
    Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
    Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route. A resource
    or account lookup is not this probe. Bind the successful connector and issue-read operation in the fresh
@@ -146,7 +159,7 @@ description: >-
    the result `awaiting_input` or `Not ready for implementation`. Preserve `not_found` and `permission_denied` as
    item-specific outcomes, not connector-wide authentication failures. The context worker must still enumerate the
    issue hierarchy, links, history, and assets; a successful item read proves none of those scopes.
-5b. For Sentry Issue Remediation with an explicit Sentry issue ID or URL, apply the
+5c. For Sentry Issue Remediation with an explicit Sentry issue ID or URL, apply the
    [Sentry source-access gate](../../integrations/sentry.md#source-access-gate) before loading the full framework,
    creating an input manifest, preparation, repository analysis, or worker activation. Use the enabled tool inventory
    and at most one tool-discovery call to find a configured Sentry issue/event read route. Read the exact requested

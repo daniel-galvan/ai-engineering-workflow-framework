@@ -49,7 +49,7 @@ class V8SentryHandoff(unittest.TestCase):
         self.assertNotIn("No accepted worker result", report)
         self.assertIn("Unaccepted worker artifact retained for audit only: " + str(self.evidence), report)
         self.assertIn("reported work is provisional", report)
-        self.assertIn("Prepared workers without an accepted result: evidence-topology", report)
+        self.assertIn("Dispatched workers without an accepted result: provider handle /root/worker", report)
 
     def test_explicit_trace_path_supports_a_filename_without_trace_in_it(self):
         saved = self.root / "evidence-proof.json"

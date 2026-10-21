@@ -96,9 +96,9 @@ except ModuleNotFoundError:
     )
 
 try:
-    from worker_runtime_evidence import dispatch_audit_errors
+    from worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles
 except ModuleNotFoundError:
-    from scripts.worker_runtime_evidence import dispatch_audit_errors
+    from scripts.worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles
 
 
 try:
@@ -1315,7 +1315,8 @@ def finalize(
             errors.extend(_planning_runtime_closure_errors(packet, closure["runtime_closure"]))
             terminal_handles = [handle.strip() for row in closure["runtime_closure"]
                                 if str(row.get("Runtime status", "")).lower() == "terminal"
-                                for handle in re.split(r",|;", str(row.get("Completed worker handles", "")))]
+                                for handle in re.split(r",|;", str(row.get("Completed worker handles", "")))
+                                if handle.strip().lower() not in {"", "none", "none dispatched", "unknown", "unavailable"}]
             if terminal_handles:
                 errors.extend(terminal_observation_errors(closure.get("terminal_observations"), terminal_handles, require_completed=False))
             # These workflows use the same two-phase packet protocol and native status reads.
@@ -1466,11 +1467,13 @@ def prepare_analytical_failure(
     if not _runtime_closed(closure_rows):
         raise ValueError("analytical_failure_runtime_closure_unverified: use --workflow-failure")
     recorded_handles = {handle.strip() for row in closure_rows for handle in
-                        re.split(r"[,;]", str(row.get("Completed worker handles", "")))}
+                        re.split(r"[,;]", str(row.get("Completed worker handles", "")))
+                        if handle.strip().lower() not in {"", "none", "none dispatched", "unknown", "unavailable"}}
     if not set(completed_handles) <= recorded_handles:
         raise ValueError("analytical_failure_closure_handle_mismatch: retain the exact provider handles")
     if any(str(row.get("Runtime status", "")).lower() == "terminal" for row in closure_rows):
-        errors = terminal_observation_errors(closure.get("terminal_observations", []), sorted(recorded_handles), require_completed=False)
+        errors = (terminal_observation_errors(closure.get("terminal_observations", []), sorted(recorded_handles), require_completed=False)
+                  if recorded_handles else [])
         errors.extend(dispatch_audit_errors({"runtime_audits": closure.get("terminal_observations", [])}, packet_path, closure_only=True))
         if errors:
             raise ValueError(";".join(errors))
@@ -1834,11 +1837,34 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     try:
         bindings = json.loads((root / "role_bindings.json").read_text())
         accepted = {row.get("Worker") for row in results if row.get("Outcome") == "complete"}
-        missing = []
-        for contract in bindings.get("worker_contracts", {}).values():
+        contracts = bindings.get("worker_contracts", {})
+        ledger_contract = bindings.get("runtime_evidence", {})
+        ledger_path = Path(ledger_contract["ledger"]) if ledger_contract.get("ledger") else None
+        ledger = {}
+        ledger_verified = False
+        if ledger_path and ledger_path.resolve().parent == root.resolve() and ledger_path.is_file():
+            ledger = json.loads(ledger_path.read_text())
+            ledger_verified = not dispatch_audit_errors({"runtime_audits": []}, packet_path)
+        if ledger_verified:
+            dispatched = set(dispatched_worker_handles(ledger))
+            audits_by_handle = {row.get("Provider handle"): row.get("Worker")
+                                for row in audits if isinstance(row, dict)}
+            workers_by_handle = {}
+            for dispatch in [*ledger.get("events", []), *ledger.get("failed_dispatches", [])]:
+                handle = dispatch.get("Provider handle")
+                if handle not in dispatched:
+                    continue
+                binding = dispatch.get("Binding agent")
+                contract = contracts.get(binding, {}) if isinstance(contracts, dict) else {}
+                worker = contract.get("worker_id") or contract.get("worker") or audits_by_handle.get(handle)
+                workers_by_handle[handle] = worker or "provider handle " + handle
+            missing = [worker for worker in dict.fromkeys(workers_by_handle.values()) if worker not in accepted]
+            if dispatched and missing:
+                established.append("Dispatched workers without an accepted result: " + ", ".join(missing))
+            elif not dispatched:
+                established.append("No worker handles were dispatched; prepared roles were not activated.")
+        for contract in contracts.values() if isinstance(contracts, dict) else []:
             worker = contract.get("worker_id") or contract.get("worker")
-            if worker and worker not in accepted:
-                missing.append(worker)
             for field in ("output", "result"):
                 saved = Path(str(contract.get(field, "")))
                 saved = saved if saved.is_absolute() else root / saved
@@ -1846,8 +1872,6 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
                     saved_paths.append(str(saved))
                     if worker not in accepted:
                         established.append("Unaccepted worker artifact retained for audit only: " + str(saved))
-        if missing:
-            established.append("Prepared workers without an accepted result: " + ", ".join(dict.fromkeys(missing)))
     except (OSError, ValueError, TypeError, AttributeError):
         pass
     for saved in traces + [root / "runtime_closure.json"]:
@@ -1921,7 +1945,10 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
                 packet_path, closure_receipt.get("terminal_observations"), packet.get("runtime_audits", []))
             if _runtime_closed(closure) and not current_dispatch_errors and not dispatch_errors:
                 provisional["runtime_closure"] = closure
-                provisional["handoff"]["execution"] += "; provider closure verified for every activated handle."
+                if not closure_receipt.get("terminal_observations"):
+                    provisional["handoff"]["execution"] += "; provider ledger verified; no worker handles were dispatched."
+                else:
+                    provisional["handoff"]["execution"] += "; provider closure verified for every activated handle."
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             pass  # Failure reporting must remain available when the saved closure cannot be read.
     if receipt.get("validation_performed") is False:

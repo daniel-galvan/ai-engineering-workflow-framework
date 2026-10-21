@@ -58,11 +58,19 @@ class ExecutionLayers(unittest.TestCase):
     def test_jira_owns_source_coverage_and_failures_and_sentry_owns_acquisition(self):
         jira = (ROOT / "integrations/jira.md").read_text()
         for policy in ("## Feature Delivery Source-Access Gate", "at most one distinct configured Jira connector",
+                       "## TechOps Issue Remediation Source-Access Gate", "source_access_receipt.py --source Jira",
                        "not connector-wide authentication failures", "Inventory every member of that collection",
                        "## Freshness and reconciliation", "## Write boundary", "## Privacy and sharing"):
             with self.subTest(policy=policy):
                 self.assertIn(policy, " ".join(jira.split()) if "at most one" in policy else jira)
         self.assertIn("../contracts/workflow_execution.md#work-item-read-contract", jira)
+        launcher = (ROOT / "skills/run/SKILL.md").read_text()
+        techops_gate = launcher.split("5a. For Jira-backed TechOps Issue Remediation", 1)[1].split("5b. For Jira-backed Feature Delivery", 1)[0]
+        for phrase in ("read the exact supplied issue key", "before creating an input manifest",
+                       "OPERATION_UNAVAILABLE", "zero worker activation attempts",
+                       "no artifact root or work record"):
+            with self.subTest(techops_gate=phrase):
+                self.assertIn(phrase, techops_gate)
         sentry = (ROOT / "integrations/sentry.md").read_text()
         self.assertIn("## Acquisition Ownership", sentry)
         self.assertIn("Before Evidence Topology activation", sentry)
@@ -81,7 +89,7 @@ class ExecutionLayers(unittest.TestCase):
 
     def test_sentry_access_failure_stops_before_preparation_without_log_fallback(self):
         launcher = (ROOT / "skills/run/SKILL.md").read_text()
-        gate = launcher.split("5b. For Sentry Issue Remediation", 1)[1].split("6. For Standard Sentry planning", 1)[0]
+        gate = launcher.split("5c. For Sentry Issue Remediation", 1)[1].split("6. For Standard Sentry planning", 1)[0]
         for phrase in ("issue and its latest event", "--source Sentry", "OPERATION_UNAVAILABLE",
                        "zero worker activation attempts", "no artifact root or work record",
                        "Supplied logs do not", "explicitly selects an offline", "30 seconds", "90 seconds"):
@@ -109,6 +117,18 @@ class ExecutionLayers(unittest.TestCase):
                 self.assertEqual(receipt["reason"], "required_source_unavailable")
                 self.assertEqual(receipt["worker_activation_attempts"], 0)
                 self.assertIsNone(receipt["artifact_root"])
+
+    def test_jira_source_access_receipt_blocks_techops_before_run_initialization(self):
+        from datetime import datetime
+        from scripts.source_access_receipt import blocked_receipt
+
+        receipt = blocked_receipt("Jira", "ECHO-2806", "getJiraIssue", "OPERATION_UNAVAILABLE",
+                                  "2026-10-21T16:00:00Z",
+                                  observed_at=datetime.fromisoformat("2026-10-21T16:01:00+00:00"))
+        self.assertEqual(receipt["status"], "blocked")
+        self.assertEqual(receipt["reason"], "required_source_unavailable")
+        self.assertEqual(receipt["worker_activation_attempts"], 0)
+        self.assertIsNone(receipt["artifact_root"])
 
     def test_cross_layer_links_resolve_to_existing_headings(self):
         for name in ("contracts/workflow_execution.md", "providers/codex.md", "integrations/jira.md"):

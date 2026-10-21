@@ -307,6 +307,18 @@ def _native_terminal_observations(ledger: dict, handles: list[str], *, require_t
 def terminal_closure(ledger: dict) -> dict:
     """Project latest native status evidence into the canonical Terminal receipt."""
     handles = dispatched_worker_handles(ledger)
+    if not handles:
+        mappings = ledger.get("thread_mappings", {})
+        timing = ledger.get("timing", {})
+        if not isinstance(mappings, dict) or mappings:
+            raise ValueError("runtime_zero_dispatch_has_worker_identity")
+        if not isinstance(timing, dict) or timing.get("open_worker_intervals") != 0:
+            raise ValueError("runtime_zero_dispatch_has_open_worker_intervals")
+        return {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
+            "Completed worker handles": "None dispatched", "Runtime status": "Terminal",
+            "Remaining active handles": "0",
+            "Closure evidence or blocker": "verified current provider ledger shows no worker handles were activated"}],
+            "terminal_observations": []}
     observations = _native_terminal_observations(ledger, handles)
     observed_at = max(row["Observed at"] for row in observations)
     return {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",

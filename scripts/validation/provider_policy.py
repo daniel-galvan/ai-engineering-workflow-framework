@@ -200,7 +200,9 @@ def validate_runtime_mapping() -> None:
     ):
         if phrase not in run_skill:
             fail(f"skills/run/SKILL.md is missing fast-preflight control: {phrase}")
-    for phrase in ("5b. For Sentry Issue Remediation", "Read the exact requested", "issue and its latest event",
+    for phrase in ("5a. For Jira-backed TechOps Issue Remediation", "exact supplied issue key once",
+                   "before repository analysis", "no artifact root or work record",
+                   "5c. For Sentry Issue Remediation", "Read the exact requested", "issue and its latest event",
                    "--source Sentry", "zero worker activation attempts", "Supplied logs do not",
                    "stop further", "analysis and downstream activation"):
         if phrase not in run_skill:
@@ -213,7 +215,8 @@ def validate_runtime_mapping() -> None:
                    "plugin_revision_mismatch", "list_agents", "read_thread", "wait_threads"):
         if phrase not in codex_adapter:
             fail(f"providers/codex.md is missing provider execution rule: {phrase}")
-    for phrase in ("## Feature Delivery Source-Access Gate", "Start with `item`",
+    for phrase in ("## TechOps Issue Remediation Source-Access Gate", "source_access_receipt.py --source Jira",
+                   "## Feature Delivery Source-Access Gate", "Start with `item`",
                    "Inventory every member of that collection", "at most one", "not connector-wide authentication failures"):
         if phrase not in jira_text:
             fail(f"integrations/jira.md is missing source policy: {phrase}")

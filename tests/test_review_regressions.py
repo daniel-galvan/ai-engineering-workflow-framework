@@ -409,7 +409,7 @@ class ReviewRegressions(unittest.TestCase):
             report = failure_handoff(case.packet_path, "Later stage failed")
             self.assertIn("Provisional artifact statement (not verified worker output): " + statement, report)
             self.assertNotIn("Verified Evidence Topology findings", report)
-            self.assertIn("Prepared workers without an accepted result: evidence-topology", report)
+            self.assertIn("Dispatched workers without an accepted result: provider handle /root/worker", report)
             self.assertIn("Unaccepted worker artifact retained for audit only: " + str(case.evidence), report)
         finally:
             case.doCleanups()

@@ -1302,7 +1302,7 @@ def _worker_runtime_audit_errors(
 def terminal_closure_dispatch_errors(packet_path: Path, observations: object,
                                      audits: object = None) -> list[str]:
     """Require closure observations to cover the current dispatch ledger and latest dispatches."""
-    if not isinstance(observations, list) or not observations:
+    if not isinstance(observations, list):
         return ["terminal_observations_required"]
     errors = []
     dispatches = {row.get("Provider handle"): row.get("Last dispatch at")
@@ -1319,6 +1319,18 @@ def terminal_closure_dispatch_errors(packet_path: Path, observations: object,
             for handle in dispatched_worker_handles(ledger):
                 dispatches[handle] = latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"]
         handles = sorted(dispatches)
+        if not observations and not handles:
+            timing = ledger.get("timing", {}) if contract else {}
+            mappings = ledger.get("thread_mappings", {}) if contract else {}
+            if (not contract or not isinstance(mappings, dict) or mappings
+                    or not isinstance(timing, dict) or timing.get("open_worker_intervals") != 0
+                    or (audits is not None and (not isinstance(audits, list) or audits))):
+                return ["terminal_zero_dispatch_evidence_invalid"]
+            freshness_errors = dispatch_audit_errors(
+                {"runtime_audits": []}, packet_path, closure_only=True)
+            return freshness_errors
+        if not observations:
+            return ["terminal_observations_required"]
         errors.extend(terminal_observation_errors(observations, handles, require_completed=False))
         if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):
             errors.append("terminal_closure_worker_handle_mismatch")
