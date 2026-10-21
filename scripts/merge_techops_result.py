@@ -29,15 +29,22 @@ FEATURE_WORKERS = {
     "solution_architect": ("feature-design", "FD"),
     "reviewer": ("planning-review", "PR"),
 }
+FEATURE_REMEDIATION_WORKERS = {
+    "implementer": ("implement", "IM"),
+    "reviewer": ("review", "RV"),
+    "tester": ("validate", "TE"),
+}
 TABLES = {"evidence": "Evidence ID", "claims": "Claim ID", "decisions": "Decision ID", "actions": "Action ID"}
 PREFIXES = {"evidence": "E", "claims": "CL", "decisions": "DE", "actions": "A"}
 
 
 def merged_result_errors(packet: dict, manifest: dict, root: Path, *, table_projection: bool = False) -> list[str]:
     """Accepted analytical records remain owned by their producing workers."""
-    completed = {row.get("Worker") for row in packet.get("worker_results", []) if row.get("Outcome") == "complete"}
+    terminal_outcomes = {"complete", "blocked"} if manifest.get("lifecycle") == "remediation" else {"complete"}
+    completed = {row.get("Worker") for row in packet.get("worker_results", [])
+                 if row.get("Outcome") in terminal_outcomes}
     errors = []
-    workers = FEATURE_WORKERS if manifest.get("playbook") == "feature_delivery" else WORKERS
+    workers = _workers_for(manifest)
     for agent, (worker, _) in workers.items():
         contract = manifest.get("worker_contracts", {}).get(agent, {})
         if worker not in completed or not contract.get("result"):
@@ -60,12 +67,16 @@ def merged_result_errors(packet: dict, manifest: dict, root: Path, *, table_proj
 def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> dict:
     """Apply the shared analytical contract in memory before audit or durable acceptance."""
     packet = copy.deepcopy(packet)
-    workers = FEATURE_WORKERS if bindings.get("playbook") == "feature_delivery" else WORKERS
-    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"} or agent not in workers:
+    workers = _workers_for(bindings)
+    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery", "sentry_issue_remediation"} or agent not in workers:
         raise ValueError("analytical_binding_required")
     if not isinstance(result, dict):
         raise ValueError("worker_result_object_required")
-    if packet["identity"].get("Lifecycle", "") not in {"", "planning"}:
+    lifecycle = packet["identity"].get("Lifecycle", "")
+    if lifecycle not in {"", "planning", "remediation"}:
+        raise ValueError("worker_result_lifecycle_unsupported")
+    if lifecycle == "remediation" and bindings.get("playbook") not in {
+            "techops_issue_remediation", "feature_delivery", "sentry_issue_remediation"}:
         raise ValueError("techops_planning_packet_required")
     if result.get("run_id") != packet["identity"]["Run ID"]:
         raise ValueError("worker_result_run_mismatch")
@@ -125,7 +136,9 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
                     for reference in re.findall(r"\b(?:E|CL|DE|A)-[A-Za-z0-9_]+-[A-Za-z0-9_-]+", value):
                         if reference not in known_ids:
                             errors.append(f"worker_result_reference_unresolved:{reference}")
-    if contract.get("planning_disposition_required") or "plan_readiness" in result or "implementation_plan_action" in result:
+    if (lifecycle != "remediation" and
+            (contract.get("planning_disposition_required") or "plan_readiness" in result
+             or "implementation_plan_action" in result)):
         pair = (result.get("plan_readiness"), result.get("implementation_plan_action"))
         if (bindings.get("playbook") != "feature_delivery" or agent != "solution_architect"
                 or not all(isinstance(value, str) for value in pair)
@@ -148,6 +161,82 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
     if errors:
         raise ValueError("; ".join(dict.fromkeys(errors)))
     return packet
+
+
+def _workers_for(bindings: dict) -> dict[str, tuple[str, str]]:
+    if (bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery", "sentry_issue_remediation"}
+            and bindings.get("lifecycle") == "remediation"):
+        return FEATURE_REMEDIATION_WORKERS
+    return FEATURE_WORKERS if bindings.get("playbook") == "feature_delivery" else WORKERS
+
+
+def _coordinator_worker_row(packet: dict, agent: str, result: dict, trace: dict, bindings: dict) -> dict:
+    """Record worker metadata only from accepted result, prepared dispatch, and provider trace."""
+    try:
+        from runtime_checks import _verified_dispatch_content
+    except ModuleNotFoundError:
+        from scripts.runtime_checks import _verified_dispatch_content
+    content = _verified_dispatch_content(trace)
+    if not content:
+        raise ValueError("worker_dispatch_assignment_unverified:" + agent)
+    try:
+        assignment = json.loads(content.split("\nTyped assignment:\n", 1)[1])
+    except (ValueError, IndexError) as error:
+        raise ValueError("worker_dispatch_assignment_invalid:" + agent) from error
+    worker = str(result.get("worker_result", {}).get("Worker", ""))
+    audit = next((row for row in packet.get("runtime_audits", []) if row.get("Worker") == worker), None)
+    if not isinstance(audit, dict) or audit.get("Provider status") not in {"completed", "idle"}:
+        raise ValueError("worker_provider_observation_required:" + worker)
+    launch = trace.get("launch", {})
+    configured = bindings.get("bindings", {}).get(agent, {})
+    model, effort = launch.get("model"), launch.get("reasoning_effort")
+    if not isinstance(model, str) or not isinstance(effort, str):
+        raise ValueError("worker_launch_binding_unavailable:" + worker)
+    if (model, effort) != (configured.get("model"), configured.get("effort")):
+        raise ValueError("worker_launch_binding_mismatch:" + worker)
+    inputs = assignment.get("input_paths", [])
+    contract = bindings.get("worker_contracts", {}).get(agent, {})
+    summary = result.get("worker_result", {})
+    tools = []
+    for item in trace.get("tool_trace", []):
+        payload = item.get("payload", {}) if isinstance(item, dict) else {}
+        name = payload.get("name") or item.get("tool") if isinstance(item, dict) else None
+        if isinstance(name, str) and name not in tools:
+            tools.append(name)
+    return {
+        "Worker": worker,
+        "Role": agent,
+        "Assigned inputs": "; ".join(inputs) if inputs else "None recorded in typed assignment",
+        "Mode": str(packet.get("identity", {}).get("Lifecycle", "planning")),
+        "Depth": str(packet.get("identity", {}).get("Requested profile", "Unknown")),
+        "Skills": "Prepared role contract: " + Path(str(contract.get("contract", "Unknown"))).name,
+        "Tools": ", ".join(tools) if tools else "No tool operations recorded in current worker trace",
+        "Capacity": "Not exposed by provider",
+        "Configured model/effort": f"{configured.get('model')} / {configured.get('effort')}",
+        "Provider-observed model/effort": f"{model} / {effort}",
+        "Usage": "Not exposed by provider",
+        "Depends on": "Current-run inputs listed in the typed assignment",
+        "Outcome": summary.get("Outcome", "Unknown"),
+        "Confidence": summary.get("Confidence", "Unknown"),
+    }
+
+
+def _register_coordinator_worker(packet: dict, agent: str, result: dict, trace: dict, bindings: dict) -> None:
+    row = _coordinator_worker_row(packet, agent, result, trace, bindings)
+    rows = packet.setdefault("workers", [])
+    matches = [index for index, current in enumerate(rows) if current.get("Worker") == row["Worker"]]
+    if len(matches) > 1:
+        raise ValueError("coordinator_worker_ledger_duplicate:" + row["Worker"])
+    if matches:
+        current = rows[matches[0]]
+        if current.get("Role") != agent:
+            raise ValueError("coordinator_worker_ledger_conflict:" + row["Worker"])
+        # A validated follow-up can revise the accepted result for this role.
+        # Keep the ledger aligned with the latest accepted result; every dispatch
+        # remains independently represented in runtime_audits.
+        rows[matches[0]] = row
+    else:
+        rows.append(row)
 
 
 def _write_text(path: Path, value: str) -> None:
@@ -174,8 +263,8 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
     if errors:
         raise ValueError(";".join(errors))
     bindings = json.loads((root / "role_bindings.json").read_text())
-    workers = FEATURE_WORKERS if bindings.get("playbook") == "feature_delivery" else WORKERS
-    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"} or agent not in workers:
+    workers = _workers_for(bindings)
+    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery", "sentry_issue_remediation"} or agent not in workers:
         raise ValueError("analytical_binding_required")
     if agent in _pending_rejections(root):
         raise ValueError("worker_result_recovery_authorization_required:" + agent)
@@ -238,6 +327,8 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
         if not ledger or not Path(ledger).is_file():
             raise ValueError("worker_runtime_ledger_required:" + worker)
     packet = validated_result(packet, result, bindings, agent)
+    if trace_value is not None:
+        _register_coordinator_worker(packet, agent, result, trace_value, bindings)
     if output is not None:
         _write_text(canonical_output_path, output)
         _write_text(canonical_result_path, json.dumps(result, indent=2, ensure_ascii=False) + "\n")
@@ -260,7 +351,8 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path, required=True)
-    parser.add_argument("--agent", choices=tuple(WORKERS), required=True)
+    parser.add_argument("--agent", required=True,
+                        help="Prepared provider role from role_bindings.json")
     parser.add_argument("--trace", type=Path, help="Validate and register the completed worker trace atomically with its result")
     args = parser.parse_args()
     try:

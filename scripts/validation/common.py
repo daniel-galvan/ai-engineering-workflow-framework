@@ -185,6 +185,7 @@ WORKER_RUNTIME_GUARD = ROOT / "scripts" / "validate_worker_runtime.py"
 FINALIZE_WORK_RECORD = ROOT / "scripts" / "finalize_work_record.py"
 
 FINALIZE_SENTRY_PLANNING = ROOT / "scripts" / "finalize_sentry_planning.py"
+STAGE_DOCUMENTER_PACKET = ROOT / "scripts" / "stage_documenter_packet.py"
 
 NORMALIZE_FIX_DESIGN_RESULT = ROOT / "scripts" / "normalize_fix_design_result.py"
 

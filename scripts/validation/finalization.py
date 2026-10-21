@@ -10,6 +10,7 @@ from .common import (
     CODEX_AGENT_DIR,
     FINALIZATION_PACKET_TEMPLATE,
     FINALIZE_SENTRY_PLANNING,
+    STAGE_DOCUMENTER_PACKET,
     FINALIZE_WORK_RECORD,
     NORMALIZE_FIX_DESIGN_RESULT,
     NO_ACTIVE_HANDLES,
@@ -189,6 +190,8 @@ def validate_finalization_definitions() -> None:
         fail("scripts/run_preflight.py is missing")
     if not PREPARE_RUN.is_file():
         fail("scripts/prepare_run.py is missing")
+    if not STAGE_DOCUMENTER_PACKET.is_file():
+        fail("scripts/stage_documenter_packet.py is missing")
     if not WORKER_RUNTIME_GUARD.is_file():
         fail("scripts/validate_worker_runtime.py is missing")
     else:

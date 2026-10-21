@@ -209,6 +209,12 @@ and `Work item evidence refs`; inspect the associated work item, not only its ke
 
 The Documenter contract assigns both `implementation_plan.md` and `finalization_packet.json`. TechOps readiness comes
 from accepted planning checks and the Coordinator packet; it does not require Sentry disposition fields.
+Before activating Documenter, run the prepared `documenter_packet_stager` command in `role_bindings.json`. It checks
+that current-run results, runtime audits, and required planning gates agree, then writes the Coordinator-owned State,
+outcomes, profile, conformance, model/effort, and synchronization fields atomically. The analytical result merger
+registers each worker ledger row from its authenticated assignment and trace. Do not edit these packet rows by hand
+or ask Documenter to reconstruct them. Use `--state` only for the explicit Coordinator choice; the stager blocks if
+accepted evidence or fan-in is incomplete.
 
 Read existing fixtures before choosing a regression strategy. Include any seed, state, fresh-read, delayed-response or
 error support that the proposed test needs. Local regression work must not depend on unavailable deployed revisions

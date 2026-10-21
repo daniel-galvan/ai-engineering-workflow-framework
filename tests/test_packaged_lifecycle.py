@@ -10,6 +10,7 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
+from uuid import UUID
 
 from scripts.provider_runtime import related_run_status_projection_source
 
@@ -350,7 +351,7 @@ class PackagedLifecycle(unittest.TestCase):
                     self.assertEqual(emitted.encode(), response.read_bytes())
                     self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
 
-    def test_sentry_shipped_commands_publish_plan_and_indispensable_evidence_blocker(self):
+    def test_sentry_shipped_commands_publish_plan_blocker_and_complete_remediation(self):
         with tempfile.TemporaryDirectory() as directory:
             package = self.package(directory)
 
@@ -512,6 +513,330 @@ class PackagedLifecycle(unittest.TestCase):
                         closure = json.loads((root / "runtime_closure.json").read_text())
                         self.assertEqual({row["Provider handle"]: row["Provider status"] for row in closure["terminal_observations"]}[
                             "/root/failed_original"], "failed")
+                    if expected_state == "ready_for_implementation" and not recover:
+                        plan_before = (root / "implementation_plan.md").read_bytes()
+                        planning_packet = json.loads(Path(run["finalization_packet"]).read_text())
+                        planning_actions = planning_packet["actions"]
+                        planning_selection = planning_packet["playbook_selection"]
+                        remediation = json.loads(command("prepare_run.py", "--execution-repository", repository,
+                            "--work-item", "ITEM-1", "--playbook", "sentry_issue_remediation",
+                            "--input-manifest", inputs, "--continuation", "--remediation-reentry",
+                            "--approval-reference", "Synthetic explicit approval"))
+                        self.assertEqual(remediation["lifecycle"], "remediation")
+                        self.assertEqual(remediation["archived_prior_run"],
+                                         str(root / "runs" / packet["identity"]["Run ID"]))
+                        self.assertEqual((root / "implementation_plan.md").read_bytes(), plan_before)
+                        self.assertEqual(
+                            json.loads(Path(remediation["finalization_packet"]).read_text())["actions"], planning_actions)
+                        reentry_selection = json.loads(
+                            Path(remediation["finalization_packet"]).read_text())["playbook_selection"]
+                        for field in ("Primary evidence", "Primary goal", "Selected playbook", "Closest alternative", "Why this playbook"):
+                            self.assertEqual(reentry_selection[field], planning_selection[field], field)
+                        self.assertEqual(remediation["worker_contracts"]["standard_planning_finalization"]["owner"],
+                                         "Coordinator")
+                        self.assertTrue({"implementer", "reviewer", "tester"} <=
+                                        remediation["worker_contracts"].keys())
+                        activation_bundle = json.loads(
+                            Path(remediation["activation_packet_bundle"]["path"]).read_text())
+                        for role in ("implementer", "reviewer", "tester", "documenter"):
+                            with self.subTest(remediation_activation_contract=role):
+                                self.assertEqual(
+                                    activation_bundle["packets"][role]["worker_contract"],
+                                    remediation["worker_contracts"][role],
+                                )
+                        assignment = root / "remediation-implementer-assignment.json"
+                        assignment.write_text(json.dumps({"objective": "Implement the approved Sentry plan",
+                            "input_paths": [str(root / "implementation_plan.md"),
+                                            str(root / "normalized_evidence.md")]}))
+                        activation = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
+                            remediation["activation_packet_bundle"]["path"], "--expected-agent", "implementer",
+                            "--expected-bundle-sha256", remediation["activation_packet_bundle"]["sha256"],
+                            "--assignment", assignment, "--dispatch-file", root / "implementer-activation.txt"))
+                        self.assertEqual(activation["status"], "allowed")
+                        source_guard = command("validate_worker_runtime.py", "--before-source-change",
+                            remediation["finalization_packet"], "--implementer-handle", "/root/implement",
+                            "--provider-status", "running", expected=2)
+                        self.assertIn("remediation_not_activated", source_guard)
+
+                        remediation_start = datetime.fromisoformat(
+                            remediation["runtime_evidence"]["run_started_at"].replace("Z", "+00:00"))
+                        def remediation_event(offset, kind, **payload):
+                            return {"timestamp": (remediation_start + timedelta(seconds=offset)).isoformat(),
+                                    "type": kind, "payload": payload}
+
+                        live_handles = []
+                        live_threads = {}
+                        role_dispatches = {}
+                        for index, role in enumerate(("implementer", "reviewer", "tester"), 1):
+                            handle = "/root/" + {"implementer": "implement", "reviewer": "review",
+                                                "tester": "validate"}[role]
+                            assignment_path = root / ("remediation-" + role + "-assignment.json")
+                            assignment_path.write_text(json.dumps({"objective": "Complete the approved Sentry delivery role",
+                                "input_paths": [str(root / "implementation_plan.md")] }))
+                            dispatch_path = root / ("remediation-" + role + "-activation.txt")
+                            guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
+                                remediation["activation_packet_bundle"]["path"], "--expected-agent", role,
+                                "--expected-bundle-sha256", remediation["activation_packet_bundle"]["sha256"],
+                                "--assignment", assignment_path, "--dispatch-file", dispatch_path))
+                            thread = f"00000000-0000-0000-0000-{index + 10:012d}"
+                            rows.extend([
+                                remediation_event(index * 2, "response_item", type="function_call",
+                                    namespace="collaboration", name="spawn_agent", call_id="remediation-" + role,
+                                    arguments=json.dumps({"task_name": handle.rsplit("/", 1)[-1],
+                                        "message": guarded["activation_message"], **guarded["launch_arguments"]})),
+                                remediation_event(index * 2 + 1, "event_msg", item={"type": "SubAgentActivity",
+                                    "kind": "started", "agent_path": handle,
+                                    "agent_thread_id": thread}),
+                            ])
+                            live_handles.append(handle)
+                            live_threads[role] = thread
+                            role_dispatches[role] = (dispatch_path, guarded, index * 2)
+                        rows.extend([
+                            remediation_event(8, "response_item", type="function_call", namespace="collaboration",
+                                name="list_agents", call_id="remediation-inventory", arguments="{}"),
+                            remediation_event(9, "response_item", type="function_call_output",
+                                call_id="remediation-inventory", output=json.dumps({"agents": [
+                                    {"agent_name": handle, "agent_status": {"running": "Active"}}
+                                    for handle in live_handles]})),
+                        ])
+                        parent.write_text("\n".join(map(json.dumps, rows)) + "\n")
+                        collected = json.loads(command("worker_runtime_evidence.py", "--provider-session", parent,
+                            "--parent-thread-id", parent_id, "--started-at",
+                            remediation["runtime_evidence"]["run_started_at"], "--ledger",
+                            remediation["runtime_evidence"]["ledger"]))
+                        self.assertEqual(collected["profile_activation"]["status"], "activated")
+                        source_guard = json.loads(command("validate_worker_runtime.py", "--before-source-change",
+                            remediation["finalization_packet"], "--implementer-handle", "/root/implement",
+                            "--provider-status", "running"))
+                        self.assertEqual(source_guard["status"], "allowed")
+                        template = json.loads((package / "templates/finalization_packet.json").read_text())
+                        delivery = (
+                            ("implementer", "implement", "IM", "Implemented the approved Sentry plan."),
+                            ("reviewer", "review", "RV", "Approved the exact implementation candidate."),
+                            ("tester", "validate", "TE", "Focused regression passed for the exact candidate."),
+                        )
+                        child_sessions = []
+                        for agent, worker, namespace, narrative in delivery:
+                            role = agent
+                            dispatch_path, guarded, dispatch_offset = role_dispatches[role]
+                            evidence_id = f"E-{namespace}-001"
+                            summary = {key: "Synthetic accepted Sentry delivery result" for key in
+                                       template["worker_results"][0]}
+                            summary.update({"Worker": worker, "Outcome": "complete",
+                                            "Evidence / claim refs": evidence_id})
+                            evidence = {key: "Synthetic Sentry delivery evidence" for key in template["evidence"][0]}
+                            evidence["Evidence ID"] = evidence_id
+                            claim = {key: "Synthetic Sentry delivery claim" for key in template["claims"][0]}
+                            claim.update({"Claim ID": f"CL-{namespace}-001", "Claim": narrative,
+                                "Evidence refs": evidence_id, "Confidence": "High",
+                                "Uncertainty": "Synthetic evidence exercises the accepted delivery contract.",
+                                "Status": "Supported"})
+                            result = {"run_id": remediation["run_id"], "worker_result": summary,
+                                      "evidence": [evidence], "claims": [claim], "decisions": [], "actions": []}
+                            binding = json.loads(Path(remediation["activation_packet_bundle"]["path"]).read_text())[
+                                "packets"][agent]
+                            child = root / (worker + "-response.jsonl")
+                            read = 'await tools.exec_command(' + json.dumps({"cmd": "cat " + str(dispatch_path)}) + ')'
+                            child.write_text("\n".join(json.dumps(item) for item in [
+                                remediation_event(0, "session_meta", id=live_threads[agent]),
+                                remediation_event(dispatch_offset + 2, "response_item", type="custom_tool_call",
+                                    call_id="binding-read", name="exec", input=read),
+                                remediation_event(dispatch_offset + 3, "response_item", type="custom_tool_call_output",
+                                    call_id="binding-read", output=dispatch_path.read_text()),
+                                remediation_event(dispatch_offset + 3.5, "turn_context", turn_id=str(UUID(int=404)),
+                                    model=binding["model"], effort=binding["effort"]),
+                                remediation_event(dispatch_offset + 4, "response_item", type="message", role="assistant",
+                                    phase="final_answer", content=[{"type": "output_text", "text": json.dumps({
+                                        "output": narrative, "result": result})}]),
+                            ]) + "\n")
+                            child_sessions.append((agent, worker, child))
+                        for index, (agent, worker, child) in enumerate(child_sessions, 1):
+                            rows.append(remediation_event(10 + index, "event_msg", item={
+                                "type": "SubAgentActivity", "kind": "completed",
+                                "agent_path": "/root/" + worker}))
+                        rows.extend([
+                            remediation_event(99, "response_item", type="function_call", namespace="collaboration",
+                                name="list_agents", call_id="remediation-terminal-inventory", arguments="{}"),
+                            remediation_event(100, "response_item", type="function_call_output",
+                                call_id="remediation-terminal-inventory", output=json.dumps({"agents": [
+                                    {"agent_name": handle, "agent_status": {"completed": "Done"}}
+                                    for handle in [*live_handles, "/root/evidence_topology", "/root/fix_design"]]})),
+                        ])
+                        parent.write_text("\n".join(map(json.dumps, rows)) + "\n")
+                        for agent, worker, child in child_sessions:
+                            trace = root / (worker + "-trace.json")
+                            command("worker_runtime_evidence.py", "--provider-session", parent,
+                                "--parent-thread-id", parent_id, "--started-at",
+                                remediation["runtime_evidence"]["run_started_at"], "--ledger",
+                                remediation["runtime_evidence"]["ledger"], "--worker-session", child,
+                                "--agent", agent, "--trace", trace)
+                            merged = subprocess.run([sys.executable, str(package / "scripts/merge_techops_result.py"),
+                                "--packet", remediation["finalization_packet"], "--agent", agent,
+                                "--trace", trace],
+                                cwd=package, capture_output=True, text=True, timeout=60)
+                            self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+                        staged = json.loads(command("stage_documenter_packet.py", "--packet",
+                            remediation["finalization_packet"], "--coordinator-model-effort",
+                            "Not exposed / Not exposed", "--prompt-conformance", "pass",
+                            "--engineering-outcome", "solved"))
+                        self.assertEqual(staged["status"], "staged")
+                        self.assertEqual(staged["state"], "handoff")
+                        remediation_bindings = json.loads((root / "role_bindings.json").read_text())
+                        documenter_assignment = root / "remediation-documenter-assignment.json"
+                        documenter_assignment.write_text(json.dumps({
+                            "objective": "Complete the handoff from accepted delivery results",
+                            "input_paths": [str(root / "finalization_packet.json"), str(root / "implementation_plan.md")],
+                        }))
+                        documenter_dispatch = root / "remediation-documenter-activation.txt"
+                        documenter_activation = json.loads(command("validate_worker_runtime.py",
+                            "--activation-packet-bundle", remediation["activation_packet_bundle"]["path"],
+                            "--expected-agent", "documenter", "--expected-bundle-sha256",
+                            remediation["activation_packet_bundle"]["sha256"], "--assignment", documenter_assignment,
+                            "--dispatch-file", documenter_dispatch))
+                        self.assertEqual(documenter_activation["status"], "allowed")
+                        documenter_handle = "/root/documenter"
+                        documenter_thread = "00000000-0000-0000-0000-000000000040"
+                        rows.extend([
+                            remediation_event(110, "response_item", type="function_call", namespace="collaboration",
+                                name="spawn_agent", call_id="remediation-documenter",
+                                arguments=json.dumps({"task_name": "documenter",
+                                    "message": documenter_activation["activation_message"],
+                                    **documenter_activation["launch_arguments"]})),
+                            remediation_event(111, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                                "agent_path": documenter_handle, "agent_thread_id": documenter_thread}),
+                        ])
+                        template = json.loads((package / "templates/finalization_packet.json").read_text())
+                        packet = json.loads(Path(remediation["finalization_packet"]).read_text())
+                        documenter_binding = remediation_bindings["bindings"]["documenter"]
+                        documenter_observed = ("Not exposed; explicitly launched with "
+                            + documenter_binding["model"] + " / " + documenter_binding["effort"])
+                        documenter_evidence = {key: "Synthetic Documenter handoff evidence"
+                            for key in template["evidence"][0]}
+                        documenter_evidence.update({"Evidence ID": "E-HD-001",
+                            "Source": "Current-run handoff artifacts",
+                            "Summary": "Documenter persisted the accepted Sentry remediation handoff.",
+                            "Confidence": "High", "Uncertainty": "No additional handoff uncertainty.",
+                            "Status": "Verified"})
+                        documenter_worker = {key: "Synthetic Documenter execution record"
+                            for key in template["workers"][0]}
+                        documenter_worker.update({"Worker": "handoff", "Role": "Documenter",
+                            "Assigned inputs": "Accepted implement, review, and validation results",
+                            "Mode": "Delegated", "Depth": "Standard", "Skills": "work_record_maintenance",
+                            "Tools": "work_record_read, work_record_write, artifact_write",
+                            "Configured model/effort": documenter_binding["model"] + " / " + documenter_binding["effort"],
+                            "Provider-observed model/effort": documenter_observed, "Outcome": "complete",
+                            "Confidence": "High"})
+                        documenter_result = {key: "Synthetic Documenter handoff result"
+                            for key in template["worker_results"][0]}
+                        documenter_result.update({"Worker": "handoff", "Outcome": "complete",
+                            "Confidence": "High", "Unique contribution": "Persisted the accepted handoff and linked artifacts.",
+                            "Evidence / claim refs": "E-HD-001", "Actual model/effort": documenter_observed})
+                        documenter_claim = {key: "Synthetic Documenter claim" for key in template["claims"][0]}
+                        documenter_claim.update({"Claim ID": "CL-HD-001",
+                            "Claim": "The handoff links the accepted implementation and validation artifacts.",
+                            "Evidence refs": "E-HD-001", "Confidence": "High",
+                            "Uncertainty": "Synthetic handoff evidence is limited to this packaged lifecycle test.",
+                            "Status": "Supported"})
+                        documenter_decision = {key: "Synthetic Documenter decision" for key in template["decisions"][0]}
+                        documenter_decision.update({"Decision ID": "DE-HD-001",
+                            "Decision": "Accept the current-run implementation, review, validation, and handoff evidence.",
+                            "Claim refs": "; ".join([*(f"CL-{namespace}-001" for _, _, namespace, _ in delivery),
+                                                       "CL-HD-001"]),
+                            "Owner": "Coordinator", "Status": "Accepted"})
+                        documenter_action = {key: "Synthetic Documenter action" for key in template["actions"][0]}
+                        documenter_action.update({"Action ID": "A-HD-001",
+                            "Action": "Complete the documented release checks.", "Decision ref": "DE-HD-001",
+                            "Owner": "Service owner", "Status": "Planned"})
+                        packet["evidence"].append(documenter_evidence)
+                        packet["claims"].append(documenter_claim)
+                        packet["decisions"].append(documenter_decision)
+                        packet["actions"].append(documenter_action)
+                        packet["workers"].append(documenter_worker)
+                        packet["worker_results"].append(documenter_result)
+                        packet["handoff"].update({
+                            "workflow_result": "The approved Sentry correction passed focused validation and is ready for handoff.",
+                            "implementation_plan": str(root / "implementation_plan.md"),
+                            "established": ["The accepted Sentry plan was implemented and validated."],
+                            "best_current_explanations": [],
+                            "next_action": {"owner": "Service owner", "action": "Complete the documented release checks.",
+                                "complete_when": "The approved change is released and monitored."},
+                            "artifacts": [str(root / "implementation_plan.md")],
+                            "execution": "Standard remediation completed; provider closure follows pre-release.",
+                            "provenance": "Framework revision " + preflight["framework_revision"]
+                                + "; sentry_issue_remediation"})
+                        Path(remediation["finalization_packet"]).write_text(json.dumps(packet, indent=2) + "\n")
+                        documenter_child = root / "remediation-documenter-response.jsonl"
+                        documenter_child.write_text("\n".join(json.dumps(item) for item in [
+                            remediation_event(0, "session_meta", id=documenter_thread),
+                            remediation_event(112, "response_item", type="function_call", name="exec_command",
+                                call_id="documenter-binding-read", arguments=json.dumps({"cmd": "cat " + str(documenter_dispatch)})),
+                            remediation_event(113, "response_item", type="function_call_output",
+                                call_id="documenter-binding-read", output=documenter_dispatch.read_text()),
+                            remediation_event(114, "turn_context", turn_id=str(UUID(int=405)),
+                                model=documenter_binding["model"], effort=documenter_binding["effort"]),
+                            remediation_event(116, "response_item", type="message", role="assistant",
+                                phase="final_answer", content=[{"type": "output_text",
+                                    "text": "The assigned handoff fields and artifacts are complete."}]),
+                        ]) + "\n")
+                        rows.extend([
+                            remediation_event(121, "event_msg", item={"type": "SubAgentActivity", "kind": "completed",
+                                "agent_path": documenter_handle}),
+                            remediation_event(130, "response_item", type="function_call", namespace="collaboration",
+                                name="list_agents", call_id="remediation-documenter-inventory", arguments="{}"),
+                            remediation_event(131, "response_item", type="function_call_output",
+                                call_id="remediation-documenter-inventory", output=json.dumps({"agents": [
+                                    {"agent_name": handle, "agent_status": {"completed": "Done"}}
+                                    for handle in [*live_handles, documenter_handle,
+                                        "/root/evidence_topology", "/root/fix_design"]]})),
+                        ])
+                        parent.write_text("\n".join(map(json.dumps, rows)) + "\n")
+                        documenter_trace = root / "documenter-trace.json"
+                        command("worker_runtime_evidence.py", "--provider-session", parent,
+                            "--parent-thread-id", parent_id, "--started-at",
+                            remediation["runtime_evidence"]["run_started_at"], "--ledger",
+                            remediation["runtime_evidence"]["ledger"], "--worker-session", documenter_child,
+                            "--agent", "documenter", "--trace", documenter_trace)
+                        packet = json.loads(Path(remediation["finalization_packet"]).read_text())
+                        self.assertIn("handoff", {row["Worker"] for row in packet["worker_results"]})
+                        self.assertIn("handoff", {row["Worker"] for row in packet["runtime_audits"]})
+
+                        closure = root / "runtime_closure.json"
+                        record = root / "work_record.md"
+                        command("worker_runtime_evidence.py", "--provider-session", parent,
+                            "--parent-thread-id", parent_id, "--started-at",
+                            remediation["runtime_evidence"]["run_started_at"], "--ledger",
+                            remediation["runtime_evidence"]["ledger"], "--pending-closure", closure)
+                        finalizer_identity = ("--coordinator-model-effort", "Not exposed / Not exposed",
+                            "--framework-revision", preflight["framework_revision"], "--framework-status", "clean")
+                        command("finalize_work_record.py", "--packet", remediation["finalization_packet"],
+                            "--closure", closure, "--record", record, "--check-packet", *finalizer_identity)
+                        command("finalize_work_record.py", "--packet", remediation["finalization_packet"],
+                            "--closure", closure, "--record", record, "--pre-release", *finalizer_identity)
+
+                        rows.extend([
+                            remediation_event(299, "response_item", type="function_call", namespace="collaboration",
+                                name="list_agents", call_id="remediation-post-prerelease-inventory", arguments="{}"),
+                            remediation_event(300, "response_item", type="function_call_output",
+                                call_id="remediation-post-prerelease-inventory", output=json.dumps({"agents": [
+                                    {"agent_name": handle, "agent_status": {"completed": "Done"}}
+                                    for handle in [*live_handles, documenter_handle,
+                                        "/root/evidence_topology", "/root/fix_design"]]})),
+                        ])
+                        parent.write_text("\n".join(map(json.dumps, rows)) + "\n")
+                        command("worker_runtime_evidence.py", "--provider-session", parent,
+                            "--parent-thread-id", parent_id, "--started-at",
+                            remediation["runtime_evidence"]["run_started_at"], "--ledger",
+                            remediation["runtime_evidence"]["ledger"], "--closure", closure)
+                        command("finalize_work_record.py", "--packet", remediation["finalization_packet"],
+                            "--closure", closure, "--record", record, *finalizer_identity)
+                        response = root / "handoff_response.md"
+                        emitted = command("finalize_work_record.py", "--packet",
+                            remediation["finalization_packet"], "--publish-response", response)
+                        self.assertEqual(emitted.encode(), response.read_bytes())
+                        delivery_receipt = json.loads((root / "handoff_delivery.json").read_text())
+                        self.assertEqual(delivery_receipt["status"], "verified")
+                        self.assertEqual(delivery_receipt["scope"],
+                            "prepared response bytes; actual chat delivery is not observable by this CLI")
 
     def test_clean_package_preflight_preparation_audits_and_terminal_publication(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -549,6 +874,6 @@ class PackagedLifecycle(unittest.TestCase):
                 ("scripts/finalize_work_record.py", "--self-test"),
             ):
                 result = subprocess.run([sys.executable, *args], cwd=package, capture_output=True,
-                                        text=True, timeout=60)
+                                        text=True, timeout=180)
                 self.assertEqual(result.returncode, 0, " ".join(args) + "\n" +
                                  (result.stdout + result.stderr)[-4000:])

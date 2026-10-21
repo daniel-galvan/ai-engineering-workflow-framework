@@ -189,6 +189,7 @@ try:
         _technical_spike_report_artifact_errors,
         _technical_spike_worker_contract_errors,
         _techops_planning_contract_errors,
+        _techops_remediation_contract_errors,
         _worker_runtime_audit_errors as _worker_runtime_audit_errors,
         feature_delivery_pre_handoff_errors as feature_delivery_pre_handoff_errors,
     )
@@ -210,6 +211,7 @@ except ModuleNotFoundError:
         _technical_spike_report_artifact_errors,
         _technical_spike_worker_contract_errors,
         _techops_planning_contract_errors,
+        _techops_remediation_contract_errors,
         _worker_runtime_audit_errors as _worker_runtime_audit_errors,
         feature_delivery_pre_handoff_errors as feature_delivery_pre_handoff_errors,
     )
@@ -718,11 +720,20 @@ def _validate_pre_release_state(packet: dict[str, object]) -> None:
         if identity.get("Workflow outcome") not in {"completed", "blocked"}:
             raise ValueError("TechOps planning Workflow outcome must be completed or blocked; received="
                              + str(identity.get("Workflow outcome")))
+    if "techops_issue_remediation" in playbook and identity.get("Lifecycle") == "remediation":
+        if identity.get("State") not in {"handoff", "blocked"}:
+            raise ValueError("TechOps remediation pre-release must keep State handoff or blocked until finalization")
+        expected = "blocked" if identity.get("State") == "blocked" else "in_progress"
+        if identity.get("Workflow outcome") != expected:
+            raise ValueError("TechOps remediation Workflow outcome must be " + expected)
     if "technical_spike" in playbook and str(identity.get("State", "")).strip().lower() == "completed":
         raise ValueError("Technical Spike pre-release packet must keep State handoff until finalizer succeeds")
     if ("feature_delivery" in playbook and identity.get("Lifecycle") == "remediation"
             and identity.get("State") == "completed"):
         raise ValueError("Feature Delivery remediation pre-release must keep State handoff until finalizer succeeds")
+    if ("sentry_issue_remediation" in playbook and identity.get("Lifecycle") == "remediation"
+            and identity.get("State") == "completed"):
+        raise ValueError("Sentry remediation pre-release must keep State handoff until finalizer succeeds")
 
 
 def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, object]]) -> None:
@@ -762,6 +773,14 @@ def _reconcile_runtime_state(packet: dict[str, object], closure: list[dict[str, 
         if any("context-unverified" in str(row.get("Uncertainties / blockers", ""))
                for row in packet.get("worker_results", [])):
             raise ValueError("feature_delivery_context_unverified_prevents_completion")
+        identity.update({"State": "completed", "Workflow outcome": "completed"})
+    if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem == "sentry_issue_remediation"
+            and identity.get("Lifecycle") == "remediation" and identity.get("State") == "handoff"
+            and identity.get("Engineering outcome") in {"solved", "partially_solved"}):
+        identity.update({"State": "completed", "Workflow outcome": "completed"})
+    if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem == "techops_issue_remediation"
+            and identity.get("Lifecycle") == "remediation" and identity.get("State") == "handoff"
+            and identity.get("Engineering outcome") in {"solved", "partially_solved"}):
         identity.update({"State": "completed", "Workflow outcome": "completed"})
     runtime_status = "Released" if all(
         str(row.get("Runtime status", "")).lower() == "released" for row in closure
@@ -1101,6 +1120,12 @@ def _prepare_blocked_runtime_snapshot(
     )
     remediation = (playbook == "feature_delivery" and identity.get("Lifecycle") == "remediation"
                    and identity["State"] in {"handoff", "blocked", "awaiting_input"})
+    sentry_remediation = (playbook == "sentry_issue_remediation"
+                          and identity.get("Lifecycle") == "remediation"
+                          and identity["State"] in {"handoff", "blocked"})
+    techops_remediation = (playbook == "techops_issue_remediation"
+                           and identity.get("Lifecycle") == "remediation"
+                           and identity["State"] in {"handoff", "blocked"})
     techops_workers = {"issue-evidence", "failure-path", "fix-design", "handoff"}
     if identity.get("Executed profile") == "deep":
         techops_workers.update({"repository-integration", "planning-review"})
@@ -1117,7 +1142,7 @@ def _prepare_blocked_runtime_snapshot(
         and (packet_path.parent / "implementation_plan.md").is_file()
     )
     if not ((playbook == "technical_spike" and identity["State"] == "handoff")
-            or assessment or planning or remediation or techops_planning):
+            or assessment or planning or remediation or sentry_remediation or techops_remediation or techops_planning):
         raise ValueError("blocked runtime snapshot requires a supported planning or remediation packet")
     rows = closure["runtime_closure"]
     if not rows or any(
@@ -1131,7 +1156,20 @@ def _prepare_blocked_runtime_snapshot(
             "blocked runtime snapshot requires a Coordinator-owned receipt with Runtime status Blocked, "
             "worker_runtime_release_unavailable in Closure evidence or blocker, and nonzero or unknown active handles"
         )
-    if assessment or planning or remediation:
+    if sentry_remediation:
+        try:
+            from stage_documenter_packet import sentry_remediation_errors
+        except ModuleNotFoundError:
+            from scripts.stage_documenter_packet import sentry_remediation_errors
+        try:
+            bindings = json.loads((packet_path.parent / "role_bindings.json").read_text())
+            errors = sentry_remediation_errors(packet, packet_path, bindings,
+                                              pre_handoff=True, require_documenter=True)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            errors = ["sentry_remediation_blocked_snapshot_invalid:" + str(error)]
+    elif techops_remediation:
+        errors = _techops_remediation_contract_errors(packet, packet_path, pre_handoff=True)
+    elif assessment or planning or remediation:
         errors = _feature_delivery_packet_contract_errors(packet)
         errors.extend(_feature_delivery_asset_contract_errors(packet))
     elif techops_planning:
@@ -1146,7 +1184,7 @@ def _prepare_blocked_runtime_snapshot(
         errors.append(str(error))
     if errors:
         raise ValueError("\n".join(dict.fromkeys(errors)))
-    if assessment or planning or remediation or techops_planning:
+    if assessment or planning or remediation or sentry_remediation or techops_remediation or techops_planning:
         if assessment:
             expected_results = FEATURE_ASSESSMENT_DISPOSITIONS[identity["State"]]
             if str(packet["handoff"]["workflow_result"]).strip() not in expected_results:
@@ -1183,9 +1221,11 @@ def _blocked_snapshot_label(packet: dict[str, object]) -> str:
     if name == "technical_spike":
         return "Technical Spike"
     if name == "techops_issue_remediation":
-        return "TechOps planning"
+        return "TechOps remediation" if packet["identity"].get("Lifecycle") == "remediation" else "TechOps planning"
     goal = str(packet["playbook_selection"]["Primary goal"]).strip().lower()
     if packet["identity"].get("Lifecycle") == "remediation":
+        if name == "sentry_issue_remediation":
+            return "Sentry remediation"
         return "Feature Delivery remediation"
     return "Feature Delivery assessment" if goal == "specification assessment" else "Feature Delivery implementation planning"
 
@@ -1251,6 +1291,22 @@ def finalize(
         errors.extend(_feature_assessment_reference_errors(packet))
         errors.extend(_techops_planning_contract_errors(packet, packet_path))
         errors.extend(_technical_spike_report_errors(packet_path, packet, budget_status))
+        identity = packet.get("identity", {})
+        if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+                == "techops_issue_remediation" and identity.get("Lifecycle") == "remediation"):
+            errors.extend(_techops_remediation_contract_errors(packet, packet_path))
+        if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+                == "sentry_issue_remediation" and identity.get("Lifecycle") == "remediation"):
+            try:
+                from stage_documenter_packet import sentry_remediation_errors
+            except ModuleNotFoundError:
+                from scripts.stage_documenter_packet import sentry_remediation_errors
+            try:
+                bindings = json.loads((packet_path.parent / "role_bindings.json").read_text())
+                errors.extend(sentry_remediation_errors(packet, packet_path, bindings,
+                                                        pre_handoff=True, require_documenter=True))
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                errors.append("sentry_remediation_finalization_invalid:" + str(error))
         try:
             _validate_handoff(packet)
         except ValueError as error:
@@ -1262,8 +1318,14 @@ def finalize(
                                 for handle in re.split(r",|;", str(row.get("Completed worker handles", "")))]
             if terminal_handles:
                 errors.extend(terminal_observation_errors(closure.get("terminal_observations"), terminal_handles, require_completed=False))
-            # Both workflows use the same two-phase packet protocol and native status reads.
-            if terminal_handles and Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem in {"techops_issue_remediation", "feature_delivery"}:
+            # These workflows use the same two-phase packet protocol and native status reads.
+            playbook_name = Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
+            uses_two_phase_release = (
+                playbook_name in {"techops_issue_remediation", "feature_delivery"}
+                or (playbook_name == "sentry_issue_remediation"
+                    and packet["identity"].get("Lifecycle") == "remediation")
+            )
+            if terminal_handles and uses_two_phase_release:
                 try:
                     pre_release_receipt = json.loads((packet_path.parent / "pre_release_check.json").read_text())
                     if not isinstance(pre_release_receipt, dict):
@@ -1290,6 +1352,17 @@ def finalize(
             if (packet["identity"].get("Lifecycle") == "remediation"
                     and packet["identity"].get("State") == "completed"):
                 errors.extend(_feature_delivery_packet_contract_errors(packet))
+                if Path(str(packet["identity"].get("Playbook / version", "")).split(" / ", 1)[0]).stem == "sentry_issue_remediation":
+                    try:
+                        from stage_documenter_packet import sentry_remediation_errors
+                    except ModuleNotFoundError:
+                        from scripts.stage_documenter_packet import sentry_remediation_errors
+                    try:
+                        bindings = json.loads((packet_path.parent / "role_bindings.json").read_text())
+                        errors.extend(sentry_remediation_errors(packet, packet_path, bindings,
+                                                                require_documenter=True))
+                    except (OSError, ValueError, KeyError, TypeError) as error:
+                        errors.append("sentry_remediation_finalization_invalid:" + str(error))
         except (KeyError, TypeError, ValueError) as error:
             errors.append(str(error))
         if not pre_release and not errors:
@@ -1617,7 +1690,10 @@ def collect_failure_closure(packet_path: Path, provider_session: Path | None = N
     if not bindings_path.is_file():
         return "unverified"
     bindings = json.loads(bindings_path.read_text())
-    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"}:
+    supported = bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}
+    supported = supported or (bindings.get("playbook") == "sentry_issue_remediation"
+                              and bindings.get("lifecycle") == "remediation")
+    if not supported:
         return "unverified"
     ledger_path = Path(bindings.get("runtime_evidence", {}).get("ledger", root / "runtime_dispatches.json"))
     try:

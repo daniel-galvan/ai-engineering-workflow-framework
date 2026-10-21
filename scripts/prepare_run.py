@@ -388,6 +388,10 @@ def _initial_packet(
     manifest_path: Path,
 ) -> dict[str, object]:
     packet = json.loads((ROOT / "templates" / "finalization_packet.json").read_text())
+    # These arrays describe events that happened during the run; template schema
+    # placeholders are not evidence and must not survive into a fresh packet.
+    for field in ("workers", "worker_results", "synchronization"):
+        packet[field] = []
     playbook_path = ROOT / "playbooks" / f"{playbook}.md"
     prompt_path = ROOT / "templates" / PROMPT_TEMPLATES[playbook]
     plugin = json.loads(PLUGIN_MANIFEST.read_text())
@@ -517,8 +521,9 @@ def _write_activation_packets(
         "sentry_solution_architect": worker_contracts.get("fix_design"),
         "current_state_investigator": worker_contracts.get("feature_asset_inventory"),
     }
-    if (manifest.get("playbook") == "techops_issue_remediation"
-            or manifest.get("playbook") == "feature_delivery"):
+    if (manifest.get("playbook") in {"techops_issue_remediation", "feature_delivery"}
+            or (manifest.get("playbook") == "sentry_issue_remediation"
+                and manifest.get("lifecycle") == "remediation")):
         contract_by_agent.update(worker_contracts)
     packets: dict[str, dict[str, object]] = {}
     for agent, binding in manifest["bindings"].items():
@@ -645,6 +650,7 @@ def _prepare_run_inputs(
 
 def _reentry_source(
     artifact_root: Path, approval_reference: str | None, *, planning_recovery: bool = False,
+    expected_playbook: str = "feature_delivery",
 ) -> dict[str, object]:
     """Check re-entry prerequisites before modifying any current-run artifact."""
     if (not approval_reference or approval_reference.strip().lower() in {"none", "unknown", "not provided"}
@@ -653,13 +659,22 @@ def _reentry_source(
     if not planning_recovery:
         if not (artifact_root / "implementation_plan.md").is_file():
             raise ValueError("remediation_approved_plan_unavailable")
-        try:
-            from review_evidence import applicability_errors
-        except ModuleNotFoundError:
-            from scripts.review_evidence import applicability_errors
-        plan_errors = applicability_errors((artifact_root / "implementation_plan.md").read_text())
-        if plan_errors:
-            raise ValueError("remediation_plan_evidence_required:" + ";".join(plan_errors))
+        if expected_playbook in {"feature_delivery", "techops_issue_remediation"}:
+            try:
+                from review_evidence import applicability_errors
+            except ModuleNotFoundError:
+                from scripts.review_evidence import applicability_errors
+            plan_errors = applicability_errors((artifact_root / "implementation_plan.md").read_text())
+            if plan_errors:
+                raise ValueError("remediation_plan_evidence_required:" + ";".join(plan_errors))
+        elif expected_playbook == "sentry_issue_remediation":
+            try:
+                from validation.api import checked
+                from validation.finalization import validate_sentry_artifacts
+            except ModuleNotFoundError:
+                from scripts.validation.api import checked
+                from scripts.validation.finalization import validate_sentry_artifacts
+            checked(validate_sentry_artifacts, artifact_root)
     try:
         prior = json.loads((artifact_root / "finalization_packet.json").read_text())
         closure = json.loads((artifact_root / "runtime_closure.json").read_text())
@@ -669,7 +684,8 @@ def _reentry_source(
         except ModuleNotFoundError:
             from scripts.planning_contracts import _runtime_closed, _planning_runtime_closure_errors
             from scripts.runtime_checks import terminal_observation_errors
-        if Path(str(prior["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem != "feature_delivery":
+        prior_playbook = Path(str(prior["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
+        if prior_playbook != expected_playbook:
             raise ValueError("remediation_reentry_playbook_mismatch")
         if not planning_recovery and prior["identity"].get("State") != "ready_for_implementation":
             raise ValueError("remediation_requires_ready_plan")
@@ -707,6 +723,50 @@ def _reentry_source(
         return prior
     except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:
         raise ValueError(f"remediation_reentry_artifact_invalid:{error}") from error
+
+
+def _configure_remediation_result_contracts(artifact_root: Path, worker_contracts: dict[str, object]) -> None:
+    """Give delivery workers the same typed, Coordinator-merged result contract across playbooks."""
+    try:
+        from merge_techops_result import FEATURE_REMEDIATION_WORKERS
+    except ModuleNotFoundError:
+        from scripts.merge_techops_result import FEATURE_REMEDIATION_WORKERS
+    template = json.loads((ROOT / "templates" / "finalization_packet.json").read_text())
+    result_fields = {name: list(template[name][0]) for name in
+                     ("worker_results", "evidence", "claims", "decisions", "actions")}
+    output_names = {"implementer": "implement_result.md", "reviewer": "code_review.md",
+                    "tester": "validation_report.md"}
+    for agent, (worker, namespace) in FEATURE_REMEDIATION_WORKERS.items():
+        contract = worker_contracts[agent]
+        output_path = artifact_root / output_names[agent]
+        if agent in {"reviewer", "tester"}:
+            contract["instructions"] += (
+                f" Return the complete {output_path.name} contents in the JSON final answer's output field, "
+                "using the prepared framework template and all required sections. Do not write the file "
+                "directly; the Coordinator merger publishes that field to this prepared path."
+            )
+        contract.update({
+            "worker": worker,
+            "id_namespace": namespace,
+            "output": str(output_path),
+            "result": str(artifact_root / f"{worker}_result.json"),
+            "result_hash_required": True,
+            "result_response": "strict_json_final_answer",
+            "result_fields": result_fields,
+            "result_instructions": (
+                "Do not edit Coordinator-owned packet rows or write assigned output files directly. "
+                "Before ending, return exactly one strict JSON final answer with output (the assigned "
+                "worker artifact contents) and result (the current run_id, one worker_result object with "
+                "the exact worker_results fields, and evidence/claims/decisions/actions arrays using "
+                "result_fields). Every value must be a string. Set Worker to exactly " + worker +
+                "; Outcome is complete, failed, or blocked; use only IDs in the " + namespace +
+                " namespace for rows you own. Reference upstream IDs unchanged. The Coordinator runs the "
+                "prepared result merger with your provider role and current trace; it verifies and registers "
+                "your accepted result and execution ledger row before activating the next role. A missing "
+                "Coordinator row is repaired by rerunning that command with the same trace, not by editing "
+                "the packet or redispatching you."
+            ),
+        })
 
 
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:
@@ -906,8 +966,9 @@ def prepare_run(
     resolved_execution_repository, source_checkout = resolve_repository_paths(execution_repository)
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
-    if remediation_reentry and (not continuation or playbook != "feature_delivery"):
-        raise ValueError("remediation_reentry_requires_feature_delivery_continuation")
+    if remediation_reentry and (not continuation or playbook not in {
+            "feature_delivery", "sentry_issue_remediation", "techops_issue_remediation"}):
+        raise ValueError("remediation_reentry_requires_supported_playbook_continuation")
     if planning_recovery and (not continuation or playbook != "feature_delivery" or remediation_reentry):
         raise ValueError("planning_recovery_requires_feature_delivery_continuation")
     if approval_reference and not (remediation_reentry or planning_recovery):
@@ -929,7 +990,8 @@ def prepare_run(
         existing = resolved_execution_repository / ".thoughts" / work_item / "finalization_packet.json"
         if not continuation or not existing.is_file() or json.loads(existing.read_text())["identity"]["Lifecycle"] != "remediation":
             raise ValueError("feature_implementation_requires_remediation_reentry")
-    if remediation_reentry and (workflow_objective, requested_outcome) != ("feature_implementation", "feature_delivery"):
+    if (remediation_reentry and playbook == "feature_delivery"
+            and (workflow_objective, requested_outcome) != ("feature_implementation", "feature_delivery")):
         raise ValueError("run_goal_conflict:remediation_requires_feature_implementation_and_feature_delivery")
     if playbook == "technical_spike":
         defaults = _playbook_defaults(playbook)
@@ -984,6 +1046,8 @@ def prepare_run(
     if resolved_lifecycle not in {"planning", "remediation"} or (
             playbook == "technical_spike" and resolved_lifecycle != "planning"):
         raise ValueError("prepared_lifecycle_unsupported:" + str(resolved_lifecycle))
+    if playbook in {"feature_delivery", "techops_issue_remediation"} and resolved_lifecycle == "remediation":
+        repository_row["Repository role"] = "Execution repository"
     if lifecycle is not None and lifecycle != resolved_lifecycle:
         raise ValueError("lifecycle_conflict:expected=" + resolved_lifecycle + ";received=" + lifecycle
                          + ";remediation requires approved reentry")
@@ -1040,7 +1104,8 @@ def prepare_run(
                 raise ValueError("continuation_parent_context_nonconformant:" + ";".join(previous_context["errors"]))
     if playbook == "sentry_issue_remediation" and validated_supplied:
         retain_source_releases(validated_supplied, provider_session)
-    prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery)
+    prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery,
+                             expected_playbook=playbook)
              if remediation_reentry or planning_recovery else None)
     if continuation and not prior:
         existing_packet = artifact_root / "finalization_packet.json"
@@ -1151,6 +1216,21 @@ def prepare_run(
                 "owner": "Coordinator",
             },
         }
+        if manifest["lifecycle"] == "remediation":
+            for agent in ("implementer", "reviewer", "tester", "documenter"):
+                manifest["worker_contracts"][agent] = {
+                    "implementation_plan": str(artifact_root / "implementation_plan.md"),
+                    "before_source_change_guard": str(WORKER_RUNTIME_GUARD),
+                    "instructions": (
+                        "Remain in Sentry remediation. Execute only the approved Sentry implementation plan and "
+                        "record any material discrepancy before changing scope. The implementer must run the "
+                        "runtime guard --before-source-change finalization_packet --implementer-handle the "
+                        "provider-returned handle --provider-status the freshly observed status before each "
+                        "implementation slice. Reviewer and Tester independently inspect the exact candidate."
+                    ),
+                }
+            _configure_remediation_result_contracts(artifact_root, manifest["worker_contracts"])
+            manifest["worker_result_merger"] = str(ROOT / "scripts" / "merge_techops_result.py")
     if playbook == "feature_delivery":
         manifest["worker_contracts"] = {
             "feature_asset_inventory": {
@@ -1171,6 +1251,7 @@ def prepare_run(
                         "Review and validation stay independent and cover the exact candidate and every criterion."
                     ),
                 }
+            _configure_remediation_result_contracts(artifact_root, manifest["worker_contracts"])
     if playbook == "techops_issue_remediation":
         instructions = {
             "current_state_investigator": (
@@ -1198,13 +1279,21 @@ def prepare_run(
             ),
             "documenter": (
                 "Preserve the accepted techops_checks and Coordinator runtime_audits in finalization_packet.json. "
+                "Before activation, the Coordinator must run the prepared documenter_packet_stager command in "
+                "role_bindings.json; it validates accepted fan-in and writes the Coordinator-owned identity and "
+                "synchronization fields. Analytical result merging also registers each worker ledger row from its "
+                "authenticated dispatch and trace. Preserve those rows exactly. "
                 "Do not mark a check passed without its owning worker's evidence. Finalization schema belongs only in "
                 "finalization, not identity. For Engineering outcome plan_only after analytical fan-in, create "
                 "implementation_plan as well as output; use the accepted TechOps checks, not Sentry readiness fields. "
-                "Keep the plan unapproved and external proof gates separate from local work. "
-                "For a supported complete planning result, set State ready_for_implementation and Workflow outcome "
-                "completed; never use handoff/incomplete as the final TechOps planning identity. "
-                "Use awaiting_input or blocked when indispensable evidence or a material decision is unresolved. "
+                "Keep the plan unapproved and external proof gates separate from local work. Preserve the Coordinator-"
+                "prepared State, Workflow outcome, Engineering state, Engineering outcome, and profile fields exactly; "
+                "do not choose or rewrite them. The Coordinator resolves these values from accepted analysis before "
+                "activation. A ready plan uses ready_for_implementation/completed; unresolved indispensable evidence or "
+                "a material decision uses the Coordinator-prepared awaiting_input or blocked state. If the supplied "
+                "values are missing or conflict with accepted evidence, return the exact mismatch for Coordinator "
+                "correction instead of changing the packet. Never use handoff/incomplete as the final TechOps planning "
+                "identity. "
                 "Write a concrete workflow work summary, never a bare Partially answered label."
             ),
             "reviewer": (
@@ -1259,6 +1348,37 @@ def prepare_run(
                 ),
             })
         manifest["worker_result_merger"] = str(ROOT / "scripts" / "merge_techops_result.py")
+        manifest["documenter_packet_stager"] = str(ROOT / "scripts" / "stage_documenter_packet.py")
+        if manifest["lifecycle"] == "remediation":
+            manifest["worker_contracts"] = {
+                "implementer": {
+                    "implementation_plan": str(artifact_root / "implementation_plan.md"),
+                    "before_source_change_guard": str(WORKER_RUNTIME_GUARD),
+                    "instructions": (
+                        "Remain in TechOps remediation and execute only the explicitly approved plan. Preserve its "
+                        "scope and record material discrepancies before acting. Before each source-change slice, "
+                        "run the supplied runtime guard with the provider-returned handle and freshly observed status."
+                    ),
+                },
+                "reviewer": {
+                    "implementation_plan": str(artifact_root / "implementation_plan.md"),
+                    "instructions": "Independently review the exact TechOps remediation candidate against the approved plan.",
+                },
+                "tester": {
+                    "implementation_plan": str(artifact_root / "implementation_plan.md"),
+                    "instructions": "Validate the exact TechOps remediation candidate against its declared regression plan.",
+                },
+                "documenter": {
+                    "implementation_plan": str(artifact_root / "implementation_plan.md"),
+                    "instructions": (
+                        "Preserve accepted TechOps checks and Coordinator runtime audits. Run the prepared packet "
+                        "stager after implement, review, and validate fan-in; it owns final identity and synchronization. "
+                        "Record implementation, validation, release or rollback, monitoring, owner, residual risk, "
+                        "and next action. Do not rewrite accepted evidence or audits."
+                    ),
+                },
+            }
+            _configure_remediation_result_contracts(artifact_root, manifest["worker_contracts"])
     if playbook == "feature_delivery" and workflow_objective == "implementation_planning":
         try:
             from merge_techops_result import FEATURE_WORKERS
@@ -1306,6 +1426,7 @@ def prepare_run(
             " Include asset_manifest as a third key in the final JSON object using the prepared asset_inventory "
             "contract. The Coordinator publishes it before the packaged asset gate; do not write the file yourself.")
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
+        manifest["documenter_packet_stager"] = str(ROOT / "scripts/stage_documenter_packet.py")
     if playbook in {"techops_issue_remediation", "sentry_issue_remediation"} or (
             playbook == "feature_delivery" and workflow_objective != "specification_assessment"):
         manifest["runtime_evidence"] = {
@@ -1348,8 +1469,12 @@ def prepare_run(
             resolved_runtime_agents, manifest, manifest_path,
         )
         if prior:
-            for field in ("work_item", "decisions", "claims", "evidence"):
+            for field in ("work_item", "decisions", "claims", "actions", "evidence"):
                 packet[field] = prior[field]
+            if "techops_checks" in prior:
+                packet["techops_checks"] = prior["techops_checks"]
+            for field in ("Primary evidence", "Primary goal", "Selected playbook", "Closest alternative", "Why this playbook"):
+                packet["playbook_selection"][field] = prior["playbook_selection"][field]
             packet["work_item"]["Last Updated"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             packet["identity"].update({
                 "Requested profile": prior["identity"]["Requested profile"],

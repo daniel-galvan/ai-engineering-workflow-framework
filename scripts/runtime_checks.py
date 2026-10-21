@@ -37,9 +37,12 @@ FORBIDDEN_CONTEXT_PATTERNS = (
 
 
 try:
-    from provider_runtime import worker_binding, DELIVERY_WORKERS, launch_binding_errors
+    from provider_runtime import (worker_binding, DELIVERY_WORKERS, launch_binding_errors, read_runtime_events,
+                                  validate_prepared_provider_source, latest_worker_dispatch, timestamp)
 except ModuleNotFoundError:
-    from scripts.provider_runtime import worker_binding, DELIVERY_WORKERS, launch_binding_errors
+    from scripts.provider_runtime import (worker_binding, DELIVERY_WORKERS, launch_binding_errors,
+                                          read_runtime_events, validate_prepared_provider_source,
+                                          latest_worker_dispatch, timestamp)
 
 
 def prepared_package_errors(root: Path, *, check_parent_context: bool = True) -> list[str]:
@@ -227,17 +230,16 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
 
 
 def delivery_start_errors(path: Path, implementer_handle: str, provider_status: str) -> list[str]:
-    """Check the current approved plan and independent graph before an Implementer edits."""
-    try:
-        from review_evidence import applicability_errors
-    except ModuleNotFoundError:
-        from scripts.review_evidence import applicability_errors
+    """Check an approved plan before an Implementer edits in a supported remediation playbook."""
     try:
         packet = json.loads(path.read_text())
         identity = packet["identity"]
-        if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem != "feature_delivery"
-                or identity.get("Lifecycle") != "remediation"):
+        playbook = Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem
+        if playbook == "feature_delivery" and identity.get("Lifecycle") != "remediation":
             return ["feature_implementation_requires_remediation_reentry"]
+        if (playbook not in {"feature_delivery", "techops_issue_remediation", "sentry_issue_remediation"}
+                or identity.get("Lifecycle") != "remediation"):
+            return ["supported_remediation_reentry_required"]
         if (identity.get("Requested profile") not in {"standard", "deep"}
                 or identity.get("Activated profile") != identity["Requested profile"]
                 or identity.get("Profile status") != "in_progress" or identity.get("State") != "in_progress"):
@@ -249,35 +251,130 @@ def delivery_start_errors(path: Path, implementer_handle: str, provider_status: 
                 or reentry.get("Approved plan") != str(plan.resolve())
                 or reentry.get("Approved plan SHA256") != hashlib.sha256(plan.read_bytes()).hexdigest()):
             return ["approved_plan_changed_or_reentry_incomplete:record approval for the exact current plan"]
-        errors = applicability_errors(plan.read_text())
+        if playbook in {"feature_delivery", "techops_issue_remediation"}:
+            try:
+                from review_evidence import applicability_errors
+            except ModuleNotFoundError:
+                from scripts.review_evidence import applicability_errors
+            errors = applicability_errors(plan.read_text())
+        else:
+            try:
+                from validation.api import checked
+                from validation.finalization import validate_sentry_artifacts
+            except ModuleNotFoundError:
+                from scripts.validation.api import checked
+                from scripts.validation.finalization import validate_sentry_artifacts
+            try:
+                checked(validate_sentry_artifacts, path.parent)
+                errors = []
+            except ValueError as error:
+                errors = ["sentry_approved_plan_invalid:" + str(error)]
         if provider_status not in {"running", "in_progress"}:
             errors.append("active_implementer_required:expected running or in_progress; received " + provider_status)
-        roles = DELIVERY_WORKERS
-        handles = []
-        for worker, role in roles.items():
-            rows = [row for row in packet.get("workers", []) if row.get("Worker") == worker]
-            if len(rows) != 1 or str(rows[0].get("Role", "")).lower() != role:
-                errors.append("delivery_worker_registration_required:" + worker)
-                continue
-            row = rows[0]
-            expected = {"in_progress", "running"} if worker == "implement" else {"awaiting_dependency", "in_progress", "running"}
-            if row.get("Outcome") not in expected or not str(row.get("Depends on", "")).strip():
-                errors.append("delivery_worker_activation_required:" + worker)
-            if worker != "handoff":
-                match = re.search(r"Provider handle[: ]+(/root/[a-z0-9_]+(?:/[a-z0-9_]+)*|"
-                                  r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})(?=\s|;|$)",
-                                  str(row.get("Assigned inputs", "")))
-                if not match:
-                    errors.append("delivery_worker_provider_handle_required:" + worker)
-                else:
-                    handles.append(match[1])
-                    if worker == "implement" and match[1] != implementer_handle:
-                        errors.append("implementer_handle_mismatch")
-        if len(handles) != len(set(handles)):
-            errors.append("independent_delivery_handles_required")
+        manifest_path = path.parent / "role_bindings.json"
+        manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+        if manifest.get("runtime_evidence"):
+            errors.extend(_feature_delivery_activation_errors(path, manifest, implementer_handle, provider_status))
+        else:
+            errors.extend(_legacy_delivery_activation_errors(packet, implementer_handle))
         return errors
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         return ["delivery_activation_invalid:" + str(error)]
+
+
+def _legacy_delivery_activation_errors(packet: dict, implementer_handle: str) -> list[str]:
+    """Keep the pre-runtime-evidence packet contract readable during migration."""
+    errors, handles = [], []
+    for worker, role in DELIVERY_WORKERS.items():
+        rows = [row for row in packet.get("workers", []) if row.get("Worker") == worker]
+        if len(rows) != 1 or str(rows[0].get("Role", "")).lower() != role:
+            errors.append("delivery_worker_registration_required:" + worker)
+            continue
+        expected = {"in_progress", "running"} if worker == "implement" else {
+            "awaiting_dependency", "in_progress", "running"}
+        if rows[0].get("Outcome") not in expected or not str(rows[0].get("Depends on", "")).strip():
+            errors.append("delivery_worker_activation_required:" + worker)
+        match = re.search(r"Provider handle[: ]+(/root/[a-z0-9_]+(?:/[a-z0-9_]+)*|"
+                          r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})(?=\s|;|$)",
+                          str(rows[0].get("Assigned inputs", "")))
+        if worker != "handoff" and not match:
+            errors.append("delivery_worker_provider_handle_required:" + worker)
+        elif match:
+            handles.append(match[1])
+            if worker == "implement" and match[1] != implementer_handle:
+                errors.append("implementer_handle_mismatch")
+    if len(handles) != len(set(handles)):
+        errors.append("independent_delivery_handles_required")
+    return errors
+
+
+def _feature_delivery_activation_errors(path: Path, manifest: dict, implementer_handle: str,
+                                        implementer_status: str) -> list[str]:
+    """Verify remediation role launches from the prepared provider stream, not editable packet rows."""
+    try:
+        if (manifest.get("playbook") not in {"feature_delivery", "techops_issue_remediation", "sentry_issue_remediation"}
+                or manifest.get("lifecycle") != "remediation"):
+            return ["remediation_runtime_bindings_required"]
+        contract = manifest["runtime_evidence"]
+        ledger_path = Path(contract["ledger"])
+        if ledger_path.resolve().parent != path.parent.resolve() or not ledger_path.is_file():
+            return ["delivery_activation_runtime_ledger_required"]
+        saved = json.loads(ledger_path.read_text())
+        source = Path(saved["provider_session"])
+        validate_prepared_provider_source(manifest, source, saved["parent_thread_id"], saved["run_started_at"])
+        current = read_runtime_events(source, saved["parent_thread_id"], saved["run_started_at"],
+                                      tuple(Path(value) for value in saved.get("identity_sessions", [])))
+        if any(saved.get(key) != current.get(key) for key in ("events", "thread_mappings", "inventories", "failed_dispatches")):
+            return ["runtime_dispatch_ledger_stale"]
+        if not current.get("inventories"):
+            return ["delivery_activation_fresh_inventory_required"]
+        inventory = current["inventories"][-1]
+        statuses = {}
+        for row in inventory["raw_response"].get("agents", []):
+            status = row.get("agent_status")
+            if isinstance(status, dict) and len(status) == 1:
+                status = next(iter(status))
+            statuses[row.get("agent_name")] = str(status).strip().lower().replace(" ", "_")
+        required = {"implement": "implementer", "review": "reviewer", "validate": "tester"}
+        packet = json.loads(path.read_text())
+        run_id = packet["identity"]["Run ID"]
+        selected, handles = {}, []
+        inventory_at = timestamp(inventory["Observed at"])
+        for worker, role in required.items():
+            candidates = [row for row in current["events"] if row.get("Operation") == "spawn_agent"
+                          and row.get("Binding agent") == role and row.get("Provider handle") in statuses
+                          and statuses[row["Provider handle"]] in {"pending_init", "running", "in_progress", "awaiting_dependency"}]
+            candidates = [row for row in candidates if timestamp(row["Last dispatch at"]) <= inventory_at]
+            if len(candidates) != 1:
+                return ["delivery_worker_live_activation_required:" + worker]
+            dispatch = candidates[0]
+            handle = dispatch["Provider handle"]
+            latest = latest_worker_dispatch(current, handle)
+            if timestamp(latest["Last dispatch at"]) > inventory_at:
+                return ["delivery_activation_fresh_inventory_required"]
+            expected = manifest.get("bindings", {}).get(role, {})
+            launch = dispatch.get("Launch", {})
+            if (launch.get("fork_turns") != "none" or launch.get("model") != expected.get("model")
+                    or launch.get("reasoning_effort") != expected.get("effort")):
+                return ["worker_launch_binding_mismatch:" + role]
+            trace = {"run_id": run_id, "spawn": {
+                "agent": handle.rsplit("/", 1)[-1], "binding_agent": role, "provider_handle": handle,
+                "dispatch_file": dispatch.get("Dispatch file"),
+                "dispatch_file_sha256": dispatch.get("Dispatch SHA256")}}
+            if not dispatch.get("Dispatch file") or not _verified_dispatch_content(trace):
+                return ["worker_dispatch_assignment_unverified:" + role]
+            selected[worker] = handle
+            handles.append(handle)
+        if len(handles) != len(set(handles)):
+            return ["independent_delivery_handles_required"]
+        if selected["implement"] != implementer_handle:
+            return ["implementer_handle_mismatch"]
+        actual_status = statuses.get(implementer_handle, "unknown")
+        if actual_status != implementer_status.strip().lower().replace(" ", "_"):
+            return ["implementer_provider_status_mismatch:expected=" + actual_status]
+        return []
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
+        return ["delivery_activation_runtime_invalid:" + str(error)]
 
 
 def transition_error(action: str, provider_status: str, *, rejected_result: bool = False) -> str | None:
@@ -963,6 +1060,33 @@ def _read_targets(command: str) -> list[str]:
         return []
 
 
+def _allowed_instruction_paths(root: Path, assigned: list[str]) -> set[Path]:
+    """Allow only repository instructions on the run or an explicitly assigned path's ancestor chain."""
+    repository = root.parent.parent.resolve()
+    directories = {root.resolve(), root.parent.resolve(), repository}
+    for source in assigned:
+        if not isinstance(source, str) or not source.strip() or "://" in source:
+            continue
+        path = Path(source)
+        try:
+            resolved = (path if path.is_absolute() else repository / path).resolve()
+        except OSError:
+            continue
+        if not resolved.is_relative_to(repository):
+            continue
+        if resolved.name == "AGENTS.md":
+            directories.add(resolved.parent)
+        directory = resolved if resolved.is_dir() else resolved.parent
+        while directory.is_relative_to(repository):
+            directories.add(directory)
+            if directory == repository:
+                break
+            directory = directory.parent
+    candidates = {directory / "AGENTS.md" for directory in directories}
+    # A link to another applicable instruction file is safe; a link to archived analysis is not.
+    return {path.resolve() for path in candidates if path.resolve() in candidates}
+
+
 def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -> set[tuple[str, ...]]:
     if root is None:
         return set()
@@ -981,12 +1105,12 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 resolved = [Path(target) if Path(target).is_absolute() else cwd / target for target in targets]
                 receipts = root / "activation_receipts.json"
                 instructions = json.loads(receipts.read_text()) if receipts.is_file() else {}
+                allowed_instructions = _allowed_instruction_paths(root, assigned)
                 safe = safe and bool(targets) and all(
                     not (path.resolve().parent == root and path.name in instructions)
                     and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()
                     and ((path.resolve().parent == root and path.is_file()) or str(path) in assigned
-                         or path.resolve() in {parent / "AGENTS.md" for parent in
-                                               (root, root.parent, root.parent.parent)} and path.is_file())
+                         or path.name == "AGENTS.md" and path.resolve() in allowed_instructions and path.is_file())
                     for path in resolved)
             elif name not in {"mcp__codex_apps__atlassian_getjiraissue", "mcp__codex_apps__atlassian_executeread",
                               "mcp__codex_apps__atlassian_discover", "mcp__codex_apps__atlassian_searchjiraissuesusingjql"}:
@@ -1029,31 +1153,60 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
     return {}
 
 
-def _instruction_contents(trace: dict, root: Path | None) -> list[str]:
-    """Exempt authenticated instruction text, never extra provider output."""
+def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -> dict[str, dict[str, list[str]]]:
+    """Return only instruction text paired with its authenticated provider read."""
     if root is None:
-        return []
+        return {}
     receipts = root / "activation_receipts.json"
-    contents = []
-    bindings = json.loads((root / "role_bindings.json").read_text())
-    role = worker_binding(bindings, trace["spawn"]["agent"])
-    for name, receipt in json.loads(receipts.read_text()).items() if receipts.is_file() else []:
-        if receipt.get("agent") != role:
-            continue
-        candidate = {**trace, "spawn": {**trace["spawn"], "dispatch_file": str(root / name),
-            "dispatch_file_sha256": receipt.get("sha256"), "binding_agent": receipt.get("agent")}}
-        content = _verified_dispatch_content(candidate)
-        if content:
-            contents.append(content)
+    bindings_path = root / "role_bindings.json"
+    contents: dict[str, dict[str, list[str]]] = {}
+
+    def record_paired_output(row: dict, expected: str, kind: str) -> None:
+        call_id = row.get("call_id")
+        if not call_id or row.get("type") not in {"function_call", "custom_tool_call"}:
+            return
+        for output in trace.get("tool_trace", []):
+            if (not isinstance(output, dict)
+                    or output.get("type") not in {"function_call_output", "custom_tool_call_output"}
+                    or output.get("call_id") != call_id):
+                continue
+            if any(expected in value for _, value in _trace_strings({"tool_trace": [output]})):
+                contents.setdefault(call_id, {}).setdefault(kind, []).append(expected)
+
+    if trace.get("spawn") and receipts.is_file() and bindings_path.is_file():
+        role, receipt_rows = None, ()
+        try:
+            bindings = json.loads(bindings_path.read_text())
+            role = worker_binding(bindings, trace["spawn"]["agent"])
+            receipt_rows = json.loads(receipts.read_text()).items()
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            pass
+        if role is None:
+            receipt_rows = ()
+        for name, receipt in receipt_rows:
+            if not isinstance(receipt, dict) or receipt.get("agent") != role:
+                continue
+            candidate = {**trace, "spawn": {**trace["spawn"], "dispatch_file": str(root / name),
+                "dispatch_file_sha256": receipt.get("sha256"), "binding_agent": receipt.get("agent")}}
+            content = _verified_dispatch_content(candidate)
+            if not content:
+                continue
+            dispatch_path = (root / name).resolve()
             for row in trace.get("tool_trace", []):
+                if not isinstance(row, dict):
+                    continue
                 for tool, arguments in _tool_operations(row):
+                    if tool != "exec_command":
+                        continue
                     command = arguments.get("cmd", "")
-                    chunk = _chunked_dispatch_read(command) if tool == "exec_command" else None
+                    targets = _read_targets(command)
+                    chunk = _chunked_dispatch_read(command)
                     if chunk:
-                        target = Path(chunk[0])
-                        target = target if target.is_absolute() else Path(arguments.get("workdir", root.parent.parent)) / target
-                        if target.resolve() == (root / name).resolve():
-                            contents.append(_dispatch_read_output(command, content))
+                        targets.append(chunk[0])
+                    cwd = Path(arguments.get("workdir", root.parent.parent))
+                    if any((Path(target) if Path(target).is_absolute() else cwd / target).resolve() == dispatch_path
+                           for target in targets):
+                        record_paired_output(row, _dispatch_read_output(command, content), "dispatch")
     for row in trace.get("tool_trace", []):
         if not isinstance(row, dict):
             continue
@@ -1062,19 +1215,20 @@ def _instruction_contents(trace: dict, root: Path | None) -> list[str]:
                 continue
             operation = {"tool": name, "arguments": arguments}
             cwd = Path(arguments.get("workdir", root.parent.parent))
-            for target in _ancestor_instruction_reads(operation, root):
+            for target in _ancestor_instruction_reads(operation, root, input_paths=assigned):
                 path = Path(target)
                 path = path if path.is_absolute() else cwd / path
                 try:
                     if path.is_file():
-                        contents.append(path.read_text())
+                        record_paired_output(row, path.read_text(), "ancestor")
                 except (OSError, UnicodeError):
                     continue
     return contents
 
 
-def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool = False) -> list[str]:
-    allowed = {parent / "AGENTS.md" for parent in (root, root.parent, root.parent.parent)}
+def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool = False,
+                                input_paths: list[str] | None = None) -> list[str]:
+    allowed = _allowed_instruction_paths(root, input_paths or [])
     reads = []
     for name, arguments in _tool_operations(row):
         if name != "exec_command":
@@ -1180,10 +1334,11 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     listing_reads = {}
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
-    instruction_contents = _instruction_contents(trace, root) if dispatch_content else []
+    instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
              if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
-    instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(row, root, include_probes=True)
+    instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(
+                         row, root, include_probes=True, input_paths=assigned)
                          for row in trace.get("tool_trace", []) if root and isinstance(row, dict) and row.get("call_id")
                          and row.get("type") in {"function_call", "custom_tool_call"}}
     for path, value in _trace_strings(trace):
@@ -1196,21 +1351,23 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                                                  if not THOUGHT_PATH.fullmatch(line))
                 break
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
-        if dispatch_content and output:
-            for content in instruction_contents or [dispatch_content]:
+        row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
+        call_contents = instruction_contents.get(row.get("call_id"), {})
+        ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
+        if output:
+            for content in call_contents.get("dispatch", []) + call_contents.get("ancestor", []):
                 candidate = candidate.replace(content, "")
         listing = any(path[:len(prefix)] == prefix for prefix in listings)
-        row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
         if _authorized_read(row, assigned) or (row.get("type") == "function_call_output" and row.get("call_id") in reads):
             for source in assigned:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(source) + r"(?![\w./-])", "", candidate)
         if root:
             instructions = (instruction_reads.get(row.get("call_id"), []) if output
-                            else _ancestor_instruction_reads(row, root, include_probes=True))
+                            else _ancestor_instruction_reads(row, root, include_probes=True, input_paths=assigned))
             for instruction in instructions:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
-            checked = value if label != "archived_artifact" else candidate
+            checked = candidate if ancestor_instruction_output or label == "archived_artifact" else value
             if label == "archived_artifact" and listing:
                 continue
             match = pattern.search(checked)

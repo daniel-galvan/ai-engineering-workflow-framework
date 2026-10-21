@@ -15,6 +15,7 @@ from scripts import prepare_run as prepare
 from scripts import run_preflight as preflight
 from scripts import validate_worker_runtime as runtime
 from scripts.merge_techops_result import merge_result
+from scripts.stage_documenter_packet import stage as stage_documenter_packet
 from scripts.worker_runtime_evidence import read_runtime_events
 from tests.worker_response_support import stage_worker_response
 
@@ -44,6 +45,17 @@ class FrameworkCorrections(unittest.TestCase):
     def merge(self):
         trace, _ = stage_worker_response(self.run, "current_state_investigator", self.result)
         merge_result(self.packet_path, "current_state_investigator", trace=trace)
+
+    def test_documenter_stager_rejects_package_drift_without_packet_writes(self):
+        before = self.packet_path.read_bytes()
+        bindings_path = self.root / "role_bindings.json"
+        bindings = json.loads(bindings_path.read_text())
+        bindings["framework_package"]["plugin_sha256"] = "0" * 64
+        bindings_path.write_text(json.dumps(bindings))
+        with self.assertRaisesRegex(ValueError, "prepared_framework_package_mismatch"):
+            stage_documenter_packet(self.packet_path, coordinator_model_effort="Not exposed / Not exposed",
+                                    prompt_conformance="pass")
+        self.assertEqual(self.packet_path.read_bytes(), before)
 
     def test_failure_without_ledger_retains_concrete_closure_blocker(self):
         self.assertFalse((self.root / "runtime_dispatches.json").exists())
@@ -220,7 +232,10 @@ class FrameworkCorrections(unittest.TestCase):
         result["worker_result"]["Outcome"] = "blocked"
         trace, _ = stage_worker_response(run, "solution_architect", result)
         merge_result(packet, "solution_architect", trace=trace)
-        self.assertEqual(json.loads(packet.read_text())["worker_results"][-1]["Outcome"], "blocked")
+        updated = json.loads(packet.read_text())
+        self.assertEqual(updated["worker_results"][-1]["Outcome"], "blocked")
+        self.assertEqual(next(row for row in updated["workers"] if row["Worker"] == "fix-design")["Outcome"],
+                         "blocked")
 
     def test_all_schema_errors_are_reported_before_the_single_correction(self):
         template = json.loads(finalizer.PACKET_TEMPLATE.read_text())

@@ -6,7 +6,7 @@ import json
 import os
 import re
 import shlex
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
@@ -519,6 +519,63 @@ def provider_json_value(value):
     return value
 
 
+def _provider_status_time(value: object) -> str | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        if isinstance(value, (int, float)):
+            parsed = datetime.fromtimestamp(value, timezone.utc)
+        elif isinstance(value, str):
+            parsed = timestamp(value)
+        else:
+            return None
+    except (OverflowError, OSError, ValueError):
+        return None
+    return parsed.isoformat().replace("+00:00", "Z")
+
+
+def targeted_thread_observation(raw: object, handle: str, thread_id: str, dispatch_at: str,
+                                observed_at: str, operation: str) -> dict | None:
+    """Normalize only provider status metadata; never retain a thread's analytical text."""
+    if operation != "read_thread" or not isinstance(raw, dict):
+        return None
+    thread = raw.get("thread")
+    turns = raw.get("turns")
+    if (not isinstance(thread, dict) or thread.get("id") != thread_id or not isinstance(turns, list)
+            or not turns):
+        return None
+    candidates = []
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+        started_at = _provider_status_time(turn.get("startedAt"))
+        status = turn.get("status")
+        if started_at and isinstance(status, str) and status:
+            candidates.append((timestamp(started_at), turn, started_at))
+    if not candidates:
+        return None
+    _, latest, started_at = max(candidates, key=lambda row: row[0])
+    latest_status = re.sub(r"(?<!^)(?=[A-Z])", "_", latest["status"]).lower()
+    latest_status = {"canceled": "cancelled", "in_progress": "running"}.get(latest_status, latest_status)
+    thread_state = thread.get("status")
+    thread_status = thread_state.get("type") if isinstance(thread_state, dict) else thread_state
+    if not isinstance(thread_status, str):
+        return None
+    if thread_status == "idle" and latest_status in {"completed", "failed", "stopped", "interrupted", "cancelled"}:
+        provider_status = "idle"
+    elif thread_status in {"active", "running"}:
+        provider_status = "running"
+    else:
+        provider_status = latest_status
+    observation = {"Provider handle": handle, "Provider status": provider_status, "Thread ID": thread_id,
+        "Status source": operation, "Last dispatch at": dispatch_at, "Observed at": observed_at,
+        "Latest turn started at": started_at, "Latest turn status": latest_status, "Thread status": thread_status}
+    completed_at = _provider_status_time(latest.get("completedAt"))
+    if completed_at:
+        observation["Latest turn completed at"] = completed_at
+    return observation
+
+
 def read_runtime_events(
     path: Path, parent_thread_id: str, started_at: str, identity_sessions: tuple[Path, ...] = (),
 ) -> dict:
@@ -529,7 +586,7 @@ def read_runtime_events(
         first = json.loads(next(stream))
         if first.get("type") != "session_meta" or first.get("payload", {}).get("id") != parent_thread_id:
             raise ValueError("provider_session_parent_mismatch")
-        events, mappings, inventories, failed_dispatches = [], {}, [], []
+        events, mappings, inventories, failed_dispatches, status_probes = [], {}, [], [], []
         for source in identity_sessions:
             with source.open() as identity_stream:
                 header = json.loads(next(identity_stream))
@@ -549,6 +606,7 @@ def read_runtime_events(
         pending_spawn = None
         inventory_pending = None
         pending_followups = {}
+        pending_status_probes = {}
         spawn_calls = {}
         observed_starts = {}
         observed_until = started
@@ -637,9 +695,30 @@ def read_runtime_events(
                     pending_followups[payload["call_id"]] = (handle, event, handle in active)
                 if operation == "followup_task":
                     active.setdefault(handle, timestamp(row["timestamp"]))
+            elif (payload.get("type") == "function_call" and isinstance(payload.get("name"), str)
+                  and payload["name"].rsplit("__", 1)[-1] in {"read_thread", "wait_threads"}):
+                operation = payload["name"].rsplit("__", 1)[-1]
+                arguments = provider_json_value(payload.get("arguments"))
+                if not isinstance(arguments, dict):
+                    raise ValueError("provider_function_arguments_invalid")
+                targets = arguments.get("targets", []) if operation == "wait_threads" else [arguments]
+                if not isinstance(targets, list) or not targets:
+                    continue
+                probes = []
+                for target in targets:
+                    if not isinstance(target, dict):
+                        continue
+                    thread = target.get("threadId")
+                    handles = [handle for handle, mapped in mappings.items() if mapped == thread]
+                    if len(handles) == 1:
+                        probes.append({"Provider handle": handles[0], "Thread ID": thread})
+                if probes and isinstance(payload.get("call_id"), str):
+                    pending_status_probes[payload["call_id"]] = {
+                        "Operation": operation, "Attempted at": row["timestamp"], "Targets": probes}
             elif payload.get("type") == "function_call_output":
                 call_id = payload.get("call_id")
                 if (call_id not in pending_followups and call_id not in spawn_calls
+                        and call_id not in pending_status_probes
                         and not (inventory_pending and inventory_pending in {True, call_id})):
                     continue
                 raw = provider_json_value(payload["output"])
@@ -663,6 +742,22 @@ def read_runtime_events(
                         failed_dispatches.append({**event, "Task": task, "Status": "failed"})
                         if pending_spawn is not None and pending_spawn[2] == call_id:
                             pending_spawn = None
+                if call_id in pending_status_probes:
+                    probe = pending_status_probes.pop(call_id)
+                    for target in probe["Targets"]:
+                        dispatch = latest_worker_dispatch({"events": events, "failed_dispatches": failed_dispatches},
+                                                          target["Provider handle"], include_failed=True)
+                        observation = (None if explicit_error else targeted_thread_observation(
+                            raw, target["Provider handle"], target["Thread ID"], dispatch["Last dispatch at"],
+                            row["timestamp"], probe["Operation"]))
+                        status_probes.append({**target, "Operation": probe["Operation"],
+                            "Attempted at": probe["Attempted at"], "Observed at": row["timestamp"],
+                            "Result": ("unavailable" if explicit_error else "returned" if observation
+                                       or probe["Operation"] == "wait_threads" else "unverifiable"),
+                            **({"Reason": "targeted_status_metadata_unavailable"}
+                               if not explicit_error and not observation and probe["Operation"] == "read_thread"
+                               else {}),
+                            **({"terminal_observation": observation} if observation else {})})
                 if not inventory_pending or inventory_pending not in {True, call_id}:
                     continue
                 if isinstance(raw, dict) and isinstance(raw.get("agents"), list):
@@ -683,7 +778,7 @@ def read_runtime_events(
                        "worker_active_seconds": worker_seconds, "no_worker_active_seconds": elapsed - worker_seconds,
                        "open_worker_intervals": len(active)},
             "provider_session": str(path.resolve()), "events": events, "failed_dispatches": failed_dispatches,
-            "thread_mappings": mappings, "inventories": inventories,
+            "thread_mappings": mappings, "inventories": inventories, "status_probes": status_probes,
             "identity_sessions": [str(source.resolve()) for source in identity_sessions]}
 
 

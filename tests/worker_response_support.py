@@ -11,7 +11,8 @@ CHILD = "00000000-0000-0000-0000-000000000102"
 _DISPATCH_COUNTS = {}
 
 
-def stage_worker_response(run, role, result, output="Synthetic worker response."):
+def stage_worker_response(run, role, result, output="Synthetic worker response.", *,
+                          provider_handle="/root/worker", child_thread_id=CHILD):
     """Build a fresh provider trace around one final response for merger tests."""
     root = Path(run["artifact_root"])
     key = (run["run_id"], role)
@@ -19,7 +20,7 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
     dispatch_seconds = 1 + count * 20
     bundle = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())
     packet = bundle["packets"][role]
-    activation = root / "activation.txt"
+    activation = root / f"{role}_activation.txt"
     message = validate_worker_runtime.dispatch_message(
         packet, validate_worker_runtime.activation_message(packet, {"objective": "Return the current result"}), activation)
     base = datetime.fromisoformat(run["prepared_at"].replace("Z", "+00:00"))
@@ -41,40 +42,40 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
         parent_rows = [event(0, "session_meta", id=parent_thread_id)]
     parent_rows.extend([
         event(1, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
-              call_id="spawn", arguments=json.dumps({"task_name": "worker", "message": message,
+              call_id="spawn", arguments=json.dumps({"task_name": provider_handle.rsplit("/", 1)[-1], "message": message,
                   "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"]})),
         event(1, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
-              "agent_path": "/root/worker", "agent_thread_id": CHILD}),
+              "agent_path": provider_handle, "agent_thread_id": child_thread_id}),
         event(2, "response_item", type="function_call_output", call_id="spawn", output=""),
-        event(4, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": "/root/worker"}),
+        event(4, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": provider_handle}),
     ])
     if count:
         parent_rows.extend([
             event(dispatch_seconds, "response_item", type="function_call", namespace="collaboration",
                   name="followup_task", call_id="followup", arguments=json.dumps({
-                      "target": "/root/worker", "message": "Return the current corrected result"})),
+                      "target": provider_handle, "message": "Return the current corrected result"})),
             event(dispatch_seconds + 1, "response_item", type="function_call_output", call_id="followup", output=""),
             event(dispatch_seconds + 4, "event_msg", item={"type": "SubAgentActivity", "kind": "completed",
-                  "agent_path": "/root/worker"}),
+                  "agent_path": provider_handle}),
         ])
     parent.write_text("\n".join(json.dumps(row) for row in parent_rows) + "\n")
 
     child = root / "worker_response_child.jsonl"
     child_rows = [
-        event(0, "session_meta", id=CHILD),
+        event(0, "session_meta", id=child_thread_id),
         event(dispatch_seconds + 1, "response_item", type="custom_tool_call", call_id="binding", name="exec",
               input='await tools.exec_command(' + json.dumps({"cmd": "cat " + str(activation)}) + ')'),
         event(dispatch_seconds + 2, "response_item", type="custom_tool_call_output", call_id="binding", output=activation.read_text()),
         event(dispatch_seconds + 2, "turn_context", turn_id="00000000-0000-0000-0000-000000000103",
               model=packet["model"], effort=packet["effort"]),
         event(dispatch_seconds + 3, "response_item", type="message", role="assistant", phase="final_answer",
-              content=[{"type": "output_text", "text": json.dumps({"output": output, "result": result,
-                  **({"asset_manifest": {}} if packet.get("worker_contract", {}).get("asset_inventory") else {})})}]),
+                  content=[{"type": "output_text", "text": json.dumps({"output": output, "result": result,
+                  **({"asset_manifest": {}} if (packet.get("worker_contract") or {}).get("asset_inventory") else {})})}]),
     ]
     child.write_text("\n".join(json.dumps(row) for row in child_rows) + "\n")
 
     stamp = lambda seconds: (base + timedelta(seconds=seconds)).isoformat()
-    observation = {"Provider handle": "/root/worker", "Thread ID": CHILD, "Provider status": "idle",
+    observation = {"Provider handle": provider_handle, "Thread ID": child_thread_id, "Provider status": "idle",
         "Observed at": stamp(dispatch_seconds + 5), "Status source": "read_thread", "Last dispatch at": stamp(dispatch_seconds),
         "Latest turn started at": stamp(dispatch_seconds + 2), "Latest turn completed at": stamp(dispatch_seconds + 3),
         "Latest turn status": "completed", "Thread status": "idle"}

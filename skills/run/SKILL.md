@@ -286,9 +286,11 @@ description: >-
    before changing artifacts. Review each added mechanism against the existing flow; a later question or agent
    recommendation does not approve a scope change or prove a simpler design satisfies the accepted criteria.
    Prepared delivery envelopes give Implementer the `before_source_change_guard`. Before each implementation slice,
-   record the delivery graph in packet `workers`: implement/review/validate have distinct observed provider handles
-   in `Assigned inputs` as `Provider handle <handle>`, correct roles, dependencies and active/awaiting states; handoff
-   is registered awaiting dependency. Set the matching activated profile and `in_progress` state/profile status.
+   refresh the native dispatch ledger with the prepared `runtime_evidence.collector`, then run the guard. It checks
+   three distinct live implement/review/validate handles, prepared role bindings, hash-checked dispatch files, a fresh
+   provider inventory, and the approved plan. Do not hand-populate packet worker rows; accepted result merges create
+   those rows, and activate handoff only after delivery fan-in. The collector advances the activated profile and
+   `in_progress` state only after this same live-evidence gate passes; never edit those identity fields manually.
    Run `validate_worker_runtime.py --before-source-change <packet> --implementer-handle <observed-handle>`
    `--provider-status <fresh-observed-status>` and require exit zero. The approved plan hash must still match re-entry.
    An approved plan amendment requires its explicit approval reference and exact hash to be reconciled before retry;
@@ -466,6 +468,8 @@ description: >-
    `prepare_run.py`. Workers must use the current task's in-task `spawn_agent`/collaboration runtime. Never use
    `create_thread`, `fork_thread`, or `send_message_to_thread` for workers. Verify the in-task runtime before
    `prepare_run.py`; when unavailable, stop with `worker_runtime_unavailable` without creating user-owned tasks.
+   For TechOps and Feature Delivery planning, the Coordinator runs the prepared
+   `scripts/stage_documenter_packet.py` transition after analytical fan-in and before Documenter activation.
    For an idle or completed Codex worker, use `followup_task` to start a correction turn on its existing handle.
    `send_message` only delivers a message; it does not start an idle worker. Use it for steering an active turn,
    then verify consumption. After an idle-worker correction, verify a new turn actually started before waiting
@@ -503,24 +507,48 @@ description: >-
    plan only with `status: Draft`, full structural tables and owned unresolved decisions. Do not label it ready.
    Check runtime capacity before dispatch, choose either an existing compatible worker or a fresh worker, and record
    cancellation if a superseded assignment is interrupted. Do not accept the cancelled result as current work.
-8a. For TechOps planning and Feature Delivery analytical results, prepared worker contracts are operative instructions.
-   Include their complete `worker_contract` with each fresh assignment. Each analytical worker returns exactly one
-   strict JSON final answer with `output` (narrative string) and `result` (the prepared JSON envelope). Feature
-   `feature-context` also returns `asset_manifest` using its prepared contract. The runtime exporter stores immutable
-   per-dispatch response artifacts; workers do not write the assigned paths. The merger publishes those files only
-   after acceptance. Preserve the prepared ID namespace and upstream IDs.
+8a. For TechOps planning and Feature Delivery planning or remediation, prepared worker contracts are operative
+   instructions. Include the complete `worker_contract` with each fresh assignment. Each analytical worker returns
+   exactly one strict JSON final answer with `output` (narrative string) and `result` (the prepared JSON envelope).
+   Feature `feature-context` also returns `asset_manifest` using its prepared contract. The runtime exporter stores
+   immutable per-dispatch response artifacts; workers do not write assigned paths. The merger publishes them only after
+   acceptance. Preserve the prepared ID namespace and upstream IDs.
    After the fan-in guard passes, merge it with
    `python3 <worker_result_merger> --packet <packet> --agent <provider-role> --trace <current-run-trace.json>`.
    This validates and records the Coordinator-owned audit entry atomically with the analytical result. A missing audit
    entry is Coordinator bookkeeping: supply the passed trace and rerun the merger; do not reject, rename, or redispatch
-   valid worker output for that reason. An actually rejected trace still requires the guarded recovery protocol.
+   valid worker output for that reason. If collector output reports
+   `phase: coordinator_audit_registration`, the trace passed and the result was not merged; correct the Coordinator
+   receipt, then rerun collection or merge from the preserved trace. If it reports `phase: worker_recovery_gate`,
+   complete the bounded recovery authorization before merging. In either case, do not change a passed trace to
+   rejected. An actually rejected trace still requires the guarded recovery protocol.
    Do not reconstruct accepted evidence, outcomes or references from prose. The merger preserves immutable identity
-   and Coordinator audits; it does not grant readiness or implementation approval. The merger accepts analytical
-   roles only. Documenter writes the prepared packet directly. Collect its completed trace with
+   and Coordinator audits; it does not grant readiness or implementation approval. For Feature Delivery remediation
+   it also accepts `implementer`, `reviewer`, and `tester` typed terminal results, registering execution/result rows
+   from the provider-authenticated trace. A rejected result still requires guarded recovery. Documenter writes the
+   prepared packet directly. Collect its completed trace with
    `worker_runtime_evidence.py --agent documenter` and the prepared collector arguments: the collector automatically
    validates and registers the `handoff` audit in the packet. Then validate that packet through `--check-packet`,
    not the analytical merger. Preserve accepted worker-owned evidence, claims, decisions and actions
    exactly. Return changed references to their owning worker; never attach extra IDs merely to satisfy validation.
+   After all required analytical results are merged and before Documenter activation, run the prepared
+   `documenter_packet_stager` from `role_bindings.json`:
+   `python3 <documenter_packet_stager> --packet <artifact-root>/finalization_packet.json`
+   `--coordinator-model-effort "<observed value or Not exposed / Not exposed>" --prompt-conformance pass`.
+   TechOps also requires `--state ready_for_implementation|awaiting_input|blocked`; select the state from the accepted
+   analysis and the shared planning-readiness rule. Feature Delivery derives State and outcomes from the accepted
+   Fix Design `planning_disposition`. The stager validates current-run result/audit fan-in, writes Coordinator-owned
+   identity and synchronization fields atomically, and stops on incomplete or conflicting evidence. The merger
+   registers each analytical worker ledger row from the authenticated typed assignment, launch binding and accepted
+   result. Do not edit those rows by hand or ask Documenter to reconstruct them. Continue to the packaged activation
+   guard only after this command exits successfully.
+   For Feature Delivery remediation, after merging `implement`, `review`, and `validate`, stage the delivery barrier
+   with `--engineering-outcome solved|partially_solved|blocked`. The command requires current accepted result artifacts,
+   matching provider audits, the approved plan, review and validation reports. It writes the handoff identity and
+   `Delivery fan-in` row atomically; a blocked disposition preserves the blocker and stops short of completed delivery
+   until finalization confirms the run's terminal state. Reviewer and Tester return their complete report contents in
+   the result envelope's `output` field. The prepared merger writes those fields to `code_review.md` and
+   `validation_report.md`; do not ask either worker to write those files directly.
    For TechOps planning, resolve State to ready_for_implementation, awaiting_input, or blocked before pre-release;
    Workflow outcome must be completed or blocked. Keep the plan unapproved. Do not use handoff/incomplete as a final
    planning identity or Partially answered as the entire work summary. Before accepting Fix Design,
@@ -732,7 +760,9 @@ description: >-
    publisher also rejects an omitted declaration before pre-release.
    For Feature Delivery remediation, missing runnable tests return to the delegated Implementer, then Reviewer and
    Tester without another approval. The Coordinator does not edit tests. Any source/test/fixture edit invalidates prior
-   acceptance; regenerate the candidate fingerprint and obtain Reviewer acceptance for that candidate. Require the
+   acceptance; regenerate the candidate fingerprint and obtain Reviewer acceptance for that candidate. Reviewer and
+   Tester return the full required `code_review.md` and `validation_report.md` contents through their final result
+   envelopes; the Coordinator merger publishes them at the prepared paths before evidence checks. Require the
    canonical validation_report.md and run review_evidence.py --validation with --review-report and --repository before
    Documenter. Use --require-solved only for solved engineering value. Close passed automated checks; separate
    deployment checks with their environment, owner and extra proof. Never leave generic DEV/QA checks as user homework.
@@ -762,26 +792,38 @@ description: >-
    an ID. Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events
    before declaring child identity unavailable. Sync its ledger after dispatches and status reads, following
    `providers/codex.md#worker-identity-and-correction-observations`; derive audit times from actual events.
-   A targeted closure read must show no active or pending thread and an inactive latest turn started at or after
-   the last dispatch. For corrections during an active turn, an earlier start requires provider-observed
+   A targeted `read_thread` closure read must show no active or pending thread and an inactive latest turn started at
+   or after the last dispatch. For corrections during an active turn, an earlier start requires provider-observed
    `Latest turn completed at` after dispatch, `Dispatch consumed: true`, and concrete `Dispatch consumption evidence`
    from the accepted corrected result. Missing inventory entries, historical completion events and worker
    self-attestation alone do not establish
    terminal status. If no supported targeted read can verify a worker, retain the blocked receipt.
 
-   Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
-   `Provider status`, `Last dispatch at`, `Observed at`, and `Status source` (`list_agents`, `read_thread`, or
-   `wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn started at`, and `Latest turn status`, and
-   `Thread status`. Preserve the exact completed, idle, failed, stopped, interrupted, or cancelled provider status.
-   `read_thread` with `notLoaded` may qualify only with an inactive latest turn and no newer dispatch.
-   Preserve the raw response in
-   current-run evidence. Do not dispatch follow-ups during collection; a later follow-up invalidates that worker's
-   observation and requires another read. Record `provider status snapshot <RFC3339 timestamp>: <identifier>=completed;
-   ...` in closure evidence. `Remaining active handles: 0` means no active worker turns; it does not assert capacity
-   release or handle destruction.
-   If neither closure route is verifiable, use the Coordinator-owned `Blocked` receipt with
-   `worker_runtime_release_unavailable` and unknown/nonzero remaining active handles. Do not ask the user to obtain an
-   unsupported close receipt; name the missing provider status/release capability and its adapter owner.
+   Do not hand-build `terminal_observations`. Preserve the raw `read_thread` response in the current parent session and
+   rerun the prepared collector with `--closure`; it maps the response to the exact provider handle and emits only
+   status metadata. It selects the latest post-dispatch inventory or targeted `read_thread` result per handle, then
+   validates the combined receipt. Successful `wait_threads` output is not currently normalized for closure; use
+   `read_thread` for a successful targeted observation. Do not dispatch follow-ups during collection; a later
+   follow-up invalidates that worker's observation and requires another read. Record `provider status snapshot
+   <RFC3339 timestamp>: <identifier>=completed; ...` in closure evidence. `Remaining active handles: 0` means no active
+   worker turns; it does not assert capacity release or handle destruction.
+   If neither closure route is verifiable, create the Coordinator-owned `Blocked` receipt through the prepared
+   collector; do not hand-edit `runtime_closure.json`:
+   ```bash
+   python3 <packaged-framework-root>/scripts/worker_runtime_evidence.py \
+     --provider-session <parent-session> --parent-thread-id <parent-thread-id> \
+     --started-at <run-started-at> --ledger <artifact-root>/runtime_dispatches.json \
+     --blocked-closure <artifact-root>/runtime_closure.json \
+     --blocker "<specific missing status or release evidence>"
+   ```
+   Before running it, query each dispatched thread missing from the latest inventory with `read_thread`. The collector
+   records every dispatched provider handle and marks remaining activity `Unknown`. For each handle with no
+   inventory status, it requires a provider-recorded failed query or a `read_thread` response whose status metadata
+   cannot be verified, after the latest dispatch. A normalized successful `read_thread` becomes a terminal
+   observation instead; a successful but unparsed `wait_threads` response cannot support a Blocked receipt. The
+   collector also refuses the Blocked receipt when current evidence already supports a Terminal receipt. Do not
+   hand-edit the receipt or treat a blocker description as evidence. Do not ask the user to obtain an unsupported
+   close receipt; name the missing provider status/release capability and its adapter owner.
    For a Technical Spike with a published report and complete worker results, write that Coordinator-owned unavailable
    receipt to `runtime_closure.json`, then run the pinned `finalize_work_record.py --blocked-runtime-snapshot` with the
    packet, closure, record, and Coordinator/framework identity arguments below. Require exit zero and

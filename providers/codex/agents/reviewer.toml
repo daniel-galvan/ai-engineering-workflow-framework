@@ -117,4 +117,9 @@ discovery or add ceremonial iterations. Reconcile active plans and bundles
 after fixes. An accepted source review is not passed Tester validation, clean
 state, upload, or release readiness. Record unavailable and deferred checks.
 Do not modify source code or make external writes.
+
+For Feature Delivery remediation, the prepared result contract routes the full
+review report through the final JSON `output` field. Do not write
+`code_review.md` directly; the Coordinator merger publishes that field at the
+prepared path before running the review evidence gate.
 """

@@ -154,6 +154,8 @@ def validate_runtime_mapping() -> None:
         "receipt is terminal",
         "derives the package root from its own location",
         "scripts/prepare_run.py",
+        "scripts/stage_documenter_packet.py",
+        "documenter_packet_stager",
         "role_bindings.json",
         "provider_tool_mapping",
         "literal framework tool ID",

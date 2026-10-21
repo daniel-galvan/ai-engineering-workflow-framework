@@ -812,14 +812,17 @@ def _feature_delivery_remediation_errors(
             errors.append(f"feature_delivery_worker_ledger_incomplete:{worker}")
         if any(not str(result.get(field, "")).strip() for field in FEATURE_DELIVERY_RESULT_FIELDS):
             errors.append(f"feature_delivery_worker_result_incomplete:{worker}")
-        if ledger.get("Outcome") != "complete" or result.get("Outcome") != "complete":
+        allowed_outcomes = {"complete", "blocked"} if identity.get("State") == "blocked" else {"complete"}
+        result_outcome = result.get("Outcome")
+        if (ledger.get("Outcome") != result_outcome or result_outcome not in allowed_outcomes
+                or result_outcome == "failed"):
             errors.append(f"feature_delivery_worker_not_complete:{worker}")
         evidence_ids = {row.get("Evidence ID") for row in packet.get("evidence", []) if isinstance(row, dict)}
         refs = set(re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(result.get("Evidence / claim refs", ""))))
         if not refs or not refs <= evidence_ids:
             errors.append(f"feature_delivery_worker_evidence_required:{worker}")
     fan_in = [row for row in packet.get("synchronization", []) if isinstance(row, dict)
-              and row.get("Barrier status", "").lower() == "passed"
+              and row.get("Barrier status", "").strip().lower().startswith("passed")
               and {"implement", "review", "validate"} <= set(re.findall(
                   r"[a-z][a-z-]+", str(row.get("Workers launched", ""))))
               and str(row.get("Results summarized", "")).strip()]
@@ -861,7 +864,8 @@ def _feature_delivery_remediation_errors(
         for name in ("code_review.md", "validation_report.md"):
             if (root / name).resolve() not in registered or (root / name).resolve() not in linked:
                 errors.append(f"feature_delivery_handoff_report_reference_required:{name}")
-    completed = {row.get("Worker") for row in results if isinstance(row, dict) and row.get("Outcome") == "complete"}
+    completed = {row.get("Worker") for row in results if isinstance(row, dict)
+                 and row.get("Outcome") in {"complete", "blocked"}}
     if pre_handoff:
         completed.discard("handoff")
         packet = {**packet, "runtime_audits": [row for row in packet.get("runtime_audits", [])
@@ -874,6 +878,27 @@ def _feature_delivery_remediation_errors(
         "context-unverified" in str(row.get("Uncertainties / blockers", "")) for row in results
     ):
         errors.append("feature_delivery_context_unverified_prevents_completion")
+    return list(dict.fromkeys(errors))
+
+
+def _techops_remediation_contract_errors(
+    packet: dict[str, object], packet_path: Path, *, pre_handoff: bool = False,
+) -> list[str]:
+    """Require TechOps approval provenance, preserved diagnostic checks, and delivery fan-in."""
+    identity = packet.get("identity", {})
+    if (Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower()
+            != "techops_issue_remediation" or identity.get("Lifecycle") != "remediation"):
+        return []
+    errors = _feature_delivery_remediation_errors(packet, packet_path, pre_handoff=pre_handoff)
+    reentry = packet.get("reentry", {})
+    if (not reentry.get("Prior run ID") or reentry.get("Prior run ID") == identity.get("Run ID")
+            or not str(reentry.get("Approval reference", "")).strip()
+            or reentry.get("Approved plan") != str((packet_path.parent / "implementation_plan.md").resolve())
+            or not re.fullmatch(r"[0-9a-f]{64}", str(reentry.get("Approved plan SHA256", "")))):
+        errors.append("techops_remediation_approved_plan_provenance_required")
+    evidence_ids = {str(row.get("Evidence ID")) for row in packet.get("evidence", [])
+                    if isinstance(row, dict) and row.get("Evidence ID")}
+    errors.extend(techops_check_errors(packet.get("techops_checks"), evidence_ids))
     return list(dict.fromkeys(errors))
 
 

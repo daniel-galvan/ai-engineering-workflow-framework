@@ -264,48 +264,119 @@ def dispatch_audit_errors(packet: dict, packet_path: Path, *, closure_only: bool
         return [f"runtime_dispatch_evidence_invalid:{error}"]
 
 
-def _native_terminal_observations(ledger: dict, handles: list[str]) -> list[dict]:
-    """Use only the latest native inventory, preserving its observed timestamp."""
+def _native_terminal_observations(ledger: dict, handles: list[str], *, require_terminal: bool = True) -> list[dict]:
+    """Select the latest provider status for each handle from inventory or targeted thread reads."""
     try:
         from runtime_checks import terminal_observation_errors
     except ModuleNotFoundError:
         from scripts.runtime_checks import terminal_observation_errors
-    if not ledger.get("inventories"):
+    inventories = ledger.get("inventories", [])
+    probes = ledger.get("status_probes", [])
+    if not inventories and not probes:
         raise ValueError("terminal_provider_inventory_required")
-    inventory = ledger["inventories"][-1]
-    agents = {row["agent_name"]: row["agent_status"] for row in inventory["raw_response"]["agents"]}
+    inventory = inventories[-1] if inventories else None
+    agents = ({row["agent_name"]: row["agent_status"] for row in inventory["raw_response"]["agents"]}
+              if inventory else {})
     observations = []
     for handle in handles:
+        dispatch = latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"]
         status = agents.get(handle)
         if isinstance(status, dict) and len(status) == 1:
             status = next(iter(status))
-        observations.append({"Provider handle": handle, "Provider status": status,
+        row = {"Provider handle": handle, "Provider status": status,
             "Thread ID": ledger["thread_mappings"][handle], "Status source": "list_agents",
-            "Last dispatch at": latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"],
-            "Observed at": inventory["Observed at"]})
+            "Last dispatch at": dispatch, "Observed at": inventory["Observed at"] if inventory else dispatch}
+        candidates = [probe for probe in probes if isinstance(probe, dict)
+                      and probe.get("Provider handle") == handle
+                      and timestamp(probe.get("Attempted at", "")) >= timestamp(dispatch)]
+        if candidates:
+            latest = max(candidates, key=lambda probe: timestamp(probe.get("Observed at", "")))
+            if not inventory or timestamp(latest["Observed at"]) > timestamp(row["Observed at"]):
+                targeted = latest.get("terminal_observation")
+                row = (targeted if isinstance(targeted, dict) else {
+                    "Provider handle": handle, "Provider status": None,
+                    "Thread ID": ledger["thread_mappings"][handle], "Status source": latest.get("Operation"),
+                    "Last dispatch at": dispatch, "Observed at": latest.get("Observed at")})
+        observations.append(row)
     errors = terminal_observation_errors(observations, handles, require_completed=False)
-    if not handles or errors:
+    if not handles or (require_terminal and errors):
         raise ValueError("terminal_inventory_unverified:" + ";".join(errors))
     return observations
 
 
 def terminal_closure(ledger: dict) -> dict:
-    """Project the latest native inventory into the canonical Terminal receipt."""
+    """Project latest native status evidence into the canonical Terminal receipt."""
     handles = dispatched_worker_handles(ledger)
     observations = _native_terminal_observations(ledger, handles)
-    inventory = ledger["inventories"][-1]
+    observed_at = max(row["Observed at"] for row in observations)
     return {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
         "Completed worker handles": "; ".join(handles), "Runtime status": "Terminal", "Remaining active handles": "0",
-        "Closure evidence or blocker": "provider status snapshot " + inventory["Observed at"] + ": "
+        "Closure evidence or blocker": "provider status snapshot " + observed_at + ": "
             + "; ".join(row["Provider handle"] + "=" + str(row["Provider status"]) for row in observations)}],
         "terminal_observations": observations}
+
+
+def blocked_runtime_closure(ledger: dict, blocker: str) -> dict:
+    """Record unavailable closure only when the latest provider evidence is insufficient."""
+    handles = dispatched_worker_handles(ledger)
+    if not handles:
+        raise ValueError("blocked_runtime_closure_requires_dispatched_handles")
+    reason = str(blocker).strip()
+    if not reason:
+        raise ValueError("blocked_runtime_closure_reason_required")
+    observations = []
+    if ledger.get("inventories"):
+        try:
+            from runtime_checks import terminal_observation_errors
+        except ModuleNotFoundError:
+            from scripts.runtime_checks import terminal_observation_errors
+        observations = _native_terminal_observations(ledger, handles, require_terminal=False)
+        errors = terminal_observation_errors(observations, handles, require_completed=False)
+        if not errors:
+            raise ValueError("worker_runtime_terminal_receipt_available: use --closure")
+        inventory = ledger["inventories"][-1]
+        detail = f"; latest provider inventory {inventory['Observed at']} is insufficient: " + ", ".join(errors)
+    else:
+        detail = "; terminal provider inventory unavailable"
+    probes = ledger.get("status_probes", [])
+    if not isinstance(probes, list):
+        raise ValueError("targeted_worker_status_probes_invalid")
+    missing_handles = {row["Provider handle"] for row in observations
+                       if not isinstance(row.get("Provider status"), str) or not row["Provider status"].strip()}
+    if not observations:
+        missing_handles = set(handles)
+    for handle in sorted(missing_handles):
+        dispatch = latest_worker_dispatch(ledger, handle, include_failed=True)
+        dispatch_at = timestamp(dispatch["Last dispatch at"])
+        attempts = [row for row in probes if isinstance(row, dict)
+                    and row.get("Provider handle") == handle
+                    and row.get("Result") in {"returned", "unavailable", "unverifiable"}
+                    and timestamp(row.get("Attempted at", "")) >= dispatch_at]
+        if not attempts:
+            raise ValueError("targeted_worker_status_failure_evidence_required:" + handle)
+        latest = max(attempts, key=lambda row: (timestamp(row["Attempted at"]), timestamp(row["Observed at"])))
+        if latest["Result"] not in {"unavailable", "unverifiable"}:
+            raise ValueError("targeted_worker_status_returned: refresh inventory or use terminal observation:" + handle)
+        detail += f"; targeted {latest['Operation']} was {latest['Result']} for {handle} at {latest['Observed at']}"
+        if latest.get("Reason"):
+            detail += "; " + latest["Reason"]
+    if not reason.lower().startswith("worker_runtime_release_unavailable:"):
+        reason = "worker_runtime_release_unavailable: " + reason
+    return {"runtime_closure": [{
+        "Run or stage": "Current run", "Receipt owner": "Coordinator",
+        "Completed worker handles": "Unknown", "Runtime status": "Blocked",
+        "Remaining active handles": "Unknown",
+        "Closure evidence or blocker": reason + detail + "; dispatched handles: " + "; ".join(handles),
+    }]}
 
 
 def register_worker_audit(packet_path: Path, agent: str, trace_path: Path) -> None:
     """Register passed TechOps/Feature receipts without accepting analytical content."""
     root = packet_path.parent.resolve()
     bindings = json.loads((root / "role_bindings.json").read_text())
-    if bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery"}:
+    if (bindings.get("playbook") not in {"techops_issue_remediation", "feature_delivery", "sentry_issue_remediation"}
+            or (bindings.get("playbook") == "sentry_issue_remediation"
+                and bindings.get("lifecycle") != "remediation")):
         return  # Sentry retains its finalizer-owned audit assembly.
     try:
         from planning_contracts import worker_audit_record
@@ -342,6 +413,65 @@ def register_worker_audit(packet_path: Path, agent: str, trace_path: Path) -> No
         temporary.unlink(missing_ok=True)
 
 
+def activate_verified_remediation(packet_path: Path, ledger: dict) -> dict | None:
+    """Advance remediation identity only after the current provider evidence passes its launch gate."""
+    bindings_path = packet_path.parent / "role_bindings.json"
+    if not bindings_path.is_file():
+        return None
+    bindings = json.loads(bindings_path.read_text())
+    if (bindings.get("playbook") not in {"feature_delivery", "techops_issue_remediation", "sentry_issue_remediation"}
+            or bindings.get("lifecycle") != "remediation"):
+        return None
+    packet = json.loads(packet_path.read_text())
+    identity = packet.get("identity", {})
+    requested = identity.get("Requested profile")
+    if (requested not in {"standard", "deep"} or identity.get("Lifecycle") != "remediation"
+            or identity.get("Profile status") != "requested" or identity.get("State") != "in_progress"):
+        return None
+    if not ledger.get("inventories"):
+        return {"status": "pending", "errors": ["delivery_activation_fresh_inventory_required"]}
+
+    inventory = ledger["inventories"][-1]
+    statuses = {}
+    for row in inventory.get("raw_response", {}).get("agents", []):
+        status = row.get("agent_status")
+        if isinstance(status, dict) and len(status) == 1:
+            status = next(iter(status))
+        statuses[row.get("agent_name")] = str(status).strip().lower().replace(" ", "_")
+    active = {"pending_init", "running", "in_progress", "awaiting_dependency"}
+    candidates = [row for row in ledger.get("events", [])
+                  if row.get("Operation") == "spawn_agent" and row.get("Binding agent") == "implementer"
+                  and row.get("Provider handle") in statuses and statuses[row["Provider handle"]] in active]
+    if len(candidates) != 1:
+        return {"status": "pending", "errors": ["delivery_worker_live_activation_required:implement"]}
+
+    candidate = json.loads(json.dumps(packet))
+    candidate["identity"]["Activated profile"] = requested
+    candidate["identity"]["Profile status"] = "in_progress"
+    with tempfile.NamedTemporaryFile("w", dir=packet_path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(candidate, stream, indent=2)
+            stream.write("\n")
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        try:
+            from runtime_checks import delivery_start_errors
+        except ModuleNotFoundError:
+            from scripts.runtime_checks import delivery_start_errors
+        handle = candidates[0]["Provider handle"]
+        errors = delivery_start_errors(temporary, handle, statuses[handle])
+        if errors:
+            return {"status": "pending", "errors": errors}
+        temporary.replace(packet_path)
+        return {"status": "activated", "profile": requested,
+                "provider_handle": handle, "inventory_at": inventory.get("Observed at")}
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider-session", type=Path, required=True)
@@ -356,10 +486,16 @@ def main() -> int:
     parser.add_argument("--trace", type=Path)
     parser.add_argument("--closure", type=Path, help="Build a Terminal receipt from the current native provider inventory")
     parser.add_argument("--pending-closure", type=Path, help="Create an unverified closure probe before pre-release")
+    parser.add_argument("--blocked-closure", type=Path,
+                        help="Build a Coordinator Blocked receipt when current provider closure cannot be verified")
+    parser.add_argument("--blocker", help="Concrete reason terminal provider status or release could not be verified")
     args = parser.parse_args()
-    if args.closure and args.pending_closure:
-        parser.error("pending and Terminal closure are separate modes")
-    closure_path = args.closure or args.pending_closure
+    closure_modes = [args.closure, args.pending_closure, args.blocked_closure]
+    if sum(path is not None for path in closure_modes) > 1:
+        parser.error("pending, Blocked, and Terminal closure are separate modes")
+    if bool(args.blocked_closure) != bool(args.blocker):
+        parser.error("--blocked-closure requires --blocker, and --blocker is only valid with --blocked-closure")
+    closure_path = args.closure or args.pending_closure or args.blocked_closure
     if closure_path and any((args.worker_session, args.observation, args.agent, args.trace)):
         parser.error("closure collection and trace export are separate modes")
     if any((args.worker_session, args.observation, args.agent, args.trace)) and not all(
@@ -394,15 +530,23 @@ def main() -> int:
                 if (previous.get("terminal_observations") or not previous.get("runtime_closure")
                         or any(row.get("Runtime status") != "Pending" for row in previous["runtime_closure"])):
                     raise ValueError("runtime_pending_closure_would_replace_evidence")
-            receipt = terminal_closure(result) if args.closure else {"runtime_closure": [{
-                "Run or stage": "Current run", "Receipt owner": "Coordinator", "Completed worker handles": "Unknown",
-                "Runtime status": "Pending", "Remaining active handles": "Unknown",
-                "Closure evidence or blocker": "Pending final provider observation after pre-release"}]}
+            if args.blocked_closure and closure_path.exists():
+                previous = json.loads(closure_path.read_text())
+                if (previous.get("terminal_observations") or not previous.get("runtime_closure")
+                        or any(row.get("Runtime status") != "Pending" for row in previous["runtime_closure"])):
+                    raise ValueError("runtime_blocked_closure_would_replace_evidence")
+            receipt = (terminal_closure(result) if args.closure else
+                       blocked_runtime_closure(result, args.blocker) if args.blocked_closure else
+                       {"runtime_closure": [{
+                           "Run or stage": "Current run", "Receipt owner": "Coordinator",
+                           "Completed worker handles": "Unknown", "Runtime status": "Pending",
+                           "Remaining active handles": "Unknown",
+                           "Closure evidence or blocker": "Pending final provider observation after pre-release"}]})
             closure_path.write_text(json.dumps(receipt, indent=2) + "\n")
+        packet_path = args.ledger.parent / "finalization_packet.json"
         if args.trace:
             if args.trace.resolve().parent != args.ledger.resolve().parent:
                 raise ValueError("worker_trace_outside_current_run")
-            packet_path = args.trace.parent / "finalization_packet.json"
             run_id = json.loads(packet_path.read_text())["identity"]["Run ID"] if packet_path.is_file() else None
             observation = json.loads(args.observation.read_text()) if args.observation else None
             if observation is not None and "terminal_observations" in observation:
@@ -445,12 +589,27 @@ def main() -> int:
                               "context_violations": trace["audit"].get("context_violations", [])}))
             return 2
         if args.trace and (args.trace.parent / "role_bindings.json").is_file():
-            register_worker_audit(packet_path, args.agent, args.trace)
+            try:
+                register_worker_audit(packet_path, args.agent, args.trace)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                reason = str(error)
+                recovery_gate = reason.startswith("worker_result_recovery_authorization_required:")
+                print(json.dumps({"status": "blocked",
+                    "phase": "worker_recovery_gate" if recovery_gate else "coordinator_audit_registration",
+                    "worker_trace_status": "passed", "worker_result_disposition": "not_merged",
+                    "required_action": "complete_bounded_recovery_before_merging" if recovery_gate else
+                        "correct_coordinator_receipt_then_retry_collection_or_merge",
+                    "trace": str(args.trace), "ledger": str(args.ledger), "reason": reason}))
+                return 2
+        profile_activation = activate_verified_remediation(packet_path, result) if packet_path.is_file() else None
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}))
         return 2
-    print(json.dumps({"status": "recorded", "ledger": str(args.ledger),
-                      "thread_mappings": result["thread_mappings"], "dispatch_count": len(result["events"])}))
+    output = {"status": "recorded", "ledger": str(args.ledger),
+              "thread_mappings": result["thread_mappings"], "dispatch_count": len(result["events"])}
+    if profile_activation is not None:
+        output["profile_activation"] = profile_activation
+    print(json.dumps(output))
     return 0
 
 

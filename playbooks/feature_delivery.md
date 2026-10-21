@@ -198,6 +198,12 @@ Required worker sets:
 The delivery sequence is `implement` ↔ `review` → `validate` → `handoff`. Do not start additional discovery workers
 after approval unless new evidence contradicts the approved plan or expands scope.
 
+For implementation planning, after merging every required analytical result and before activating `handoff`, run the
+prepared `documenter_packet_stager` command in `role_bindings.json`. It validates the current-run result, runtime-audit,
+asset, and planning fan-in, then writes Coordinator-owned State and outcomes from the accepted
+`planning_disposition`. Analytical result merging registers each worker ledger row from its authenticated assignment
+and trace. Do not hand-edit these rows or ask Documenter to recreate them.
+
 ## Worker Outputs and Non-duplication
 
 - `feature-context` owns normalized work-item context and initial repository-context recovery. The configured
@@ -223,18 +229,27 @@ are not release.
 The same blocked-runtime snapshot path applies to an implementation plan whose pre-release check passed but whose
 provider release cannot be verified. It preserves the plan and records a blocked workflow, not completed delivery.
 
-For remediation, the Coordinator must populate current lifecycle/outcomes, the `implement`, `review`, and `validate`
-ledger/result rows, concrete evidence references, and a passed delivery fan-in before activating `handoff`.
-Provide accepted `code_review.md` and `validation_report.md`; a terminal Tester result may report unverified tests,
-but must not turn them into passed validation. A blocked code-review result is retained on a blocked handoff.
+For remediation, each `implement`, `review`, and `validate` worker returns the prepared typed result envelope.
+After each fresh terminal observation, collect and audit its trace, then run the prepared
+`worker_result_merger --packet <packet> --agent <provider-role> --trace <current-run-trace.json>` command.
+The merger validates the result, registers the worker ledger/result rows, and preserves worker-owned evidence; never
+populate those rows by hand. A missing Coordinator row is repaired by rerunning the merger with the same accepted
+trace. A rejected trace or result requires the bounded recovery protocol. Keep `code_review.md` and
+`validation_report.md` as the Reviewer- and Tester-owned evidence; a terminal Tester result may report unverified
+tests, but cannot turn them into passed validation.
 Save `runtime_audits` using the shared terminal-observation fields plus `Worker` and `Trace path`. Audit each retrieved
 trace with the runtime guard and record its completed `fan_in` event and `last_dispatch_at`. If retrieval fails,
 record `Trace retrieval: unavailable: <attempted route and concrete failure>` and `context-unverified` in that worker's
 result; do not label it audited. Use exact provider handles and current thread mappings.
 Unverified context prevents a completed delivery workflow; retain a blocked result until the trace can be verified.
-The Documenter activation guard checks these Coordinator-owned inputs and current input/asset reconciliation.
-If Documenter reports missing typed values, the Coordinator supplies them and resumes the same Documenter in this run;
-do not ask the user to repair bookkeeping or launch a separate task. Return analytical errors to their owning worker.
+Before activating `handoff`, run the prepared `documenter_packet_stager --packet <packet>` command with
+`--coordinator-model-effort`, `--prompt-conformance pass`, and `--engineering-outcome solved|partially_solved|blocked`.
+It verifies the approved plan, accepted worker artifacts/results and current-run audits, then derives lifecycle and
+synchronization fields and records the disposition. For a blocked disposition, retain the concrete blocker in an
+accepted worker result and its owned report. Do not hand-edit Coordinator bookkeeping. The Documenter activation guard
+checks those staged inputs and current input/asset reconciliation. If Documenter finds a content error, return it to
+its owner or correct the handoff content in this run. Do not ask the user to repair bookkeeping or start another task.
+Return result-envelope errors to their owning worker.
 After Documenter finishes, save its result and runtime audit, run `--check-packet` and then `--pre-release`, and only
 then collect fresh Terminal observations after every worker's last dispatch. The terminal finalizer requires the
 passed pre-release receipt for this exact packet and observations no older than that check. For explicit release
@@ -393,12 +408,15 @@ deep-profile alternative.
 
 ### Stage 5 — Approved Remediation
 
-Before source changes, activate and record `implement`, `review`, and `validate` with their declared dependencies; run
-the final `handoff` after delivery fan-in. The Coordinator must not perform those roles itself. If this graph is
-unavailable, stop as `remediation_not_activated`; do not edit source.
-Run the prepared worker-runtime guard in `--before-source-change` mode at each implementation slice. It checks the
-current remediation identity, matching activated profile, exact approved plan hash and independent delivery handles.
-The guard is an explicit worker obligation; it does not intercept arbitrary editor operations outside the playbook.
+Before source changes, activate `implement`, `review`, and `validate` with their declared dependencies; run the final
+`handoff` only after accepted delivery fan-in. The Coordinator must not perform those roles itself. Refresh the current
+native dispatch ledger with the prepared `runtime_evidence.collector` before the implementation guard. The guard checks
+the current remediation identity, matching activated profile, exact approved plan hash, three distinct live provider
+handles, their prepared role bindings and hash-checked dispatch files, and a fresh native inventory. It derives launch
+evidence from the provider stream; do not hand-create packet worker rows to satisfy it. If the graph is unavailable,
+stop as `remediation_not_activated`; do not edit source. Run the guard in `--before-source-change` mode at each
+implementation slice. The guard is an explicit worker obligation; it does not intercept arbitrary editor operations
+outside the playbook.
 Before accepting a ready plan, require its Design Justification and Complete Solution evidence tables. Compare each
 new mechanism against existing handling and the smallest alternative. Keep scenario exposure/disposition in Behavior
 Applicability; a schema concern requires reassessment, not an automatic acceptance reduction. Completion requires
@@ -410,8 +428,10 @@ handoff report or a new approval gate. A completed slice is `in_progress`, not a
 when new evidence invalidates scope, acceptance criteria, or the selected design; otherwise stop only for a genuine
 blocker.
 
-The Reviewer applies the [Evidence-Driven Code Review Contract](../contracts/code_review.md) and writes `code_review.md`
-from [the shared template](../templates/code_review.md). Establish the exact committed and worktree candidate, trace
+The Reviewer applies the [Evidence-Driven Code Review Contract](../contracts/code_review.md) and returns the complete
+`code_review.md` contents from [the shared template](../templates/code_review.md) in the result envelope's `output`
+field. The Coordinator merger writes that field to the prepared report path; the Reviewer does not write the file
+directly. Establish the exact committed and worktree candidate, trace
 every material changed behavior through actual callers and consumers, and challenge tests against unchanged contracts.
 Before recording `accepted`, run `scripts/review_evidence.py --review <run-root>/code_review.md --require-accepted` from
 the framework package. Missing lifecycle or counterexample evidence is not an accepted review. Finalization rechecks
@@ -421,7 +441,9 @@ the report for completed remediation. Preserve the existing read-only Reviewer a
 
 The Implementer adds the required regression tests and assertions as part of the approved plan. Tester maps every
 approved criterion and reviewed behavior to exact checks and execution evidence in
-[`validation_report.md`](../templates/validation_report.md). Missing runnable tests return to Implementer, Reviewer,
+[`validation_report.md`](../templates/validation_report.md) and returns the complete report through the result
+envelope's `output` field. The Coordinator merger writes it to the prepared report path; Tester does not write the
+file directly. Missing runnable tests return to Implementer, Reviewer,
 and Tester automatically; they are not user homework or a new approval gate. Check downstream inputs and forbidden
 writes, including fake call tracking when record equality can hide a write.
 Every source, test or fixture edit invalidates prior candidate acceptance. Generate the current fingerprint with

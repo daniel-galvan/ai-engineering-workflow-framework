@@ -3,10 +3,14 @@
 import copy
 import hashlib
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prepare_run as preparation
@@ -14,6 +18,7 @@ import finalize_work_record as finalizer
 import validate_worker_runtime as runtime
 from run_input_manifest import load_manifest
 from review_evidence import delivery_evidence_fixture, PLAN_FIXTURE
+from tests.worker_response_support import stage_worker_response
 
 
 class FeatureDeliveryContinuation(unittest.TestCase):
@@ -25,6 +30,52 @@ class FeatureDeliveryContinuation(unittest.TestCase):
             "Status": "Registered", "Asset source": True,
         }]}))
         return source
+
+    def test_remediation_merger_publishes_review_and_validation_to_required_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "plan.md").write_text(PLAN_FIXTURE)
+            first = preparation.prepare_run(root, "ITEM-REPORTS", "feature_delivery", None, False,
+                                            input_manifest=self.inputs(root))
+            artifact_root = Path(first["artifact_root"])
+            packet_path = Path(first["finalization_packet"])
+            packet = json.loads(packet_path.read_text())
+            packet["identity"].update({"Lifecycle": "planning", "State": "ready_for_implementation",
+                                      "Requested profile": "standard", "Workflow outcome": "completed"})
+            packet_path.write_text(json.dumps(packet))
+            plan_path = artifact_root / "implementation_plan.md"
+            plan_path.write_text(PLAN_FIXTURE)
+            (artifact_root / "runtime_closure.json").write_text(json.dumps({"runtime_closure": [{
+                "Run or stage": "planning", "Receipt owner": "Coordinator", "Completed worker handles": "/root/handoff",
+                "Runtime status": "Released", "Remaining active handles": "None",
+                "Closure evidence or blocker": "Provider confirmed the planning worker closed"}]}))
+            run = preparation.prepare_run(root, "ITEM-REPORTS", "feature_delivery", None, True,
+                input_manifest=Path(first["run_input_manifest"]["path"]), remediation_reentry=True,
+                approval_reference="Explicit synthetic approval")
+            artifact_root = Path(run["artifact_root"])
+            packet_path = Path(run["finalization_packet"])
+            result_fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())
+            for agent, worker, namespace, report_name in (
+                ("reviewer", "review", "RV", "code_review.md"),
+                ("tester", "validate", "TE", "validation_report.md"),
+            ):
+                evidence_id = f"E-{namespace}-001"
+                summary = {**dict.fromkeys(result_fields["worker_results"][0], "Synthetic current candidate"),
+                           "Worker": worker, "Outcome": "complete", "Evidence / claim refs": evidence_id}
+                evidence = {**dict.fromkeys(result_fields["evidence"][0], "Synthetic report fixture"),
+                            "Evidence ID": evidence_id}
+                result = {"run_id": run["run_id"], "worker_result": summary, "evidence": [evidence],
+                          "claims": [], "decisions": [], "actions": []}
+                report = f"# {report_name}\nSynthetic complete report from the prepared result envelope.\n"
+                trace_path, _ = stage_worker_response(run, agent, result, output=report,
+                    provider_handle="/root/" + worker,
+                    child_thread_id=str(UUID(int=202 + len(summary["Worker"]))))
+                merged = subprocess.run([sys.executable, str(preparation.ROOT / "scripts/merge_techops_result.py"),
+                    "--packet", str(packet_path), "--agent", agent, "--trace", str(trace_path)],
+                    cwd=preparation.ROOT, capture_output=True, text=True)
+                self.assertEqual(merged.returncode, 0, merged.stdout + merged.stderr)
+                self.assertEqual((artifact_root / report_name).read_text(), report)
+                self.assertEqual(run["worker_contracts"][agent]["output"], str(artifact_root / report_name))
 
     def test_input_snapshot_survives_output_edits_and_continuation_hash_is_current(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -113,16 +164,78 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                              hashlib.sha256(PLAN_FIXTURE.encode()).hexdigest())
             packets = json.loads(Path(result["activation_packet_bundle"]["path"]).read_text())["packets"]
             self.assertIn("before_source_change_guard", packets["implementer"]["worker_contract"])
-            self.assertTrue(runtime.delivery_start_errors(packet_path, "/root/implement", "running"))
-            current["identity"].update({"Activated profile": "deep", "Profile status": "in_progress"})
-            for worker, role in (("implement", "implementer"), ("review", "reviewer"),
-                                 ("validate", "tester"), ("handoff", "documenter")):
-                current["workers"].append({"Worker": worker, "Role": role,
-                    "Outcome": "in_progress" if worker == "implement" else "awaiting_dependency",
-                    "Assigned inputs": f"Approved plan; Provider handle /root/{worker}",
-                    "Depends on": "Approved plan" if worker == "implement" else "implement"})
-            packet_path.write_text(json.dumps(current))
-            self.assertEqual(runtime.delivery_start_errors(packet_path, "/root/implement", "running"), [])
+            bindings_path = artifact_root / "role_bindings.json"
+            bindings = json.loads(bindings_path.read_text())
+            parent_id = str(UUID(int=303))
+            provider = root / "provider.jsonl"
+            ledger_path = artifact_root / "runtime_dispatches.json"
+            started = datetime.now(timezone.utc).replace(microsecond=0)
+            bindings["runtime_evidence"].update({"run_started_at": started.isoformat(), "ledger": str(ledger_path)})
+            bindings_path.write_text(json.dumps(bindings))
+
+            def guard():
+                return subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1]
+                    / "scripts/validate_worker_runtime.py"), "--before-source-change", str(packet_path),
+                    "--implementer-handle", "/root/implement", "--provider-status", "running"],
+                    cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+                    env={key: value for key, value in os.environ.items()
+                         if key not in {"CODEX_THREAD_ID", "CODEX_SESSION_ID"}})
+
+            def event(offset, kind, **payload):
+                return {"timestamp": (started + timedelta(seconds=offset)).isoformat(), "type": kind,
+                        "payload": payload}
+
+            rows = [event(0, "session_meta", id=parent_id, cwd=str(root))]
+            handles, threads = [], []
+            for index, (worker, role) in enumerate((("implement", "implementer"), ("review", "reviewer"),
+                                                     ("validate", "tester")), 1):
+                handle, thread = "/root/" + worker, str(UUID(int=303 + index))
+                assignment = artifact_root / (worker + "-assignment.json")
+                assignment.write_text(json.dumps({"objective": "Work on the approved implementation plan",
+                                                  "input_paths": [str(plan)]}))
+                dispatch = artifact_root / (worker + "-activation.txt")
+                result_cli = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1]
+                    / "scripts/validate_worker_runtime.py"), "--activation-packet-bundle",
+                    result["activation_packet_bundle"]["path"], "--expected-agent", role,
+                    "--expected-bundle-sha256", result["activation_packet_bundle"]["sha256"],
+                    "--assignment", str(assignment), "--dispatch-file", str(dispatch)],
+                    cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+                    env={key: value for key, value in os.environ.items()
+                         if key not in {"CODEX_THREAD_ID", "CODEX_SESSION_ID"}})
+                self.assertEqual(result_cli.returncode, 0, result_cli.stdout + result_cli.stderr)
+                guarded = json.loads(result_cli.stdout)
+                rows.extend([event(index * 2 + 1, "response_item", type="function_call", namespace="collaboration",
+                    name="spawn_agent", call_id="spawn-" + worker, arguments=json.dumps({
+                        "task_name": worker, "message": guarded["activation_message"],
+                        **guarded["launch_arguments"]})),
+                    event(index * 2 + 2, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                        "agent_path": handle, "agent_thread_id": thread})])
+                handles.append(handle)
+                threads.append(thread)
+            rows.extend([event(9, "response_item", type="function_call", namespace="collaboration",
+                name="list_agents", call_id="inventory", arguments="{}"),
+                event(10, "response_item", type="function_call_output", call_id="inventory",
+                    output=json.dumps({"agents": [{"agent_name": handle, "agent_status": {"running": "Active"}}
+                                       for handle in handles]}))])
+            provider.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+            missing_ledger = guard()
+            self.assertEqual(missing_ledger.returncode, 2, missing_ledger.stdout + missing_ledger.stderr)
+            self.assertIn("remediation_not_activated", missing_ledger.stdout)
+            collector = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1]
+                / "scripts/worker_runtime_evidence.py"), "--provider-session", str(provider),
+                "--parent-thread-id", parent_id, "--started-at", started.isoformat(), "--ledger", str(ledger_path)],
+                cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+                env={key: value for key, value in os.environ.items()
+                     if key not in {"CODEX_THREAD_ID", "CODEX_SESSION_ID"}})
+            self.assertEqual(collector.returncode, 0, collector.stdout + collector.stderr)
+            collected = json.loads(collector.stdout)
+            self.assertEqual(collected["profile_activation"]["status"], "activated")
+            activated = json.loads(packet_path.read_text())["identity"]
+            self.assertEqual(activated["Activated profile"], "deep")
+            self.assertEqual(activated["Profile status"], "in_progress")
+            # All three real activations suffice; Documenter is activated only after accepted fan-in.
+            accepted = guard()
+            self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
             self.assertFalse((artifact_root / "runtime_closure.json").exists())
             current_run_id = current["identity"]["Run ID"]
             result = preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, True,

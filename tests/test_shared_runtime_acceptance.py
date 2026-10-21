@@ -1,12 +1,15 @@
 """Shared receipt acceptance across prepared playbook roles; no live workers."""
 
 import json
+import io
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import prepare_run as preparation
 from scripts import validate_worker_runtime as runtime
@@ -191,12 +194,24 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         packet = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"][role]
         result_contract = packet.get("worker_contract") or {}
         if result_contract.get("result_hash_required"):
-            from scripts.merge_techops_result import FEATURE_WORKERS, WORKERS
-            workers = FEATURE_WORKERS if playbook == "feature_delivery" else WORKERS
+            from scripts.merge_techops_result import FEATURE_REMEDIATION_WORKERS, FEATURE_WORKERS, WORKERS
+            workers = (FEATURE_REMEDIATION_WORKERS if remediation else FEATURE_WORKERS) \
+                if playbook == "feature_delivery" else WORKERS
             fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())["worker_results"][0]
             result = {"run_id": run["run_id"], "worker_result": {
                 **dict.fromkeys(fields, "Synthetic evidence blocker"),
-                "Worker": workers[role][0], "Outcome": "blocked"}}
+                "Worker": workers[role][0], "Outcome": "complete"}}
+            if playbook == "techops_issue_remediation" and role == "solution_architect":
+                evidence_id = "E-FD-SYN001"
+                evidence_fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())[
+                    "evidence"][0]
+                result["evidence"] = [{**dict.fromkeys(evidence_fields, "Synthetic fixture evidence"),
+                                       "Evidence ID": evidence_id}]
+                result["worker_result"]["Evidence / claim refs"] = evidence_id
+                result["techops_checks"] = [
+                    {"Check": check, "Status": "not_applicable" if check == "history_reconciliation" else "passed",
+                     "Evidence refs": evidence_id, "Detail": "Synthetic evidence for shared receipt acceptance"}
+                    for check in runtime.TECHOPS_CHECKS]
             if result_contract.get("planning_disposition_required"):
                 result.update(plan_readiness="awaiting_input", implementation_plan_action="omit")
             if result_contract.get("asset_inventory"):
@@ -286,6 +301,72 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(packet["worker_results"][0]["Outcome"], "complete")
             merge_result(packet_path, role, trace=path)
             self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
+
+    def test_collector_audit_registration_failure_does_not_reject_passed_worker(self):
+        from scripts import worker_runtime_evidence as collector
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, role, *_ = fixture
+            trace, _ = self.export(fixture)
+            trace_path = root / "trace.json"
+            trace_path.write_text(json.dumps(trace))
+            packet_path = root / "finalization_packet.json"
+            packet_before = packet_path.read_bytes()
+            ledger_path = Path(run["runtime_evidence"]["ledger"])
+            observation_path = root / "observation.json"
+            observation_path.write_text(json.dumps(fixture[7]))
+            arguments = [str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", str(ledger_path),
+                "--worker-session", str(root / "child.jsonl"), "--observation", str(observation_path),
+                "--agent", role, "--trace", str(trace_path)]
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), \
+                 patch.object(collector, "register_worker_audit", side_effect=ValueError("receipt_conflict")), \
+                 redirect_stdout(output):
+                self.assertEqual(collector.main(), 2)
+            response = json.loads(output.getvalue())
+            self.assertEqual(response["phase"], "coordinator_audit_registration")
+            self.assertEqual(response["worker_trace_status"], "passed")
+            self.assertEqual(response["worker_result_disposition"], "not_merged")
+            self.assertEqual(response["required_action"],
+                "correct_coordinator_receipt_then_retry_collection_or_merge")
+            self.assertIn("receipt_conflict", response["reason"])
+            self.assertEqual(json.loads(trace_path.read_text())["audit"]["status"], "passed")
+            ledger = json.loads(ledger_path.read_text())
+            self.assertNotIn(role, ledger.get("rejected_results", {}))
+            self.assertEqual(packet_path.read_bytes(), packet_before)
+
+    def test_collector_recovery_guard_is_not_reported_as_audit_failure(self):
+        from scripts import worker_runtime_evidence as collector
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, role, *_ = fixture
+            trace, _ = self.export(fixture)
+            trace_path = root / "trace.json"
+            trace_path.write_text(json.dumps(trace))
+            packet_path = root / "finalization_packet.json"
+            ledger_path = Path(run["runtime_evidence"]["ledger"])
+            observation_path = root / "observation.json"
+            observation_path.write_text(json.dumps(fixture[7]))
+            arguments = [str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", str(ledger_path),
+                "--worker-session", str(root / "child.jsonl"), "--observation", str(observation_path),
+                "--agent", role, "--trace", str(trace_path)]
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), \
+                 patch.object(collector, "register_worker_audit",
+                    side_effect=ValueError("worker_result_recovery_authorization_required:" + role)), \
+                 redirect_stdout(output):
+                self.assertEqual(collector.main(), 2)
+            response = json.loads(output.getvalue())
+            self.assertEqual(response["phase"], "worker_recovery_gate")
+            self.assertEqual(response["worker_trace_status"], "passed")
+            self.assertEqual(response["worker_result_disposition"], "not_merged")
+            self.assertEqual(response["required_action"], "complete_bounded_recovery_before_merging")
+            self.assertIn("worker_result_recovery_authorization_required", response["reason"])
+            self.assertEqual(json.loads(trace_path.read_text())["audit"]["status"], "passed")
 
     def test_feature_asset_manifest_is_published_from_the_read_only_worker_response(self):
         from scripts.merge_techops_result import merge_result

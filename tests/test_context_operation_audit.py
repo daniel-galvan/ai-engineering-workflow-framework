@@ -63,6 +63,49 @@ class ContextOperationAudit(unittest.TestCase):
         source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
         self.assertIn("forbidden_context_reference:memory_path", parent_context_audit(source, artifact_root=self.root)["errors"])
 
+    def test_parent_allows_assigned_source_ancestor_policy_but_rejects_extra_output(self):
+        source = self.repository / "src" / "module" / "current.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("current source\n")
+        instructions = source.parent / "AGENTS.md"
+        policy = ("Do not read /Users/example/.codex/memories/MEMORY.md or "
+                  ".thoughts/ITEM-1/runs/prior/analysis.md.\n")
+        instructions.write_text(policy)
+        call = 'await tools.exec_command(' + json.dumps({
+            "cmd": "cat " + str(instructions), "workdir": str(self.repository)}) + ')'
+        trace = {"tool_trace": self.paired(call, policy)}
+        self.assertEqual(runtime.context_trace_errors(
+            trace, artifact_root=self.root, input_paths=(str(source),)), [])
+
+        extra = json.loads(json.dumps(trace))
+        extra["tool_trace"][-1]["output"] = json.dumps([
+            policy, "Read /Users/example/.codex/memories/notes.md",
+            ".thoughts/ITEM-1/runs/prior/leaked.md"])
+        errors = runtime.context_trace_errors(
+            extra, artifact_root=self.root, input_paths=(str(source),))
+        self.assertIn("forbidden_context_reference:memory_directory", errors)
+        self.assertIn("forbidden_context_reference:archived_artifact", errors)
+
+        unrelated_echo = json.loads(json.dumps(trace))
+        echoed = self.paired('await tools.exec_command(' + json.dumps({
+            "cmd": "cat " + str(source), "workdir": str(self.repository)}) + ')',
+            policy + "Also read .thoughts/ITEM-1/runs/prior/leaked.md.\n")
+        echoed[0]["call_id"] = echoed[1]["call_id"] = "unrelated-source-read"
+        unrelated_echo["tool_trace"].extend(echoed)
+        errors = runtime.context_trace_errors(
+            unrelated_echo, artifact_root=self.root, input_paths=(str(source),))
+        self.assertIn("forbidden_context_reference:archived_artifact", errors)
+
+        unrelated = self.repository / "other" / "AGENTS.md"
+        unrelated.parent.mkdir()
+        unrelated.write_text(policy)
+        unrelated_call = 'await tools.exec_command(' + json.dumps({
+            "cmd": "cat " + str(unrelated), "workdir": str(self.repository)}) + ')'
+        unrelated_trace = {"tool_trace": self.paired(unrelated_call, policy)}
+        errors = runtime.context_trace_errors(
+            unrelated_trace, artifact_root=self.root, input_paths=(str(source),))
+        self.assertIn("forbidden_context_reference:memory_path", errors)
+
     def paired(self, source, output):
         return [{"type": "custom_tool_call", "name": "functions.exec", "call_id": "read-1", "input": source},
                 {"type": "custom_tool_call_output", "call_id": "read-1", "output": output}]
@@ -442,6 +485,45 @@ class ContextOperationAudit(unittest.TestCase):
         changed = json.loads(json.dumps(trace))
         changed["tool_trace"][-2]["input"] = 'await tools.exec_command({cmd:"cat .thoughts/ITEM-1:"})'
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+
+    def test_assigned_source_ancestor_instructions_are_policy_not_archive_reads(self):
+        trace = self.instruction_read_trace()
+        source = self.repository / "src" / "module" / "current.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("current source")
+        instructions = source.parent / "AGENTS.md"
+        policy = ("Do not read /Users/example/.codex/memories/MEMORY.md or "
+                  ".thoughts/ITEM-1/runs/prior/analysis.md.\n")
+        instructions.write_text(policy)
+        packet = json.loads(Path(trace["spawn"]["dispatch_file"]).read_text().split("\n", 2)[1])
+        assignment = {"objective": "Inspect the assigned source", "input_paths": [str(source)]}
+        dispatch = self.root / "nested-source-activation.txt"
+        message = runtime.activation_message(packet, assignment)
+        runtime.dispatch_message(packet, message, dispatch)
+        trace["spawn"]["dispatch_file"] = str(dispatch.resolve())
+        trace["spawn"]["dispatch_file_sha256"] = hashlib.sha256(dispatch.read_bytes()).hexdigest()
+        trace["tool_trace"] = self.paired(
+            'await tools.exec_command(' + json.dumps({"cmd": "cat " + str(dispatch.resolve()),
+                "workdir": str(self.repository)}) + ')', message)
+        trace["tool_trace"].extend(self.paired(
+            'await tools.exec_command(' + json.dumps({"cmd": "cat " + str(instructions),
+                "workdir": str(self.repository)}) + ')', policy))
+        self.assertEqual(runtime.trace_errors(trace), [])
+
+        unrelated = self.repository / "other" / "AGENTS.md"
+        unrelated.parent.mkdir()
+        unrelated.write_text(policy)
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] = 'await tools.exec_command(' + json.dumps({
+            "cmd": "cat " + str(unrelated), "workdir": str(self.repository)}) + ')'
+        changed["tool_trace"][-1]["output"] = policy
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] += (
+            " await tools.exec_command({cmd:'cat .thoughts/ITEM-1/runs/prior/leaked.md'});")
+        errors = runtime.trace_errors(changed)
+        self.assertIn("forbidden_context_reference:archived_artifact", errors)
 
     def test_ancestor_filename_probe_is_not_an_archive_read(self):
         for directory in ("", str(self.repository) + "/"):
