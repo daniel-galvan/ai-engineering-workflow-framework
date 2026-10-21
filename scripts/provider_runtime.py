@@ -458,15 +458,12 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
 
 def _preflight_order_errors(operations: list[dict], framework_root: Path,
                             command_observations: dict[str, list[dict]]) -> list[str]:
-    """Require the package preflight command before a current turn reads skills or playbooks."""
+    """Require package preflight before current-turn repository or workflow operations."""
     roots = sorted({str(framework_root.expanduser().absolute()).rstrip("/"),
                     str(framework_root.expanduser().resolve()).rstrip("/")}, key=len, reverse=True)
     root = "(?:" + "|".join(re.escape(value) for value in roots) + ")"
-    protected = re.compile(rf"(?:^|[\s\"'=])(?:\./)?(?:{root}/)?(?:skills|playbooks)/[^\s\"']+")
-    preflight = re.compile(
-        rf"(?:^|[;&|]\s*|\s)python(?:3(?:\.\d+)?)?\s+"
-        rf"(?:\./)?(?:{root}/)?scripts/run_preflight\.py(?:\s|$)"
-    )
+    bootstrap = re.compile(rf"^\s*cat\s+(?:{root}/)?skills/run/SKILL\.md\s*$")
+    preflight_path = (framework_root.expanduser().resolve() / "scripts" / "run_preflight.py").resolve()
     completed_preflight = False
     for operation in operations:
         if operation.get("name") != "exec_command":
@@ -474,9 +471,20 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
         command = operation.get("arguments", {}).get("cmd")
         if not isinstance(command, str):
             continue
-        if protected.search(command) and not completed_preflight:
+        try:
+            argv = shlex.split(command)
+        except ValueError:
+            argv = []
+        is_preflight = (
+            len(argv) >= 2 and Path(argv[0]).name in {"python", "python3"}
+            and Path(argv[1]).name == "run_preflight.py"
+            and ((Path(argv[1]).is_absolute() and Path(argv[1]).resolve() == preflight_path)
+                 or argv[1] in {"scripts/run_preflight.py", "./scripts/run_preflight.py"})
+            and not any(token in {"&&", "||", ";", "|", ">", "<"} for token in argv)
+        )
+        if not completed_preflight and not bootstrap.fullmatch(command) and not is_preflight:
             return ["parent_framework_content_before_preflight"]
-        if preflight.search(command):
+        if is_preflight:
             observations = command_observations.get(command, [])
             if len(observations) == 1:
                 observed = observations[0]

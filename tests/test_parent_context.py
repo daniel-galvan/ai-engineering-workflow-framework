@@ -322,14 +322,18 @@ class ParentContext(unittest.TestCase):
         self.rows.append(self.call("exec_command", cmd=combined))
         result = self.audit(framework_root=framework, require_preflight_order=True)
         self.assertIn("parent_framework_content_before_preflight", result["errors"])
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd="git status --short")]
+        self.assertIn("parent_framework_content_before_preflight",
+                      self.audit(framework_root=framework, require_preflight_order=True)["errors"])
 
         preflight = f"python3 {framework}/scripts/run_preflight.py"
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=f"cat {skill}")]
         observed_preflight = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
             "type": "CommandExecution", "command": ["/bin/bash", "-lc", preflight],
             "status": "completed", "exit_code": 0,
             "aggregated_output": json.dumps({"status": "passed"})}}}
-        self.rows = self.rows[:2] + [self.call("exec_command", cmd=preflight), observed_preflight,
-                                    self.call("exec_command", cmd=f"cat {skill}")]
+        self.rows.extend([self.call("exec_command", cmd=preflight), observed_preflight,
+                          self.call("exec_command", cmd=f"sed -n '1,20p' {playbook}")])
         self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
 
         observed_preflight["payload"]["item"]["exit_code"] = 2
