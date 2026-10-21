@@ -88,10 +88,16 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
                     failed_without_workers = False
                 elif row.get("Operation") != "spawn_agent" or row.get("Status") != "failed":
                     raise ValueError("stale_run_thread_identity_invalid")
+            timing = ledger.get("timing")
+            if timing is None:
+                open_worker_intervals = ledger.get("open_worker_intervals")
+            elif isinstance(timing, dict):
+                open_worker_intervals = timing.get("open_worker_intervals")
+            else:
+                open_worker_intervals = None
             ledger_proves_no_dispatches = (
                 not ledger["events"] and not mappings and failed_without_workers
-                and type(ledger.get("open_worker_intervals")) is int
-                and ledger["open_worker_intervals"] == 0
+                and type(open_worker_intervals) is int and open_worker_intervals == 0
             )
         closure_path = artifact_root / "runtime_closure.json"
         if closure_path.is_file():

@@ -258,6 +258,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    ```
    Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
    `--input-manifest <path>`. Native Codex resolves the parent from its thread identity and turn metadata.
+   Keep parent operations individually auditable: call tools with literal arguments in separate provider calls. Do not
+   batch tool calls through `Promise.all`, loops, helper functions, or shell commands built from interpolated values;
+   the parent audit cannot verify those arguments and correctly blocks preparation with
+   `parent_tool_arguments_unavailable`. For multiple file reads, issue one literal `exec_command` per file.
    Missing or ambiguous native records block preparation. `--provider-session <path>` asserts the resolved path;
    an older fragment cannot override it. Preparation repeats the parent audit before changing artifacts.
    Same-chat continuation retains current-run control metadata automatically, without analytical imports.

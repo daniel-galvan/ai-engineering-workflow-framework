@@ -376,7 +376,8 @@ class ParentContext(unittest.TestCase):
         (artifact_root / "role_bindings.json").write_text(json.dumps({
             "parent_context": {"parent_thread_id": CHILD}}))
         (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
-            "events": [], "thread_mappings": {}, "failed_dispatches": [], "open_worker_intervals": 0}))
+            "events": [], "thread_mappings": {}, "failed_dispatches": [],
+            "timing": {"open_worker_intervals": 0}}))
         (artifact_root / "runtime_closure.json").write_text(json.dumps({
             "status": "blocked", "completed_handles": "Unknown", "remaining_handles": "Unknown"}))
         self.assertEqual(prior_run_status_thread_ids(artifact_root, PARENT), (CHILD,))
@@ -386,13 +387,20 @@ class ParentContext(unittest.TestCase):
         (artifact_root / "runtime_closure.json").write_text(json.dumps({"status": "blocked"}))
 
         (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
-            "events": [], "thread_mappings": {}, "failed_dispatches": [], "open_worker_intervals": 1}))
+            "events": [], "thread_mappings": {}, "failed_dispatches": [],
+            "timing": {"open_worker_intervals": 1}}))
         with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
             prior_run_status_thread_ids(artifact_root, PARENT)
 
         (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
             "events": [{"Thread ID": CHILD}], "thread_mappings": {},
-            "failed_dispatches": [], "open_worker_intervals": 0}))
+            "failed_dispatches": [], "timing": {"open_worker_intervals": 0}}))
+        with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+            prior_run_status_thread_ids(artifact_root, PARENT)
+
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "events": [], "thread_mappings": {}, "failed_dispatches": [],
+            "open_worker_intervals": None}))
         with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
             prior_run_status_thread_ids(artifact_root, PARENT)
 
@@ -457,6 +465,11 @@ class ParentContext(unittest.TestCase):
         self.rows.append({"type": "turn_context", "payload": {"turn_id": TURN}})
         self.rows.append({"type": "response_item", "payload": {"type": "custom_tool_call",
             "input": "await tools.exec_command(argumentsFromElsewhere)"}})
+        self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        self.rows[-1]["payload"]["input"] = (
+            "const paths = ['one', 'two']; "
+            "await Promise.all(paths.map(path => tools.exec_command({cmd: `cat ${path}`})));"
+        )
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
     def test_literal_const_tool_arguments_are_audited_but_dynamic_values_fail_closed(self):
