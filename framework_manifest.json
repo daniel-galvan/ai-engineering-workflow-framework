@@ -5,7 +5,7 @@
   "library_release_status": "Coordinated document and plugin release; Git revisions identify snapshots.",
   "plugin_package": {
     "name": "ai-engineering-workflows",
-    "version": "0.5.20+codex.20261021181428"
+    "version": "0.5.20+codex.20261021184939"
   },
   "framework": {
     "path": "frameworks/investigation.md",

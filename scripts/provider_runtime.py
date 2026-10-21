@@ -358,7 +358,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             identity_error = str(error)
         ledger_present = (artifact_root is not None and (artifact_root / "runtime_dispatches.json").is_file()
                           if prior_dispatch_ledger_present is None else prior_dispatch_ledger_present)
-        turn, operations, children, errors = None, [], set(known_children), []
+        turn, operations, sequenced_operations, children, errors = None, [], [], set(known_children), []
         command_observations: dict[str, list[dict]] = {}
         exempt = set()
         pending_related_run_status = {}
@@ -377,7 +377,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 if expected_turn_id and turn == expected_turn_id and payload.get("turn_id") != expected_turn_id:
                     break
                 turn = payload.get("turn_id")
-                operations, children, errors = [], set(known_children), []
+                operations, sequenced_operations, children, errors = [], [], set(known_children), []
                 command_observations = {}
                 exempt = set()
                 pending_related_run_status = {}
@@ -433,6 +433,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     and calls[0][1] == {"limit": 50}
                     and isinstance(payload.get("call_id"), str) and payload["call_id"])
                 for name, arguments in calls:
+                    sequenced_operations.append({"name": name, "arguments": arguments})
                     if name == "exec_command":
                         operations.append({"type": "function_call", "name": name, "arguments": arguments})
                     elif name == "apply_patch":
@@ -480,7 +481,9 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             empty_memory_probes += 1
     audited_operations = [operation for index, operation in enumerate(operations) if index not in exempt]
     if require_preflight_order and framework_root is not None:
-        errors.extend(_preflight_order_errors(audited_operations, framework_root, command_observations))
+        # Empty memory searches may be harmless for context isolation, but they remain real
+        # operations for sequencing: they cannot be hidden inside a preflight bootstrap call.
+        errors.extend(_preflight_order_errors(sequenced_operations, framework_root, command_observations))
     details = []
     errors.extend(context_trace_errors({"tool_trace": audited_operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
@@ -505,6 +508,8 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
     completed_preflight = False
     for operation in operations:
         if operation.get("name") != "exec_command":
+            if not completed_preflight:
+                return ["parent_framework_content_before_preflight"]
             continue
         command = operation.get("arguments", {}).get("cmd")
         if not isinstance(command, str):

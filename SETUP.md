@@ -77,8 +77,10 @@ codex plugin marketplace add "$FRAMEWORK_DIR"
 codex plugin add ai-engineering-workflows@ai-engineering-workflow-framework
 ```
 
-Plugin installation is user-global, not execution-repository-scoped. Start a new Codex task from the chosen execution
-repository after installation, then explicitly invoke the launcher with the work item:
+Plugin installation is user-global, not execution-repository-scoped. If Codex was open during an install or refresh,
+restart the desktop app so it loads the updated plugin. Then start a new Codex task from the chosen execution repository
+and confirm `$ai-engineering-workflows:run` is available before invoking it with the work item. If the launcher is
+missing, stop and resolve plugin loading before attempting the workflow; do not substitute a versioned cache path.
 
 ```text
 Use $ai-engineering-workflows:run.

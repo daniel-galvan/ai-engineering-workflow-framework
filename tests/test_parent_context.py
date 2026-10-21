@@ -129,7 +129,7 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["empty_memory_probes"], 0)
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
-    def test_no_match_probe_can_share_native_run_skill_bootstrap_command(self):
+    def test_no_match_probe_cannot_share_native_run_skill_bootstrap_command(self):
         framework = self.root / "framework"
         skill = framework / "skills" / "run" / "SKILL.md"
         skill.parent.mkdir(parents=True)
@@ -145,7 +145,8 @@ class ParentContext(unittest.TestCase):
                            {"type": "search", "cmd": search, "query": query, "path": "MEMORY.md"}]}}}
         self.rows.extend([self.call("exec_command", cmd=command), observation])
         result = self.audit(framework_root=framework, require_preflight_order=True)
-        self.assertEqual(result["status"], "passed", result)
+        self.assertEqual(result["status"], "rejected", result)
+        self.assertIn("parent_framework_content_before_preflight", result["errors"])
         self.assertEqual(result["empty_memory_probes"], 1)
 
         observation["payload"]["item"]["aggregated_output"] += "match from memory"
@@ -383,6 +384,21 @@ class ParentContext(unittest.TestCase):
         observed_preflight["payload"]["item"]["aggregated_output"] = json.dumps({"status": "blocked"})
         result = self.audit(framework_root=framework, require_preflight_order=True)
         self.assertIn("parent_framework_content_before_preflight", result["errors"])
+
+    def test_external_connector_calls_are_ordered_after_preflight(self):
+        framework = self.root / "framework"
+        issue_read = self.call("mcp__atlassian__get_issue", issue_key="ECHO-2806")
+        self.rows.append(issue_read)
+        result = self.audit(framework_root=framework, require_preflight_order=True)
+        self.assertIn("parent_framework_content_before_preflight", result["errors"])
+
+        preflight = f"python3 {framework}/scripts/run_preflight.py"
+        observed = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "CommandExecution", "command": ["/bin/bash", "-lc", preflight],
+            "status": "completed", "exit_code": 0,
+            "aggregated_output": json.dumps({"status": "passed"})}}}
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=preflight), observed, issue_read]
+        self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
 
     def test_shipped_status_projection_matches_the_audit_allowlist(self):
         skill = (Path(__file__).resolve().parents[1] / "skills" / "run" / "SKILL.md").read_text()
