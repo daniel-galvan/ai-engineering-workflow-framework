@@ -288,6 +288,55 @@ class ParentContext(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stale_run_thread_identity_invalid"):
             prior_run_status_thread_ids(artifact_root, "00000000-0000-0000-0000-000000000004")
 
+    def test_zero_dispatch_ledger_allows_stale_closure_without_terminal_observations(self):
+        artifact_root = self.root / ".thoughts" / "ITEM-1"
+        artifact_root.mkdir(parents=True)
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "parent_context": {"parent_thread_id": CHILD}}))
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "events": [], "thread_mappings": {}, "failed_dispatches": [], "open_worker_intervals": 0}))
+        (artifact_root / "runtime_closure.json").write_text(json.dumps({
+            "status": "blocked", "completed_handles": "Unknown", "remaining_handles": "Unknown"}))
+        self.assertEqual(prior_run_status_thread_ids(artifact_root, PARENT), (CHILD,))
+        (artifact_root / "runtime_closure.json").write_text("null")
+        with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+            prior_run_status_thread_ids(artifact_root, PARENT)
+        (artifact_root / "runtime_closure.json").write_text(json.dumps({"status": "blocked"}))
+
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "events": [], "thread_mappings": {}, "failed_dispatches": [], "open_worker_intervals": 1}))
+        with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+            prior_run_status_thread_ids(artifact_root, PARENT)
+
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "events": [{"Thread ID": CHILD}], "thread_mappings": {},
+            "failed_dispatches": [], "open_worker_intervals": 0}))
+        with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+            prior_run_status_thread_ids(artifact_root, PARENT)
+
+    def test_preflight_order_blocks_workflow_reads_until_preflight_call(self):
+        framework = self.root / "framework"
+        skill = framework / "skills" / "run" / "SKILL.md"
+        playbook = framework / "playbooks" / "techops_issue_remediation.md"
+        combined = f"cat {skill} && sed -n '1,20p' {playbook}"
+        self.rows.append(self.call("exec_command", cmd=combined))
+        result = self.audit(framework_root=framework, require_preflight_order=True)
+        self.assertIn("parent_framework_content_before_preflight", result["errors"])
+
+        preflight = f"python3 {framework}/scripts/run_preflight.py"
+        observed_preflight = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "CommandExecution", "command": ["/bin/bash", "-lc", preflight],
+            "status": "completed", "exit_code": 0,
+            "aggregated_output": json.dumps({"status": "passed"})}}}
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=preflight), observed_preflight,
+                                    self.call("exec_command", cmd=f"cat {skill}")]
+        self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
+
+        observed_preflight["payload"]["item"]["exit_code"] = 2
+        observed_preflight["payload"]["item"]["aggregated_output"] = json.dumps({"status": "blocked"})
+        result = self.audit(framework_root=framework, require_preflight_order=True)
+        self.assertIn("parent_framework_content_before_preflight", result["errors"])
+
     def test_shipped_status_projection_matches_the_audit_allowlist(self):
         skill = (Path(__file__).resolve().parents[1] / "skills" / "run" / "SKILL.md").read_text()
         section = skill.split("this exact projection", 1)[1]

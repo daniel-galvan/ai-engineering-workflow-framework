@@ -49,6 +49,7 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
                 raise ValueError("stale_run_thread_identity_invalid")
             identities.add(value)
 
+    ledger_proves_no_dispatches = False
     try:
         if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
             raise ValueError("stale_run_thread_identity_invalid")
@@ -77,23 +78,35 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
             failures = ledger.get("failed_dispatches", [])
             if not isinstance(failures, list):
                 raise ValueError("stale_run_dispatch_rows_invalid")
+            failed_without_workers = True
             for row in failures:
                 if not isinstance(row, dict):
                     raise ValueError("stale_run_dispatch_rows_invalid")
                 thread_id = row.get("Thread ID")
                 if thread_id is not None:
                     add(thread_id, required=True)
+                    failed_without_workers = False
                 elif row.get("Operation") != "spawn_agent" or row.get("Status") != "failed":
                     raise ValueError("stale_run_thread_identity_invalid")
+            ledger_proves_no_dispatches = (
+                not ledger["events"] and not mappings and failed_without_workers
+                and type(ledger.get("open_worker_intervals")) is int
+                and ledger["open_worker_intervals"] == 0
+            )
         closure_path = artifact_root / "runtime_closure.json"
         if closure_path.is_file():
             closure = _read_status_receipt(closure_path)
-            if not isinstance(closure, dict) or not isinstance(closure.get("terminal_observations"), list):
+            if not isinstance(closure, dict):
                 raise ValueError("stale_run_closure_identity_invalid")
-            for row in closure["terminal_observations"]:
-                if not isinstance(row, dict):
-                    raise ValueError("stale_run_closure_identity_invalid")
-                add(row.get("Thread ID"), required=True)
+            if "terminal_observations" not in closure and ledger_proves_no_dispatches:
+                pass  # A zero-dispatch ledger has no worker identities for closure to report.
+            elif not isinstance(closure.get("terminal_observations"), list):
+                raise ValueError("stale_run_closure_identity_invalid")
+            else:
+                for row in closure["terminal_observations"]:
+                    if not isinstance(row, dict):
+                        raise ValueError("stale_run_closure_identity_invalid")
+                    add(row.get("Thread ID"), required=True)
     except (OSError, json.JSONDecodeError, AttributeError, TypeError) as error:
         raise ValueError("stale_run_thread_identity_invalid:" + str(error)) from error
     identities.discard(current_thread_id)
@@ -273,7 +286,9 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None,
                          expected_turn_id: str | None = None, runtime_evidence: dict | None = None,
                          related_run_thread_ids: tuple[str, ...] | None = None,
-                         prior_dispatch_ledger_present: bool | None = None) -> dict:
+                         prior_dispatch_ledger_present: bool | None = None,
+                         framework_root: Path | None = None,
+                         require_preflight_order: bool = False) -> dict:
     """Audit current-turn operations without importing messages or previous analytical content."""
     try:
         from runtime_checks import _tool_operations, context_trace_errors
@@ -426,6 +441,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             exempt.add(indexes[0])
             empty_memory_probes += 1
     audited_operations = [operation for index, operation in enumerate(operations) if index not in exempt]
+    if require_preflight_order and framework_root is not None:
+        errors.extend(_preflight_order_errors(audited_operations, framework_root, command_observations))
     details = []
     errors.extend(context_trace_errors({"tool_trace": audited_operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
@@ -437,6 +454,41 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             "related_run_status_rows": related_run_status_rows,
             "related_run_thread_ids": list(prior_ids),
             "prior_run_dispatch_ledger_present": bool(ledger_present)}
+
+
+def _preflight_order_errors(operations: list[dict], framework_root: Path,
+                            command_observations: dict[str, list[dict]]) -> list[str]:
+    """Require the package preflight command before a current turn reads skills or playbooks."""
+    roots = sorted({str(framework_root.expanduser().absolute()).rstrip("/"),
+                    str(framework_root.expanduser().resolve()).rstrip("/")}, key=len, reverse=True)
+    root = "(?:" + "|".join(re.escape(value) for value in roots) + ")"
+    protected = re.compile(rf"(?:^|[\s\"'=])(?:\./)?(?:{root}/)?(?:skills|playbooks)/[^\s\"']+")
+    preflight = re.compile(
+        rf"(?:^|[;&|]\s*|\s)python(?:3(?:\.\d+)?)?\s+"
+        rf"(?:\./)?(?:{root}/)?scripts/run_preflight\.py(?:\s|$)"
+    )
+    completed_preflight = False
+    for operation in operations:
+        if operation.get("name") != "exec_command":
+            continue
+        command = operation.get("arguments", {}).get("cmd")
+        if not isinstance(command, str):
+            continue
+        if protected.search(command) and not completed_preflight:
+            return ["parent_framework_content_before_preflight"]
+        if preflight.search(command):
+            observations = command_observations.get(command, [])
+            if len(observations) == 1:
+                observed = observations[0]
+                try:
+                    output = json.loads(str(observed.get("aggregated_output", "")))
+                except json.JSONDecodeError:
+                    output = None
+                completed_preflight = (
+                    observed.get("status") == "completed" and observed.get("exit_code") == 0
+                    and isinstance(output, dict) and output.get("status") == "passed"
+                )
+    return []
 
 
 def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:

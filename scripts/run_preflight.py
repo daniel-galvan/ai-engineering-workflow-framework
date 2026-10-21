@@ -263,8 +263,9 @@ def main() -> int:
         return EXIT_OK
 
     started = time.perf_counter()
+    framework_root = _framework_root(Path(__file__))
     result = preflight(
-        _framework_root(Path(__file__)),
+        framework_root,
         declared_framework_revision=args.declared_framework_revision,
         declared_plugin_path=args.declared_plugin_path,
     )
@@ -276,7 +277,8 @@ def main() -> int:
                 from scripts.provider_runtime import current_parent_session, parent_context_audit
             source = current_parent_session(args.provider_session)
             if source:
-                context = parent_context_audit(source)
+                context = parent_context_audit(
+                    source, framework_root=framework_root, require_preflight_order=True)
                 result["parent_context"] = context
                 if context["status"] != "passed":
                     result.update(status="blocked", reason="parent_context_nonconformant")
