@@ -1262,22 +1262,7 @@ def _worker_runtime_audit_errors(
     errors.extend(dispatch_audit_errors(packet, packet_path))
     observations = packet.get("terminal_observations", [])
     if isinstance(observations, list) and observations:
-        dispatches = {row.get("Provider handle"): row.get("Last dispatch at") for row in audits}
-        manifest_path = packet_path.parent / "role_bindings.json"
-        try:
-            manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
-            ledger_path = manifest.get("runtime_evidence", {}).get("ledger")
-            if ledger_path:
-                ledger = json.loads(Path(ledger_path).read_text())
-                for handle in dispatched_worker_handles(ledger):
-                    dispatches[handle] = latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"]
-        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
-            errors.append("terminal_closure_dispatch_evidence_invalid:" + str(error))
-        if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):
-            errors.append("terminal_closure_worker_handle_mismatch")
-        for row in observations:
-            if isinstance(row, dict) and row.get("Last dispatch at") != dispatches.get(row.get("Provider handle")):
-                errors.append("terminal_closure_worker_audit_stale")
+        errors.extend(terminal_closure_dispatch_errors(packet_path, observations, audits))
     for row in audits:
         worker = str(row.get("Worker", ""))
         if row.get("Provider status") != "completed":
@@ -1311,4 +1296,35 @@ def _worker_runtime_audit_errors(
                 errors.append(f"worker_fan_in_guard_receipt_required:{worker}")
         except (OSError, ValueError, TypeError) as error:
             errors.append(f"worker_trace_invalid:{worker}:{error}")
+    return list(dict.fromkeys(errors))
+
+
+def terminal_closure_dispatch_errors(packet_path: Path, observations: object,
+                                     audits: object = None) -> list[str]:
+    """Require closure observations to cover the current dispatch ledger and latest dispatches."""
+    if not isinstance(observations, list) or not observations:
+        return ["terminal_observations_required"]
+    errors = []
+    dispatches = {row.get("Provider handle"): row.get("Last dispatch at")
+                  for row in audits if isinstance(row, dict)} if isinstance(audits, list) else {}
+    manifest_path = packet_path.parent / "role_bindings.json"
+    try:
+        manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+        contract = manifest.get("runtime_evidence", {})
+        if contract:
+            ledger_path = Path(contract["ledger"])
+            if ledger_path.resolve().parent != packet_path.parent.resolve():
+                raise ValueError("runtime_dispatch_ledger_outside_current_run")
+            ledger = json.loads(ledger_path.read_text())
+            for handle in dispatched_worker_handles(ledger):
+                dispatches[handle] = latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"]
+        handles = sorted(dispatches)
+        errors.extend(terminal_observation_errors(observations, handles, require_completed=False))
+        if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):
+            errors.append("terminal_closure_worker_handle_mismatch")
+        for row in observations:
+            if isinstance(row, dict) and row.get("Last dispatch at") != dispatches.get(row.get("Provider handle")):
+                errors.append("terminal_closure_worker_audit_stale")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        errors.append("terminal_closure_dispatch_evidence_invalid:" + str(error))
     return list(dict.fromkeys(errors))

@@ -27,6 +27,31 @@ CASES = {
 
 
 class SharedRuntimeAcceptance(unittest.TestCase):
+    def test_failure_handoff_does_not_claim_a_terminal_receipt_for_other_dispatches(self):
+        for stale_handle, stale_dispatch in (("/root/old_worker", False), ("/root/worker", True)):
+            with self.subTest(stale_handle=stale_handle, stale_dispatch=stale_dispatch), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+                run, root, _, time, _, _, _, _ = fixture
+                _, ledger = self.export(fixture)
+                Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+                observation = {"Provider handle": stale_handle, "Provider status": "completed",
+                    "Thread ID": "00000000-0000-0000-0000-000000000002", "Status source": "list_agents",
+                    "Last dispatch at": time(0) if stale_dispatch else time(1), "Observed at": time(20)}
+                from scripts.planning_contracts import terminal_closure_dispatch_errors
+                errors = terminal_closure_dispatch_errors(Path(run["finalization_packet"]), [observation])
+                self.assertIn("terminal_closure_worker_audit_stale" if stale_dispatch else
+                              "terminal_closure_worker_handle_mismatch", errors)
+                (root / "runtime_closure.json").write_text(json.dumps({"runtime_closure": [{
+                    "Run or stage": "Current run", "Receipt owner": "Coordinator",
+                    "Completed worker handles": stale_handle, "Runtime status": "Terminal",
+                    "Remaining active handles": "0", "Closure evidence or blocker": "Old receipt"}],
+                    "terminal_observations": [observation]}))
+                status_path, _ = finalizer._finalization_status(Path(run["finalization_packet"]))
+                status_path.write_text(json.dumps({"runtime_closure": "terminal", "validation_performed": False}))
+                report = finalizer.failure_handoff(Path(run["finalization_packet"]), "Synthetic later failure")
+                self.assertNotIn("provider closure verified for every activated handle", report)
+                self.assertIn("runtime closure unverified", report)
+
     def test_failed_redispatch_still_requires_fresh_closure_and_cannot_accept_old_result(self):
         from scripts.provider_runtime import latest_worker_dispatch
         from scripts.worker_runtime_evidence import terminal_closure

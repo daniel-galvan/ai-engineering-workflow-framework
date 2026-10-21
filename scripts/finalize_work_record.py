@@ -1910,8 +1910,16 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     _, receipt = _finalization_status(packet_path)
     if receipt.get("runtime_closure") == "terminal":
         try:
-            closure = json.loads((root / "runtime_closure.json").read_text())["runtime_closure"]
-            if _runtime_closed(closure):
+            closure_receipt = json.loads((root / "runtime_closure.json").read_text())
+            closure = closure_receipt["runtime_closure"]
+            try:
+                from planning_contracts import terminal_closure_dispatch_errors
+            except ModuleNotFoundError:
+                from scripts.planning_contracts import terminal_closure_dispatch_errors
+            current_dispatch_errors = dispatch_audit_errors({"runtime_audits": []}, packet_path)
+            dispatch_errors = terminal_closure_dispatch_errors(
+                packet_path, closure_receipt.get("terminal_observations"), packet.get("runtime_audits", []))
+            if _runtime_closed(closure) and not current_dispatch_errors and not dispatch_errors:
                 provisional["runtime_closure"] = closure
                 provisional["handoff"]["execution"] += "; provider closure verified for every activated handle."
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
