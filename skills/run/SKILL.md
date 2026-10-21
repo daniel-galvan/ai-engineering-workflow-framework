@@ -388,9 +388,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    task is idle, every visible child worker is terminal, and no artifact writer remains, rerun once with
    `--archive-stale-run`. This preserves every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run.
    An unavailable old release receipt keeps the old run blocked but does not by itself prove an active worker or bar a
-   separate read-only planning run. Confirm new-run capacity by activating its first required worker; if that fails,
-   stop with the exact runtime reason. If worker or writer activity is present or cannot be verified, stop with
-   `run_already_active`. Do not tell the user to request continuation when they requested a new run.
+   separate read-only planning run. Such a run must use a separate execution repository and artifact root; it does not
+   authorize deleting, resetting, or reusing the blocked work-item root. For a run that reuses that root, preserve the
+   old files and satisfy the stale-archive checks above first. Confirm new-run capacity by activating its first required
+   worker; if that fails, stop with the exact runtime reason. If worker or writer activity is present or cannot be
+   verified, stop with `run_already_active`. Do not tell the user to request continuation when they requested a new run.
    Before recording `Active related run or work item: None`, check provider-visible tasks and sibling artifact roots.
    Record the method, RFC 3339 time, and result in `Related-run check`; if either view is unavailable, record
    `Unknown; detection unavailable`, not an unsupported `None`.

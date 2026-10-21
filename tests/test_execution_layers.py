@@ -47,6 +47,12 @@ class ExecutionLayers(unittest.TestCase):
             self.assertIn("validation diagnostic, not part of", text)
             self.assertIn("pending", text)
 
+    def test_unreleased_stale_run_requires_a_separate_artifact_root_for_new_planning(self):
+        launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
+        self.assertIn("separate execution repository and artifact root", launcher)
+        self.assertIn("does not authorize deleting, resetting, or reusing the blocked work-item root", launcher)
+        self.assertIn("preserve the old files and satisfy the stale-archive checks above first", launcher)
+
     def test_ordinary_handle_join_does_not_create_a_post_spawn_dispatch(self):
         for path in ("providers/codex.md", "skills/run/SKILL.md"):
             text = " ".join((ROOT / path).read_text().split())
