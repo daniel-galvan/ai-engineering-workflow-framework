@@ -540,6 +540,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `Not exposed; provider observation unavailable`, without appending prose to configured model/effort values.
    For a partial plan with pending decisions, keep `awaiting_input` and a Clarification Brief; retain an implementation
    plan only with `status: Draft`, full structural tables and owned unresolved decisions. Do not label it ready.
+   For an explicit `Selected model is at capacity` error, follow the Codex adapter's
+   [Model Capacity Recovery](../../providers/codex.md#model-capacity-recovery): wait 3, then 5, then 10 minutes for
+   subsequent consecutive failures; reconcile live status before retrying the same operation and preserve this run.
+   A failed parent cannot schedule its own retry; require an authorized live supervisor or supported host mechanism.
    Check runtime capacity before dispatch, choose either an existing compatible worker or a fresh worker, and record
    cancellation if a superseded assignment is interrupted. Do not accept the cancelled result as current work.
 8a. For TechOps planning and Feature Delivery planning or remediation, prepared worker contracts are operative

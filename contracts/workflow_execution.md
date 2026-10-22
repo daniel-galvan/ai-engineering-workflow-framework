@@ -1101,6 +1101,11 @@ An incomplete required-worker graph is not a completed diagnosis or plan. The ca
 5. waits for all required result envelopes and completes fan-in; and
 6. reports the recovered requested/executed profile, worker activation, fan-in, and next gate.
 
+An explicit transient model-capacity failure follows the selected provider adapter's recovery policy before worker
+replacement. Capacity backoff does not consume analytical correction allowances. Preserve the run and reconcile
+every live handle before retry; a timeout or unknown status does not authorize redispatch. A failed parent requires
+an available host recovery mechanism or authorized supervisor; it cannot promise to retry itself.
+
 For an individual required worker that is confirmed stopped or failed without a terminal envelope, recovery closes its
 original handle only when the provider confirms that it is no longer running, then makes one fresh replacement attempt.
 It reuses completed artifacts and does not repeat successful work. A wait timeout, empty wait result, or `running`

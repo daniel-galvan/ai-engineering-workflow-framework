@@ -91,6 +91,33 @@ in the worker message before the typed assignment. This is the binding-delivery 
 not expose `agent_role` or `agent_path`; observed metadata must match when present. Run the same guard before interrupt,
 close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
 
+## Model Capacity Recovery
+
+Treat the explicit provider error `Selected model is at capacity` as a transient availability failure. Preserve its
+exact text, affected parent or worker handle, Run ID, dispatch identity, observed status, failure time, and retry due
+time in current-run evidence. For consecutive capacity failures of the same affected operation, wait 3 minutes after
+the first failure, 5 minutes after the second, and 10 minutes after the third and each later failure. Reset this
+backoff only after that operation successfully resumes. Honor cancellation and any existing run deadline.
+
+Before each retry, refresh the affected parent and every dispatched worker's provider status. Collect work that
+finished during the wait; do not dispatch again while execution is active or its status is unknown. Retry the same
+model and effort on the existing handle when supported. Preserve the Run ID, accepted results, rejected traces,
+dispatch ledger, and analytical correction count. Capacity retries do not consume the analytical correction
+allowance. A successful message acknowledgement alone does not prove resumed execution; verify a new turn or
+provider-observed consumption. Use supported continuation preparation to rebind an interrupted parent turn.
+
+Apply this policy only to an explicit capacity error, not to an observation timeout, missing acknowledgement,
+authentication failure, context violation, or rejected analytical result. Do not silently switch models, lower effort,
+create a fresh run, or claim completion during backoff. Record each retry and its outcome. A changed model requires
+explicit authorization and the ordinary binding checks.
+
+An active Coordinator may wait using the host's interruptible wait mechanism and continue observing workers. If the
+parent turn itself fails, it cannot wake or retry itself: recovery requires a still-running authorized supervisor or
+a supported host retry mechanism. Without one, report the capacity error, next retry delay, known worker statuses,
+and the exact same-chat resume action; do not promise an automatic retry. Refresh every activated handle and use
+supported failure finalization when execution can no longer continue. Terminal worker status alone is not complete
+runtime closure or publication.
+
 ## Runtime Closure
 
 Every close/release instruction below uses the applicable provider route. When no close operation exists,
