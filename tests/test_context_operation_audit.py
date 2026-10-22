@@ -156,6 +156,9 @@ class ContextOperationAudit(unittest.TestCase):
             'const r = await tools.exec_command({cmd:"rg --files .thoughts/ITEM-1"}); text(r.output);',
             [{"type": "input_text", "text": archive}])}
         self.assertEqual(runtime.context_trace_errors(trace), [])
+        listing = {"tool_trace": [{"type": "function_call", "name": "exec_command", "arguments": {
+            "cmd": "ls -d .thoughts/*/", "workdir": str(self.repository)}}]}
+        self.assertEqual(runtime.context_trace_errors(listing, artifact_root=self.root), [])
         trace["tool_trace"][0]["input"] += (
             'await tools.exec_command({cmd:"cat ' + archive + '"});')
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))

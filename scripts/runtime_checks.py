@@ -695,7 +695,8 @@ def _listing_outputs(trace: dict, *, read_prefixes: dict | None = None,
                               for name, arguments in operations):
             if row.get("call_id"):
                 calls.add(row["call_id"])
-            outputs.update({prefix + ("result",), prefix + ("output",), prefix + ("arguments", "output")})
+            outputs.update({prefix + ("result",), prefix + ("output",), prefix + ("arguments", "output"),
+                            prefix + ("arguments", "cmd")})
         elif read_prefixes is not None and len(operations) == 1 and operations[0][0] == "exec_command":
             arguments = operations[0][1]
             workdir = arguments.get("workdir", cwd or Path.cwd())
