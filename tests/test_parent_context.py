@@ -283,6 +283,12 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["verified_related_run_status_probes"], 1)
         self.assertEqual(result["related_run_status_rows"], [])
+        status_call["payload"]["input"] = "\n" + projection + "\n"
+        self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
+        status_output["payload"]["output"] = [
+            {"type": "input_text", "text": "Script completed\nWall time 0.6 seconds\nOutput:\n"},
+            {"type": "input_text", "text": "[]"}]
+        self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
         self.assertIn("parent_unassigned_thread_discovery", self.audit()["errors"])
 
         self.rows.extend([

@@ -149,7 +149,10 @@ def _related_run_status_rows(payload: dict) -> list[dict]:
         texts = [row.get("text") for row in output if isinstance(row, dict)
                  and row.get("type") in {"text", "input_text", "output_text"}
                  and isinstance(row.get("text"), str)]
-        if len(texts) != len(output) or len(texts) != 1:
+        if (len(texts) == len(output) == 2
+                and re.fullmatch(r"Script completed\nWall time [0-9]+(?:\.[0-9]+)? seconds\nOutput:\n", texts[0])):
+            texts = texts[1:]
+        elif len(texts) != len(output) or len(texts) != 1:
             raise ValueError("parent_related_run_status_output_invalid")
         output = texts[0]
     if not isinstance(output, str):
@@ -424,7 +427,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                            if artifact_root is not None else None)
                 except ValueError:
                     expected_projection = None
-                exact_status_projection = raw_source == expected_projection and expected_projection is not None
+                exact_status_projection = (isinstance(raw_source, str) and expected_projection is not None
+                                           and raw_source.strip() == expected_projection)
                 calls = (
                     [("mcp__codex_app__list_threads", {"limit": 50})]
                     if exact_status_projection else _tool_operations(payload)
