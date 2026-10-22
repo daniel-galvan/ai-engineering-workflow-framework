@@ -376,7 +376,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];
    const priorIds = ["PRIOR-WORKER-THREAD-UUID"];
    const related = rows.filter(row => row.id !== "PARENT-THREAD-UUID" &&
-     ((typeof row.title === 'string' && row.title.includes("ECHO-2806") || priorIds.includes(row.id)))
+     (typeof row.title === 'string' && row.title.includes("ECHO-2806") || priorIds.includes(row.id)))
      .map(row => ({
        id: row.id, status: row.status, hostId: row.hostId, kind: row.kind,
        updatedAt: row.updatedAt

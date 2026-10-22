@@ -135,7 +135,7 @@ def related_run_status_projection_source(
             "const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];\n"
             f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
             f"const related = rows.filter(row => row.id !== {json.dumps(current_thread_id)} &&\n"
-            f"  ((typeof row.title === 'string' && row.title.includes({json.dumps(work_item)}) || priorIds.includes(row.id)))\n"
+            f"  (typeof row.title === 'string' && row.title.includes({json.dumps(work_item)}) || priorIds.includes(row.id)))\n"
             "  .map(row => ({\n"
             "    id: row.id, status: row.status, hostId: row.hostId, kind: row.kind,\n"
             "    updatedAt: row.updatedAt\n"

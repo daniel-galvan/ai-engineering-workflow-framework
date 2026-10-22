@@ -2,6 +2,8 @@
 
 import json
 import shlex
+import shutil
+import subprocess
 import tempfile
 import textwrap
 import unittest
@@ -242,6 +244,30 @@ class ParentContext(unittest.TestCase):
         self.assertIn("parent_unassigned_thread_read:" + PARENT, self.audit()["errors"])
         self.rows.append(self.call("mcp__codex_app__list_threads", limit=10))
         self.assertIn("parent_unassigned_thread_discovery", self.audit()["errors"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
+    def test_related_status_projection_executes_and_redacts_inventory(self):
+        related = {"id": TURN, "title": "ECHO-2806 planning", "summary": "private diagnosis",
+                   "status": "idle", "hostId": "local", "kind": "codex", "updatedAt": 1792624353}
+        prior = {"id": CHILD, "summary": "private worker output", "status": "completed"}
+        inventory = {"pinnedThreads": [related], "threads": [prior,
+            {"id": PARENT, "title": "ECHO-2806 current run", "status": "active"},
+            {"id": "unrelated", "title": "Other work", "summary": "private", "status": "idle"}]}
+        projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
+        stub = ("const tools = {mcp__codex_app__list_threads: async args => {\n"
+                "  if (args.limit !== 50) throw new Error('unexpected inventory request');\n"
+                "  return {content: [{text: " + json.dumps(json.dumps(inventory)) + "}]};\n"
+                "}};\nconst text = value => process.stdout.write(value);\n")
+        result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=stub + projection,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [
+            {key: value for key, value in row.items() if key not in {"title", "summary"}}
+            for row in (related, prior)])
+        skill = (Path(__file__).resolve().parents[1] / "skills/run/SKILL.md").read_text()
+        example = textwrap.dedent(skill.split("   ```javascript\n", 1)[1].split("   ```", 1)[0])
+        example = example.replace("PARENT-THREAD-UUID", PARENT).replace("PRIOR-WORKER-THREAD-UUID", CHILD)
+        self.assertEqual(example.strip(), projection)
 
     def test_only_one_exact_redacted_related_run_status_projection_is_allowed(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
