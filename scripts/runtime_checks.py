@@ -118,7 +118,8 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
             from scripts.worker_runtime_evidence import worker_final_response, strict_json_loads
         response = worker_final_response(Path(trace["trace_retrieval"]), trace["last_dispatch_at"],
                                          trace["status_observation"]["Observed at"],
-                                         trace["status_observation"].get("Latest turn started at"))
+                                         trace["status_observation"].get("Latest turn started at"),
+                                         turn_id=trace["status_observation"].get("Latest turn ID"))
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         if str(error).startswith("worker_final_response"):
             return [str(error) + ":" + role]

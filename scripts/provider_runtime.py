@@ -757,6 +757,8 @@ def targeted_thread_observation(raw: object, handle: str, thread_id: str, dispat
     observation = {"Provider handle": handle, "Provider status": provider_status, "Thread ID": thread_id,
         "Status source": operation, "Last dispatch at": dispatch_at, "Observed at": observed_at,
         "Latest turn started at": started_at, "Latest turn status": latest_status, "Thread status": thread_status}
+    if isinstance(latest.get("id"), str) and latest["id"]:
+        observation["Latest turn ID"] = latest["id"]
     completed_at = _provider_status_time(latest.get("completedAt"))
     if completed_at:
         observation["Latest turn completed at"] = completed_at

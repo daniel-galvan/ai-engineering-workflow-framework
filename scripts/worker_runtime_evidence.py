@@ -43,7 +43,7 @@ UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
 def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
-                          turn_started_at: str | None = None) -> str:
+                          turn_started_at: str | None = None, *, turn_id: str | None = None) -> str:
     """Read the latest assistant final answer from the dispatched worker turn."""
     with source.open() as stream:
         rows = [json.loads(line) for line in stream if line.strip()]
@@ -54,9 +54,19 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
              and timestamp(row["timestamp"]) <= before]
     if not turns:
         raise ValueError("worker_final_response_turn_context_required")
-    started = timestamp(turn_started_at) if turn_started_at else max(timestamp(row["timestamp"]) for row in turns)
-    if started != max(timestamp(row["timestamp"]) for row in turns):
-        raise ValueError("worker_final_response_turn_context_mismatch")
+    latest = max(turns, key=lambda row: timestamp(row["timestamp"]))
+    if turn_id is not None:
+        # Thread metadata rounds start times; the turn ID is the precise session join.
+        matching = [row for row in turns if row.get("payload", {}).get("turn_id") == turn_id]
+        if len(matching) != 1 or matching[0] is not latest:
+            raise ValueError("worker_final_response_turn_context_mismatch")
+        started = timestamp(latest["timestamp"])
+    elif turn_started_at:
+        started = timestamp(turn_started_at)
+        if started != timestamp(latest["timestamp"]):
+            raise ValueError("worker_final_response_turn_context_mismatch")
+    else:
+        started = timestamp(latest["timestamp"])
     started = max(started, after)
     messages = [row for row in rows if isinstance(row, dict) and row.get("type") == "response_item"
                 and started <= timestamp(row["timestamp"]) <= before
@@ -204,7 +214,8 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         if contract.get("result_hash_required"):
             try:
                 response = worker_final_response(source, dispatch["Last dispatch at"], observation["Observed at"],
-                                                 observation.get("Latest turn started at"))
+                                                 observation.get("Latest turn started at"),
+                                                 turn_id=observation.get("Latest turn ID"))
                 result["result_artifact"] = _materialize_worker_response(
                     artifact_root, worker_binding(bindings, agent), dispatch["Last dispatch at"], response, contract)
             except (OSError, ValueError, KeyError, TypeError) as error:

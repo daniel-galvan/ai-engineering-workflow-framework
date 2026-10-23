@@ -35,7 +35,8 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 with self.subTest(wrapped=wrapped, state=state), tempfile.TemporaryDirectory() as directory:
                     run, root, _, time, event, parent, *_ = self.fixture(directory)
                     response = {"thread": {"id": CHILD, "status": {"type": "notLoaded"}},
-                        "turns": [{"status": "running" if state == "running" else "completed",
+                        "turns": [{"id": "00000000-0000-0000-0000-000000000003",
+                                   "status": "running" if state == "running" else "completed",
                                    "startedAt": time(5), "completedAt": time(10),
                                    "items": [{"text": "Private analytical result must not enter the status ledger"}]}]}
                     envelope = {"content": [{"type": "text", "text": json.dumps(response)}],
@@ -79,6 +80,9 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                     if state == "completed":
                         receipt = terminal_closure(ledger)
                         self.assertEqual(receipt["runtime_closure"][0]["Runtime status"], "Terminal")
+                        self.assertEqual(
+                            ledger["status_probes"][0]["terminal_observation"]["Latest turn ID"],
+                            "00000000-0000-0000-0000-000000000003")
                     else:
                         with self.assertRaises(ValueError):
                             terminal_closure(ledger)

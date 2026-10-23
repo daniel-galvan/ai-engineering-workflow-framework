@@ -7,13 +7,14 @@ from pathlib import Path
 from scripts import prepare_run
 from scripts.merge_techops_result import WORKERS, merge_result
 from scripts.provider_runtime import read_runtime_events
-from scripts.worker_runtime_evidence import export_worker_trace
+from scripts.worker_runtime_evidence import export_worker_trace, worker_final_response
 from scripts.validate_worker_runtime import activation_message, dispatch_message
 
 
 PARENT = "00000000-0000-0000-0000-000000000001"
 CHILD = "00000000-0000-0000-0000-000000000002"
 TURN = "00000000-0000-0000-0000-000000000003"
+CORRECTION_TURN = "00000000-0000-0000-0000-000000000004"
 HANDLE = "/root/current_state_investigator"
 
 
@@ -99,9 +100,18 @@ class WorkerResponseMaterialization(unittest.TestCase):
                 event(1, "event_msg", {"item": {"type": "SubAgentActivity", "kind": "started",
                     "agent_path": HANDLE, "agent_thread_id": CHILD}}),
                 event(2, "response_item", {"type": "function_call_output", "call_id": "spawn", "output": ""}),
-                event(9, "response_item", {"type": "function_call", "namespace": "collaboration",
+                event(7, "event_msg", {"item": {"type": "SubAgentActivity", "kind": "completed",
+                    "agent_path": HANDLE}}),
+                event(8.5, "response_item", {"type": "function_call", "namespace": "collaboration",
+                    "name": "followup_task", "call_id": "correction",
+                    "arguments": json.dumps({"target": HANDLE, "message": "Repair the response envelope"})}),
+                event(8.75, "response_item", {"type": "function_call_output", "call_id": "correction",
+                    "output": "Correction delivered"}),
+                event(11, "event_msg", {"item": {"type": "SubAgentActivity", "kind": "completed",
+                    "agent_path": HANDLE}}),
+                event(12, "response_item", {"type": "function_call", "namespace": "collaboration",
                     "name": "list_agents", "call_id": "inventory", "arguments": "{}"}),
-                event(10, "response_item", {"type": "function_call_output", "call_id": "inventory",
+                event(13, "response_item", {"type": "function_call_output", "call_id": "inventory",
                     "output": json.dumps({"agents": [{"agent_name": HANDLE,
                         "agent_status": {"completed": "Completed"}}]})}),
             ]
@@ -115,27 +125,38 @@ class WorkerResponseMaterialization(unittest.TestCase):
                     "call_id": "binding-read", "arguments": json.dumps({"cmd": "cat " + str(dispatch_file)})}),
                 event(3, "response_item", {"type": "function_call_output", "call_id": "binding-read",
                     "output": activation_read}),
-                event(4, "turn_context", {"turn_id": TURN, "model": packet["model"], "effort": packet["effort"]}),
+                event(4.25, "turn_context", {"turn_id": TURN, "model": packet["model"], "effort": packet["effort"]}),
                 event(5, "response_item", {"type": "custom_tool_call", "name": "exec", "call_id": "input-read",
                     "input": "const r = await tools.exec_command(" + json.dumps({
                         "cmd": "cat " + str(root / "run_inputs.json")}) + "); text(r);"}),
                 event(6, "response_item", {"type": "custom_tool_call_output", "call_id": "input-read",
                     "output": (root / "run_inputs.json").read_text()}),
                 event(8, "response_item", {"type": "message", "role": "assistant", "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": json.dumps({
+                        "output": "Stale pre-correction response.", "result": result})}]}),
+                event(9.25, "turn_context", {"turn_id": CORRECTION_TURN, "model": packet["model"],
+                    "effort": packet["effort"]}),
+                event(10, "response_item", {"type": "message", "role": "assistant", "phase": "final_answer",
                     "content": [{"type": "output_text", "text": response}]}),
             ]
             child.write_text("\n".join(json.dumps(row) for row in child_rows) + "\n")
 
-            observed_at = (base + timedelta(seconds=11)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-            dispatch_at = (base + timedelta(seconds=1)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-            completed_at = (base + timedelta(seconds=8)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            latest_turn_start = base + timedelta(seconds=9.25)
+            provider_turn_start = datetime.fromtimestamp(int(latest_turn_start.timestamp()), timezone.utc)
+            observed_at = (base + timedelta(seconds=14)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            dispatch_at = (base + timedelta(seconds=8.5)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            completed_at = (base + timedelta(seconds=10)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
             observation = {"Provider handle": HANDLE, "Thread ID": CHILD, "Provider status": "idle",
                 "Observed at": observed_at, "Status source": "read_thread", "Last dispatch at": dispatch_at,
-                "Latest turn started at": (base + timedelta(seconds=4)).isoformat().replace("+00:00", "Z"),
-                "Latest turn completed at": completed_at, "Latest turn status": "completed", "Thread status": "idle"}
+                "Latest turn started at": provider_turn_start.isoformat().replace("+00:00", "Z"),
+                "Latest turn ID": CORRECTION_TURN, "Latest turn completed at": completed_at,
+                "Latest turn status": "completed", "Thread status": "idle"}
             ledger = read_runtime_events(parent, PARENT, run["runtime_evidence"]["run_started_at"])
             trace = export_worker_trace(ledger, child, role, observation, run_id=run["run_id"], artifact_root=root)
             self.assertEqual(trace["audit"]["status"], "passed", trace["audit"]["errors"])
+            with self.assertRaisesRegex(ValueError, "worker_final_response_turn_context_mismatch"):
+                worker_final_response(child, trace["last_dispatch_at"], observed_at,
+                                      observation["Latest turn started at"], turn_id=TURN)
             self.assertNotEqual(Path(trace["result_artifact"]["path"]), result_path)
             self.assertEqual(json.loads(Path(trace["result_artifact"]["path"]).read_text()), result)
             self.assertEqual(Path(trace["result_artifact"]["output_path"]).read_text(), narrative)
