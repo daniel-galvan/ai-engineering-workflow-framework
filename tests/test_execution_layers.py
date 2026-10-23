@@ -8,6 +8,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ExecutionLayers(unittest.TestCase):
+    def test_compaction_preserves_the_prepared_run_without_bootstrap_discovery(self):
+        for path in ("skills/run/SKILL.md", "providers/codex.md", "providers/codex/agents/orchestrator.toml"):
+            text = " ".join((ROOT / path).read_text().split())
+            with self.subTest(path=path):
+                self.assertIn("Context compaction does not start a new invocation", text)
+                for value in ("Run ID", "pinned package root", "lifecycle", "user decisions", "worker handles",
+                              "next pending gate", "role_bindings.json", "finalization_packet.json",
+                              "runtime_dispatches.json", "run_inputs.json", "its hash unchanged",
+                              "Do not rerun preflight or preparation", "search local memory"):
+                    self.assertIn(value, text)
+
     def test_core_keeps_invariants_and_normalized_seams_without_concrete_operations(self):
         core = (ROOT / "contracts/workflow_execution.md").read_text()
         for number in range(1, 42):

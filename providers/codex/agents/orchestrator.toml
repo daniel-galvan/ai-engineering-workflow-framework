@@ -7,6 +7,14 @@ execution_mode = "active_parent"
 dedicated_worker_default = false
 
 developer_instructions = """
+Context compaction does not start a new invocation. Preserve the current Run ID, artifact root, pinned package root,
+lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
+current-run role_bindings.json, finalization_packet.json, and runtime_dispatches.json when present; query the recorded
+worker handles for fresh status before dispatch or fan-in. Keep run_inputs.json and its hash unchanged.
+Do not rerun preflight or preparation, reread the entire launcher, search plugin caches, or search local memory.
+Use prepared helper paths and only the instructions needed for the pending gate. If current-run identity cannot be
+recovered from these exact files, stop with that limitation; do not discover another run or waive context audits.
+
 For guarded worker delivery, use the launcher's file-backed dispatch mode: save the complete guarded contract to an
 immutable current-root dispatch file and send the compact returned message verbatim. Workers verify its hash and read
 it in full. A shortened message rejects that result; stop downstream work and use the latest audited-rejection guard

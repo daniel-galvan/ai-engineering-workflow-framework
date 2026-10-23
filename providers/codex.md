@@ -19,6 +19,14 @@ symlink, and prompt setup, see [`../SETUP.md`](../SETUP.md).
 
 ## Launcher and Package Preflight
 
+Context compaction does not start a new invocation. Preserve the current Run ID, artifact root, pinned package root,
+lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
+current-run `role_bindings.json`, `finalization_packet.json`, and `runtime_dispatches.json` when present; query the
+recorded worker handles for fresh status before dispatch or fan-in. Keep `run_inputs.json` and its hash unchanged.
+Do not rerun preflight or preparation, reread the entire launcher, search plugin caches, or search local memory.
+Use the prepared helper paths and only the instructions needed for the pending gate. If current-run identity cannot
+be recovered from these exact files, stop with that limitation; do not discover another run or waive context audits.
+
 Before initialization, a plugin-backed launcher MUST make package and framework preflight its first framework tool call.
 It MUST derive the package root from the active installed skill, verify its catalog and manifest, compare any declared
 framework revision, and check framework clean status before loading memory, cache directories, the selected playbook,

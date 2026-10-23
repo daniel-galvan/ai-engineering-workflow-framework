@@ -7,6 +7,20 @@ description: >-
 
 # Run an AI Engineering Workflow
 
+## Active run after context compaction
+
+Context compaction does not start a new invocation. Preserve the current Run ID, artifact root, pinned package root,
+lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
+current-run `role_bindings.json`, `finalization_packet.json`, and `runtime_dispatches.json` when present; query the
+recorded worker handles for fresh status before dispatch or fan-in. Keep `run_inputs.json` and its hash unchanged.
+Do not rerun preflight or preparation, reread this entire launcher, search plugin caches, or search local memory.
+Use helper paths from the prepared role bindings and read only the section needed for the pending gate. Compaction
+does not authorize another worker, restart, lifecycle change, or import of historical evidence. If the current-run
+identity cannot be recovered from these exact files, stop with that limitation instead of discovering another run.
+These rules preserve the existing context audit; a forbidden operation still requires truthful failure handling.
+
+## New invocation
+
 1. Treat the active installed `SKILL.md` location as authoritative. Derive the package root from that file
    (`Path(active_SKILL.md).parents[2]`); do not open or search a user-supplied cache path. A versioned path in the
    prompt is only a declared identity to compare, never an instruction to `sed`, `find`, `rg`, or search another cache
