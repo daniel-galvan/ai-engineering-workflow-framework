@@ -60,11 +60,14 @@ access without the user's explicit selection of an offline investigation. Do not
 ## Same-Session Decision Gate
 
 When bounded discovery leaves a material user decision, the active parent Coordinator MUST ask it in this run's chat
-with `functions.request_user_input` and wait for the answer. Ask at most three concise questions with enough
-context to choose; do not use `request_user_input_async`, `send_message_to_thread`, or another chat to bypass the wait.
+with `functions.request_user_input_async` when available and wait for an explicit user reply. An accepted request
+acknowledges delivery submission, not user-visible rendering or an answer. A blocking `functions.request_user_input`
+response with empty or missing answers remains unanswered. Ask at most three concise questions with enough
+context to choose; never use `send_message_to_thread` or another chat to ask the user or bypass the wait.
 While the answer is pending, keep the run at `awaiting_input` and do not start dependent work or finalize/publish a
 completed handoff. Record the answer in the current-run decision record, route it to the owning worker if its result
-changes, and resume the same run. If the blocking tool is unavailable, ask in this chat and leave the run open until
+changes, and resume the same run. If interactive tools are unavailable or return no answer, ask visibly in this chat
+and leave the run open until
 the user replies; never report the pending question as completed. Missing access or external evidence uses the blocked
 path rather than a user-decision question.
 

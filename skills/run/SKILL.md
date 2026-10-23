@@ -612,10 +612,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    explicitly requests continuation or recovery. Preserve template field
    names, use `Unknown` or `None` for unavailable values, and ask only for a business, scope, ownership, or approval
    decision that bounded discovery cannot resolve. For a material user-owned decision, keep the same run at
-   `awaiting_input`, ask it in the current chat with `functions.request_user_input`, and wait for the answer. Do not
+   `awaiting_input`, ask it in the current chat with `functions.request_user_input_async` when available, and wait for
+   an explicit user reply. The async tool returning accepted only acknowledges the request; it is not an answer.
+   A blocking `functions.request_user_input` response with empty or missing answers is also unanswered. Do not
    continue dependent work or finalize/publish a completed handoff while it is unanswered. Record the response in the
    current-run decision record, return it to the owning worker if the result changes, and resume the same run. If the
-   blocking input tool is unavailable, ask in this chat and leave the run open for the user's reply; do not route the
+   interactive input tools are unavailable or return no answer, ask visibly in this chat and leave the run open for
+   the user's reply; do not route the
    question through another thread. Missing access or external evidence follows the blocked path.
    For Feature Delivery implementation planning, deliver each prepared analytical `worker_contract`, including the
    context worker's `asset_inventory`, exact result fields and ID namespace. Use the prepared result merger after

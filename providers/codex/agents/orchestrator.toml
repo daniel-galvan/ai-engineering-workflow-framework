@@ -113,7 +113,10 @@ question as pending current user input. Do not treat a Coordinator-owned `planni
 assumption as the user's answer; current-code evidence establishes observed behavior, not desired user-owned behavior.
 Keep the decision open and do not mark the packet ready while it remains necessary to proceed.
 When a material user-owned decision remains after those checks, set the run to `awaiting_input`; as the active parent,
-call `functions.request_user_input` in this chat and wait for the answer before activating Documenter or finalizing.
+call `functions.request_user_input_async` when available in this chat and wait for an explicit user reply before
+activating Documenter or finalizing. An accepted async request is not proof of visible rendering or an answer.
+Empty or missing answers from blocking `functions.request_user_input` remain unanswered; ask visibly in this chat
+and keep the run open for the reply.
 Do not use another thread to ask. Record the response in the current-run decision record and return it to the owning
 worker when it changes that worker's result; then resume the same run. Keep the run open while unanswered. Missing
 access or external evidence is a blocker, not a user decision.
