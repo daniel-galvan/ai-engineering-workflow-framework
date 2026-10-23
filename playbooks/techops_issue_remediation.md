@@ -266,8 +266,11 @@ Report:
 
 Workflow result must summarize the investigation's findings, proposed disposition/change and main limitation in
 plain English. A readiness/state token such as ready_for_implementation is not a work summary; use the distinct state
-fields for readiness. Finalization failure must still preserve recorded findings, confidence/alternatives, the plan
-and engineering next step in the canonical provisional failure report, without claiming those records are validated.
+fields for readiness. A disposition token such as `Partially answered` or `Blocked` is not a work summary either; keep
+state and outcome in their dedicated fields. Even when State is `awaiting_input`, summarize the findings, recommended
+next step, and unresolved decision or limitation in plain language. Finalization failure must still preserve recorded
+findings, confidence/alternatives, the plan and engineering next step in the canonical provisional failure report,
+without claiming those records are validated.
 Activation or Documenter failure also requires terminal reporting. Use the packaged finalizer's `--workflow-failure`
 mode; it preserves recorded analytical content in `handoff_failure.md` even when Documenter never populated `handoff`.
 A failed activation does not automatically require repeating the investigation. Keep provider turn status, task

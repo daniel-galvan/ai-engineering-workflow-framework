@@ -275,7 +275,11 @@ def render_handoff(packet: dict[str, object]) -> str:
             f"- {_explanation_text(item)}\n" for item in explanations
         )
     established = "".join(f"- {item}\n" for item in handoff["established"])
-    risks = [str(row.get("Uncertainties / blockers", "")).strip() for row in packet.get("worker_results", [])
+    worker_results = [row for row in packet.get("worker_results", []) if isinstance(row, dict)]
+    handoff_result = next((row for row in worker_results
+                           if row.get("Worker") == "handoff" and row.get("Outcome") == "complete"), None)
+    risk_rows = [handoff_result] if handoff_result else worker_results
+    risks = [str(row.get("Uncertainties / blockers", "")).strip() for row in risk_rows
              if isinstance(row, dict) and str(row.get("Uncertainties / blockers", "")).strip().lower()
              not in {"", "none", "not applicable", "no provider handle exists because the worker was not activated."}]
     risks = [value for value in risks if not re.fullmatch(

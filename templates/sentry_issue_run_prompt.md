@@ -108,10 +108,11 @@ Runtime bootstrap:
   current turn and is independently active can block startup. Then inspect prior task and worker-handle state. When the
   prior task is idle and no active writer remains, rerun once with `--archive-stale-run`; preserve the old files under
   `runs/stale-<timestamp>/`. If activity remains or cannot be verified, stop with `run_already_active`.
-  Immediately inspect each provider activation's returned model, effort, and fresh-context metadata against the manifest
-  when the runtime exposes those values. If applied model/effort telemetry is unavailable, record `Not exposed; ...`
-  together with the exact explicit launch binding; unavailable telemetry alone is not a mismatch. A returned mismatch or
-  rejected binding is a configuration-conformance failure and must not reach fan-in. Do not adapt, escalate, or inherit
+  Immediately inspect each provider activation's applied model, effort, and fresh-context metadata against the manifest
+  when the runtime exposes those values. The native dispatch record must prove the exact explicit launch arguments;
+  if applied telemetry is unavailable, record `Not exposed; ...` with that binding and do not claim it was observed as
+  applied. Unavailable telemetry alone is not a mismatch. A returned mismatch or rejected binding is a
+  configuration-conformance failure and must not reach fan-in. Do not adapt, escalate, or inherit
   Coordinator values. If a required definition cannot be
   resolved or bound, stop with `provider_configuration_unavailable`; do not use inherited defaults.
 - Activate every delegated worker with `fork_context: false` or the provider-equivalent fresh-context option. Start

@@ -33,6 +33,31 @@ retrieval policy.
   during a run. Preserve those states instead of presenting them as complete
   context.
 
+## Transient Read Recovery
+
+Apply this policy to required read-only Jira connector operations, including the initial exact-issue probe and
+worker evidence reads. After a completed `MCP_REQUEST_TIMEOUT`, explicit request timeout, connection reset, or
+temporary service-unavailable response, allow at most two retries: wait 1 minute before the first retry and
+3 minutes before the second retry. There are at most three calls total for the same read. Retry the same connector,
+operation, and arguments in the same invocation; do not switch routes or create a fresh run to reset this allowance.
+Stop retrying immediately on success or a non-transient failure. Do not automatically retry authentication failures,
+`permission_denied`, `not_found`, invalid requests, or Jira writes. An ambiguous failure is not evidence of a
+transient error.
+
+A pending call or an observation timeout is not a completed connector failure. Keep waiting on the existing handle;
+never issue a duplicate request while that call is pending or its completion is unknown. Use interruptible waits,
+honor cancellation and any existing deadline, and do not retry early if the required delay cannot be honored.
+Announce each failure and scheduled retry. Preserve the connector, operation, arguments, safe failure code, attempt
+number, failure time, retry due time, and outcome in current-run evidence. Before initialization, keep this evidence
+in the chat/tool trace without creating files; afterward use the existing authorized artifact root. Preserve accepted
+evidence, completed work, run identity, and analytical correction counts. Connector retries do not consume an
+analytical correction allowance.
+
+Only a successful payload establishes access; scheduling or acknowledging a retry does not. After retry exhaustion,
+use the existing source-access blocked receipt for the initial probe, or report the unavailable scope through the
+worker's existing evidence/failure path. A failed parent cannot schedule its own retry: require a supported host
+mechanism or an authorized live supervisor; otherwise report the next delay without promising automatic recovery.
+
 ## TechOps Issue Remediation Source-Access Gate
 
 Before preparing a Jira-backed TechOps Issue Remediation run, read the exact supplied issue through an available
@@ -40,6 +65,7 @@ configured connector. The launcher performs this narrow check before repository 
 Use the direct Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route.
 A resource or account lookup does not prove exact-issue access. On authentication failure or when no issue-read
 operation exists, try at most one distinct configured Jira connector, never another operation on the failed route.
+Apply [Transient Read Recovery](#transient-read-recovery) before treating a transient read failure as unavailable.
 Preserve `not_found` and `permission_denied` as item-specific outcomes. If no route can read the exact issue, record the
 attempted source and operation, a safe provider code (or `OPERATION_UNAVAILABLE`), and one access-restoration action
 with this blocked source-access receipt:
@@ -72,8 +98,9 @@ safe failure code, and one access-restoration action. Create no artifact root or
 disposition. `not_found` and `permission_denied` are item-specific outcomes, not connector-wide authentication failures.
 A successful item read does not prove hierarchy, link, history, or asset access. For a required scope absent on the
 selected connector, the worker may use one distinct alternative connector only after an exact-key read succeeds there;
-it MUST record the route for each scope. A failed route is not silently retried. Other playbooks retain their own
-source-access rules; do not probe optional sources.
+it MUST record the route for each scope. Apply [Transient Read Recovery](#transient-read-recovery) to transient
+read failures before declaring access unavailable; a failed route is not silently retried. Other playbooks retain
+their own source-access rules; do not probe optional sources.
 
 ## Read path
 

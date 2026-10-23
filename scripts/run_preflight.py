@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -31,6 +32,14 @@ def _git(root: Path, *args: str) -> tuple[int, str, str]:
         check=False,
     )
     return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+
+
+def _working_diff_sha256(root: Path) -> tuple[int, str | None, str]:
+    completed = subprocess.run(["git", "-C", str(root), "diff", "--binary", "HEAD", "--"],
+                               capture_output=True, check=False)
+    if completed.returncode:
+        return completed.returncode, None, completed.stderr.decode(errors="replace").strip()
+    return 0, hashlib.sha256(completed.stdout).hexdigest(), ""
 
 
 def _plugin_root(path: Path) -> Path | None:
@@ -73,6 +82,7 @@ def preflight(
     framework_root: Path,
     *,
     declared_framework_revision: str | None = None,
+    declared_framework_diff_sha256: str | None = None,
     declared_plugin_path: Path | None = None,
 ) -> dict[str, str | None]:
     root = framework_root.expanduser().resolve()
@@ -126,7 +136,42 @@ def preflight(
             framework_revision=revision,
             detail=status_error or "git status failed",
         )
+    diff_sha256 = None
+    if declared_framework_diff_sha256 is not None:
+        declared_diff = declared_framework_diff_sha256.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", declared_diff):
+            return _result("blocked", "run_prompt_nonconformant", framework_root=str(root),
+                           framework_revision=revision)
+        diff_code, diff_sha256, diff_error = _working_diff_sha256(root)
+        if diff_code:
+            return _result("blocked", "framework_status_unavailable", framework_root=str(root),
+                           framework_revision=revision, detail=diff_error or "git diff failed")
+        if declared_diff != diff_sha256:
+            return _result("blocked", "framework_revision_mismatch", framework_root=str(root),
+                           framework_revision=revision, framework_status="dirty",
+                           declared_framework_diff_sha256=declared_diff,
+                           framework_diff_sha256=diff_sha256)
     if dirty_status:
+        untracked_code, untracked, untracked_error = _git(root, "ls-files", "--others", "--exclude-standard")
+        if untracked_code:
+            return _result("blocked", "framework_status_unavailable", framework_root=str(root),
+                           framework_revision=revision, detail=untracked_error or "git ls-files failed")
+        if declared_framework_diff_sha256 and not untracked:
+            reused_identity, plugin_version = _reused_plugin_build_identity(root, revision)
+            if reused_identity:
+                return _result("blocked", "plugin_build_identity_reused", framework_root=str(root),
+                               framework_revision=revision, framework_status="dirty_snapshot",
+                               framework_diff_sha256=diff_sha256, plugin_version=plugin_version or "unknown")
+            validator = root / "scripts/validate_library.py"
+            if not validator.is_file():
+                return _result("blocked", "plugin_package_incomplete", framework_root=str(root))
+            validation = subprocess.run([sys.executable, str(validator)], cwd=root, capture_output=True, text=True)
+            if validation.returncode:
+                return _result("blocked", "framework_package_validation_failed", framework_root=str(root),
+                               detail=validation.stdout.strip() or validation.stderr.strip())
+            return _result("passed", None, framework_root=str(root), framework_revision=revision,
+                           framework_status="dirty_snapshot", framework_diff_sha256=diff_sha256,
+                           plugin_version=plugin_version or "unknown")
         return _result(
             "blocked",
             "framework_revision_mismatch",
@@ -160,6 +205,7 @@ def preflight(
         framework_root=str(root),
         framework_revision=revision,
         framework_status="clean",
+        **({"framework_diff_sha256": diff_sha256} if diff_sha256 else {}),
         plugin_version=plugin_version or "unknown",
     )
 
@@ -253,6 +299,7 @@ def mandatory_presentation_notice(source: Path) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--declared-framework-revision")
+    parser.add_argument("--declared-framework-diff-sha256")
     parser.add_argument("--declared-plugin-path", type=Path)
     parser.add_argument("--provider-session", type=Path, help="Assert the automatically resolved current native record")
     parser.add_argument("--self-test", action="store_true")
@@ -267,6 +314,7 @@ def main() -> int:
     result = preflight(
         framework_root,
         declared_framework_revision=args.declared_framework_revision,
+        declared_framework_diff_sha256=args.declared_framework_diff_sha256,
         declared_plugin_path=args.declared_plugin_path,
     )
     if result["status"] == "passed":

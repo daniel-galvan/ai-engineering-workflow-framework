@@ -473,10 +473,32 @@ class ParentContext(unittest.TestCase):
                           self.call("exec_command", cmd=f"sed -n '1,20p' {playbook}")])
         self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
 
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=f"cat '{skill}'"),
+            self.call("exec_command", cmd=preflight), observed_preflight,
+            self.call("exec_command", cmd=f"sed -n '1,20p' {playbook}")]
+        self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
+
         observed_preflight["payload"]["item"]["exit_code"] = 2
         observed_preflight["payload"]["item"]["aggregated_output"] = json.dumps({"status": "blocked"})
         result = self.audit(framework_root=framework, require_preflight_order=True)
         self.assertIn("parent_framework_content_before_preflight", result["errors"])
+
+    def test_bootstrap_allows_only_bounded_chunks_of_the_active_skill(self):
+        framework = self.root / "framework"
+        skill = framework / "skills/run/SKILL.md"
+        header = self.rows[:2]
+        self.rows = header + [self.call("exec_command", cmd=f"cat '{skill}'"),
+            self.call("exec_command", cmd=f"sed -n '1,220p' '{skill}'"),
+            self.call("exec_command", cmd=f"sed -n '221,460p' '{skill}'")]
+        self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
+        for command in (f"sed -n '1,20p' {framework}/playbooks/techops_issue_remediation.md",
+                        f"sed -n '1,20p' {framework}/other/skills/run/SKILL.md",
+                        f"sed -n '1p;w /tmp/copied' {skill}",
+                        f"sed -n '1,20p' {skill}; cat {framework}/contracts/workflow_execution.md"):
+            with self.subTest(command=command):
+                self.rows = header + [self.call("exec_command", cmd=command)]
+                self.assertIn("parent_framework_content_before_preflight",
+                              self.audit(framework_root=framework, require_preflight_order=True)["errors"])
 
     def test_external_connector_calls_are_ordered_after_preflight(self):
         framework = self.root / "framework"
@@ -518,6 +540,42 @@ class ParentContext(unittest.TestCase):
             "await Promise.all(paths.map(path => tools.exec_command({cmd: `cat ${path}`})));"
         )
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        from scripts.runtime_checks import _tool_operations
+        self.rows[-1]["payload"]["input"] = (
+            "const reads = await Promise.allSettled(["
+            'tools.exec_command({cmd:"cat /repo/one"}),'
+            'tools.exec_command({cmd:"cat /repo/two"})]);'
+        )
+        self.assertEqual(_tool_operations(self.rows[-1]["payload"]), [
+            ("exec_command", {"cmd": "cat /repo/one"}),
+            ("exec_command", {"cmd": "cat /repo/two"}),
+        ])
+
+    def test_literal_assigned_thread_batch_is_audited_without_executing_the_loop(self):
+        child_two = "00000000-0000-0000-0000-000000000004"
+        for child, handle in ((CHILD, "/root/first"), (child_two, "/root/second")):
+            self.rows.append({"type": "event_msg", "payload": {"item": {
+                "type": "SubAgentActivity", "kind": "started", "agent_path": handle,
+                "agent_thread_id": child}}})
+        source = (
+            f'const ids = [["{CHILD}", "/root/first"], ["{child_two}", "/root/second"]];\n'
+            'for (const [threadId, handle] of ids) {\n'
+            '  const r = await tools.mcp__codex_app__read_thread({threadId, turnLimit: 1, '
+            'includeOutputs: false, maxOutputCharsPerItem: 1});\n'
+            '  text(JSON.stringify({handle, result: r}));\n'
+            '}')
+        self.rows.append({"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+            "input": source}})
+        result = self.audit()
+        self.assertEqual(result["status"], "passed", result)
+
+        self.rows[-1]["payload"]["input"] = source.replace(child_two, TURN)
+        result = self.audit()
+        self.assertIn("parent_unassigned_thread_read:" + TURN, result["errors"])
+        self.assertNotIn("parent_tool_arguments_unavailable", result["errors"])
+
+        self.rows[-1]["payload"]["input"] = source + '\nawait tools.exec_command({cmd:"cat /repo/other"})'
+        self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
     def test_literal_const_tool_arguments_are_audited_but_dynamic_values_fail_closed(self):
         patch = ("*** Begin Patch\n*** Add File: " + str(self.root / ".thoughts" / "ITEM-1" / "runs" /
@@ -552,6 +610,55 @@ class ParentContext(unittest.TestCase):
             self.rows[-1]["payload"]["input"] = source
             self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_immediate_literal_array_join_resolves_without_executing_javascript(self):
+        from scripts.runtime_checks import _tool_operations
+        source = ('const script="/package/scripts/guard.py";\n'
+                  'const args=["python3",script,"--assignment","/repo/.thoughts/ITEM-1/assignment.json"].join(" ");\n'
+                  'const r=await tools.exec_command({cmd:args,login:false}); text(r.output);')
+        row = {"type": "custom_tool_call", "name": "exec", "input": source}
+        self.assertEqual(_tool_operations(row), [("exec_command", {
+            "cmd": "python3 /package/scripts/guard.py --assignment /repo/.thoughts/ITEM-1/assignment.json",
+            "login": False})])
+        for invalid in (source.replace('const script=', 'let script='),
+                        source.replace('"python3",script', '"python3",unknown'),
+                        source.replace('"python3",script', '"python3",resolve()'),
+                        source.replace('.join(" ")', '.join(separator)'),
+                        source.replace('const args=', 'let args='),
+                        source.replace('const args=[', 'const parts=[').replace(
+                            '].join(" ");', ']; const args=parts.join(" ");'),
+                        source.replace('const r=await', 'args=resolve(); const r=await')):
+            with self.subTest(source=invalid):
+                self.assertEqual(_tool_operations({**row, "input": invalid}), [])
+
+    def test_template_arguments_resolve_only_known_literal_constants(self):
+        from scripts.runtime_checks import _tool_operations
+        source = ('const base="/package/scripts"; const root="/repo/.thoughts/ITEM-1"; '
+                  'const result=await tools.exec_command({cmd:`python3 ${base}/collector.py --ledger ${root}/ledger.json`,'
+                  'workdir:"/repo"}); text(result.output);')
+        row = {"type": "custom_tool_call", "name": "exec", "input": source}
+        self.assertEqual(_tool_operations(row), [("exec_command", {
+            "cmd": "python3 /package/scripts/collector.py --ledger /repo/.thoughts/ITEM-1/ledger.json",
+            "workdir": "/repo"})])
+        for invalid in (source.replace('const base="/package/scripts"', 'let base="/package/scripts"'),
+                        source.replace('${base}', '${missing}'),
+                        source.replace('${base}', '${result.output}'),
+                        source.replace('${base}', '${resolve()}'),
+                        source.replace('${base}', '${base + root}'),
+                        source.replace('const result=', 'base=resolve(); const result='),
+                        source.replace('const result=', '{ let base="other"; } const result='),
+                        source.replace('${base}', r'\${base}')):
+            with self.subTest(source=invalid):
+                self.assertEqual(_tool_operations({**row, "input": invalid}), [])
+        logged = source + " text(`exit_code=${result.exit_code}`);"
+        self.assertEqual(_tool_operations({**row, "input": logged}), _tool_operations(row))
+        native_shape = source.replace(" --ledger", " --parent-thread-id 00000000-0000-0000-0000-000000000001 "
+                                      "--started-at 2026-10-22T03:49:11.414904Z --ledger")
+        self.assertEqual(len(_tool_operations({**row, "input": native_shape})), 1)
+        self.rows.append({"type": "response_item", "payload": row})
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        self.rows[-1]["payload"] = {**row, "input": source.replace("ledger.json", "runs/prior/notes.md")}
+        self.assertIn("forbidden_context_reference:archived_artifact", self.audit()["errors"])
+
     def test_preparation_accepts_literal_const_manifest_creation(self):
         inputs = self.root / "inputs.json"
         inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
@@ -564,10 +671,10 @@ class ParentContext(unittest.TestCase):
                           input_manifest=inputs, provider_session=self.source)
         self.assertEqual(run["status"], "prepared")
 
-    def test_staging_manifest_at_repository_root_preserves_work_item_isolation(self):
+    def test_staging_manifest_inside_work_item_preserves_work_item_isolation(self):
         for sibling in (True, False):
             with self.subTest(sibling_work_item=sibling):
-                inputs = self.root / (".thoughts/ITEM-1-inputs.json" if sibling else "ITEM-1-inputs.json")
+                inputs = self.root / (".thoughts/ITEM-1-inputs.json" if sibling else ".thoughts/ITEM-1/intake_inputs.json")
                 inputs.parent.mkdir(parents=True, exist_ok=True)
                 inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
                     "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
@@ -584,6 +691,8 @@ class ParentContext(unittest.TestCase):
                     run = prepare_run(self.root, "ITEM-1", "techops_issue_remediation", None, False,
                                       input_manifest=inputs, provider_session=self.source)
                     self.assertEqual(run["status"], "prepared")
+                    self.assertTrue(inputs.is_file())
+                    self.assertTrue((inputs.parent / "run_inputs.json").is_file())
 
     def test_preparation_is_transactional_and_activation_rechecks_later_reads(self):
         inputs = self.root / "inputs.json"

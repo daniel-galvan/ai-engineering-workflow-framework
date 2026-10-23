@@ -221,8 +221,11 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
               "Before that read, do not search memory, previous chats, or historical artifacts.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
-            + f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
             + f"Verify its SHA256 is {digest} before analytical work; on mismatch stop and report it.\n"
+            + f"Read it with this separate literal command: {shlex.join(['cat', str(path.resolve())])}\n"
+            + "Use separate tool calls for verification and the complete instruction read; do not combine "
+              "the read with checksum scripts.\n"
+            + f"Set that call's max_output_tokens to at least {len(message.encode())}; truncated output is not delivery.\n"
             + "After verification, continue in this same turn through the full typed assignment and write its required "
               "outputs. A bootstrap acknowledgment is not completion.\n"
             + "The file is the operative role, input, output and policy contract. Read it in full; do not substitute "
@@ -791,17 +794,85 @@ def _literal_argument(node: ast.AST, constants: dict[str, str] | None = None):
     constants = constants or {}
     if isinstance(node, ast.Constant):
         return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            elif (isinstance(value, ast.FormattedValue) and isinstance(value.value, ast.Name)
+                  and value.conversion == -1 and value.format_spec is None
+                  and value.value.id in constants):
+                parts.append(constants[value.value.id])
+            else:
+                raise ValueError("nonliteral template substitution")
+        return "".join(parts)
     if isinstance(node, ast.Dict):
         return {(key.id if isinstance(key, ast.Name) else _literal_argument(key, constants)):
                 _literal_argument(value, constants)
                 for key, value in zip(node.keys, node.values)}
     if isinstance(node, (ast.List, ast.Tuple)):
         return [_literal_argument(value, constants) for value in node.elts]
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.List) and node.func.attr == "join"
+            and len(node.args) == 1 and not node.keywords):
+        parts = _literal_argument(node.func.value, constants)
+        separator = _literal_argument(node.args[0], constants)
+        if isinstance(separator, str) and all(isinstance(part, str) for part in parts):
+            return separator.join(parts)
+        raise ValueError("nonliteral string join")
     if isinstance(node, ast.Name) and node.id in {"true", "false", "null"}:
         return {"true": True, "false": False, "null": None}[node.id]
     if isinstance(node, ast.Name) and node.id in constants:
         return constants[node.id]
     raise ValueError("nonliteral tool argument")
+
+
+def _literal_templates(source: str) -> str:
+    """Translate unescaped JS templates into restricted Python string ASTs, without execution."""
+    if "`" not in source:
+        return source
+    while True:
+        token, previous, comment_line, block_comment = None, None, None, False
+        for item in tokenize.generate_tokens(io.StringIO(source).readline):
+            if item.start[0] == comment_line:
+                continue
+            if block_comment:
+                if previous and previous.string == "*" and item.string == "/" and previous.end == item.start:
+                    block_comment = False
+                previous = item
+                continue
+            if item.string == "//":
+                comment_line = item.start[0]
+                continue
+            if previous and previous.string == "/" and item.string == "*" and previous.end == item.start:
+                block_comment = True
+                previous = item
+                continue
+            if item.type in {tokenize.OP, tokenize.ERRORTOKEN} and item.string == "`":
+                token = item
+                break
+            previous = item
+        if token is None:
+            return source
+        lines = source.splitlines(keepends=True)
+        start = sum(map(len, lines[:token.start[0] - 1])) + token.start[1]
+        end = source.find("`", start + 1)
+        if end < 0:
+            raise ValueError("unterminated template")
+        raw = source[start + 1:end]
+        if "\\" in raw:
+            raise ValueError("escaped templates are not literal arguments")
+        parts, offset = [], 0
+        for match in re.finditer(r"\$\{([^}]*)\}", raw):
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", match[1]):
+                raise ValueError("computed template substitution")
+            parts.append(raw[offset:match.start()].replace("{", "{{").replace("}", "}}"))
+            parts.append("{" + match[1] + "}")
+            offset = match.end()
+        parts.append(raw[offset:].replace("{", "{{").replace("}", "}}"))
+        if "${" in raw[offset:]:
+            raise ValueError("incomplete template substitution")
+        source = source[:start] + "f" + repr("".join(parts)) + source[end + 1:]
 
 
 def _tool_operations(row: dict) -> list[tuple[str, dict]]:
@@ -819,6 +890,7 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     if row.get("name", "").rsplit(".", 1)[-1] == "apply_patch":
         return [("apply_patch", {"patch": source})]
     try:
+        source = _literal_templates(source)
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
         operations, constants, declared, index, brace_depth = [], {}, set(), 0, 0
         unsafe_bindings = False
@@ -841,6 +913,24 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
                     unique_top_level_const = (tokens[index].string == "const" and name not in declared
                                               and brace_depth == 0 and not unsafe_bindings)
                     declared.add(name)
+                    if (unique_top_level_const and index + 3 < len(tokens)
+                            and tokens[index + 2].string == "=" and tokens[index + 3].string == "["):
+                        end = next((i for i in range(index + 4, len(tokens))
+                                    if tokens[i].type == tokenize.OP and tokens[i].string == ";"), None)
+                        if end is not None:
+                            lines = source.splitlines(keepends=True)
+                            positions = (tokens[index + 3].start, tokens[end].start)
+                            begin, finish = [sum(map(len, lines[:line - 1])) + column
+                                             for line, column in positions]
+                            try:
+                                value = _literal_argument(ast.parse(source[begin:finish], mode="eval").body,
+                                                          constants)
+                            except (ValueError, SyntaxError, TypeError):
+                                value = None
+                            if isinstance(value, str):
+                                constants[name] = value
+                                index = end + 1
+                                continue
                     boundary = index + 4
                     literal_statement = (boundary < len(tokens) and tokens[boundary].string == ";")
                     if (boundary + 1 < len(tokens) and tokens[boundary].type in {tokenize.NL, tokenize.NEWLINE}
@@ -889,7 +979,10 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
                     index += 1
                 if depth:
                     return []
-                argument = tokenize.untokenize([(token.type, token.string) for token in tokens[start:index - 1]])
+                lines = source.splitlines(keepends=True)
+                begin, finish = tokens[start].start, tokens[index - 1].start
+                offsets = [sum(map(len, lines[:line - 1])) + column for line, column in (begin, finish)]
+                argument = _literal_templates(source[offsets[0]:offsets[1]])
                 value = _literal_argument(ast.parse(argument, mode="eval").body,
                                           constants if brace_depth == 0 else {})
                 if name == "apply_patch" and isinstance(value, str):
@@ -1045,9 +1138,11 @@ def _read_targets(command: str) -> list[str]:
                 else:
                     part.append(token)
             parts.append(part)
-            if not parts[-1] or not _listing_command(shlex.join(parts[-1])):
+            if not parts[-1]:
                 return []
-            reads = [_read_targets(shlex.join(part)) for part in parts[:-1]]
+            if _listing_command(shlex.join(parts[-1])):
+                parts = parts[:-1]
+            reads = [_read_targets(shlex.join(part)) for part in parts]
             return [target for row in reads for target in row] if reads and all(reads) else []
         if not tokens or "$" in command:
             return []
@@ -1384,6 +1479,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                                    re.escape(".thoughts/" + root.name) + r"):$", r"\1", candidate)
             for reference in THOUGHT_PATH.findall(candidate):
                 relative = reference.split(".thoughts/", 1)[1]
+                if output and relative == root.name + ".":
+                    relative = root.name  # A sentence-ending period in output is not a different work-item ID.
                 if relative.split("/", 1)[0] != root.name or "/runs/" in relative:
                     errors.append("forbidden_context_reference:archived_artifact")
                     if details is not None:

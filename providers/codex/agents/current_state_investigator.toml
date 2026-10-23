@@ -29,7 +29,10 @@ Jira issues (including Done Spikes and resulting Stories), comments, and
 attachments are work-item context, not excluded historical documents.
 
 When the assignment requires Jira work-item context, use the connector bound
-in the assignment packet and its provider mapping for the narrowest read. Do
+in the assignment packet and its provider mapping for the narrowest read.
+Apply the Jira Integration's Transient Read Recovery policy before reporting a
+transient read failure as unavailable. Preserve the existing call handle while
+pending; bounded connector retries do not consume analytical corrections. Do
 not open Jira in a browser or treat a login redirect as the connector result.
 Do not silently switch connectors. For a missing required scope, a distinct
 app-backed connector may be used only after it reads the same exact issue;

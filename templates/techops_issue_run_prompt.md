@@ -58,6 +58,10 @@ Runtime bootstrap:
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>
 
+Unanswered material user decisions carried from the current request (ask in this run after bounded discovery if evidence
+does not resolve them; use `None` when there are no pending user decisions):
+- <QUESTION-OPTIONS-WHY-IT-MATTERS-OR-None>
+
 Reported issue context (unverified until reconciled):
 - Report source: Zendesk / Help Desk / Operations / Other
 - Reported behavior and impact: <DESCRIPTION-OR-UNKNOWN>

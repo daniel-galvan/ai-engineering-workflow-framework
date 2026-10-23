@@ -106,6 +106,9 @@ WORKFLOW_OUTCOMES = {
         "specification_assessment": "specification_assessment",
         "feature_implementation": "feature_delivery",
     },
+    "techops_issue_remediation": {
+        "implementation_planning": "implementation_plan",
+    },
 }
 PLAYBOOK_DEFAULT_GOALS = {
     "technical_spike": {
@@ -1339,6 +1342,8 @@ def prepare_run(
                     "Every field value in worker_result and in evidence/claims/decisions/actions "
                     "rows must be a string, including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; "
                     "join multiple references in one string, never an array. "
+                    "Claims Evidence refs accepts only E-* evidence IDs; decisions Claim refs only CL-* claim IDs; "
+                    "actions Decision ref only DE-* decision IDs. Worker summary Evidence / claim refs may mix types. "
                     "Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
                     "Reference upstream IDs unchanged without copying their rows; emit only your namespace's rows. "
                     "Outcome is complete, failed or blocked, never completed. "
@@ -1404,6 +1409,8 @@ def prepare_run(
                     "Every field value in worker_result and in evidence/claims/decisions/actions rows must be a string, "
                     "including Evidence / claim refs, Evidence refs, Claim refs and Decision ref; join multiple "
                     "references in one string, never an array. "
+                    "Claims Evidence refs accepts only E-* evidence IDs; decisions Claim refs only CL-* claim IDs; "
+                    "actions Decision ref only DE-* decision IDs. Worker summary Evidence / claim refs may mix types. "
                     f"Its Worker value must be exactly {worker}. Reference existing upstream IDs without "
                     "repeating their rows in these arrays; every emitted row must use this worker's "
                     "E/CL/DE/A-<id_namespace>-<number> namespace. Record exact asset evidence IDs in references. "

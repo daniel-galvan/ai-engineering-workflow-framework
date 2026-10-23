@@ -46,6 +46,39 @@ class FrameworkCorrections(unittest.TestCase):
         trace, _ = stage_worker_response(self.run, "current_state_investigator", self.result)
         merge_result(self.packet_path, "current_state_investigator", trace=trace)
 
+    def test_preflight_accepts_only_the_declared_tracked_dirty_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".codex-plugin").mkdir()
+            (root / "scripts").mkdir()
+            (root / "PLAYBOOK_CATALOG.md").write_text("# Catalog\n")
+            (root / ".codex-plugin/plugin.json").write_text('{"version":"1.0.0+candidate"}\n')
+            (root / "scripts/validate_library.py").write_text('print("valid")\n')
+            subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "test"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "base"], check=True)
+            revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+            (root / "PLAYBOOK_CATALOG.md").write_text("# Candidate\n")
+            diff = subprocess.check_output(["git", "-C", str(root), "diff", "--binary", "HEAD", "--"])
+            digest = hashlib.sha256(diff).hexdigest()
+
+            self.assertEqual(preflight.preflight(root)["reason"], "framework_revision_mismatch")
+            accepted = preflight.preflight(root, declared_framework_revision=revision,
+                                           declared_framework_diff_sha256=digest)
+            self.assertEqual(accepted["status"], "passed", accepted)
+            self.assertEqual(accepted["framework_status"], "dirty_snapshot")
+            self.assertEqual(accepted["framework_diff_sha256"], digest)
+            rejected = preflight.preflight(root, declared_framework_revision=revision,
+                                           declared_framework_diff_sha256="0" * 64)
+            self.assertEqual(rejected["reason"], "framework_revision_mismatch")
+
+            (root / "extra.py").write_text("untracked\n")
+            rejected = preflight.preflight(root, declared_framework_revision=revision,
+                                           declared_framework_diff_sha256=digest)
+            self.assertEqual(rejected["status"], "blocked")
+
     def test_documenter_stager_rejects_package_drift_without_packet_writes(self):
         before = self.packet_path.read_bytes()
         bindings_path = self.root / "role_bindings.json"

@@ -176,9 +176,15 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     if dispatch.get("Dispatch file"):
         binding = {**binding, "dispatch_file": dispatch["Dispatch file"],
                    "dispatch_file_sha256": dispatch["Dispatch SHA256"], "binding_agent": dispatch["Binding agent"]}
+    activation_dispatch = next((row for row in dispatches if row.get("Operation") == "spawn_agent"), {})
+    activation_metadata = {
+        target: activation_dispatch[field]
+        for target, field in (("model", "Observed model"), ("effort", "Observed effort"))
+        if isinstance(activation_dispatch.get(field), str)
+    }
     fan_in_status = "completed" if observation["Provider status"] in {"completed", "idle"} else observation["Provider status"]
     result = {"schema_version": 1, "worker": agent, "thread_id": thread,
-              "launch": next((row.get("Launch", {}) for row in dispatches if row.get("Operation") == "spawn_agent"), {}),
+              "launch": activation_dispatch.get("Launch", {}), "activation_metadata": activation_metadata,
               "runtime_configurations": runtime_configurations(source, thread, observation["Observed at"]),
               "last_dispatch_at": dispatch["Last dispatch at"],
               "spawn": dict(binding, agent=agent, provider_handle=handle, thread_id=thread),
@@ -291,7 +297,7 @@ def _native_terminal_observations(ledger: dict, handles: list[str], *, require_t
                       and timestamp(probe.get("Attempted at", "")) >= timestamp(dispatch)]
         if candidates:
             latest = max(candidates, key=lambda probe: timestamp(probe.get("Observed at", "")))
-            if not inventory or timestamp(latest["Observed at"]) > timestamp(row["Observed at"]):
+            if handle not in agents or timestamp(latest["Observed at"]) > timestamp(row["Observed at"]):
                 targeted = latest.get("terminal_observation")
                 row = (targeted if isinstance(targeted, dict) else {
                     "Provider handle": handle, "Provider status": None,
@@ -492,7 +498,8 @@ def main() -> int:
     parser.add_argument("--parent-thread-id", required=True)
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--ledger", type=Path, required=True)
-    parser.add_argument("--worker-session", type=Path)
+    parser.add_argument("--worker-session", type=Path,
+                        help="Absolute native worker JSONL path, not a thread UUID or collaboration handle")
     parser.add_argument("--observation", type=Path, help="Targeted receipt; omit to use the latest native inventory")
     parser.add_argument("--agent")
     parser.add_argument("--trace", type=Path)
@@ -606,10 +613,13 @@ def main() -> int:
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
                 reason = str(error)
                 recovery_gate = reason.startswith("worker_result_recovery_authorization_required:")
+                context_failure = reason.startswith("parent_context_nonconformant")
                 print(json.dumps({"status": "blocked",
-                    "phase": "worker_recovery_gate" if recovery_gate else "coordinator_audit_registration",
+                    "phase": "parent_context_nonconformant" if context_failure else
+                        "worker_recovery_gate" if recovery_gate else "coordinator_audit_registration",
                     "worker_trace_status": "passed", "worker_result_disposition": "not_merged",
-                    "required_action": "complete_bounded_recovery_before_merging" if recovery_gate else
+                    "required_action": "terminate_invocation_with_workflow_failure" if context_failure else
+                        "complete_bounded_recovery_before_merging" if recovery_gate else
                         "correct_coordinator_receipt_then_retry_collection_or_merge",
                     "trace": str(args.trace), "ledger": str(args.ledger), "reason": reason}))
                 return 2

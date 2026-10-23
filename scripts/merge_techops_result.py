@@ -120,7 +120,13 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
             errors.append(f"worker_result_existing_ids_duplicate:{table}")
         for row in incoming:
             if row[key] in existing and existing[row[key]] != row:
-                errors.append(f"worker_result_row_conflict:{row[key]}")
+                # The owning worker may repair links without rewriting accepted findings.
+                reference_field = {"claims": "Evidence refs", "decisions": "Claim refs",
+                                   "actions": "Decision ref"}.get(table)
+                if (reference_field is None or
+                        {k: v for k, v in existing[row[key]].items() if k != reference_field} !=
+                        {k: v for k, v in row.items() if k != reference_field}):
+                    errors.append(f"worker_result_row_conflict:{row[key]}")
             existing[row[key]] = row
         packet[table] = list(existing.values())
     if not summary_errors:
@@ -129,6 +135,15 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
     known_ids = {row[key] for table, key in TABLES.items() for row in packet.get(table, [])}
     known_ids.update(row[key] for table, key in TABLES.items() if isinstance(result.get(table), list)
                      for row in result[table] if isinstance(row, dict) and isinstance(row.get(key), str))
+    for table, field, target in (("claims", "Evidence refs", "evidence"),
+                                 ("decisions", "Claim refs", "claims"),
+                                 ("actions", "Decision ref", "decisions")):
+        allowed = {row[TABLES[target]] for row in packet[target]}
+        for row in packet[table]:
+            for reference in re.findall(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b",
+                                        row.get(field, "")):
+                if reference not in allowed:
+                    errors.append(f"worker_result_reference_type_invalid:{table}:{row[TABLES[table]]}:{field}:{reference}:expected_{target}_id")
     for rows in (packet["worker_results"], packet["claims"], packet["decisions"], packet["actions"]):
         for row in rows:
             for field, value in row.items():
@@ -173,9 +188,9 @@ def _workers_for(bindings: dict) -> dict[str, tuple[str, str]]:
 def _coordinator_worker_row(packet: dict, agent: str, result: dict, trace: dict, bindings: dict) -> dict:
     """Record worker metadata only from accepted result, prepared dispatch, and provider trace."""
     try:
-        from runtime_checks import _verified_dispatch_content
+        from runtime_checks import _tool_operations, _verified_dispatch_content
     except ModuleNotFoundError:
-        from scripts.runtime_checks import _verified_dispatch_content
+        from scripts.runtime_checks import _tool_operations, _verified_dispatch_content
     content = _verified_dispatch_content(trace)
     if not content:
         raise ValueError("worker_dispatch_assignment_unverified:" + agent)
@@ -194,15 +209,30 @@ def _coordinator_worker_row(packet: dict, agent: str, result: dict, trace: dict,
         raise ValueError("worker_launch_binding_unavailable:" + worker)
     if (model, effort) != (configured.get("model"), configured.get("effort")):
         raise ValueError("worker_launch_binding_mismatch:" + worker)
+    runtime = next((row for row in reversed(trace.get("runtime_configurations", []))
+                    if isinstance(row, dict)), {})
+    activation = trace.get("activation_metadata", {})
+    if not isinstance(activation, dict):
+        activation = {}
+    observed_model = runtime.get("model") or activation.get("model")
+    observed_effort = runtime.get("effort") or activation.get("effort")
+    if isinstance(observed_model, str) and isinstance(observed_effort, str):
+        observed_model_effort = f"{observed_model} / {observed_effort}"
+    elif observed_model or observed_effort:
+        observed_model_effort = (
+            f"Not exposed; partial provider telemetry model={observed_model or 'unavailable'}, "
+            f"effort={observed_effort or 'unavailable'}; explicit launch binding {model} / {effort}"
+        )
+    else:
+        observed_model_effort = f"Not exposed; explicit launch binding {model} / {effort}"
     inputs = assignment.get("input_paths", [])
     contract = bindings.get("worker_contracts", {}).get(agent, {})
     summary = result.get("worker_result", {})
     tools = []
     for item in trace.get("tool_trace", []):
-        payload = item.get("payload", {}) if isinstance(item, dict) else {}
-        name = payload.get("name") or item.get("tool") if isinstance(item, dict) else None
-        if isinstance(name, str) and name not in tools:
-            tools.append(name)
+        for name, _ in _tool_operations(item):
+            if name not in tools:
+                tools.append(name)
     return {
         "Worker": worker,
         "Role": agent,
@@ -213,7 +243,7 @@ def _coordinator_worker_row(packet: dict, agent: str, result: dict, trace: dict,
         "Tools": ", ".join(tools) if tools else "No tool operations recorded in current worker trace",
         "Capacity": "Not exposed by provider",
         "Configured model/effort": f"{configured.get('model')} / {configured.get('effort')}",
-        "Provider-observed model/effort": f"{model} / {effort}",
+        "Provider-observed model/effort": observed_model_effort,
         "Usage": "Not exposed by provider",
         "Depends on": "Current-run inputs listed in the typed assignment",
         "Outcome": summary.get("Outcome", "Unknown"),
@@ -288,8 +318,11 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
         trace_path = trace or (Path(audit["Trace path"]) if audit and audit.get("Trace path") else None)
         if trace_path is None:
             raise ValueError("worker_result_trace_required:" + worker)
-        trace_path = trace_path if trace_path.is_absolute() else root / trace_path
-        if trace_path.resolve().parent != root:
+        if not trace_path.is_absolute():
+            execution_repository_path = trace_path.resolve()
+            trace_path = execution_repository_path if execution_repository_path.exists() else root / trace_path
+        trace_path = trace_path.resolve()
+        if trace_path.parent != root:
             raise ValueError("worker_trace_outside_current_run:" + worker)
         try:
             from planning_contracts import worker_audit_record

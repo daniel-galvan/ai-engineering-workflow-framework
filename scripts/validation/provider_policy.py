@@ -188,6 +188,9 @@ def validate_runtime_mapping() -> None:
         "active parent session; no dedicated Coordinator worker spawned",
         "prompt-completeness gate",
         "run_prompt_incomplete:<field>",
+        "For TechOps, allow `Provider/runtime configuration: Not provided` when absent.",
+        "For TechOps, the `failure-path` workstream's `--agent` value is `dependency_analyst`",
+        "Run trace validation and fan-in transition validation as separate",
         "the timebox, success criterion",
         "selected playbook's configured default",
         "Do not create a temporary input",
@@ -212,14 +215,26 @@ def validate_runtime_mapping() -> None:
     codex_adapter = CODEX_ADAPTER.read_text()
     for phrase in ("## Launcher and Package Preflight", "## Worker Activation", "## Runtime Closure", "## Source Routing",
                    "first framework tool call", "direct Atlassian MCP connector first", "source_access_receipt.py",
-                   "plugin_revision_mismatch", "list_agents", "read_thread", "wait_threads"):
+                   "plugin_revision_mismatch", "list_agents", "read_thread", "wait_threads",
+                   "spawn_agent` may return only the collaboration task handle",
+                   "correlated `SubAgentActivity` `started` event",
+                   "Never interrupt a worker solely because the spawn result contains only its handle"):
         if phrase not in codex_adapter:
             fail(f"providers/codex.md is missing provider execution rule: {phrase}")
     for phrase in ("## TechOps Issue Remediation Source-Access Gate", "source_access_receipt.py --source Jira",
+                   "## Transient Read Recovery", "wait 1 minute", "3 minutes before the second retry",
+                   "at most three calls total", "same connector", "observation timeout", "Jira writes",
                    "## Feature Delivery Source-Access Gate", "Start with `item`",
                    "Inventory every member of that collection", "at most one", "not connector-wide authentication failures"):
         if phrase not in jira_text:
             fail(f"integrations/jira.md is missing source policy: {phrase}")
+    for label, text in (("TechOps launcher", run_skill.split("5a. For Jira-backed TechOps Issue Remediation", 1)[-1]
+                        .split("5b. For Jira-backed Feature Delivery", 1)[0]),
+                        ("Feature Delivery launcher", run_skill.split("5b. For Jira-backed Feature Delivery", 1)[-1]
+                         .split("5c. For Sentry Issue Remediation", 1)[0]),
+                        ("Codex Jira mapping", codex_adapter)):
+        if "jira.md#transient-read-recovery" not in text:
+            fail(f"{label} is missing Jira transient read recovery")
     for phrase in (
         "fork_context: false",
         "Coordinator initialization: complete",
@@ -259,6 +274,7 @@ def validate_runtime_mapping() -> None:
     current_state_agent = (CODEX_AGENT_DIR / "current_state_investigator.toml").read_text()
     for phrase in (
         "connector bound",
+        "Transient Read Recovery",
         "Do not silently switch connectors",
         "record the route per scope",
         "not open Jira in a browser",

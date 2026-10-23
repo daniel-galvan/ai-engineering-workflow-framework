@@ -36,7 +36,8 @@ description: >-
    `MEMORY.md` only when the native command record confirms the absolute target. A verified standalone no-match probe
    may be the only host-required operation before preflight; it is recorded as empty and does not count as framework
    discovery. Do not combine it with skill, repository, or playbook reads. Any match/output and all file reads remain
-   blocked.
+   blocked. Limit any host-required probe to the exact current work-item ID; do not add framework vocabulary,
+   helper names, or previous-run concepts that can retrieve unrelated historical guidance.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the target directory and its ancestors up to the repository root. Do not search
@@ -46,10 +47,17 @@ description: >-
    outputs may not prove which references are names only. Run gates separately, or use fail-fast command chaining;
    inspect each exit status.
    Pass `--declared-framework-revision <FULL-SHA>` when the prompt declares one, and pass
-   `--declared-plugin-path <prompt-path>` only when the prompt contains an explicit versioned plugin path. A missing,
-   stale, or different path is `plugin_revision_mismatch`; do not search another cache version or silently substitute
-   a checkout. A dirty or mismatched framework is `framework_revision_mismatch`. Stop before worker activation and
-   report the preflight reason and `preflight_elapsed_ms`. Treat a completed process with exit status 0 as a passed
+   `--declared-framework-diff-sha256 <SHA256>` only for a prompt-declared dirty snapshot. Preflight admits that
+   snapshot only when its tracked binary diff matches the declared digest exactly, no untracked files exist, and
+   package validation passes; it reports `framework_status: dirty_snapshot`. Without the matching digest, dirty
+   source remains blocked. This pins an uncommitted evaluation candidate without treating it as clean.
+   A declared dirty snapshot
+   cannot hide worktree changes made after the digest was recorded; stop if the digest no longer matches.
+   Pass `--declared-plugin-path <prompt-path>` only when the prompt contains an explicit versioned plugin path.
+   A missing, stale, or different path is `plugin_revision_mismatch`; do not search another cache version or silently
+   substitute a checkout. An undeclared, changed, or untracked dirty framework is `framework_revision_mismatch`.
+   Stop before worker activation and report the preflight reason and `preflight_elapsed_ms`. Treat a completed
+   process with exit status 0 as a passed
    preflight even when the app hides stdout; do not rerun it solely because the JSON payload is not visible. Retry only
    after a timeout, nonzero exit, or an objectively malformed result whose status cannot be determined.
    Capture the current-turn start from provider metadata when available; otherwise read the clock immediately after
@@ -65,8 +73,10 @@ description: >-
 3a. After a passing preflight and before reading any repository, Jira, playbook, contract, provider, or historical
    artifact, apply the prompt-completeness gate. For Technical Spike require a populated `Primary question`; resolve
    the timebox, success criterion, requested outcome, and spike objective from the selected playbook unless the prompt
-   supplies a complete compatible override pair. Reject explicit placeholders such as `<...>`, `None`, or
-   `Not provided` with `run_prompt_incomplete:<field>`. Do not create a temporary input manifest, invoke
+   supplies a complete compatible override pair. Reject explicit placeholders such as `<...>` or `None`, and reject
+   `Not provided` for required fields unless the selected prompt template defines it as the absent-value sentinel for an
+   optional field. For TechOps, allow `Provider/runtime configuration: Not provided` when absent. Return
+   `run_prompt_incomplete:<field>` only for unresolved required values. Do not create a temporary input manifest, invoke
    `prepare_run.py`, or perform context discovery before this gate passes.
 4. The execution repository is the source repository being investigated or remediated, including for planning-only
    runs. When a maintenance Coordinator launches a run from the framework checkout for another source repository,
@@ -104,8 +114,13 @@ description: >-
    Before analytical fan-in for Sentry, TechOps, or Feature Delivery, use the prepared `runtime_evidence.collector` and
    `runtime_evidence.ledger` when declared. Extract dispatches from the verified current parent session and export the
    exact child session with its fresh provider status observation. Use the canonical binding key as `--agent`, not a
-   stage label. After the worker completes, call `list_agents`, then export with `--worker-session`, `--agent`, and
+   stage label. For TechOps, the `failure-path` workstream's `--agent` value is `dependency_analyst`; keep it distinct
+   from the `failure_path` artifact name and `/root/failure_path` task handle. After the worker completes, call
+   `list_agents`, then export with `--worker-session`, `--agent`, and
    `--trace`, omitting `--observation`; the collector derives a timestamped receipt from that native inventory.
+   `--worker-session` takes the absolute native worker JSONL path, never a thread UUID or collaboration handle.
+   Locate only filenames matching the ledger's verified child UUID under the native sessions directory, then use
+   the matching current-turn record. Do not read unrelated sessions or guess the rollout timestamp.
    If the latest inventory omits this worker, use a fresh targeted read and supply `--observation` with `Observed at`
    from the actual read, plus the required thread/turn fields. Never substitute turn completion time for observation
    time. An incomplete targeted receipt can be reconciled from a fresh native inventory without reactivating a worker.
@@ -140,7 +155,8 @@ description: >-
    retrieval failure and when every other contract gate passes; trace-unavailable evidence is never stronger than
    self-attestation.
 5a. For Jira-backed TechOps Issue Remediation, before loading the full playbook, contracts, or template, select an
-available Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
+available Jira connector and read the exact supplied issue key once through its issue-read operation, with only the
+bounded retries in [Jira Transient Read Recovery](../../integrations/jira.md#transient-read-recovery). Try the direct
 Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route. A resource or
 account lookup is not this probe. If authentication fails or no issue-read operation exists, try at most one distinct
 configured Jira connector; never retry the failed route through another operation. Preserve `not_found` and
@@ -153,7 +169,8 @@ root or work-record creation; make zero worker activation attempts. Create no ar
 substitute historical Jira data. A successful issue read does not prove access
 to report-bearing comments; collect those under the TechOps playbook's evidence requirements after initialization.
 5b. For Jira-backed Feature Delivery, before loading the full playbook, contracts, or template, select an available
-   Jira connector and read the exact supplied issue key once through its issue-read operation. Try the direct
+   Jira connector and read the exact supplied issue key once through its issue-read operation, with only the
+   bounded retries in [Jira Transient Read Recovery](../../integrations/jira.md#transient-read-recovery). Try the direct
    Atlassian MCP connector first when available; Rovo is an app-backed alternative, not a mandatory route. A resource
    or account lookup is not this probe. Bind the successful connector and issue-read operation in the fresh
    `feature-context` worker packet; the worker MUST use that connector first for its Jira reads. A missing required
@@ -209,7 +226,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    checkout copy or restart a document from line 1 after reading an earlier range. Load the Codex provider adapter and
    model policy only when provider configuration is needed.
 7. Before preparation, create a run-specific JSON input manifest from every material detail in the current request:
-   explicit decisions and constraints, observed reports, hypotheses, repository paths, and named supporting artifacts.
+   explicit decisions and constraints, unanswered material user questions, observed reports, hypotheses, and repository
+   paths, plus named supporting artifacts. When a fresh run is launched from an active conversation, carry each explicit
+   unanswered user-owned question into the launch prompt and input manifest as a pending decision; this is current user
+   input, not prior-run analysis. Keep confirmed decisions separate, and do not replace an unanswered user choice with a
+   Coordinator interpretation merely because the current code path is observable.
    Use stable Input IDs and include each item's short value, source/path, authority, classification, expected use, and
    status. Include the current request as an input with credentials redacted, and preserve each prohibition explicitly;
    do not replace
@@ -218,10 +239,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `Authorized operations: ["test_run"]` or `["build_run"]`, only when the user has actually authorized those actions.
    A delegated objective cannot grant that authorization. Check executed commands against these constraints before
    fan-in; reject unauthorized results rather than merging them. Keep the full restrictions in every assignment.
-   Use `apply_patch` to create the temporary JSON file when no manifest file already exists. Keep it in a uniquely
-   named file at the execution repository root, outside `.thoughts`, so it belongs to the target source repository
-   without looking like another work-item root. Never use `.thoughts/<WORK-ITEM-ID>-inputs.json`: the context audit
-   treats that sibling as another work-item root. The framework package remains separate from these run artifacts.
+   Use `apply_patch` to create the JSON file when no manifest file already exists. Keep it at
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/intake_inputs.json`, after the source-access and completeness gates.
+   Every generated run file, including this intake manifest, must remain inside that work-item directory. Never
+   stage run files at either repository root, in a sibling `.thoughts` path, or in a temporary directory. The intake
+   manifest alone is not a prior run; preparation validates it before initializing the run in the same directory.
    The manifest has top-level `schema_version: 1`, `status: "explicit"`, a non-empty `inputs` list, and the canonical
    `precedence_rule`; if that key is omitted, preparation applies the canonical default, while an explicit empty value
    remains invalid. Pass the file to `scripts/prepare_run.py` with
@@ -253,6 +275,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    When the request explicitly names Feature Delivery `specification_assessment`, treat that as the compatible
    `specification_assessment + specification_assessment` pair even without labeled prompt fields. Include the exact
    `RUN-GOAL-001` row below when this or another requested outcome is explicit; change only the outcome value.
+   TechOps implementation planning uses `workflow_objective: implementation_planning` with
+   `requested_outcome: implementation_plan`. Keep the canonical goal row's `Source or path` exactly
+   `Current user request`; do not add session or chat wording to that field.
    When the outcome is omitted, omit that row so preparation records the playbook default. Preparation rejects an
    altered explicit row.
    ```json
@@ -267,10 +292,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    ```
    Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
    `--input-manifest <path>`. Native Codex resolves the parent from its thread identity and turn metadata.
-   Keep parent operations individually auditable: call tools with literal arguments in separate provider calls. Do not
-   batch tool calls through `Promise.all`, loops, helper functions, or shell commands built from interpolated values;
-   the parent audit cannot verify those arguments and correctly blocks preparation with
-   `parent_tool_arguments_unavailable`. For multiple file reads, issue one literal `exec_command` per file.
+   Keep parent operations individually auditable. When batching independent reads in one `functions.exec`, use
+   `Promise.allSettled([...])` with one explicit `tools.exec_command({...})` call per file and literal arguments at
+   every call site. Do not build path arrays, use `.map`, loops, helper functions, or computed/interpolated tool
+   arguments; the parent audit statically checks each literal call and blocks dynamic arguments with
+   `parent_tool_arguments_unavailable`.
    Missing or ambiguous native records block preparation. `--provider-session <path>` asserts the resolved path;
    an older fragment cannot override it. Preparation repeats the parent audit before changing artifacts.
    Same-chat continuation retains current-run control metadata automatically, without analytical imports.
@@ -495,7 +521,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    The Coordinator is the only role that performs package preflight and run preparation. Activate every delegated
    worker with `fork_context: false` or the provider-equivalent fresh-context option.
    For Codex collaboration, use `fork_turns: "none"` and explicit `model` and `reasoning_effort` values from the
-   binding.
+   binding. A `spawn_agent` function result may contain only its task handle; this is expected and does not mean the
+   activation metadata is missing. Reconcile the parent-session spawn arguments with the correlated
+   `SubAgentActivity` `started` event through `runtime_evidence.collector` before deciding metadata is unavailable.
+   Compare event model/effort when present and record `Not exposed;` with the explicit binding when absent. Never
+   interrupt a worker solely because its spawn result contains only the handle; an explicit rejection or mismatch
+   still blocks acceptance.
    Reading role instructions cannot change an inherited runtime configuration. The native launch and exposed child
    runtime metadata must match before fan-in; return a mismatch through the rejected-result recovery path.
    Start its packet with `Coordinator initialization: complete` and explicitly prohibit rerunning this skill,
@@ -523,7 +554,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    children of the current `.thoughts/<WORK-ITEM-ID>/` root; do not search or reuse `runs/` archives unless the user
    explicitly requests continuation or recovery. Preserve template field
    names, use `Unknown` or `None` for unavailable values, and ask only for a business, scope, ownership, or approval
-   decision that bounded discovery cannot resolve.
+   decision that bounded discovery cannot resolve. For a material user-owned decision, keep the same run at
+   `awaiting_input`, ask it in the current chat with `functions.request_user_input`, and wait for the answer. Do not
+   continue dependent work or finalize/publish a completed handoff while it is unanswered. Record the response in the
+   current-run decision record, return it to the owning worker if the result changes, and resume the same run. If the
+   blocking input tool is unavailable, ask in this chat and leave the run open for the user's reply; do not route the
+   question through another thread. Missing access or external evidence follows the blocked path.
    For Feature Delivery implementation planning, deliver each prepared analytical `worker_contract`, including the
    context worker's `asset_inventory`, exact result fields and ID namespace. Use the prepared result merger after
    guarded fan-in; preserve returned evidence IDs instead of retyping the narrative into the packet. Record the
@@ -559,8 +595,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    valid worker output for that reason. If collector output reports
    `phase: coordinator_audit_registration`, the trace passed and the result was not merged; correct the Coordinator
    receipt, then rerun collection or merge from the preserved trace. If it reports `phase: worker_recovery_gate`,
-   complete the bounded recovery authorization before merging. In either case, do not change a passed trace to
-   rejected. An actually rejected trace still requires the guarded recovery protocol.
+   complete the bounded recovery authorization before merging. If it reports `phase: parent_context_nonconformant`,
+   the current invocation is terminal: preserve the passed worker trace, collect closure, and use `--workflow-failure`.
+   Do not retry collection, rewrite a receipt, or switch sessions to erase already-read context. Never change a passed
+   trace to rejected. An actually rejected trace still requires the guarded recovery protocol.
    Do not reconstruct accepted evidence, outcomes or references from prose. The merger preserves immutable identity
    and Coordinator audits; it does not grant readiness or implementation approval. For Feature Delivery remediation
    it also accepts `implementer`, `reviewer`, and `tester` typed terminal results, registering execution/result rows
@@ -601,7 +639,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    implementation
    before promising stateful persistence tests; include required fixture changes. Explain any external prerequisite to a
    local step. Before each worker fan-in, run `validate_worker_runtime.py --transition fan_in --provider-status
-   completed` using observed current status. Export tool activity through `worker_runtime_evidence.py` with its parent
+   completed` using observed current status. Run trace validation and fan-in transition validation as separate
+   invocations; `--trace` and `--transition` are mutually exclusive. Export tool activity through
+   `worker_runtime_evidence.py` with its parent
    session, start and ledger flags, plus `--worker-session <exact-child-session> --observation <fresh-status-json>`
    `--agent <role> --trace <path>`. The observation is a JSON object with the status fields listed above.
    Optional `Binding evidence` must be a JSON object containing provider-observed role or path metadata.
@@ -688,7 +728,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `--analytical-failure-stage <evidence_topology|repository_integration|fix_design>`
    `--completed-handle <provider-handle>` once for every analytical worker covered by the closure receipt, then
    `--coordinator-model-effort <model/effort>`
-   `--framework-revision <preflight-sha> --framework-status <clean|dirty>`. Pass
+   `--framework-revision <preflight-sha> --framework-status <clean|dirty|dirty_snapshot>`. Pass
    `--evidence-artifact <artifact>` when normalized evidence exists; an Evidence Topology runtime failure before
    artifact creation intentionally omits it.
    Save a verified Terminal snapshot or release receipt before this call. The failure finalizer preserves that receipt
@@ -825,7 +865,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    use `Runtime status: Released` only after all run workers are released and no active handles remain.
    For Codex collaboration runtimes without a close operation, collect fresh status reads after pre-release and the last
    correction/follow-up. Use `Runtime status: Terminal` only when these reads account for every activated worker,
-   including Documenter. The snapshot may combine live inventory and targeted reads; one inventory call need not retain
+   including Documenter. For targeted status reads, use one separate tool call per literal verified child UUID.
+   Do not use Promise.all, map, loops, or computed argument objects, even when several workers need status checks.
+   The snapshot may combine live inventory and targeted reads; one inventory call need not retain
    every completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its
    provider-observed thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess
    an ID. Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events

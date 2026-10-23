@@ -12,7 +12,7 @@ _DISPATCH_COUNTS = {}
 
 
 def stage_worker_response(run, role, result, output="Synthetic worker response.", *,
-                          provider_handle="/root/worker", child_thread_id=CHILD):
+                          provider_handle="/root/worker", child_thread_id=CHILD, include_runtime_configuration=True):
     """Build a fresh provider trace around one final response for merger tests."""
     root = Path(run["artifact_root"])
     key = (run["run_id"], role)
@@ -45,8 +45,10 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
               call_id="spawn", arguments=json.dumps({"task_name": provider_handle.rsplit("/", 1)[-1], "message": message,
                   "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"]})),
         event(1, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
-              "agent_path": provider_handle, "agent_thread_id": child_thread_id}),
-        event(2, "response_item", type="function_call_output", call_id="spawn", output=""),
+              "agent_path": provider_handle, "agent_thread_id": child_thread_id,
+              "model": packet["model"], "reasoning_effort": packet["effort"]}),
+        event(2, "response_item", type="function_call_output", call_id="spawn",
+              output=json.dumps({"task_name": provider_handle})),
         event(4, "event_msg", item={"type": "SubAgentActivity", "kind": "completed", "agent_path": provider_handle}),
     ])
     if count:
@@ -66,12 +68,14 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
         event(dispatch_seconds + 1, "response_item", type="custom_tool_call", call_id="binding", name="exec",
               input='await tools.exec_command(' + json.dumps({"cmd": "cat " + str(activation)}) + ')'),
         event(dispatch_seconds + 2, "response_item", type="custom_tool_call_output", call_id="binding", output=activation.read_text()),
-        event(dispatch_seconds + 2, "turn_context", turn_id="00000000-0000-0000-0000-000000000103",
-              model=packet["model"], effort=packet["effort"]),
         event(dispatch_seconds + 3, "response_item", type="message", role="assistant", phase="final_answer",
                   content=[{"type": "output_text", "text": json.dumps({"output": output, "result": result,
                   **({"asset_manifest": {}} if (packet.get("worker_contract") or {}).get("asset_inventory") else {})})}]),
     ]
+    runtime_context = {"turn_id": "00000000-0000-0000-0000-000000000103"}
+    if include_runtime_configuration:
+        runtime_context.update(model=packet["model"], effort=packet["effort"])
+    child_rows.insert(3, event(dispatch_seconds + 2, "turn_context", **runtime_context))
     child.write_text("\n".join(json.dumps(row) for row in child_rows) + "\n")
 
     stamp = lambda seconds: (base + timedelta(seconds=seconds)).isoformat()

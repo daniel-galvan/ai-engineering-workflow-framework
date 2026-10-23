@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from scripts import prepare_run as prepare
 from scripts import validate_worker_runtime as runtime
+from scripts.provider_runtime import launch_binding_errors, read_runtime_events
 from scripts.merge_techops_result import merge_result
 from tests.parent_status_support import write_parent_status_session
 from tests.worker_response_support import stage_worker_response
@@ -178,10 +179,14 @@ class V6Recovery(unittest.TestCase):
         parent = self.root / "parent.jsonl"
         rows = [{"timestamp": START, "type": "session_meta", "payload": {"id": PARENT}},
                 {"timestamp": DISPATCH, "type": "response_item", "payload": {"type": "function_call",
-                 "namespace": "collaboration", "name": "spawn_agent", "arguments": json.dumps({"task_name": "evidence",
-                    "fork_turns": "none", "model": "gpt-6-luna", "reasoning_effort": "high"})}},
+                 "namespace": "collaboration", "name": "spawn_agent", "call_id": "spawn",
+                 "arguments": json.dumps({"task_name": "evidence", "fork_turns": "none",
+                    "model": "gpt-6-luna", "reasoning_effort": "high"})}},
                 {"timestamp": "2026-10-09T20:00:11Z", "type": "event_msg", "payload": {"item": {
-                 "type": "SubAgentActivity", "kind": "started", "agent_path": HANDLE, "agent_thread_id": CHILD}}}]
+                 "type": "SubAgentActivity", "kind": "started", "agent_path": HANDLE, "agent_thread_id": CHILD,
+                 "model": "gpt-6-luna", "reasoning_effort": "high"}}},
+                {"timestamp": "2026-10-09T20:00:12Z", "type": "response_item", "payload": {
+                 "type": "function_call_output", "call_id": "spawn", "output": json.dumps({"task_name": HANDLE})}}]
         parent.write_text("".join(json.dumps(row) + "\n" for row in rows))
         child = self.root / "child.jsonl"
         rows = [{"timestamp": START, "type": "session_meta", "payload": {"id": CHILD}},
@@ -216,8 +221,37 @@ class V6Recovery(unittest.TestCase):
         self.assertIn(".thoughts/ISSUE-1/runs", violation["reference"])
         self.assertNotIn("command", violation)
         self.assertEqual(json.loads(trace.read_text())["audit"]["context_violations"][0], violation)
-        self.assertTrue((root / "runtime_dispatches.json").is_file())
+        ledger = json.loads((root / "runtime_dispatches.json").read_text())
+        dispatch = next(row for row in ledger["events"] if row.get("Operation") == "spawn_agent")
+        self.assertEqual(dispatch["Launch"], {"model": "gpt-6-luna", "reasoning_effort": "high", "fork_turns": "none"})
+        self.assertEqual((dispatch["Observed model"], dispatch["Observed effort"]), ("gpt-6-luna", "high"))
+        self.assertEqual(json.loads(trace.read_text())["activation_metadata"], {"model": "gpt-6-luna", "effort": "high"})
         return trace
+
+    def test_provider_reported_activation_mismatch_is_rejected(self):
+        run = self.prepare()
+        parent = self.root / "parent_metadata_mismatch.jsonl"
+        rows = [
+            {"timestamp": START, "type": "session_meta", "payload": {"id": PARENT}},
+            {"timestamp": DISPATCH, "type": "response_item", "payload": {"type": "function_call",
+             "namespace": "collaboration", "name": "spawn_agent", "call_id": "spawn",
+             "arguments": json.dumps({"task_name": "evidence", "fork_turns": "none",
+                "model": "gpt-6-luna", "reasoning_effort": "high"})}},
+            {"timestamp": "2026-10-09T20:00:11Z", "type": "event_msg", "payload": {"item": {
+             "type": "SubAgentActivity", "kind": "started", "agent_path": HANDLE, "agent_thread_id": CHILD,
+             "model": "gpt-6.1-sol", "reasoning_effort": "high"}}},
+        ]
+        parent.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        child = self.root / "child_metadata_mismatch.jsonl"
+        child.write_text(json.dumps({"timestamp": START, "type": "session_meta", "payload": {"id": CHILD}}) + "\n")
+        ledger = read_runtime_events(parent, PARENT, START)
+        dispatch = next(row for row in ledger["events"] if row.get("Operation") == "spawn_agent")
+        trace = {"spawn": {"provider_handle": HANDLE}, "launch": dispatch["Launch"],
+                 "activation_metadata": {"model": dispatch["Observed model"], "effort": dispatch["Observed effort"]},
+                 "runtime_configurations": [], "trace_retrieval": str(child), "thread_id": CHILD,
+                 "status_observation": {"Observed at": "2026-10-09T20:02:00Z"}}
+        errors = launch_binding_errors(trace, Path(run["artifact_root"]), "current_state_investigator", ledger)
+        self.assertIn("worker_activation_model_mismatch:current_state_investigator", errors)
 
     def test_exported_trace_preserves_completed_result_hash(self):
         run = self.prepare()

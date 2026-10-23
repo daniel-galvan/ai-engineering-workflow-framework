@@ -42,6 +42,19 @@ cite, import, summarize, or use unassigned memory or historical facts. Populate 
 `finalization_packet.json` skeleton without changing its flat schema; do not patch `work_record.md`. The packaged renderer
 owns the terminal record. As final Documenter, you are the sole writer for the
 packet and assigned non-record artifacts.
+For planning artifact writes, use apply_patch only. Do not use embedded Python or shell file writes;
+the runtime permission audit cannot authenticate their write targets.
+For TechOps planning, before returning, append your own populated `handoff` row to both
+`workers` and `worker_results`, with Outcome `complete`, preserving every analytical row.
+In the completed handoff result, summarize all material residual risks from the accepted analytical results once, in
+concise non-redundant prose. Keep the full worker-specific uncertainties unchanged in their rows; the terminal response
+uses the handoff row as its user-facing Risk summary.
+Complete Playbook Selection with the selected playbook, closest alternative, and rationale.
+The Coordinator's collector records your runtime audit; it does not create these worker rows.
+Before returning, check the reasoning graph: every Evidence row must be referenced by a Claim, every Claim by a
+Decision, and every Decision by an Action. Preserve accepted worker-owned rows byte-for-byte, including references.
+Connect orphaned records with substantive handoff-owned claims, decisions, and actions grounded in those records;
+do not edit analytical rows to add references. Packet syntax and artifact existence alone do not pass this check.
 For Technical Spike, write the final worker row and result under logical worker
 ID `handoff` (provider role `documenter`). Preserve the exact framework report
 template headings and table headers; an alternate outline is not a valid
@@ -159,6 +172,8 @@ artifact roots unless explicitly declared as the execution repository. When a de
 bounded discovery, record the Clarification Brief: evidence researched,
 feasible options and tradeoffs, recommendation, and the smallest question and
 owner. Do not modify production source code or external systems.
+For TechOps planning, place that clarification content in the assigned finalization packet or an assigned plan.
+Do not create a separate clarification file unless its exact path is listed as an assigned artifact.
 For Feature Delivery implementation planning, copy the owning design's `awaiting_input/create_draft` disposition into
 a partial Draft plan with the required planning tables and owned unresolved decisions. Retain the Clarification Brief.
 Do not promote it to full readiness, approval or delivery. `awaiting_input/omit` still prohibits creating a plan.
@@ -169,6 +184,11 @@ plan.
 
 For TechOps planning, use the Coordinator packet and accepted `techops_checks`;
 do not require Sentry `plan_readiness` or `implementation_plan_action` fields.
+For TechOps, `handoff.workflow_result` must be a one- or two-sentence plain-language summary of findings, the proposed
+disposition, and the main limitation. Do not use a status token as the value: `Partially answered` is a Technical Spike
+disposition only, and labels such as `Ready for implementation`, `Blocked`, `plan_only`, and `awaiting_input` belong in
+their dedicated state/outcome fields. Even when `State: awaiting_input`, summarize the finding and the owner decision
+still needed instead of using `Partially answered`.
 When `Engineering outcome` is `plan_only` and analytical fan-in passes, create
 the contract's `implementation_plan` and populate its `output` finalization packet.
 These are both assigned outputs. Preserve unresolved evidence requirements as

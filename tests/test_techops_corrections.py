@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import io
+import os
 import subprocess
 from contextlib import redirect_stdout
 from unittest.mock import patch
@@ -21,6 +22,122 @@ from tests.worker_response_support import stage_worker_response
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_invalid_techops_goal_provenance_stops_before_creating_run_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "inputs.json"
+            manifest.write_text(json.dumps({"schema_version": 1, "status": "explicit", "inputs": [{
+                "Input ID": "RUN-GOAL-001", "Input or artifact": "Requested outcome: implementation_plan",
+                "Source or path": "Current user request in this Codex App chat",
+                "Authority": "Explicit user outcome", "Classification": "requested outcome",
+                "Expected use": "Validate playbook and objective selection", "Status": "Registered",
+            }]}))
+            with self.assertRaisesRegex(ValueError, "run_goal_provenance_conflict:RUN-GOAL-001"):
+                prepare.prepare_run(
+                    root, "ECHO-2806", "techops_issue_remediation", None, False,
+                    input_manifest=manifest, workflow_objective="implementation_planning",
+                    requested_outcome="implementation_plan",
+                )
+            self.assertFalse((root / ".thoughts" / "ECHO-2806").exists())
+
+    def test_owner_can_repair_references_without_rewriting_accepted_findings(self):
+        from scripts.merge_techops_result import validated_result
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare.prepare_run(Path(directory), "LINK-1", "techops_issue_remediation", None, False)
+            packet = json.loads(Path(run["finalization_packet"]).read_text())
+            bindings = json.loads(Path(run["role_binding_manifest"]).read_text())
+            template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
+            result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"}}
+            for table, key, identity in (("evidence", "Evidence ID", "E-ISS-1"),
+                                         ("claims", "Claim ID", "CL-ISS-1"),
+                                         ("decisions", "Decision ID", "DE-ISS-1"),
+                                         ("actions", "Action ID", "A-ISS-1")):
+                result[table] = [{**dict.fromkeys(template[table][0], "Observed"), key: identity}]
+            for table, field, reference in (("claims", "Evidence refs", "E-ISS-1"),
+                                             ("decisions", "Claim refs", "CL-ISS-1"),
+                                             ("actions", "Decision ref", "DE-ISS-1")):
+                result[table][0][field] = reference
+            for table, key in (("evidence", "Evidence ID"), ("claims", "Claim ID"),
+                               ("decisions", "Decision ID")):
+                second = {**result[table][0], key: result[table][0][key].replace("-1", "-2")}
+                result[table].append(second)
+            packet = validated_result(packet, result, bindings, "current_state_investigator")
+            for table, field, key in (("claims", "Evidence refs", "Claim ID"),
+                                      ("decisions", "Claim refs", "Decision ID"),
+                                      ("actions", "Decision ref", "Action ID")):
+                with self.subTest(table=table):
+                    corrected = copy.deepcopy(result)
+                    corrected[table][0][field] = corrected[table][0][field].replace("-1", "-2")
+                    revised = validated_result(packet, corrected, bindings, "current_state_investigator")
+                    row = next(r for r in revised[table] if r[key] == corrected[table][0][key])
+                    self.assertEqual(row[field], corrected[table][0][field])
+                    other = next(k for k in corrected[table][0] if k not in {key, field})
+                    corrected[table][0][other] = "Rewritten finding"
+                    with self.assertRaisesRegex(ValueError, "worker_result_row_conflict"):
+                        validated_result(packet, corrected, bindings, "current_state_investigator")
+                    corrected = copy.deepcopy(result)
+                    corrected[table][0][key] = corrected[table][0][key].replace("-ISS-", "-FD-")
+                    with self.assertRaisesRegex(ValueError, "worker_result_row_invalid"):
+                        validated_result(packet, corrected, bindings, "current_state_investigator")
+
+    def test_claim_evidence_refs_cannot_use_input_ids(self):
+        from scripts.merge_techops_result import validated_result
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare.prepare_run(Path(directory), "REF-1", "techops_issue_remediation", None, False)
+            packet = json.loads(Path(run["finalization_packet"]).read_text())
+            bindings = json.loads(Path(run["role_binding_manifest"]).read_text())
+            template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
+            result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"}, "claims": [{
+                    **dict.fromkeys(template["claims"][0], "Observed"),
+                    "Claim ID": "CL-ISS-1", "Evidence refs": "CL-ISS-1"}]}
+            result["claims"][0]["Evidence refs"] = "IN-001"
+            with self.assertRaisesRegex(ValueError, "worker_result_reference_type_invalid"):
+                validated_result(packet, result, bindings, "current_state_investigator")
+
+    def test_analytical_references_must_use_the_correct_record_type(self):
+        from scripts.merge_techops_result import validated_result
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare.prepare_run(Path(directory), "REF-2", "techops_issue_remediation", None, False)
+            packet = json.loads(Path(run["finalization_packet"]).read_text())
+            bindings = json.loads(Path(run["role_binding_manifest"]).read_text())
+            self.assertIn("Claims Evidence refs accepts only E-* evidence IDs",
+                          bindings["worker_contracts"]["current_state_investigator"]["result_instructions"])
+            template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
+            result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"}}
+            rows = {}
+            for table, key, identity in (("evidence", "Evidence ID", "E-ISS-1"),
+                                         ("claims", "Claim ID", "CL-ISS-1"),
+                                         ("decisions", "Decision ID", "DE-ISS-1"),
+                                         ("actions", "Action ID", "A-ISS-1")):
+                rows[table] = {**dict.fromkeys(template[table][0], "Observed"), key: identity}
+                result[table] = [rows[table]]
+            rows["claims"]["Evidence refs"] = "E-ISS-1"
+            rows["decisions"]["Claim refs"] = "CL-ISS-1"
+            rows["actions"]["Decision ref"] = "DE-ISS-1"
+            with self.subTest(kind="valid"):
+                validated_result(packet, result, bindings, "current_state_investigator")
+            for table, field, invalid in (("claims", "Evidence refs", "CL-ISS-1"),
+                                          ("decisions", "Claim refs", "DE-ISS-1"),
+                                          ("actions", "Decision ref", "A-ISS-1")):
+                with self.subTest(field=field):
+                    rows[table][field] = invalid
+                    with self.assertRaises(ValueError) as raised:
+                        validated_result(packet, result, bindings, "current_state_investigator")
+                    target = {"claims": "evidence", "decisions": "claims", "actions": "decisions"}[table]
+                    identity = rows[table][{"claims": "Claim ID", "decisions": "Decision ID",
+                                            "actions": "Action ID"}[table]]
+                    self.assertIn(
+                        f"worker_result_reference_type_invalid:{table}:{identity}:{field}:{invalid}:expected_{target}_id",
+                        str(raised.exception))
+                    rows[table][field] = {"claims": "E-ISS-1", "decisions": "CL-ISS-1",
+                                          "actions": "DE-ISS-1"}[table]
+
     def test_merger_rejects_edits_after_result_audit(self):
         from scripts.merge_techops_result import merge_result
         with tempfile.TemporaryDirectory() as directory:
@@ -51,6 +168,60 @@ class TechOpsCorrections(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "worker_result_trace_required"):
                 merge_result(packet_path, "current_state_investigator")
             self.assertEqual(packet_path.read_bytes(), before)
+
+    def test_merger_accepts_execution_repository_relative_trace_path(self):
+        from scripts.merge_techops_result import merge_result
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = root / "inputs.json"
+            inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
+                "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
+            run = prepare.prepare_run(root, "TRACE-PATH-1", "techops_issue_remediation", None, False,
+                                      input_manifest=inputs)
+            packet_path = Path(run["finalization_packet"])
+            packet = json.loads(packet_path.read_text())
+            template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
+            result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
+            trace_path, _ = stage_worker_response(run, "current_state_investigator", result)
+            repository_relative_trace = trace_path.resolve().relative_to(root.resolve())
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                merge_result(packet_path, "current_state_investigator", trace=repository_relative_trace)
+            finally:
+                os.chdir(previous_cwd)
+
+            packet = json.loads(packet_path.read_text())
+            self.assertIn("issue-evidence", {row["Worker"] for row in packet["runtime_audits"]})
+
+    def test_techops_worker_row_uses_provider_activation_metadata_without_child_turn_context(self):
+        from scripts.merge_techops_result import merge_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = root / "inputs.json"
+            inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
+                "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
+            run = prepare.prepare_run(root, "HASH-METADATA", "techops_issue_remediation", None, False,
+                                      input_manifest=inputs)
+            packet_path = Path(run["finalization_packet"])
+            packet = json.loads(packet_path.read_text())
+            template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
+            result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete",
+                "Actual model/effort": "gpt-6-luna / high"}, "evidence": []}
+            trace_path, trace = stage_worker_response(run, "current_state_investigator", result,
+                                                      include_runtime_configuration=False)
+            self.assertIsNone(trace["runtime_configurations"][0]["model"])
+            self.assertIsNone(trace["runtime_configurations"][0]["effort"])
+            self.assertEqual(trace["activation_metadata"], {"model": "gpt-6-luna", "effort": "high"})
+            merge_result(packet_path, "current_state_investigator", trace=trace_path)
+            packet = json.loads(packet_path.read_text())
+            worker = next(row for row in packet["workers"] if row["Worker"] == "issue-evidence")
+            self.assertEqual(worker["Provider-observed model/effort"], "gpt-6-luna / high")
 
     def test_techops_pre_release_rejects_nonterminal_planning_identity(self):
         packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.20",
@@ -170,6 +341,35 @@ class TechOpsCorrections(unittest.TestCase):
         self.assertIn(f"- Implementation plan: [implementation_plan.md]({Path('/tmp/run/implementation_plan.md').resolve()}) "
                       "(Draft; unapproved)", response)
 
+    def test_handoff_uses_curated_risk_summary_and_preserves_legacy_fallback(self):
+        packet = {
+            "identity": {"State": "ready_for_implementation", "Engineering state": "designed",
+                         "Workflow outcome": "completed", "Engineering outcome": "plan_only"},
+            "runtime_closure": [], "finalization": {"Durable artifact root": "/tmp/run"},
+            "handoff": {"workflow_result": "Current evidence supports a conditional plan.",
+                        "implementation_plan": "Not created", "established": [],
+                        "best_current_explanations": [],
+                        "next_action": {"owner": "Implementer", "action": "Reproduce both save paths",
+                                        "complete_when": "Fresh readback identifies the failure boundary"},
+                        "artifacts": [], "execution": "Planning only", "provenance": "current package"},
+            "worker_results": [
+                {"Worker": "issue-evidence", "Outcome": "complete",
+                 "Uncertainties / blockers": "No runtime reproduction or backend readback evidence; reported save sequence unknown."},
+                {"Worker": "failure-path", "Outcome": "complete",
+                 "Uncertainties / blockers": "Backend readback and save sequence remain unverified."},
+                {"Worker": "handoff", "Outcome": "complete",
+                 "Uncertainties / blockers": "The reported save sequence and backend readback remain unverified."},
+            ],
+        }
+        response = finalizer.render_handoff(packet)
+        self.assertIn("Risk: The reported save sequence and backend readback remain unverified.", response)
+        self.assertNotIn("No runtime reproduction or backend readback evidence", response)
+        legacy_packet = copy.deepcopy(packet)
+        legacy_packet["worker_results"] = legacy_packet["worker_results"][:-1]
+        legacy_response = finalizer.render_handoff(legacy_packet)
+        self.assertIn("Risk: No runtime reproduction or backend readback evidence; reported save sequence unknown.",
+                      legacy_response)
+
     def test_targeted_terminal_reads_cover_omitted_workers(self):
         observations = [{
             "Provider handle": f"/root/{worker}", "Provider status": "completed",
@@ -259,7 +459,9 @@ class TechOpsCorrections(unittest.TestCase):
         self.assertIn("runtime not released", packet["handoff"]["execution"])
 
     def test_techops_summary_is_not_a_readiness_token(self):
-        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.20"},
+        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.20",
+                               "State": "awaiting_input", "Workflow outcome": "completed",
+                               "Engineering outcome": "partially_solved"},
                   "handoff": {"workflow_result": "The source stages edits; a draft-only persistence plan is proposed; production is unverified.",
                               "implementation_plan": "/tmp/implementation_plan.md", "execution": "planning only",
                               "provenance": "techops_issue_remediation", "established": ["The callback stages edits."],

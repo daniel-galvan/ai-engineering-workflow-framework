@@ -49,6 +49,23 @@ Read the exact issue and latest event; use the same `source_access_receipt.py` b
 Pass the successful route and observations to Evidence Topology. Do not substitute supplied logs for required live
 access without the user's explicit selection of an offline investigation. Do not probe optional sources.
 
+## Same-Session Decision Gate
+
+When bounded discovery leaves a material user decision, the active parent Coordinator MUST ask it in this run's chat
+with `functions.request_user_input` and wait for the answer. Ask at most three concise questions with enough
+context to choose; do not use `request_user_input_async`, `send_message_to_thread`, or another chat to bypass the wait.
+While the answer is pending, keep the run at `awaiting_input` and do not start dependent work or finalize/publish a
+completed handoff. Record the answer in the current-run decision record, route it to the owning worker if its result
+changes, and resume the same run. If the blocking tool is unavailable, ask in this chat and leave the run open until
+the user replies; never report the pending question as completed. Missing access or external evidence uses the blocked
+path rather than a user-decision question.
+
+Before Documenter activation or finalization, audit the originating request, intake, and accepted Decision and
+uncertainty rows for unanswered user-owned choices. Carry explicit unanswered questions into a fresh run as pending
+inputs. A Coordinator-owned `planning interpretation`, recommendation, or assumption cannot settle a user-owned choice.
+Current-code evidence shows existing behavior, not the user's desired behavior. Keep a material choice open and invoke
+the gate unless an explicit current user decision or bounded evidence resolves it.
+
 ## Agent Definitions
 
 The canonical Codex model and effort mapping is defined in
@@ -90,6 +107,14 @@ inherit the Coordinator transcript or initialize the run again.
 in the worker message before the typed assignment. This is the binding-delivery fallback when the in-task runtime does
 not expose `agent_role` or `agent_path`; observed metadata must match when present. Run the same guard before interrupt,
 close, replacement, or fan-in transitions. It rejects destructive transitions while a worker remains active.
+
+For Codex collaboration, `spawn_agent` may return only the collaboration task handle. That result identifies the
+worker; it is not missing-configuration evidence. Reconcile the native parent-session `spawn_agent` call arguments
+with its correlated `SubAgentActivity` `started` event, using the prepared runtime-evidence collector. The call records
+the requested model, effort, and `fork_turns`; the start event maps the handle and thread UUID and reports model/effort
+when exposed. Compare every reported value with the binding. Record unavailable applied telemetry as `Not exposed;`
+with the exact launch arguments. Never interrupt a worker solely because the spawn result contains only its handle;
+an explicit rejection or a returned mismatch still blocks acceptance.
 
 ## Model Capacity Recovery
 
@@ -136,6 +161,13 @@ Verify that a new turn started; an acknowledgement alone does not prove executio
 through `send_message` still requires evidence of consumption before acceptance. Provider JSONL records file operations
 as `custom_tool_call`/`custom_tool_call_output` or `function_call`/`function_call_output`,
 not the app UI's `fileChange`.
+
+An explicit `collab tool failed: agent thread limit reached` rejects the dispatch; it does not start a correction.
+Refresh the ledger and targeted worker status, preserve completed results, and stop dispatch retries in this
+invocation. Do not interrupt completed workers to free capacity or substitute `send_message` for a failed
+`followup_task`. Collect fresh closure and use supported workflow-failure finalization when required correction
+cannot execute; never leave the invocation at an unpublished narrative failure. Model-capacity backoff does not
+apply to this different provider error.
 
 A targeted closure read must show no active or pending thread and an inactive latest turn started at or after the
 last dispatch.
@@ -252,6 +284,10 @@ receipt and observation time from the latest native inventory, even when other w
 missing, active, or stale selected worker; it never falls back to an older inventory. When the worker is omitted, use
 `--observation` with a fresh targeted read, including `Observed at` from that actual read and the required thread/turn
 fields. Do not use turn completion time as observation time or fabricate binding flags.
+`--worker-session` is the absolute native worker JSONL path, not the child UUID or collaboration handle. Locate
+only filenames matching the verified `thread_mappings` UUID under `$CODEX_HOME/sessions` (default
+`~/.codex/sessions`); select the record for the dispatched turn, not an older fragment. Do not read unrelated records
+or guess the rollout timestamp. The exporter verifies the record's thread identity and dispatch-scoped turn.
  The collector fills an omitted `Last dispatch at` from its verified
 ledger, rejects a conflicting value, and authenticates delivery through a paired read of the complete dispatch file.
 A missing or malformed export is a collection failure, not proof that the worker failed. Before replacement, reconcile
@@ -275,6 +311,12 @@ select by the underlying connector, not the tool name alone. Use a browser only 
 to bypass a connector authentication or permission failure. Record the operation and route used.
 
 ## Jira Work-Item Read Mapping
+
+For every required Jira read, including the launcher source-access probe, apply
+[Transient Read Recovery](../integrations/jira.md#transient-read-recovery) before reporting a transient failure as
+unavailable. Use the host's interruptible wait for backoff and retain pending tool handles through observation
+timeouts. Bind this policy in Jira worker assignments along with the connector and operation. It does not authorize
+retrying writes or replacing an active worker.
 
 For Jira-backed Feature Delivery, the Coordinator passes the connector and successful exact-key issue-read operation
 to `feature-context`. The worker MUST use that connector first for every Jira scope. Discover its read-only operations

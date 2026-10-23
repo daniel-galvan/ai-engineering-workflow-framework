@@ -116,6 +116,11 @@ class WorkerResponseMaterialization(unittest.TestCase):
                 event(3, "response_item", {"type": "function_call_output", "call_id": "binding-read",
                     "output": activation_read}),
                 event(4, "turn_context", {"turn_id": TURN, "model": packet["model"], "effort": packet["effort"]}),
+                event(5, "response_item", {"type": "custom_tool_call", "name": "exec", "call_id": "input-read",
+                    "input": "const r = await tools.exec_command(" + json.dumps({
+                        "cmd": "cat " + str(root / "run_inputs.json")}) + "); text(r);"}),
+                event(6, "response_item", {"type": "custom_tool_call_output", "call_id": "input-read",
+                    "output": (root / "run_inputs.json").read_text()}),
                 event(8, "response_item", {"type": "message", "role": "assistant", "phase": "final_answer",
                     "content": [{"type": "output_text", "text": response}]}),
             ]
@@ -145,6 +150,7 @@ class WorkerResponseMaterialization(unittest.TestCase):
             self.assertEqual(output_path.read_text(), narrative)
             self.assertEqual(json.loads(result_path.read_text()), result)
             self.assertEqual(json.loads(packet_path.read_text())["worker_results"][0]["Worker"], worker)
+            self.assertEqual(json.loads(packet_path.read_text())["workers"][0]["Tools"], "exec_command")
 
 
 if __name__ == "__main__":

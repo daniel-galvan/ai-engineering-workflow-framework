@@ -27,6 +27,62 @@ CASES = {
 
 
 class SharedRuntimeAcceptance(unittest.TestCase):
+    def test_wrapped_targeted_status_closes_workers_omitted_from_inventory(self):
+        from scripts.worker_runtime_evidence import terminal_closure
+        for wrapped in (False, True):
+            for state in ("completed", "running", "provider_error", "transport_error", "wrong_thread",
+                          "ambiguous_output", "newer_active_inventory"):
+                with self.subTest(wrapped=wrapped, state=state), tempfile.TemporaryDirectory() as directory:
+                    run, root, _, time, event, parent, *_ = self.fixture(directory)
+                    response = {"thread": {"id": CHILD, "status": {"type": "notLoaded"}},
+                        "turns": [{"status": "running" if state == "running" else "completed",
+                                   "startedAt": time(5), "completedAt": time(10),
+                                   "items": [{"text": "Private analytical result must not enter the status ledger"}]}]}
+                    envelope = {"content": [{"type": "text", "text": json.dumps(response)}],
+                                "isError": state == "provider_error"}
+                    if state == "wrong_thread":
+                        response["thread"]["id"] = "00000000-0000-0000-0000-000000000099"
+                        envelope["content"][0]["text"] = json.dumps(response)
+                    if state == "ambiguous_output":
+                        envelope["content"].append(dict(envelope["content"][0]))
+                    parent.extend([
+                        event(19, "response_item", type="function_call", namespace="collaboration",
+                              name="list_agents", call_id="inventory", arguments="{}"),
+                        event(20, "response_item", type="function_call_output", call_id="inventory",
+                              output=json.dumps({"agents": []}))])
+                    arguments = {"threadId": CHILD, "turnLimit": 1, "includeOutputs": False}
+                    if wrapped:
+                        parent.append(event(21, "response_item", type="custom_tool_call", name="exec", call_id="status",
+                            input="const r = await tools.mcp__codex_app__read_thread(" + json.dumps(arguments) + "); text(r);"))
+                        output = [{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                                  {"type": "input_text", "text": json.dumps(envelope)}]
+                    else:
+                        parent.append(event(21, "response_item", type="function_call",
+                            name="mcp__codex_app__read_thread", call_id="status", arguments=json.dumps(arguments)))
+                        output = json.dumps(envelope)
+                    parent.append(event(22, "response_item", type="custom_tool_call_output" if wrapped else "function_call_output",
+                                        call_id="status", output=output))
+                    if state == "transport_error":
+                        parent[-1]["payload"]["isError"] = True
+                    agents = ([{"agent_name": "/root/worker", "agent_status": "running"}]
+                              if state == "newer_active_inventory" else [])
+                    parent.extend([
+                        event(23, "response_item", type="function_call", namespace="collaboration",
+                              name="list_agents", call_id="latest-inventory", arguments="{}"),
+                        event(24, "response_item", type="function_call_output", call_id="latest-inventory",
+                              output=json.dumps({"agents": agents}))])
+                    source = root / "parent.jsonl"
+                    source.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+                    ledger = read_runtime_events(source, PARENT, run["runtime_evidence"]["run_started_at"])
+                    self.assertEqual(len(ledger["status_probes"]), 1)
+                    self.assertNotIn("Private analytical result", json.dumps(ledger["status_probes"]))
+                    if state == "completed":
+                        receipt = terminal_closure(ledger)
+                        self.assertEqual(receipt["runtime_closure"][0]["Runtime status"], "Terminal")
+                    else:
+                        with self.assertRaises(ValueError):
+                            terminal_closure(ledger)
+
     def test_failure_before_worker_dispatch_has_verified_zero_handle_closure(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
@@ -53,6 +109,14 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertIn("No worker handles were dispatched", result.stdout)
             self.assertIn("provider ledger verified; no worker handles were dispatched", result.stdout)
             self.assertNotIn("Prepared workers without an accepted result", result.stdout)
+            self.assertIn("Delivery pending: before answering, run:\n", result.stderr)
+            self.assertIn("--publish-response", result.stderr)
+            published = subprocess.run([sys.executable, str(preparation.ROOT / "scripts/finalize_work_record.py"),
+                "--packet", str(root / "finalization_packet.json"), "--publish-response", str(root / "handoff_response.md")],
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(published.returncode, 0, published.stdout + published.stderr)
+            self.assertEqual(published.stdout, (root / "handoff_failure.md").read_text())
+            self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
 
     def test_zero_dispatch_closure_rejects_unmapped_or_open_worker_activity(self):
         from scripts.worker_runtime_evidence import terminal_closure
@@ -421,6 +485,20 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(json.loads(trace_path.read_text())["audit"]["status"], "passed")
             ledger = json.loads(ledger_path.read_text())
             self.assertNotIn(role, ledger.get("rejected_results", {}))
+            self.assertEqual(packet_path.read_bytes(), packet_before)
+
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), \
+                 patch.object(collector, "register_worker_audit", side_effect=ValueError(
+                     "parent_context_nonconformant:parent_unassigned_thread_discovery")), \
+                 redirect_stdout(output):
+                self.assertEqual(collector.main(), 2)
+            response = json.loads(output.getvalue())
+            self.assertEqual(response["phase"], "parent_context_nonconformant")
+            self.assertEqual(response["required_action"], "terminate_invocation_with_workflow_failure")
+            self.assertEqual(response["worker_trace_status"], "passed")
+            self.assertEqual(json.loads(trace_path.read_text())["audit"]["status"], "passed")
+            self.assertNotIn(role, json.loads(ledger_path.read_text()).get("rejected_results", {}))
             self.assertEqual(packet_path.read_bytes(), packet_before)
 
     def test_collector_recovery_guard_is_not_reported_as_audit_failure(self):
@@ -960,6 +1038,18 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             stale = {**ledger, "failed_dispatches": []}
             Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(stale))
             self.assertIn("runtime_dispatch_ledger_stale", " ".join(dispatch_audit_errors(packet, root / "finalization_packet.json")))
+
+    def test_plain_text_collab_thread_limit_is_a_failed_dispatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, _, time, *_ = fixture
+            fixture[5][6]["payload"]["output"] = "collab tool failed: agent thread limit reached"
+            with self.assertRaisesRegex(ValueError, "latest_worker_dispatch_failed"):
+                self.export(fixture)
+            ledger = read_runtime_events(root / "parent.jsonl", PARENT, run["runtime_evidence"]["run_started_at"])
+            self.assertEqual(len(ledger["failed_dispatches"]), 1)
+            self.assertEqual(ledger["failed_dispatches"][0]["Operation"], "followup_task")
+            self.assertFalse(any(row["Last dispatch at"] == time(5) for row in ledger["events"]))
 
     def test_successful_retry_supersedes_failed_followup(self):
         with tempfile.TemporaryDirectory() as directory:

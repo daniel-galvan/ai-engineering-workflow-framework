@@ -330,6 +330,31 @@ def current_parent_session(source: Path | None = None) -> Path | None:
     return selected[0]
 
 
+def _literal_parent_thread_read_batch(source: str) -> list[tuple[str, dict]] | None:
+    """Expand only the literal assigned-thread status loop used by coordinator closure."""
+    match = re.fullmatch(
+        r'\s*const ids\s*=\s*(\[[\s\S]*?\]);\s*'
+        r'for\s*\(const\s*\[threadId,\s*handle\]\s*of\s*ids\)\s*\{\s*'
+        r'const r\s*=\s*await tools\.mcp__codex_app__read_thread\('
+        r'\{threadId,\s*turnLimit:\s*1,\s*includeOutputs:\s*false,\s*maxOutputCharsPerItem:\s*1\}\);'
+        r'(?P<body>[\s\S]*)\}\s*', source)
+    if (not match or source.count("tools.") != 1 or len(re.findall(r"\bids\b", source)) != 2
+            or re.search(r"\b(?:ids|threadId|for|while|function|eval|Function|globalThis|constructor|"
+                         r"return|throw|break|continue)\b|=>", match["body"])):
+        return None
+    try:
+        identities = json.loads(match[1])
+    except json.JSONDecodeError:
+        return None
+    if (not isinstance(identities, list) or not identities
+            or any(not isinstance(row, list) or len(row) != 2
+                   or not isinstance(row[0], str) or not UUID.fullmatch(row[0])
+                   or not isinstance(row[1], str) for row in identities)):
+        return None
+    return [("mcp__codex_app__read_thread", {"threadId": identity, "turnLimit": 1,
+             "includeOutputs": False, "maxOutputCharsPerItem": 1}) for identity, _ in identities]
+
+
 def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None,
                          expected_turn_id: str | None = None, runtime_evidence: dict | None = None,
@@ -433,6 +458,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     [("mcp__codex_app__list_threads", {"limit": 50})]
                     if exact_status_projection else _tool_operations(payload)
                 )
+                if not calls and payload.get("type") == "custom_tool_call":
+                    calls = _literal_parent_thread_read_batch(raw_source) or []
                 if (not calls and payload.get("type") == "custom_tool_call"
                         and "tools.mcp__codex_app__list_threads({limit: 50})" in str(raw_source or "")):
                     calls = [("mcp__codex_app__list_threads", {})]
@@ -517,11 +544,8 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
                             command_observations: dict[str, list[dict]],
                             empty_memory_probes: set[str] | None = None) -> list[str]:
     """Require package preflight before current-turn repository or workflow operations."""
-    roots = sorted({str(framework_root.expanduser().absolute()).rstrip("/"),
-                    str(framework_root.expanduser().resolve()).rstrip("/")}, key=len, reverse=True)
-    root = "(?:" + "|".join(re.escape(value) for value in roots) + ")"
-    bootstrap = re.compile(rf"^\s*cat\s+(?:{root}/)?skills/run/SKILL\.md\s*$")
     preflight_path = (framework_root.expanduser().resolve() / "scripts" / "run_preflight.py").resolve()
+    skill_path = (framework_root.expanduser().resolve() / "skills" / "run" / "SKILL.md").resolve()
     completed_preflight = False
     empty_memory_probes = empty_memory_probes or set()
     for operation in operations:
@@ -532,12 +556,18 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
         command = operation.get("arguments", {}).get("cmd")
         if not isinstance(command, str):
             continue
-        if not completed_preflight and command in empty_memory_probes:
-            continue
         try:
             argv = shlex.split(command)
         except ValueError:
             argv = []
+        skill_read = (len(argv) == 2 and argv[0] == "cat" or
+                      len(argv) == 4 and argv[:2] == ["sed", "-n"]
+                      and re.fullmatch(r"[1-9][0-9]*(?:,[1-9][0-9]*)?p", argv[2]))
+        bootstrap = bool(skill_read and (
+            argv[-1] == "skills/run/SKILL.md"
+            or Path(argv[-1]).is_absolute() and Path(argv[-1]).resolve() == skill_path))
+        if not completed_preflight and command in empty_memory_probes:
+            continue
         is_preflight = (
             len(argv) >= 2 and Path(argv[0]).name in {"python", "python3"}
             and Path(argv[1]).name == "run_preflight.py"
@@ -545,7 +575,7 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
                  or argv[1] in {"scripts/run_preflight.py", "./scripts/run_preflight.py"})
             and not any(token in {"&&", "||", ";", "|", ">", "<"} for token in argv)
         )
-        if not completed_preflight and not bootstrap.fullmatch(command) and not is_preflight:
+        if not completed_preflight and not bootstrap and not is_preflight:
             return ["parent_framework_content_before_preflight"]
         if is_preflight:
             observations = command_observations.get(command, [])
@@ -631,8 +661,13 @@ def timestamp(value: str) -> datetime:
 
 
 def provider_json_value(value):
+    if (isinstance(value, list) and len(value) == 2
+            and all(isinstance(row, dict) and row.get("type") == "input_text"
+                    and isinstance(row.get("text"), str) for row in value)
+            and re.fullmatch(r"Script completed\nWall time [0-9]+(?:\.[0-9]+)? seconds\nOutput:\n", value[0]["text"])):
+        value = value[1]["text"]
     if isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict) \
-            and value[0].get("type") == "text" and isinstance(value[0].get("text"), str):
+            and value[0].get("type") in {"text", "input_text", "output_text"} and isinstance(value[0].get("text"), str):
         value = value[0]["text"]
     if isinstance(value, str):
         try:
@@ -660,6 +695,8 @@ def _provider_status_time(value: object) -> str | None:
 def targeted_thread_observation(raw: object, handle: str, thread_id: str, dispatch_at: str,
                                 observed_at: str, operation: str) -> dict | None:
     """Normalize only provider status metadata; never retain a thread's analytical text."""
+    if isinstance(raw, dict) and isinstance(raw.get("content"), list) and not (raw.get("isError") or raw.get("error")):
+        raw = provider_json_value(raw["content"])
     if operation != "read_thread" or not isinstance(raw, dict):
         return None
     thread = raw.get("thread")
@@ -702,6 +739,10 @@ def targeted_thread_observation(raw: object, handle: str, thread_id: str, dispat
 def read_runtime_events(
     path: Path, parent_thread_id: str, started_at: str, identity_sessions: tuple[Path, ...] = (),
 ) -> dict:
+    try:
+        from runtime_checks import _tool_operations
+    except ModuleNotFoundError:
+        from scripts.runtime_checks import _tool_operations
     if not UUID.fullmatch(parent_thread_id):
         raise ValueError("parent_thread_id_invalid")
     started = timestamp(started_at)
@@ -754,12 +795,19 @@ def read_runtime_events(
             payload = row.get("payload", {})
             item = payload.get("item", {})
             if not ((row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity")
-                    or row.get("type") == "response_item" and payload.get("type") in {"function_call", "function_call_output"}):
+                    or row.get("type") == "response_item" and payload.get("type") in {
+                        "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output"}):
                 continue
             key = json.dumps(row, sort_keys=True)
             if key in seen:
                 continue
             seen.add(key)
+            if payload.get("type") == "custom_tool_call":
+                operations = _tool_operations(payload)
+                if len(operations) != 1 or operations[0][0].rsplit("__", 1)[-1] not in {"read_thread", "wait_threads"}:
+                    continue
+                name, arguments = operations[0]
+                payload = {**payload, "type": "function_call", "name": name, "arguments": arguments}
             if row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity":
                 handle = item.get("agent_path")
                 if item.get("kind") == "started":
@@ -777,6 +825,12 @@ def read_runtime_events(
                 mappings[handle] = thread
                 if pending_spawn is not None and handle.rsplit("/", 1)[-1] == pending_spawn[0]:
                     resolved = {**pending_spawn[1], "Provider handle": handle, "Thread ID": thread}
+                    for target, source in (("Observed model", "model"), ("Observed effort", "reasoning_effort")):
+                        value = item.get(source)
+                        if value is not None:
+                            if not isinstance(value, str) or not value.strip():
+                                raise ValueError("provider_worker_activation_metadata_invalid")
+                            resolved[target] = value
                     events.append(resolved)
                     if pending_spawn[2]:
                         spawn_calls[pending_spawn[2]] = (pending_spawn[0], resolved)
@@ -800,6 +854,16 @@ def read_runtime_events(
                     role = re.search(r"(?:^|\n)Role: ([a-z_]+);", message)
                     if notice and role:
                         event.update({"Dispatch file": notice[1], "Dispatch SHA256": notice[2], "Binding agent": role[1]})
+                    elif role:
+                        command = re.search(r"(?:^|\n)Read it with this separate literal command: ([^\n]+)", message)
+                        digest = re.search(r"Verify its SHA256 is ([0-9a-f]{64})", message)
+                        try:
+                            targets = shlex.split(command[1]) if command else []
+                        except ValueError:
+                            targets = []
+                        if digest and len(targets) == 2 and targets[0] == "cat":
+                            event.update({"Dispatch file": targets[1], "Dispatch SHA256": digest[1],
+                                          "Binding agent": role[1]})
                 if operation == "spawn_agent":
                     event["Launch"] = {key: arguments.get(key) for key in ("model", "reasoning_effort", "fork_turns")}
                     if pending_spawn is not None or not isinstance(arguments.get("task_name"), str):
@@ -838,7 +902,7 @@ def read_runtime_events(
                 if probes and isinstance(payload.get("call_id"), str):
                     pending_status_probes[payload["call_id"]] = {
                         "Operation": operation, "Attempted at": row["timestamp"], "Targets": probes}
-            elif payload.get("type") == "function_call_output":
+            elif payload.get("type") in {"function_call_output", "custom_tool_call_output"}:
                 call_id = payload.get("call_id")
                 if (call_id not in pending_followups and call_id not in spawn_calls
                         and call_id not in pending_status_probes
@@ -846,10 +910,12 @@ def read_runtime_events(
                     continue
                 raw = provider_json_value(payload["output"])
                 explicit_error = (
-                    isinstance(raw, dict) and bool(raw.get("error") or raw.get("isError")
+                    bool(payload.get("isError") or payload.get("status") in {"failed", "error"})
+                    or isinstance(raw, dict) and bool(raw.get("error") or raw.get("isError")
                                                   or raw.get("status") in ("failed", "error"))
                     or isinstance(raw, str) and bool(re.match(
-                        r"^(?:Error[: ]|Failed[: ]|Worker unavailable$|agent path already exists$)", raw, re.I)))
+                        r"^(?:Error[: ]|Failed[: ]|collab tool failed:|Worker unavailable$|agent path already exists$)",
+                        raw, re.I)))
                 if call_id in pending_followups:
                     handle, event, was_active = pending_followups.pop(call_id)
                     if explicit_error:
@@ -977,12 +1043,27 @@ def launch_binding_errors(trace: dict, root: Path, role: str, ledger: dict | Non
             errors.append("worker_launch_model_mismatch:" + role)
         if launch.get("reasoning_effort") != expected["effort"]:
             errors.append("worker_launch_effort_mismatch:" + role)
+        for field, expected_field, error in (
+                ("Observed model", "model", "worker_activation_model_mismatch"),
+                ("Observed effort", "effort", "worker_activation_effort_mismatch")):
+            value = launches[0].get(field)
+            if value is not None and value != expected[expected_field]:
+                errors.append(error + ":" + role)
+        activation_metadata = {
+            target: launches[0][field]
+            for target, field in (("model", "Observed model"), ("effort", "Observed effort"))
+            if field in launches[0]
+        }
+        if ("activation_metadata" in trace
+                and trace["activation_metadata"] != activation_metadata):
+            errors.append("worker_activation_metadata_receipt_mismatch:" + role)
         observed = runtime_configurations(Path(trace["trace_retrieval"]), trace["thread_id"],
                                           trace["status_observation"]["Observed at"])
         if trace.get("launch") != launch or trace.get("runtime_configurations") != observed:
             errors.append("worker_launch_receipt_mismatch:" + role)
         for value in observed:
-            if value.get("model") != expected["model"] or value.get("effort") != expected["effort"]:
+            if (value.get("model") is not None and value["model"] != expected["model"]
+                    or value.get("effort") is not None and value["effort"] != expected["effort"]):
                 errors.append("worker_runtime_configuration_mismatch:" + role)
         return list(dict.fromkeys(errors))
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:

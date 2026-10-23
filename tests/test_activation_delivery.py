@@ -65,6 +65,14 @@ class ActivationDelivery(unittest.TestCase):
                     self.assertIn("explicit Sentry Fix Design handle-delivery protocol", message)
                     self.assertIn("Every later message remains a dispatch requiring fresh consumption evidence", message)
 
+    def test_planning_documenter_receives_auditable_artifact_write_policy(self):
+        packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["documenter"]
+        message = runtime.activation_message(packet, {"objective": "Write the assigned planning artifacts"})
+        self.assertIn("For planning artifact writes, use apply_patch only", message)
+        self.assertIn("Do not use embedded Python or shell file writes", message)
+        self.assertIn("append your own populated `handoff` row to both", message)
+        self.assertIn("selected playbook, closest alternative, and rationale", message)
+
     def test_missing_instruction_input_is_rejected_before_dispatch(self):
         instructions = self.root / ".thoughts/AGENTS.md"
         source = self.root / "assignment.json"
@@ -181,6 +189,16 @@ class ActivationDelivery(unittest.TestCase):
         source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
         return export_worker_trace(ledger, source, "current_state_investigator", observation,
                                    run_id=packet["run_id"], artifact_root=self.artifacts)
+
+    def test_bootstrap_prescribes_a_separate_literal_instruction_read(self):
+        path = self.artifacts / "activation instructions.txt"
+        notice = runtime.dispatch_notice({"required_prefix": "Coordinator initialization: complete",
+            "agent": "current_state_investigator", "model": "model", "effort": "high", "run_id": "ITEM-1"},
+            "instructions", path)
+        command = notice.split("Read it with this separate literal command: ", 1)[1].split("\n", 1)[0]
+        self.assertEqual(runtime_checks._read_targets(command), [str(path.resolve())])
+        self.assertIn("Use separate tool calls for verification and the complete instruction read", notice)
+        self.assertIn("max_output_tokens to at least 12; truncated output is not delivery", notice)
 
     def test_full_dispatch_read_followed_by_checksum_authenticates_delivery(self):
         trace = self.instruction_trace()

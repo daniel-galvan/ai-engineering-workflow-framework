@@ -82,11 +82,14 @@ hypothesis, or conclusion may enter run evidence or influence a decision.
 
 For every delegated activation, the Coordinator MUST pass the exact manifest
 `model`, reasoning effort, and fresh-context setting to the provider primitive.
-It MUST inspect the returned activation metadata before accepting or waiting on
-the worker. Missing metadata is an unverified binding; a mismatched value is a
-configuration-conformance failure. The Coordinator MUST stop the affected
-worker, allow at most one explicit retry, and MUST NOT fan-in an unverified
-worker result.
+The native dispatch record MUST prove those exact launch arguments were sent.
+When the provider exposes applied activation metadata, inspect it before
+accepting or waiting on the worker; a mismatch or rejected binding is a
+configuration-conformance failure. Missing applied telemetry alone does not
+invalidate a launch proven by the native dispatch record: record `Not exposed;`
+with the exact explicit binding and do not claim that binding was observed as
+applied. The Coordinator MUST stop a rejected or mismatched worker, allow at
+most one explicit retry, and MUST NOT fan in an unverified worker result.
 
 Active-run artifacts MUST be direct children of the declared durable artifact
 root. Archived `runs/` directories are retention only and MUST NOT be searched
@@ -145,7 +148,7 @@ the source of truth.
 | `INV-36` | A terminal work record MUST retain the required finalization fields, and the final answer MUST reproduce their canonical values without relabeling them. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-37` | A terminal work record MUST pass the packaged framework validator before the handoff is released. | [Final Handoff Reconciliation](#final-handoff-reconciliation) |
 | `INV-38` | A new run MUST start from fresh current-run artifacts; only an explicit continuation may reuse the current record. Evaluation telemetry is required only for declared evaluation runs. | [Run Identity and Continuation](#run-identity-and-continuation) |
-| `INV-39` | Worker model and effort MUST come from the prepared role-binding manifest and match the activation record. | [Profile Execution Semantics](#profile-execution-semantics) |
+| `INV-39` | Worker model and effort MUST come from the prepared role-binding manifest and be explicit in the native dispatch record; compare provider-applied values when exposed and record unavailable telemetry as `Not exposed;` with the exact launch binding. | [Profile Execution Semantics](#profile-execution-semantics) |
 | `INV-40` | Delegated workers MUST start in fresh context and MUST NOT repeat Coordinator initialization. | [Worker Contract](#worker-contract) |
 | `INV-41` | Explicit current-run skill or plugin enable/disable directives MUST be propagated to every worker and correction turn. | [Authoritative Run Inputs](#authoritative-run-inputs) |
 | `INV-42` | Feature Delivery MUST inventory and review Jira attachments and every declared asset source before planning readiness. | [Feature Delivery Asset Gate](#feature-delivery-asset-gate) |
@@ -770,6 +773,31 @@ If a decision still prevents implementation readiness, the Solution Architect mu
 work record, with alternatives summarized in `Alternatives Considered`: the decision needed, evidence researched, one or
 more feasible options, tradeoffs and validation impact, recommendation, and the smallest question and owner needed to
 proceed.
+
+## Interactive Decision Gate
+
+After bounded discovery, a material user-owned question that changes whether or how the workflow can proceed is an
+active gate. The Coordinator must ask the smallest answerable question in the same user-facing run session and wait for
+the user's response. `awaiting_input` is a paused, nonterminal state while that answer is pending; a Clarification Brief
+alone does not satisfy the gate. Do not continue dependent work or finalize/publish a completed handoff while waiting.
+
+Before Documenter activation or terminal finalization, reconcile unanswered user questions from the originating request
+and current-run intake with accepted evidence and explicit user decisions. A fresh-run launcher MUST carry each explicit
+unanswered material question into that run as a pending decision; it is current user input, not prior-run analysis.
+Audit accepted Decision and uncertainty records too: a Coordinator-owned `planning interpretation`, recommendation, or
+assumption does not resolve a user-owned choice about desired behavior, scope, or acceptance criteria. Keep that choice
+open in the current-run decision record and `open_questions`; do not clear it or mark the run ready. Current code
+evidence can establish what the system does, but cannot by itself establish which user-owned behavior the user wants.
+Resolve
+the question only with an explicit user decision already present in current inputs, a response in this run, or evidence
+that removes the choice. Record nonblocking unknowns as risks; use `blocked` for unavailable indispensable access or
+evidence.
+
+After the response, preserve it as a current-run user decision in the existing decision record. Do not rewrite the
+prepared, hashed run-input manifest. Return the answer to the owning worker for a revised result when it changes that
+worker's analysis or disposition, then resume the affected gates. If the user defers the decision, retain the open
+decision and proceed only as the selected playbook permits. Questions requiring unavailable access or external evidence
+follow the existing `blocked` path; do not ask the user to decide in place of missing evidence.
 
 ## Scenario Relevance and Proportionality
 
