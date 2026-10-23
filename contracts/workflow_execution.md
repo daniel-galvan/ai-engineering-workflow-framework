@@ -678,6 +678,10 @@ implement after the required approval gate.
 A playbook may support only a declared subset of lifecycle values. Selecting an unsupported lifecycle stops before
 worker activation; a provider must not invent delivery behavior for a planning-only playbook.
 
+For a new run, resolve omitted profile and lifecycle values from the selected playbook before preparation; do not treat
+omitted defaults as incomplete user input. TechOps Issue Remediation defaults to `standard` + `planning`. A continuation
+retains its bound values, and remediation re-entry still requires its explicit approval gate.
+
 Every profile must preserve the shared safety, evidence, work-record, approval, and fan-in requirements. Provider
 adapters apply the provider role policy without changing lifecycle gates or the role-quality policy.
 
@@ -688,6 +692,8 @@ Record `prompt_conformance`, the template revision, and any missing or altered r
 revision, execution repository, resolved provider configuration, profile, lifecycle, or authoritative-input section
 stops the run with `run_prompt_nonconformant`; an absent optional provider runtime view alone does
 not. Claiming the expected revision does not make a structurally incomplete prompt conformant.
+This evaluation-only requirement does not make those fields mandatory in an ordinary run; use the selected playbook's
+defaults and the active framework runtime.
 
 Before preparation, the Orchestrator MUST resolve the requested outcome and objective from the selected playbook or
 an explicit compatible pair, then pass both resolved values to `prepare_run.py` as `--requested-outcome` and

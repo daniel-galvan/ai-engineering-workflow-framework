@@ -78,9 +78,16 @@ description: >-
    the timebox, success criterion, requested outcome, and spike objective from the selected playbook unless the prompt
    supplies a complete compatible override pair. Reject explicit placeholders such as `<...>` or `None`, and reject
    `Not provided` for required fields unless the selected prompt template defines it as the absent-value sentinel for an
-   optional field. For TechOps, allow `Provider/runtime configuration: Not provided` when absent. Return
+   optional field. For TechOps, omit the provider/runtime configuration to use the bundled provider definitions. An
+   explicit `Not provided` is also accepted as its sentinel. Return
    `run_prompt_incomplete:<field>` only for unresolved required values. Do not create a temporary input manifest, invoke
    `prepare_run.py`, or perform context discovery before this gate passes.
+   For a normal new TechOps planning run, the only required user-authored launcher values are the work-item ID or URL
+   and the selected TechOps playbook. `Execution profile` and `Lifecycle` are optional and resolve to `standard` and
+   `planning`; derive the execution repository from the current task unless the user names another. Do not expand the
+   user's prompt with framework revisions, preflight commands, provider/runtime paths, worker lists, artifact paths, or
+   other orchestration instructions. Derive these from the active skill, package, current repository, and playbook.
+   Ask only for unresolved material user decisions or required input that the playbook cannot derive.
 4. The execution repository is the source repository being investigated or remediated, including for planning-only
    runs. When a maintenance Coordinator launches a run from the framework checkout for another source repository,
    explicitly pass that source repository as `--execution-repository`; do not use the framework checkout as its artifact
@@ -90,7 +97,8 @@ description: >-
    checkout. Use returned `execution_repository`, `source_checkout`, and `artifact_root` paths unchanged. Never create
    `.thoughts` in a linked worktree, even when that worktree was named explicitly. Non-Git record folders retain their
    declared path. Do not ask for an Execution repository field when the current repository is unambiguous.
-5. When the prompt supplies an existing playbook, use it directly and do not read `PLAYBOOK_CATALOG.md`; record the
+5. When the prompt supplies an existing playbook, resolve relative paths against the verified packaged framework root,
+   use it directly, and do not read `PLAYBOOK_CATALOG.md`; record the
    primary evidence, primary goal, closest alternative, and selection rationale from the supplied playbook and request.
    Read the catalog only when no playbook was supplied or the supplied path is unavailable or materially contradicted by
    the evidence. Make the requested profile and lifecycle explicit; when omitted, record the playbook defaults

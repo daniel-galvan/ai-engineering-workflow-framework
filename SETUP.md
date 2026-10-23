@@ -112,24 +112,15 @@ the bundled definitions, or supply an installed and verified local view.
 #### TechOps Issue Remediation
 
 ```text
-Use $ai-engineering-workflows:run.
+$ai-engineering-workflows:run Run the TechOps Issue Remediation playbook.
 
-Execution repository (main checkout for durable .thoughts artifacts):
-/absolute/path/to/execution-repository
-
-Provider/runtime configuration (optional runtime view; use `Not provided` when absent):
-/absolute/path/to/execution-repository/.codex/agents/
-
-Work item:
-TECHOPS-12345 (https://your-company.atlassian.net/browse/TECHOPS-12345)
-
+Work item: TECHOPS-12345 (https://your-company.atlassian.net/browse/TECHOPS-12345)
 Playbook: playbooks/techops_issue_remediation.md
-Execution profile: standard
-Lifecycle: planning
-
-Additional repositories or assets:
-NONE
 ```
+
+For a new TechOps run, omit `Execution profile` and `Lifecycle` for the `standard` + `planning` defaults. The current
+task repository and bundled provider definitions are resolved automatically; give another repository only when the
+current one is not the source repository.
 
 #### Vulnerability Investigation
 

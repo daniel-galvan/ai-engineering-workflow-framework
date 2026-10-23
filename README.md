@@ -69,8 +69,9 @@ enough evidence and validation.
    ```
 
    Add the playbook, profile, lifecycle, goal, repositories, or constraints when needed. The launcher selects a playbook
-   when omitted and records its defaults; some scenarios require additional inputs, such as a Spike's primary question.
-   See [plugin execution examples](SETUP.md#plugin-execution-examples).
+   when omitted and records its defaults. For a new TechOps planning run, the work item and playbook are enough;
+   profile and lifecycle default to `standard` and `planning`. Some scenarios require additional inputs, such as a
+   Spike's primary question. See [plugin execution examples](SETUP.md#plugin-execution-examples).
 4. Review the planning result. Answers, reports, assessments, and implementation plans depend on the selected goal.
 5. For a delivery playbook, approve the implementation plan explicitly before entering `remediation`.
 
@@ -84,12 +85,12 @@ The user-facing model is intentionally small:
 | Question | Answer |
 | --- | --- |
 | What playbook do I use? | Choose the most specialized playbook for the work item's primary evidence and goal in [PLAYBOOK_CATALOG.md](PLAYBOOK_CATALOG.md). |
-| What do I provide? | Work-item ID or URL, lifecycle, profile, and relevant context. The current repository is the default; specify another execution repository when needed. |
+| What do I provide? | Work-item ID or URL. Add a playbook or relevant context when useful. New TechOps runs default to `standard` + `planning`; the current repository is the default execution repository. |
 | What happens first? | Package preflight and required input/source gates pass before preparation, worker activation, and fan-in. |
 | What may I approve? | Scope and design approvals are conditional. Implementation approval is required before remediation. Release approval is required for deployment, cutover, or another external operational write. See the [human control model](contracts/workflow_execution.md#human-control-model). |
 | Where do results go? | The main execution repository's `.thoughts/<WORK-ITEM-ID>/` contains `work_record.md` and goal-specific artifacts. An implementation plan is created only at `ready_for_implementation`; its portable handoff is optional. |
 
-Users normally make only two execution choices:
+Profile and lifecycle are optional overrides for a new default run:
 
 | Choice | Meaning |
 | --- | --- |

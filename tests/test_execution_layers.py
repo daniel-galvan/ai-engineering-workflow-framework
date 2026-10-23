@@ -109,6 +109,21 @@ class ExecutionLayers(unittest.TestCase):
         orchestrator = " ".join((ROOT / "providers/codex/agents/orchestrator.toml").read_text().split())
         self.assertIn("Do not treat a Coordinator-owned `planning interpretation`", orchestrator)
 
+    def test_techops_launch_prompt_is_minimal_and_uses_playbook_defaults(self):
+        template = (ROOT / "templates/techops_issue_run_prompt.md").read_text()
+        launch = re.search(r"## Minimal launch\s+.*?```text\n(.*?)```", template, re.S)
+        self.assertIsNotNone(launch)
+        self.assertEqual(launch.group(1).strip(), (
+            "$ai-engineering-workflows:run Run the TechOps Issue Remediation playbook.\n\n"
+            "Work item: <TECHOPS-JIRA-ID-OR-URL>\n"
+            "Playbook: playbooks/techops_issue_remediation.md"
+        ))
+        self.assertNotIn("Execution profile:", launch.group(1))
+        self.assertNotIn("Lifecycle:", launch.group(1))
+        launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
+        self.assertIn("the only required user-authored launcher values are the work-item ID or URL and the selected TechOps playbook", launcher)
+        self.assertIn("resolve to `standard` and `planning`", launcher)
+
     def test_unreleased_stale_run_requires_a_separate_artifact_root_for_new_planning(self):
         launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
         self.assertIn("separate execution repository and artifact root", launcher)

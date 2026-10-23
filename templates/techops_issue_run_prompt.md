@@ -11,84 +11,59 @@ depends_on:
 
 # TechOps Issue Remediation Run Prompt
 
-These fields define run-specific plugin inputs. Invoke `$ai-engineering-workflows:run` with the relevant fields and
-context. The shared contract and selected playbook own execution behavior. Preserve supplied context and place explicit
-decisions in the authoritative confirmed-input section.
-Populate the prompt only from the current user request, references explicitly named for this run, and facts retrieved
-from those references. Do not search for or add memory-derived facts, related tickets, past plans, historical work
-records, or `.thoughts` paths unless the user explicitly asks to include them. Use `None` for unused optional fields.
+## Minimal launch
+
+For a new TechOps planning run, send this to Codex:
 
 ```text
-Run the TechOps Issue Remediation playbook.
+$ai-engineering-workflows:run Run the TechOps Issue Remediation playbook.
 
 Work item: <TECHOPS-JIRA-ID-OR-URL>
-Playbook: <PATH-TO>/ai-engineering-workflow-framework/playbooks/techops_issue_remediation.md
+Playbook: playbooks/techops_issue_remediation.md
+```
+
+That is enough to start. Omit `Execution profile` and `Lifecycle` to use the TechOps defaults: `standard` and
+`planning`. The current task's main Git repository is the execution repository and artifact root unless the user names a
+different repository. The installed package supplies the framework and provider definitions.
+
+The active run skill and shared contract own preflight, source-access gates, input-manifest creation, worker selection,
+artifact placement, validation, and handoff. Do not copy framework commands, worker lists, internal paths, or evaluation
+metadata into an ordinary run prompt.
+
+## Optional user context
+
+Add only information the user actually knows and considers relevant. These fields are optional; omit them when they do
+not apply.
+
+- `Execution profile: deep` when the investigation crosses systems, ownership is unclear, or the failure is
+  intermittent.
+- `Lifecycle: remediation` only for an approved remediation re-entry with its existing plan and approval.
+- `Execution repository: <absolute path>` only when the current repository is not the source repository.
+- Unanswered material user decisions carried from the current request, if any.
+- Code-scope or repository hints, confirmed decisions and constraints, unanswered material user decisions, reported and
+  expected behavior, reproduction details, supporting artifacts, or additional context.
+
+Unanswered material user decisions carried from the current request are asked and resolved in this run when needed. Do
+not invent unknown details or ask the user to prepare framework-generated manifests or worker instructions.
+
+## Evaluation-only fields
+
+Use this extension only when the user explicitly declares a versioned evaluation. Normal runs do not need these fields.
+
+```text
+Evaluation run ID: <UNIQUE-ID>
 Framework revision (required for evaluation runs): <FULL-GIT-COMMIT>
 Framework worktree status: clean
+Execution repository: <ABSOLUTE-PATH>
+Provider/runtime configuration (optional execution-repository runtime view): <REPRODUCIBLE-SOURCE>
 Execution profile: standard
 Lifecycle: planning
-The selected execution profile is mandatory; do not silently downgrade it.
-
-Execution repository (required; durable artifact root):
-<ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
-
-Provider/runtime configuration (optional execution-repository runtime view; use `Not provided` when absent):
-<PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION-OR-Not-provided>
-
-Continuation (omit this entire section for a new investigation):
-- Run type: Planning follow-up / Interrupted profile recovery / Remediation re-entry
-- Previous work record, plan, or handoff: <ABSOLUTE-PATH-OR-REFERENCE>
-- New evidence, decision, constraint, or recovery reason: <DESCRIPTION>
-- Approval reference: <REQUIRED-FOR-REMEDIATION-OR-NONE>
-
-Runtime bootstrap:
-- For a versioned evaluation, compare this populated prompt with the canonical template. Record `prompt_conformance` and
-  stop with `run_prompt_nonconformant` when a required field is missing or altered.
-- Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md` from the
-  same framework checkout. Load another referenced framework document only when the active stage or worker needs it;
-  templates and examples are not runtime instructions.
-- The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
-- Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be
-  reopened or overridden by historical conclusions.
-- The requested profile and lifecycle are mandatory. Planning is read-only; remediation requires explicit approval and
-  a passed Delivery Activation Barrier before edits.
-- The Coordinator must activate the required workers without substituting for them and report actual worker outcomes,
-  fan-in, and runtime closure. Never claim successful execution when the required graph is incomplete.
-
-Confirmed user decisions and constraints (authoritative; do not reopen):
-- <NONE-OR-DECISION-OR-CONSTRAINT>
-
-Unanswered material user decisions carried from the current request (ask in this run after bounded discovery if evidence
-does not resolve them; use `None` when there are no pending user decisions):
-- <QUESTION-OPTIONS-WHY-IT-MATTERS-OR-None>
-
-Reported issue context (unverified until reconciled):
-- Report source: Zendesk / Help Desk / Operations / Other
-- Reported behavior and impact: <DESCRIPTION-OR-UNKNOWN>
-- Expected behavior: <DESCRIPTION-OR-UNKNOWN>
-- Reproduction steps, timing, inputs, and frequency: <DESCRIPTION-OR-UNKNOWN>
-- Suspected system, repository, component, owner, or first-loss point: <HINT-OR-NONE>
-
-Supporting evidence and artifacts:
-- Attachments, screenshots, recordings, transcripts, JSON, logs, traces, or exports: <NONE-OR-ABSOLUTE-PATHS>
-- Related Jira issues, incidents, dashboards, runbooks, pull requests, or prior fixes: <NONE-OR-REFERENCES>
-- Redaction, privacy, or access constraints: <NONE-OR-DESCRIPTION>
-
-Additional supplied context (preserve and classify):
-- <NONE-OR-DESCRIPTION-OR-REFERENCE>
-
-Additional repositories and working directories (optional; the execution
-repository is already declared):
-- Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
-  Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
-
-Additional run-specific constraints or approvals:
-- <NONE-OR-ENTER-CONSTRAINT>
-
-Follow the selected playbook and its required dependencies.
-
-At handoff, use the contract's canonical human-readable template. Do not include Run Metrics or Worker Timing unless
-this prompt explicitly declares an evaluation or benchmark run. Reserve `plan_only` for a run that produced a usable
-implementation plan; otherwise use `partially_solved` for useful incomplete diagnosis. Preserve distinct
-`Workflow outcome` and `Engineering outcome` fields.
+Confirmed user decisions and constraints (authoritative; do not reopen): <DECISIONS-OR-NONE>
+Intended ref: <USER-SELECTED-REF-OR-UNKNOWN>
+Workflow outcome: <OUTCOME>
+Engineering outcome: <OUTCOME>
+Additional supplied context (preserve and classify): <CONTEXT-OR-NONE>
 ```
+
+For a versioned evaluation, compare the populated prompt with this template, record `prompt_conformance` and the
+template revision, and stop with `run_prompt_nonconformant` if a required evaluation field is missing or altered.

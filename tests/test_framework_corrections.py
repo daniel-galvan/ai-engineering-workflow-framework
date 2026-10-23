@@ -146,6 +146,15 @@ class FrameworkCorrections(unittest.TestCase):
             prepare.prepare_run(self.repository, "ITEM-1", "feature_delivery", None, True,
                                 input_manifest=self.inputs)
 
+    def test_techops_run_defaults_to_standard_planning_when_omitted(self):
+        run = prepare.prepare_run(self.repository, "TECHOPS-DEFAULTS", "techops_issue_remediation", None, False,
+                                  input_manifest=self.inputs)
+        packet = json.loads(Path(run["finalization_packet"]).read_text())
+        self.assertEqual(run["execution_profile"], "standard")
+        self.assertEqual(run["lifecycle"], "planning")
+        self.assertEqual(packet["identity"]["Requested profile"], "standard")
+        self.assertEqual(packet["identity"]["Lifecycle"], "planning")
+
     def test_pre_handoff_defers_documenter_metadata_but_finalization_requires_it(self):
         from scripts.planning_contracts import _feature_delivery_packet_contract_errors
         self.packet["identity"].update({"State": "awaiting_input", "Workflow outcome": "completed",

@@ -18,6 +18,23 @@ from .common import (
 def validate_run_prompt_basics() -> None:
     for path in TEMPLATES:
         text = path.read_text()
+        if path.name == "techops_issue_run_prompt.md":
+            text = " ".join(text.split())
+            for phrase in (
+                "## Minimal launch",
+                "$ai-engineering-workflows:run Run the TechOps Issue Remediation playbook.",
+                "Work item: <TECHOPS-JIRA-ID-OR-URL>",
+                "Playbook: playbooks/techops_issue_remediation.md",
+                "Omit `Execution profile` and `Lifecycle`",
+                "`standard` and `planning`",
+                "The installed package supplies the framework and provider definitions.",
+                "Do not copy framework commands, worker lists, internal paths, or evaluation",
+                "## Optional user context",
+                "Unanswered material user decisions carried from the current request",
+            ):
+                if phrase not in text:
+                    fail(f"templates/techops_issue_run_prompt.md is missing minimal launch control: {phrase}")
+            continue
         if INVARIANT not in text:
             fail(f"{path.relative_to(ROOT)} is missing the shared run invariants")
         if "Confirmed user decisions and constraints (authoritative; do not reopen):" not in text:
@@ -160,6 +177,8 @@ def validate_planning_and_evaluation_templates() -> None:
             fail(f"contracts/workflow_execution.md is missing runtime integrity rule: {phrase}")
 
     for prompt_template in TEMPLATES:
+        if prompt_template.name == "techops_issue_run_prompt.md":
+            continue
         prompt_text = prompt_template.read_text()
         for phrase in ("canonical human-readable", "Run Metrics", "Worker Timing"):
             if phrase not in prompt_text:

@@ -188,7 +188,7 @@ def validate_runtime_mapping() -> None:
         "active parent session; no dedicated Coordinator worker spawned",
         "prompt-completeness gate",
         "run_prompt_incomplete:<field>",
-        "For TechOps, allow `Provider/runtime configuration: Not provided` when absent.",
+        "For TechOps, omit the provider/runtime configuration to use the bundled provider definitions.",
         "For TechOps, the `failure-path` workstream's `--agent` value is `dependency_analyst`",
         "Run trace validation and fan-in transition validation as separate",
         "the timebox, success criterion",

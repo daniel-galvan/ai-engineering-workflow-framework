@@ -45,7 +45,7 @@ feature within an initiative. Use the more specialized playbook.
 Required inputs:
 
 - Jira issue and comments;
-- execution repository; and
+- source repository, resolved from the current task unless the user names another; and
 - known repository, system, owner, or reproduction hints when available.
 
 Optional evidence includes attachments, screenshots, recordings, transcripts, JSON, logs, traces, exports, prior
@@ -66,11 +66,16 @@ and limitations. Treat an attachment as evidence, not proof of current code or r
 - Lifecycle: `planning`
 - Mode: `investigation`
 
+For a new run, the user can provide only the work-item ID or URL and this playbook. Omitted profile and lifecycle values
+resolve to the defaults above; users do not need to supply framework paths, provider configuration, preflight commands,
+worker lists, or artifact locations.
+
 Planning is read-only. It creates `implementation_plan.md` only after required fan-in passes and the diagnosis explains
 the reported symptom. The shared contract owns lifecycle, approvals, state transitions, recovery, fan-in, and runtime
 closure.
 
-Use [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md) for every run.
+Use the short launch in [`../templates/techops_issue_run_prompt.md`](../templates/techops_issue_run_prompt.md) for a new
+run. Add only relevant user-known context or an explicit override.
 
 ## Execution Profiles and Lifecycle
 

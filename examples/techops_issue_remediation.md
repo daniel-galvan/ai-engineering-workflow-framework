@@ -40,33 +40,20 @@ context and artifacts with the request; the launcher loads the canonical input s
 records belong in the resolved main checkout, while source operations use the active equivalent worktree.
 
 ```text
-Use $ai-engineering-workflows:run.
+$ai-engineering-workflows:run Run the TechOps Issue Remediation playbook.
+
 Work item: <TECHOPS-JIRA-ID-OR-URL>
 Playbook: playbooks/techops_issue_remediation.md
-Execution profile: standard
-Lifecycle: planning
 ```
 
-Use `deep` when ownership crosses systems or repositories, the first-loss point is unclear, the failure is intermittent,
-or the impact and rollback are non-trivial.
+For this new planning run, omit profile and lifecycle to use `standard` + `planning`. Add `Execution profile: deep` when
+ownership crosses systems or repositories, the first-loss point is unclear, the failure is intermittent, or the impact
+and rollback are non-trivial. The current repository and installed provider definitions are the defaults.
 
 ## Run-Input Examples
 
-For a new planning run, invoke the plugin with the work item and omit `Continuation`:
-
-```text
-Use $ai-engineering-workflows:run.
-Work item: <TECHOPS-JIRA-ID-OR-URL>
-Execution repository: /projects/primary-service
-Playbook: playbooks/techops_issue_remediation.md
-Execution profile: standard
-Lifecycle: planning
-```
-
-The current session is the Coordinator. The execution repository override is optional; omit it to use the current
-repository. Provider definitions come from the installed plugin unless a verified local view is supplied. If the likely
-fault later moves to a second checkout, list it as an additional
-repository; retain the same work record for the run.
+The execution repository override is optional; omit it to use the current repository. If the likely fault later moves to
+a second checkout, list it as an additional repository; retain the same work record for the run.
 
 For an approved remediation re-entry, keep the same artifact root and add only the continuation information that
 changed:
