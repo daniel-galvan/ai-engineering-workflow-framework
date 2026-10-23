@@ -135,12 +135,36 @@ def related_run_status_projection_source(
             "const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];\n"
             f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
             f"const related = rows.filter(row => row.id !== {json.dumps(current_thread_id)} &&\n"
-            f"  (typeof row.title === 'string' && row.title.includes({json.dumps(work_item)}) || priorIds.includes(row.id)))\n"
-            "  .map(row => ({\n"
-            "    id: row.id, status: row.status, hostId: row.hostId, kind: row.kind,\n"
-            "    updatedAt: row.updatedAt\n"
-            "  }));\n"
-            "text(JSON.stringify(related));")
+            "  (priorIds.includes(row.id) ||\n"
+            f"   typeof row.title === 'string' && row.title.includes({json.dumps(work_item)})));\n"
+            "const targets = new Map(priorIds.map(id => [id, undefined]));\n"
+            "for (const row of related) targets.set(row.id, row.hostId);\n"
+            "const relatedRows = await Promise.all([...targets].map(async ([id, hostId]) => {\n"
+            "  try {\n"
+            "    const args = {threadId: id, turnLimit: 1, includeOutputs: false};\n"
+            "    if (typeof hostId === 'string') args.hostId = hostId;\n"
+            "    const result = await tools.mcp__codex_app__read_thread(args);\n"
+            "    if (result.isError) return {id, status: 'unavailable'};\n"
+            "    const thread = JSON.parse(result.content[0].text).thread;\n"
+            "    if (thread.id !== id || typeof thread.status?.type !== 'string')\n"
+            "      return {id, status: 'unavailable'};\n"
+            "    let status = thread.status.type;\n"
+            "    if (status === 'notLoaded') {\n"
+            "      const target = {threadId: id};\n"
+            "      if (typeof hostId === 'string') target.hostId = hostId;\n"
+            "      const wait = await tools.mcp__codex_app__wait_threads({targets: [target], timeoutMs: 0});\n"
+            "      if (wait.isError) return {id, status: 'unavailable'};\n"
+            "      const state = JSON.parse(wait.content[0].text);\n"
+            "      const poll = state.polls?.find(row => row.thread?.id === id);\n"
+            "      const latestTurn = poll?.latestTurn?.status;\n"
+            "      if (state.wake?.reason === 'inactiveStatus' && state.wake.threadId === id &&\n"
+            "          ['completed', 'failed', 'stopped', 'interrupted', 'cancelled'].includes(latestTurn))\n"
+            "        status = latestTurn;\n"
+            "    }\n"
+            "    return {id, status};\n"
+            "  } catch { return {id, status: 'unavailable'}; }\n"
+            "}));\n"
+            "text(JSON.stringify(relatedRows));")
 
 
 def _related_run_status_rows(payload: dict) -> list[dict]:
@@ -203,7 +227,10 @@ def stale_run_status_errors(
         if not isinstance(row, dict):
             errors.append("stale_run_status_evidence_invalid")
             continue
-        if row.get("status", "").lower() not in RELATED_RUN_TERMINAL_STATUSES:
+        status = row.get("status", "").lower()
+        if status == "unavailable":
+            errors.append("stale_run_related_task_status_unavailable:" + row.get("id", "unknown"))
+        elif status not in RELATED_RUN_TERMINAL_STATUSES:
             errors.append("stale_run_related_task_active:" + row.get("id", "unknown"))
     if require_prior_dispatch_ledger and context.get("prior_run_dispatch_ledger_present") is not True:
         errors.append("stale_run_dispatch_ledger_required")

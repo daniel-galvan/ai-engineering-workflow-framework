@@ -16,7 +16,7 @@ class PlaybookCatalog(unittest.TestCase):
         (self.root / "playbooks").mkdir()
         self.source = self.root / "playbooks/spike.md"
         self.source.write_text(
-            "---\ntitle: Technical Spike Playbook\nversion: 0.5.15\nlast_updated: 2026-10-06\n"
+            "---\ntitle: Technical Spike Playbook\nversion: 0.5.29\nlast_updated: 2026-10-22\n"
             "status: Pilot\nmaturity: exercising\nexercise_scope: standard + planning\n"
             "supported_lifecycles: planning\n"
             "exercise_status_standard_planning: pending\nexercise_status_deep_planning: pending\n"
@@ -45,7 +45,7 @@ class PlaybookCatalog(unittest.TestCase):
 
     def test_each_metadata_change_requires_refresh(self):
         original = self.source.read_text()
-        for old, new in (("0.5.15", "0.5.16"), ("2026-10-06", "2026-10-08"),
+        for old, new in (("0.5.29", "0.5.30"), ("2026-10-22", "2026-10-23"),
                          ("Pilot", "Draft"), ("exercising", "draft"),
                          ("standard + planning", "deep + planning"), ("live rerun pending", "new run pending"),
                          ("exercise_status_standard_planning: pending", "exercise_status_standard_planning: exercised")):

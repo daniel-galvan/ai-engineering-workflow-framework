@@ -1,9 +1,9 @@
 ---
 title: Workflow Evaluation
-version: 0.5.20
+version: 0.5.30
 status: Experimental / Deferred
 owner: Engineering
-last_updated: 2026-10-08
+last_updated: 2026-10-23
 depends_on:
   - ../../contracts/workflow_execution.md
   - ../../contracts/claims.md

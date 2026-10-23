@@ -248,26 +248,68 @@ class ParentContext(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
     def test_related_status_projection_executes_and_redacts_inventory(self):
         related = {"id": TURN, "title": "ECHO-2806 planning", "summary": "private diagnosis",
-                   "status": "idle", "hostId": "local", "kind": "codex", "updatedAt": 1792624353}
-        prior = {"id": CHILD, "summary": "private worker output", "status": "completed"}
-        inventory = {"pinnedThreads": [related], "threads": [prior,
+                   "status": "notLoaded", "hostId": "local", "kind": "codex", "updatedAt": 1792624353}
+        prior = {"thread": {"id": CHILD, "status": {"type": "completed"},
+                             "preview": "private worker prompt"},
+                 "turns": [{"status": "completed", "items": [{"text": "private worker output"}]}]}
+        visible = {"thread": {"id": TURN, "status": {"type": "notLoaded"},
+                               "preview": "private related prompt"},
+                   "turns": [{"status": "completed", "items": [{"text": "private related output"}]}]}
+        wait_state = {"wake": {"reason": "inactiveStatus", "threadId": TURN},
+                      "polls": [{"thread": {"id": TURN, "status": {"type": "notLoaded"}},
+                                 "latestTurn": {"status": "completed"},
+                                 "latestAssistantMessage": {"text": "private final message"}}]}
+        inventory = {"pinnedThreads": [related], "threads": [
             {"id": PARENT, "title": "ECHO-2806 current run", "status": "active"},
             {"id": "unrelated", "title": "Other work", "summary": "private", "status": "idle"}]}
         projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
         stub = ("const tools = {mcp__codex_app__list_threads: async args => {\n"
                 "  if (args.limit !== 50) throw new Error('unexpected inventory request');\n"
                 "  return {content: [{text: " + json.dumps(json.dumps(inventory)) + "}]};\n"
+                "}, mcp__codex_app__read_thread: async args => {\n"
+                "  if (args.turnLimit !== 1 || args.includeOutputs !== false)\n"
+                "    throw new Error('unexpected exact-id request');\n"
+                "  const values = {" + json.dumps(CHILD) + ": " + json.dumps(prior) + ", " +
+                json.dumps(TURN) + ": " + json.dumps(visible) + "};\n"
+                "  const value = values[args.threadId];\n"
+                "  if (!value || (args.threadId === " + json.dumps(TURN) + " && args.hostId !== 'local') ||\n"
+                "      (args.threadId === " + json.dumps(CHILD) + " && 'hostId' in args))\n"
+                "    throw new Error('unexpected exact-id target');\n"
+                "  return {content: [{text: " + "JSON.stringify(value)" + "}]};\n"
+                "}, mcp__codex_app__wait_threads: async args => {\n"
+                "  if (args.timeoutMs !== 0 || args.targets?.length !== 1 ||\n"
+                "      args.targets[0].threadId !== " + json.dumps(TURN) + " || args.targets[0].hostId !== 'local')\n"
+                "    throw new Error('unexpected wait status target');\n"
+                "  return {content: [{text: " + json.dumps(json.dumps(wait_state)) + "}]};\n"
                 "}};\nconst text = value => process.stdout.write(value);\n")
         result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=stub + projection,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), [
-            {key: value for key, value in row.items() if key not in {"title", "summary"}}
-            for row in (related, prior)])
+            {"id": CHILD, "status": "completed"},
+            {"id": TURN, "status": "completed"}])
+        self.assertNotIn("private", result.stdout)
         skill = (Path(__file__).resolve().parents[1] / "skills/run/SKILL.md").read_text()
         example = textwrap.dedent(skill.split("   ```javascript\n", 1)[1].split("   ```", 1)[0])
         example = example.replace("PARENT-THREAD-UUID", PARENT).replace("PRIOR-WORKER-THREAD-UUID", CHILD)
         self.assertEqual(example.strip(), projection)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
+    def test_related_status_projection_marks_unavailable_exact_ids(self):
+        projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
+        inventory = {"threads": [{"id": TURN, "title": "ECHO-2806 other", "hostId": "local"}]}
+        thread = {"thread": {"id": TURN, "status": {"type": "notLoaded"}}}
+        stub = ("const tools = {mcp__codex_app__list_threads: async () => ({content: [{text: " +
+                json.dumps(json.dumps(inventory)) + "}]}),\n"
+                "mcp__codex_app__read_thread: async args => args.threadId === " + json.dumps(CHILD) +
+                " ? {isError: true} : {content: [{text: " + json.dumps(json.dumps(thread)) + "}]},\n"
+                "mcp__codex_app__wait_threads: async () => ({isError: true})};\n"
+                "const text = value => process.stdout.write(value);\n")
+        result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=stub + projection,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [
+            {"id": CHILD, "status": "unavailable"}, {"id": TURN, "status": "unavailable"}])
 
     def test_only_one_exact_redacted_related_run_status_projection_is_allowed(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
@@ -304,7 +346,8 @@ class ParentContext(unittest.TestCase):
         self.rows = self.rows[:2] + [{"type": "response_item", "payload": {
             "type": "custom_tool_call", "name": "exec",
             "call_id": "bad-status-call",
-            "input": projection.replace("text(JSON.stringify(related));", "text(response.content[0].text);")}}]
+            "input": projection.replace("text(JSON.stringify(relatedRows));",
+                                         "text(response.content[0].text);")}}]
         result = self.audit(artifact_root=artifact_root)
         self.assertIn("parent_unassigned_thread_discovery", result["errors"])
 
@@ -388,6 +431,9 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(stale_run_status_errors(active, "active"), ["stale_run_related_task_active:" + CHILD])
         missing = {**context, "related_run_status_rows": []}
         self.assertEqual(stale_run_status_errors(missing, "active"), ["stale_run_worker_status_missing:" + CHILD])
+        unavailable = {**context, "related_run_status_rows": [{"id": CHILD, "status": "unavailable"}]}
+        self.assertEqual(stale_run_status_errors(unavailable, "active"),
+                         ["stale_run_related_task_status_unavailable:" + CHILD])
         missing_ledger = {**context, "prior_run_dispatch_ledger_present": False}
         self.assertEqual(stale_run_status_errors(missing_ledger, "active"), ["stale_run_dispatch_ledger_required"])
         self.assertEqual(stale_run_status_errors(None, "active"), ["stale_run_status_probe_required"])
@@ -536,8 +582,10 @@ class ParentContext(unittest.TestCase):
             "input": "await tools.exec_command(argumentsFromElsewhere)"}})
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
         self.rows[-1]["payload"]["input"] = (
-            "const paths = ['one', 'two']; "
-            "await Promise.all(paths.map(path => tools.exec_command({cmd: `cat ${path}`})));"
+            'const cmds = [["first", "cat /repo/one"], ["second", "cat /repo/two"]]; '
+            "const results = await Promise.allSettled(cmds.map(async ([label, cmd]) => { "
+            "const r = await tools.exec_command({cmd}); return {label, ...r}; })); "
+            "for (const r of results) text(JSON.stringify(r));"
         )
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
         from scripts.runtime_checks import _tool_operations

@@ -1,6 +1,6 @@
 ---
 title: Sentry Issue Remediation Playbook
-version: 0.5.20
+version: 0.5.30
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning, remediation
@@ -11,7 +11,7 @@ exercise_status_standard_remediation: exercised
 exercise_status_deep_remediation: exercised
 validation_summary: all combinations exercised; mixed reliability; not delivery-validated
 owner: Engineering
-last_updated: 2026-10-08
+last_updated: 2026-10-23
 depends_on:
   - ../frameworks/investigation.md
   - ../strategies/collaborative.md

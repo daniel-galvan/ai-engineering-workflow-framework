@@ -45,7 +45,10 @@ description: >-
    absent. Never promote a missing instruction-file probe into a required worker input. Run filename discovery in a
    separate tool result from content reads or searches; mixed
    outputs may not prove which references are names only. Run gates separately, or use fail-fast command chaining;
-   inspect each exit status.
+   inspect each exit status. When batching independent calls through `functions.exec`, keep each nested `tools.*`
+   invocation inline with literal arguments in `Promise.allSettled([...])`; do not build command arrays and invoke tools
+   through `.map` callbacks or closures. The parent audit intentionally fails closed when it cannot resolve nested tool
+   arguments.
    Pass `--declared-framework-revision <FULL-SHA>` when the prompt declares one, and pass
    `--declared-framework-diff-sha256 <SHA256>` only for a prompt-declared dirty snapshot. Preflight admits that
    snapshot only when its tracked binary diff matches the declared digest exactly, no untracked files exist, and
@@ -389,25 +392,55 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Capture the current turn start before checking provider-visible tasks. The current-task rule is:
    `task created at or after the captured current turn start`
    is the current run and MUST NOT be classified as a related run. After the initial passing preflight, inspect only
-   status metadata for provider-visible tasks and sibling artifact roots; do not read prior thread content, task
-   summaries, or stale run files. From the stale artifact's `role_bindings.json` and `runtime_dispatches.json`, use only
-   the prior parent and worker thread IDs; do not read analytical fields. The parent-context audit permits one exact
-   `list_threads({limit: 50})` status projection for the current work item per turn. Emit no task title or summary; use
-   this exact projection, replacing `ECHO-2806` with the current work-item key, `PARENT-THREAD-UUID` with the
-   provider-verified current parent thread ID, and `PRIOR-WORKER-THREAD-UUID` with the JSON array of prior parent and
-   worker thread IDs (use `[]` when empty):
+   status metadata for provider-visible tasks and sibling artifact roots; do not inspect prior thread content, task
+   summaries, or stale analytical files. From `role_bindings.json` and `runtime_dispatches.json`, use only the prior
+   parent and worker thread IDs; do not read analytical fields. The parent-context audit permits one exact
+   related-run status projection for the current work item per turn. It uses the recency-limited
+   `list_threads({limit: 50})` only to find visible tasks with this work-item key, then calls `read_thread` by exact
+   ID for each visible related task and each prior parent/worker ID. The wrapper requests one turn with outputs
+   disabled and emits only the exact thread ID and status; never expose titles, summaries, previews, or turn contents.
+   For `notLoaded`, one immediate `wait_threads` lookup can confirm terminal status only when it reports
+   `inactiveStatus` and a terminal latest-turn status for the same ID. An unavailable lookup emits
+   `status: unavailable` and blocks archival. Do not call these tools outside this projection.
+   Use this exact projection, replacing `ECHO-2806` with the current work-item key,
+   `PARENT-THREAD-UUID` with the provider-verified current parent thread ID, and `PRIOR-WORKER-THREAD-UUID` with the
+   JSON array of prior parent and worker thread IDs (use `[]` when empty):
    ```javascript
    const response = await tools.mcp__codex_app__list_threads({limit: 50});
    const data = JSON.parse(response.content[0].text);
    const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];
    const priorIds = ["PRIOR-WORKER-THREAD-UUID"];
    const related = rows.filter(row => row.id !== "PARENT-THREAD-UUID" &&
-     (typeof row.title === 'string' && row.title.includes("ECHO-2806") || priorIds.includes(row.id)))
-     .map(row => ({
-       id: row.id, status: row.status, hostId: row.hostId, kind: row.kind,
-       updatedAt: row.updatedAt
-     }));
-   text(JSON.stringify(related));
+     (priorIds.includes(row.id) ||
+      typeof row.title === 'string' && row.title.includes("ECHO-2806")));
+   const targets = new Map(priorIds.map(id => [id, undefined]));
+   for (const row of related) targets.set(row.id, row.hostId);
+   const relatedRows = await Promise.all([...targets].map(async ([id, hostId]) => {
+     try {
+       const args = {threadId: id, turnLimit: 1, includeOutputs: false};
+       if (typeof hostId === 'string') args.hostId = hostId;
+       const result = await tools.mcp__codex_app__read_thread(args);
+       if (result.isError) return {id, status: 'unavailable'};
+       const thread = JSON.parse(result.content[0].text).thread;
+       if (thread.id !== id || typeof thread.status?.type !== 'string')
+         return {id, status: 'unavailable'};
+       let status = thread.status.type;
+       if (status === 'notLoaded') {
+         const target = {threadId: id};
+         if (typeof hostId === 'string') target.hostId = hostId;
+         const wait = await tools.mcp__codex_app__wait_threads({targets: [target], timeoutMs: 0});
+         if (wait.isError) return {id, status: 'unavailable'};
+         const state = JSON.parse(wait.content[0].text);
+         const poll = state.polls?.find(row => row.thread?.id === id);
+         const latestTurn = poll?.latestTurn?.status;
+         if (state.wake?.reason === 'inactiveStatus' && state.wake.threadId === id &&
+             ['completed', 'failed', 'stopped', 'interrupted', 'cancelled'].includes(latestTurn))
+           status = latestTurn;
+       }
+       return {id, status};
+     } catch { return {id, status: 'unavailable'}; }
+   }));
+   text(JSON.stringify(relatedRows));
    ```
    Direct inventory output, extra tool calls in the wrapper, a different projection, or a query before the initial
    passing preflight remains an unassigned discovery and must stop the run. The provider result must be correlated to
@@ -417,8 +450,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    also blocks on malformed dispatch or closure identity receipts; only a failed `spawn_agent` with no worker thread
    ID is exempt because the provider never created an observable worker task.
    excludes the current parent thread by its exact provider ID. A different provider-visible task can block startup
-   only when it predates the current turn and is independently active. Do not read old threads to prove worker status;
-   if every visible worker
+   only when it predates the current turn and is independently active. Do not inspect old thread content; use only
+   the projected status to prove worker closure. If every visible worker
    handle cannot be verified terminal from permitted status evidence, stop with `run_already_active`. When the prior
    task is idle, every visible child worker is terminal, and no artifact writer remains, rerun once with
    `--archive-stale-run`. This preserves every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run.

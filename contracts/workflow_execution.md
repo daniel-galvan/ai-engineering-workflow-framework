@@ -1,10 +1,10 @@
 ---
 title: Workflow Execution Contract
-version: 0.5.20
+version: 0.5.30
 status: Pilot
 provider_independent: true
 owner: Engineering
-last_updated: 2026-10-08
+last_updated: 2026-10-23
 ---
 
 # Workflow Execution Contract

@@ -1,9 +1,9 @@
 ---
 title: Feature Specification Assessment
-version: 0.5.20
+version: 0.5.30
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-08
+last_updated: 2026-10-23
 depends_on:
   - ../playbooks/feature_delivery.md
   - ./work_record.md

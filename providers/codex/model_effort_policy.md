@@ -1,13 +1,13 @@
 ---
 
 title: Codex Model and Effort Policy
-version: 0.5.20
+version: 0.5.30
 status: Pilot
 provider: codex
 provider_independent_profiles: true
 baseline_id: codex-role-policy-gpt61-sol-luna-orchestrator-v20261001
 owner: Engineering
-last_updated: 2026-10-08
+last_updated: 2026-10-23
 ---
 
 # Codex Model and Effort Policy
