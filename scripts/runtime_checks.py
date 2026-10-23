@@ -863,9 +863,18 @@ def _literal_templates(source: str) -> str:
         raw = source[start + 1:end]
         if "\\" in raw:
             raise ValueError("escaped templates are not literal arguments")
+        output_template = (re.search(r"(?<![\w.])text\s*\(\s*$", source[:start]) is not None
+                           and re.match(r"\s*\)", source[end + 1:]) is not None)
         parts, offset = [], 0
         for match in re.finditer(r"\$\{([^}]*)\}", raw):
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", match[1]):
+                # Output-only property checks do not change literal tool arguments.
+                if output_template and re.fullmatch(
+                        r"[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*"
+                        r"\s*===\s*(?:true|false)", match[1]):
+                    parts.append(raw[offset:match.start()].replace("{", "{{").replace("}", "}}"))
+                    offset = match.end()
+                    continue
                 raise ValueError("computed template substitution")
             parts.append(raw[offset:match.start()].replace("{", "{{").replace("}", "}}"))
             parts.append("{" + match[1] + "}")
@@ -991,6 +1000,10 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
                 if not isinstance(value, dict):
                     return []
                 operations.append((name, value))
+                continue
+            if (tokens[index].string == "?" and index + 1 < len(tokens)
+                    and tokens[index + 1].string == "."):
+                index += 1
                 continue
             if tokens[index].type == tokenize.ERRORTOKEN and tokens[index].string.strip():
                 return []

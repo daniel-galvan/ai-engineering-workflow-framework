@@ -707,6 +707,25 @@ class ParentContext(unittest.TestCase):
         self.rows[-1]["payload"] = {**row, "input": source.replace("ledger.json", "runs/prior/notes.md")}
         self.assertIn("forbidden_context_reference:archived_artifact", self.audit()["errors"])
 
+    def test_literal_jira_call_allows_output_property_checks(self):
+        from scripts.runtime_checks import _tool_operations
+        call = ('const r=await tools.mcp__atlassian__getJiraIssue('
+                '{cloudId:"https://example.atlassian.net",issueIdOrKey:"ITEM-1"}); ')
+        output = ('for (const c of (r?.content||[])) if(c.type==="text") text(c.text); '
+                  'text(`isError=${r?.isError===true}`);')
+        row = {"type": "custom_tool_call", "name": "exec", "input": call + output}
+        self.assertEqual(_tool_operations(row), [("mcp__atlassian__getJiraIssue", {
+            "cloudId": "https://example.atlassian.net", "issueIdOrKey": "ITEM-1"})])
+        self.rows.append({"type": "response_item", "payload": row})
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        for source in (
+                call + 'text(`value=${resolve()}`);',
+                call + 'text(`value=${tools.exec_command({cmd:"bad"})}`);',
+                'await tools.exec_command({cmd:`${r?.isError===true}`});',
+                'await tools.exec_command({cmd:r?.output});'):
+            with self.subTest(source=source):
+                self.assertEqual(_tool_operations({**row, "input": source}), [])
+
     def test_preparation_accepts_literal_const_manifest_creation(self):
         inputs = self.root / "inputs.json"
         inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
