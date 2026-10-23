@@ -184,6 +184,8 @@ class ExecutionLayers(unittest.TestCase):
     def test_access_observations_preserve_the_prepared_input_manifest(self):
         launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
         self.assertIn("Run filename discovery in a separate tool result from content reads or searches", launcher)
+        self.assertIn("`.thoughts/<WORK-ITEM-ID>` directory is only the artifact root", launcher)
+        self.assertIn("do not check it or its `.thoughts` parent for `AGENTS.md`", launcher)
         for name in ("skills/run/SKILL.md", "contracts/workflow_execution.md"):
             text = " ".join((ROOT / name).read_text().split())
             with self.subTest(file=name):
