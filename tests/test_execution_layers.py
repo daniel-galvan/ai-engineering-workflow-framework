@@ -137,6 +137,17 @@ class ExecutionLayers(unittest.TestCase):
         self.assertIn("the only required user-authored launcher values are the work-item ID or URL and the selected TechOps playbook", launcher)
         self.assertIn("resolve to `standard` and `planning`", launcher)
 
+    def test_standard_sentry_finalization_rule_does_not_skip_techops_documenter(self):
+        launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
+        sentry = launcher.split("The no-Documenter rule and deterministic finalizer", 1)[1].split(
+            "Deep planning and remediation retain", 1
+        )[0]
+        self.assertIn("only to Standard Sentry planning", sentry)
+        self.assertIn("only Standard Sentry planning finalization writer", sentry)
+        self.assertIn("including for Standard TechOps planning", sentry)
+        self.assertIn("For TechOps and Feature Delivery planning, the Coordinator runs the prepared", launcher)
+        self.assertIn("`scripts/stage_documenter_packet.py` transition after analytical fan-in", launcher)
+
     def test_unreleased_stale_run_requires_a_separate_artifact_root_for_new_planning(self):
         launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
         self.assertIn("separate execution repository and artifact root", launcher)

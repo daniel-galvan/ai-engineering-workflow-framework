@@ -798,6 +798,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `--worker-trace <worker>=<absolute-trace-path>`; if none are exposed, the finalizer records the audit as unavailable
    instead of implying independent context conformance. Coordinator Sentry reads before Evidence Topology activation
    are limited to the required source-access gate; subsequent raw evidence acquisition is worker-owned.
+   The no-Documenter rule and deterministic finalizer in this paragraph apply only to Standard Sentry planning.
    When Standard Sentry Fix Design returns either `ready_for_implementation/create` or `awaiting_input/omit`, do not
    activate a Documenter. Collect a verified release receipt or fresh Terminal snapshot for every activated handle,
    save `runtime_closure.json`, then run the manifest's
@@ -817,12 +818,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    authoritative:
    leave a `pending_init`, `running`, `in_progress`, or `awaiting_dependency` worker active and wait again or leave the
    run open. Never interrupt a live worker to satisfy an elapsed-time target.
-   That deterministic finalizer copies the exact Fix Design disposition and, according to the validated readiness/action
-   pair, creates either `implementation_plan.md` or `clarification_brief.md`. It stages and validates that artifact, the
-   runtime-closure receipt, `finalization_packet.json`, and terminal `work_record.md`, then publishes the terminal set
-   transactionally. It is the only Standard planning finalization writer. Do not pre-render or hand-edit generated
-   Markdown, construct a candidate packet, run `finalize_work_record.py --pre-release`, or activate a documentation
-   worker for either Standard planning readiness result.
+   That Sentry-only deterministic finalizer copies the exact Fix Design disposition and, according to the validated
+   readiness/action pair, creates either `implementation_plan.md` or `clarification_brief.md`. It stages and validates
+   that artifact, the runtime-closure receipt, `finalization_packet.json`, and terminal `work_record.md`, then publishes
+   the terminal set transactionally. It is the only Standard Sentry planning finalization writer. Do not pre-render or
+   hand-edit generated Markdown, construct a candidate packet, or run `finalize_work_record.py --pre-release` on that
+   Sentry path. These restrictions do not apply to TechOps or Feature Delivery: follow 8a and the selected playbook's
+   Documenter stage, including for Standard TechOps planning.
    Deep planning and remediation retain their playbook-defined Documenter stage. On those paths, require the final
    Documenter to populate the prepared
    `finalization_packet.json` skeleton without changing its flat schema. Before activation, pass every required template
