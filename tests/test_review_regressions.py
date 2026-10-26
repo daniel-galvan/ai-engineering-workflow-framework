@@ -3,7 +3,9 @@
 import copy
 import csv
 import json
+import shlex
 import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -41,6 +43,87 @@ class ReviewRegressions(unittest.TestCase):
     def parent_status_session(self, repository, work_item):
         artifact_root = repository / ".thoughts" / work_item
         return write_parent_status_session(repository.parent / "parent-status.jsonl", artifact_root)
+
+    def test_inline_fresh_run_archives_all_previous_files_before_creating_new_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self.repository(Path(directory))
+            inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current request",
+                "Source or path": "User", "Authority": "User", "Status": "Registered"}]}
+            first = prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
+                                            input_data=inputs)
+            root = Path(first["artifact_root"])
+            record = root / "work_record.md"
+            record.write_text(record.read_text().replace("| Run ID | |", f"| Run ID | {first['run_id']} |").replace(
+                "| State | " + prepare_run.UNINITIALIZED_WORK_RECORD_STATE + " |", "| State | completed |"))
+            (root / "runtime_dispatches.json").write_text(json.dumps({"thread_mappings": {}, "events": [],
+                                                                      "failed_dispatches": []}))
+            (root / "intake_inputs.json").write_bytes(b"previous intake")
+            (root / "assets").mkdir()
+            (root / "assets" / "image.bin").write_bytes(b"\x00\x01previous asset")
+            (root / "assets" / "empty").mkdir()
+            older = root / "runs" / "older"
+            older.mkdir(parents=True)
+            (older / "kept.txt").write_text("older archive")
+            before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*")
+                      if p.is_file() and not p.is_relative_to(root / "runs")}
+            inputs["inputs"][0]["Input or artifact"] = "New request"
+            second = prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
+                input_data=inputs, provider_session=self.parent_status_session(repository, "ITEM-1"))
+            archive = Path(second["archived_prior_run"])
+            self.assertEqual(archive, root / "runs" / first["run_id"])
+            for path, content in before.items():
+                self.assertEqual((archive / path).read_bytes(), content)
+            self.assertTrue((archive / "assets" / "empty").is_dir())
+            self.assertEqual((older / "kept.txt").read_text(), "older archive")
+            self.assertFalse((root / "intake_inputs.json").exists())
+            self.assertEqual(load_manifest(root / "run_inputs.json")["inputs"][0]["Input or artifact"], "New request")
+            self.assertNotEqual(first["run_id"], second["run_id"])
+
+    def test_inline_cli_archives_a_terminal_run_with_audited_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self.repository(Path(directory))
+            inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current request",
+                "Source or path": "User", "Authority": "User", "Status": "Registered"}]}
+            first = prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
+                                            input_data=inputs)
+            root = Path(first["artifact_root"])
+            record = root / "work_record.md"
+            record.write_text(record.read_text().replace("| Run ID | |", f"| Run ID | {first['run_id']} |").replace(
+                "| State | " + prepare_run.UNINITIALIZED_WORK_RECORD_STATE + " |", "| State | completed |"))
+            (root / "runtime_dispatches.json").write_text(json.dumps({"thread_mappings": {}, "events": [],
+                                                                      "failed_dispatches": []}))
+            (root / "intake_inputs.json").write_text("previous intake")
+            parent = self.parent_status_session(repository, "ITEM-1")
+            command = [sys.executable, str(Path(prepare_run.__file__)), "--execution-repository", str(repository),
+                       "--work-item", "ITEM-1", "--playbook", "techops_issue_remediation", "--input-json",
+                       json.dumps(inputs), "--provider-session", str(parent)]
+            with parent.open("a") as stream:
+                stream.write(json.dumps({"type": "response_item", "timestamp": "2026-10-26T19:00:00Z",
+                    "payload": {"type": "function_call", "name": "exec_command",
+                                "arguments": json.dumps({"cmd": shlex.join(command)})}}) + "\n")
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            run = json.loads(result.stdout)
+            self.assertEqual((Path(run["archived_prior_run"]) / "intake_inputs.json").read_text(), "previous intake")
+            self.assertEqual(run["run_input_manifest_status"], "explicit")
+
+    def test_unrecorded_artifacts_require_status_before_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self.repository(Path(directory))
+            root = repository / ".thoughts" / "ITEM-1"
+            root.mkdir(parents=True)
+            (root / "intake_inputs.json").write_text("previous incomplete intake")
+            inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current request",
+                "Source or path": "User", "Authority": "User", "Status": "Registered"}]}
+            with self.assertRaisesRegex(ValueError, "stale_run_archive_blocked:stale_run_status_probe_required"):
+                prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
+                                        input_data=inputs)
+            self.assertEqual((root / "intake_inputs.json").read_text(), "previous incomplete intake")
+            run = prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
+                input_data=inputs, provider_session=self.parent_status_session(repository, "ITEM-1"))
+            self.assertEqual((Path(run["archived_prior_run"]) / "intake_inputs.json").read_text(),
+                             "previous incomplete intake")
+            self.assertFalse((root / "intake_inputs.json").exists())
 
     def test_fresh_restart_preserves_selected_input_before_archiving(self):
         with tempfile.TemporaryDirectory() as directory:

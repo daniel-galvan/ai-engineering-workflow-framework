@@ -23,6 +23,7 @@ try:
         retain_source_releases,
         merge_manifests,
         packet_metadata,
+        validate_manifest,
         write_manifest,
     )
 except ModuleNotFoundError:  # Imported as scripts.prepare_run from the repository root.
@@ -34,6 +35,7 @@ except ModuleNotFoundError:  # Imported as scripts.prepare_run from the reposito
         retain_source_releases,
         merge_manifests,
         packet_metadata,
+        validate_manifest,
         write_manifest,
     )
 
@@ -637,13 +639,13 @@ def _prepare_run_inputs(
     destination = artifact_root / RUN_INPUTS_FILENAME
     if continuation and destination.is_file():
         current = load_manifest(destination, explicit=False)
-        if supplied_path:
+        if supplied_path or validated_supplied is not None:
             supplied = validated_supplied or load_manifest(supplied_path, explicit=True)
             supplied = _snapshot_input_files(artifact_root, supplied, input_bytes=input_bytes)
             current = merge_manifests(current, supplied)
             write_manifest(destination, current)
         return load_manifest(destination, explicit=False), destination
-    if supplied_path:
+    if supplied_path or validated_supplied is not None:
         source = validated_supplied or load_manifest(supplied_path, explicit=True)
     else:
         source = default_manifest(work_item, playbook, execution_repository.resolve())
@@ -858,16 +860,19 @@ def _archive_recovery(artifact_root: Path, run_id: str) -> Path:
 
 def _archive_existing_run(
     artifact_root: Path, archive_stale_run: bool, run_inputs: dict[str, object] | None = None,
-    parent_context: dict | None = None,
+    parent_context: dict | None = None, input_manifest: Path | None = None,
 ) -> str | None:
     record = artifact_root / "work_record.md"
     if not record.is_file():
         if artifact_root.is_dir() and any((artifact_root / name).is_file() for name in ORPHANED_RUN_RECEIPTS):
             raise ValueError("orphaned_run_control_receipts_without_work_record")
-        return None
-    text = record.read_text()
-    state = _table_value(text, "State")
-    if state not in TERMINAL_STATES:
+        if not artifact_root.is_dir() or not any(
+                path.name != "runs" and (input_manifest is None or path != input_manifest)
+                for path in artifact_root.iterdir()):
+            return None
+    text = record.read_text() if record.is_file() else ""
+    state = _table_value(text, "State") if text else None
+    if record.is_file() and state not in TERMINAL_STATES:
         if not archive_stale_run:
             raise ValueError("existing_run_not_terminal")
     try:
@@ -878,7 +883,7 @@ def _archive_existing_run(
                           and not _table_value(text, "Run ID")
                           and not (artifact_root / "runtime_dispatches.json").is_file())
     status_errors = stale_run_status_errors(
-        parent_context, state, require_prior_dispatch_ledger=not (state == "intake" or unstarted_template),
+        parent_context, state, require_prior_dispatch_ledger=bool(text) and not (state == "intake" or unstarted_template),
     )
     if status_errors:
         reason = "stale_run_archive_blocked" if state not in TERMINAL_STATES else "prior_run_archive_blocked"
@@ -895,43 +900,37 @@ def _archive_existing_run(
     directories = {path for row in (run_inputs or {}).get("inputs", []) for path in local_input_paths(row)
                    if path.is_dir() and path.is_relative_to(artifact_root.resolve())
                    and not path.is_relative_to((artifact_root / "runs").resolve())}
-    with tempfile.TemporaryDirectory(prefix="workflow-selected-inputs-") as directory:
-        staged = {}
-        for index, source in enumerate(sorted(directories)):
-            copied = Path(directory) / str(index)
-            shutil.copytree(source, copied, symlinks=True)
-            staged[source] = copied
-        original_names = {path.name for path in artifact_root.iterdir() if path.name != "runs"}
-        moved = []
-        destination.mkdir(parents=True)
-        relocated = {}
-        try:
-            for name in sorted(original_names):
-                shutil.move(str(artifact_root / name), destination / name)
-                moved.append(name)
-            for source, copied in staged.items():
-                key = hashlib.sha256(str(source).encode()).hexdigest()
-                target = (artifact_root / "input_snapshots" / "directories" / key / source.name).resolve()
-                shutil.copytree(copied, target, symlinks=True)
-                relocated[str(source)] = str(target)
-        except Exception:
-            for name in moved + (["input_snapshots"] if "input_snapshots" not in original_names else []):
-                active = artifact_root / name
-                if active.is_dir() and not active.is_symlink():
-                    shutil.rmtree(active)
-                elif active.exists() or active.is_symlink():
-                    active.unlink()
-            for name in moved:
-                shutil.move(str(destination / name), artifact_root / name)
-            destination.rmdir()
-            raise
-        for row in (run_inputs or {}).get("inputs", []):
-            if row.get("path") in relocated:
-                row.setdefault("Original source path", row["path"])
-                row["path"] = relocated[row["path"]]
-            elif any(path in relocated for path in row.get("paths", [])):
-                row.setdefault("Original source paths", row["paths"])
-                row["paths"] = [relocated.get(path, path) for path in row["paths"]]
+    original_names = {path.name for path in artifact_root.iterdir() if path.name != "runs"}
+    moved = []
+    destination.mkdir(parents=True)
+    relocated = {}
+    try:
+        for name in sorted(original_names):
+            shutil.move(str(artifact_root / name), destination / name)
+            moved.append(name)
+        for source in sorted(directories):
+            key = hashlib.sha256(str(source).encode()).hexdigest()
+            target = (artifact_root / "input_snapshots" / "directories" / key / source.name).resolve()
+            shutil.copytree(destination / source.relative_to(artifact_root.resolve()), target, symlinks=True)
+            relocated[str(source)] = str(target)
+    except Exception:
+        for name in moved + (["input_snapshots"] if "input_snapshots" not in original_names else []):
+            active = artifact_root / name
+            if active.is_dir() and not active.is_symlink():
+                shutil.rmtree(active)
+            elif active.exists() or active.is_symlink():
+                active.unlink()
+        for name in moved:
+            shutil.move(str(destination / name), artifact_root / name)
+        destination.rmdir()
+        raise
+    for row in (run_inputs or {}).get("inputs", []):
+        if row.get("path") in relocated:
+            row.setdefault("Original source path", row["path"])
+            row["path"] = relocated[row["path"]]
+        elif any(path in relocated for path in row.get("paths", [])):
+            row.setdefault("Original source paths", row["paths"])
+            row["paths"] = [relocated.get(path, path) for path in row["paths"]]
     return str(destination)
 
 
@@ -955,6 +954,7 @@ def prepare_run(
     provider_session: Path | None = None,
     lifecycle: str | None = None,
     execution_profile: str | None = None,
+    input_data: dict[str, object] | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     try:
@@ -1059,9 +1059,12 @@ def prepare_run(
         raise ValueError("legacy_worktree_artifacts_require_explicit_migration")
     # Validate supplied input and provider bindings before creating, archiving, or
     # overwriting any run artifact. This makes invalid retries transactional.
-    if playbook == "feature_delivery" and input_manifest is None:
+    if input_manifest is not None and input_data is not None:
+        raise ValueError("run_input_manifest_sources_conflict")
+    if playbook == "feature_delivery" and input_manifest is None and input_data is None:
         raise ValueError("run_input_manifest_required")
-    validated_supplied = load_manifest(input_manifest, explicit=True) if input_manifest else None
+    validated_supplied = (load_manifest(input_manifest, explicit=True) if input_manifest else
+                          validate_manifest(input_data, explicit=True) if input_data is not None else None)
     previous_run_bindings = {}
     if continuation and not (remediation_reentry or planning_recovery) and (artifact_root / "role_bindings.json").is_file():
         previous_run_bindings = json.loads((artifact_root / "role_bindings.json").read_text())
@@ -1154,6 +1157,7 @@ def prepare_run(
     artifact_root.mkdir(parents=True, exist_ok=True)
     archived = None if continuation else _archive_existing_run(
         artifact_root, archive_stale_run, validated_supplied, parent_context,
+        input_manifest.resolve() if input_manifest else None,
     )
     if prior:
         archived_path = _archive_recovery(artifact_root, prior["identity"]["Run ID"])
@@ -1590,11 +1594,13 @@ def main() -> int:
     parser.add_argument("--timebox-minutes", type=int)
     parser.add_argument("--primary-question")
     parser.add_argument("--success-criterion")
-    parser.add_argument(
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument(
         "--input-manifest",
         type=Path,
         help="JSON file containing current-run context, decisions, and supporting artifacts",
     )
+    inputs.add_argument("--input-json", help="Current-run input manifest as a JSON object")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -1603,6 +1609,9 @@ def main() -> int:
     if not args.execution_repository or not args.work_item or not args.playbook:
         parser.error("--execution-repository, --work-item, and --playbook are required")
     try:
+        input_data = json.loads(args.input_json) if args.input_json is not None else None
+        if args.input_json is not None and not isinstance(input_data, dict):
+            raise ValueError("run_input_manifest_invalid")
         result = prepare_run(
             args.execution_repository,
             args.work_item,
@@ -1623,6 +1632,7 @@ def main() -> int:
             args.provider_session,
             args.lifecycle,
             args.execution_profile,
+            input_data,
         )
     except (OSError, ValueError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

@@ -266,15 +266,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `Authorized operations: ["test_run"]` or `["build_run"]`, only when the user has actually authorized those actions.
    A delegated objective cannot grant that authorization. Check executed commands against these constraints before
    fan-in; reject unauthorized results rather than merging them. Keep the full restrictions in every assignment.
-   Use `apply_patch` to create the JSON file when no manifest file already exists. Keep it at
-   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/intake_inputs.json`, after the source-access and completeness gates.
-   Every generated run file, including this intake manifest, must remain inside that work-item directory. Never
-   stage run files at either repository root, in a sibling `.thoughts` path, or in a temporary directory. The intake
-   manifest alone is not a prior run; preparation validates it before initializing the run in the same directory.
+   Before creating any current-run file, perform the related-run status projection described below. Construct the
+   manifest in the preparation command and pass its shell-quoted JSON object using `--input-json`. Preparation
+   validates it and archives all prior root entries under `runs/` before writing current-run files. Keep every
+   generated run file inside the work-item directory; do not stage intake files in that directory or elsewhere.
    The manifest has top-level `schema_version: 1`, `status: "explicit"`, a non-empty `inputs` list, and the canonical
    `precedence_rule`; if that key is omitted, preparation applies the canonical default, while an explicit empty value
-   remains invalid. Pass the file to `scripts/prepare_run.py` with
-   `--input-manifest <path>`. The helper copies and hashes it as
+   remains invalid. The helper writes and hashes it as
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/run_inputs.json`; if the prepared result reports
    `run_input_manifest_status: generated_minimum`, stop with `run_input_manifest_required` before activating a worker.
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
@@ -286,7 +284,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    attempted route and its impact, tell the user promptly, and continue only if independent evidence can still produce
    a useful partial result; otherwise stop for the indispensable input. Required Jira or Sentry source-access
    gates still apply; supporting artifacts do not waive those gates.
-   Complete these access-status updates in the source manifest before passing it to `prepare_run.py`.
+   Complete these access-status updates in the source manifest before passing its JSON to `prepare_run.py`.
    After preparation, `run_inputs.json` is frozen; do not edit it or replace its recorded hash.
    Record later access observations in the current-run evidence and work record, referencing the original Input IDs.
    For Feature Delivery, add `Asset source: true` to the input row for each explicitly supplied file, folder, or URL
@@ -318,7 +316,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    ]}
    ```
    Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
-   `--input-manifest <path>`. Native Codex resolves the parent from its thread identity and turn metadata.
+   `--input-json '<JSON object>'`. Native Codex resolves the parent from its thread identity and turn metadata.
+   An explicitly supplied existing manifest can instead be passed with `--input-manifest <path>`.
    Keep parent operations individually auditable. When batching independent reads in one `functions.exec`, use
    `Promise.allSettled([...])` with one explicit `tools.exec_command({...})` call per file and literal arguments at
    every call site. Do not build path arrays, use `.map`, loops, helper functions, or computed/interpolated tool
@@ -345,7 +344,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
    `specification_assessment + specification_assessment`, or `feature_delivery + feature_implementation` for approved
    remediation. For Feature Delivery planning-to-remediation re-entry, pass `--continuation --remediation-reentry`
-   and `--approval-reference <explicit approval reference>` with the current input manifest. Prior runtime closure
+   and `--approval-reference <explicit approval reference>` with the current input JSON. Prior runtime closure
    must be reconciled first. The helper preserves prior artifacts and accepted decisions, starts a new remediation
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
    sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.

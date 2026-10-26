@@ -761,6 +761,28 @@ class ParentContext(unittest.TestCase):
                     self.assertTrue(inputs.is_file())
                     self.assertTrue((inputs.parent / "run_inputs.json").is_file())
 
+    def test_inline_manifest_command_passes_parent_audit_and_prepares(self):
+        inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "User's current issue",
+            "Source or path": "User", "Authority": "User", "Status": "Verified"}]}
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        args = ["python3", str(script), "--execution-repository", str(self.root), "--work-item", "ITEM-1",
+                "--playbook", "techops_issue_remediation", "--input-json", json.dumps(inputs),
+                "--provider-session", str(self.source)]
+        self.rows.append(self.call("exec_command", cmd=shlex.join(args)))
+        self.assertEqual(self.audit(artifact_root=self.root / ".thoughts/ITEM-1")["status"], "passed")
+        result = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        prepared = json.loads(result.stdout)
+        self.assertEqual(prepared["run_input_manifest_status"], "explicit")
+        self.assertFalse((self.root / ".thoughts/ITEM-1/intake_inputs.json").exists())
+        prior = {p.relative_to(self.root): p.read_bytes() for p in (self.root / ".thoughts").rglob("*") if p.is_file()}
+        args[args.index("--input-json") + 1] = "null"
+        rejected = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertEqual(json.loads(rejected.stdout)["reason"], "run_input_manifest_invalid")
+        self.assertEqual(prior, {p.relative_to(self.root): p.read_bytes()
+                                 for p in (self.root / ".thoughts").rglob("*") if p.is_file()})
+
     def test_preparation_is_transactional_and_activation_rechecks_later_reads(self):
         inputs = self.root / "inputs.json"
         inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
