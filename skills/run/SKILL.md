@@ -629,6 +629,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    pass that exact same-parent fragment as `--identity-session` to recover only its observed handle/UUID mapping;
    never import old analytical output through this route. Refresh status after redispatch; completed historical rows
    never stand in for current execution.
+   After a targeted `read_thread`, rerun the collector without `--observation`; preserve the native `Latest turn ID`
+   instead of handwriting a receipt from rounded timestamps. `worker_final_response_turn_id_required` is a
+   Coordinator receipt error: refresh the raw status read and re-export without reactivating the worker or spending
+   its analytical correction allowance.
    Before Documenter activation run the packaged guard. The ordinary planning guard checks required upstream results,
    current provider audits and asset evidence references. Coordinator repairs provider/closure bookkeeping; owning
    analysts repair their evidence; Documenter writes the handoff from those supplied facts. Never send provider

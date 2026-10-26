@@ -722,6 +722,7 @@ def _provider_status_time(value: object) -> str | None:
 def targeted_thread_observation(raw: object, handle: str, thread_id: str, dispatch_at: str,
                                 observed_at: str, operation: str) -> dict | None:
     """Normalize only provider status metadata; never retain a thread's analytical text."""
+    raw = provider_json_value(raw)
     if isinstance(raw, dict) and isinstance(raw.get("content"), list) and not (raw.get("isError") or raw.get("error")):
         raw = provider_json_value(raw["content"])
     if operation != "read_thread" or not isinstance(raw, dict):

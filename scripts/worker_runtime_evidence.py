@@ -64,7 +64,7 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
     elif turn_started_at:
         started = timestamp(turn_started_at)
         if started != timestamp(latest["timestamp"]):
-            raise ValueError("worker_final_response_turn_context_mismatch")
+            raise ValueError("worker_final_response_turn_id_required")
     else:
         started = timestamp(latest["timestamp"])
     started = max(started, after)

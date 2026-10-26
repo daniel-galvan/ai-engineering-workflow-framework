@@ -151,9 +151,26 @@ class WorkerResponseMaterialization(unittest.TestCase):
                 "Latest turn started at": provider_turn_start.isoformat().replace("+00:00", "Z"),
                 "Latest turn ID": CORRECTION_TURN, "Latest turn completed at": completed_at,
                 "Latest turn status": "completed", "Thread status": "idle"}
+            provider_response = {"thread": {"id": CHILD, "status": {"type": "idle"}}, "turns": [{
+                "id": CORRECTION_TURN, "status": "completed", "startedAt": provider_turn_start.timestamp(),
+                "completedAt": (base + timedelta(seconds=10)).timestamp()}]}
+            parent_rows.extend([
+                event(13.1, "response_item", {"type": "custom_tool_call", "name": "exec", "call_id": "status",
+                    "input": "const r = await tools.mcp__codex_app__read_thread(" + json.dumps({
+                        "threadId": CHILD, "turnLimit": 1, "includeOutputs": False})
+                        + "); text(JSON.stringify(r.content[0].text));"}),
+                event(14, "response_item", {"type": "custom_tool_call_output", "call_id": "status", "output": [
+                    {"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                    {"type": "input_text", "text": json.dumps(json.dumps(provider_response))}]}),
+            ])
+            parent.write_text("\n".join(json.dumps(row) for row in parent_rows) + "\n")
             ledger = read_runtime_events(parent, PARENT, run["runtime_evidence"]["run_started_at"])
-            trace = export_worker_trace(ledger, child, role, observation, run_id=run["run_id"], artifact_root=root)
+            trace = export_worker_trace(ledger, child, role, run_id=run["run_id"], artifact_root=root)
             self.assertEqual(trace["audit"]["status"], "passed", trace["audit"]["errors"])
+            self.assertEqual(trace["status_observation"]["Latest turn ID"], CORRECTION_TURN)
+            with self.assertRaisesRegex(ValueError, "worker_final_response_turn_id_required"):
+                worker_final_response(child, trace["last_dispatch_at"], observed_at,
+                                      observation["Latest turn started at"])
             with self.assertRaisesRegex(ValueError, "worker_final_response_turn_context_mismatch"):
                 worker_final_response(child, trace["last_dispatch_at"], observed_at,
                                       observation["Latest turn started at"], turn_id=TURN)

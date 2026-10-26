@@ -204,8 +204,11 @@ no supported targeted read can verify a worker, retain the blocked receipt.
 
 Add `terminal_observations` to `runtime_closure.json`: one row per exact spawn identifier with `Provider handle`,
 `Provider status`, `Last dispatch at`, `Observed at`, and `Status source` (`list_agents`, `read_thread`, or
-`wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn started at`, `Latest turn status`, and `Thread
-status`. Preserve the provider's exact inactive status: completed, idle, failed, stopped, interrupted, or cancelled.
+`wait_threads`). Targeted rows also carry `Thread ID`, `Latest turn ID`, `Latest turn started at`, `Latest turn status`,
+and `Thread status`. Preserve the exact inactive status: completed, idle, failed, stopped, interrupted, or cancelled.
+After a targeted read, rerun the collector without `--observation` so it preserves the native turn ID; do not
+handwrite a receipt from rounded timestamps. `worker_final_response_turn_id_required` is a Coordinator receipt
+error: refresh the raw status read and re-export, without reactivating the worker or consuming its correction budget.
 `read_thread` with `notLoaded` may qualify only with an inactive latest turn and no newer dispatch. Worker result
 acceptance still requires completed execution. Preserve the raw response in current-run evidence. Do
 not dispatch follow-ups during collection; a later follow-up invalidates that worker's observation and requires another
