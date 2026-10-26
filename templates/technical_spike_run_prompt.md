@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Run Prompt
-version: 0.5.30
+version: 0.5.31
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-23
+last_updated: 2026-10-26
 depends_on:
   - ../contracts/workflow_execution.md
   - ../playbooks/technical_spike.md

@@ -1,45 +1,45 @@
 {
   "schema_version": 1,
-  "library_release": "0.5.30",
-  "last_updated": "2026-10-23",
+  "library_release": "0.5.31",
+  "last_updated": "2026-10-26",
   "library_release_status": "Coordinated document and plugin release; Git revisions identify snapshots.",
   "plugin_package": {
     "name": "ai-engineering-workflows",
-    "version": "0.5.30+codex.20261026173944"
+    "version": "0.5.31+codex.20261026191244"
   },
   "framework": {
     "path": "frameworks/investigation.md",
-    "version": "0.5.30"
+    "version": "0.5.31"
   },
   "execution_contract": {
     "path": "contracts/workflow_execution.md",
-    "version": "0.5.30"
+    "version": "0.5.31"
   },
   "playbooks": {
     "feature_delivery": {
       "path": "playbooks/feature_delivery.md",
-      "version": "0.5.30"
+      "version": "0.5.31"
     },
     "sentry_issue_remediation": {
       "path": "playbooks/sentry_issue_remediation.md",
-      "version": "0.5.30"
+      "version": "0.5.31"
     },
     "technical_spike": {
       "path": "playbooks/technical_spike.md",
-      "version": "0.5.30"
+      "version": "0.5.31"
     },
     "techops_issue_remediation": {
       "path": "playbooks/techops_issue_remediation.md",
-      "version": "0.5.30"
+      "version": "0.5.31"
     },
     "vulnerability_investigation": {
       "path": "playbooks/vulnerability_investigation.md",
-      "version": "0.5.30"
+      "version": "0.5.31"
     }
   },
   "provider_policies": {
     "providers/codex/model_effort_policy.md": {
-      "version": "0.5.30",
+      "version": "0.5.31",
       "baseline_id": "codex-role-policy-gpt61-sol-luna-orchestrator-v20261001"
     }
   },
@@ -53,68 +53,68 @@
     ]
   },
   "documents": {
-    "CONTRIBUTING.md": "0.5.30",
-    "OPERATING_GUIDE.md": "0.5.30",
-    "PLAYBOOK_CATALOG.md": "0.5.30",
-    "SETUP.md": "0.5.30",
-    "contracts/claims.md": "0.5.30",
-    "contracts/code_review.md": "0.5.30",
-    "contracts/portable_implementation_handoff.md": "0.5.30",
-    "contracts/workflow_execution.md": "0.5.30",
-    "contracts/workflow_execution_guidance.md": "0.5.30",
-    "contracts/workflow_vocabulary.md": "0.5.30",
-    "examples/feature_delivery.md": "0.5.30",
-    "examples/sentry_issue_remediation.md": "0.5.30",
-    "examples/technical_spike.md": "0.5.30",
-    "examples/techops_issue_remediation.md": "0.5.30",
-    "examples/vulnerability_investigation.md": "0.5.30",
-    "frameworks/experimental/workflow_evaluation.md": "0.5.30",
-    "frameworks/investigation.md": "0.5.30",
-    "integrations/jira.md": "0.5.30",
-    "integrations/sentry.md": "0.5.30",
-    "playbooks/feature_delivery.md": "0.5.30",
-    "playbooks/sentry_issue_remediation.md": "0.5.30",
-    "playbooks/technical_spike.md": "0.5.30",
-    "playbooks/techops_issue_remediation.md": "0.5.30",
-    "playbooks/vulnerability_investigation.md": "0.5.30",
-    "providers/claude.md": "0.5.30",
-    "providers/codex/model_effort_policy.md": "0.5.30",
-    "providers/codex.md": "0.5.30",
-    "providers/cursor.md": "0.5.30",
-    "providers/generic.md": "0.5.30",
-    "roles/current_state_investigator.md": "0.5.30",
-    "roles/dependency_analyst.md": "0.5.30",
-    "roles/documenter.md": "0.5.30",
-    "roles/implementer.md": "0.5.30",
-    "roles/orchestrator.md": "0.5.30",
-    "roles/repository_integrator.md": "0.5.30",
-    "roles/reviewer.md": "0.5.30",
-    "roles/solution_architect.md": "0.5.30",
-    "roles/tester.md": "0.5.30",
-    "skills/architecture_mapping.md": "0.5.30",
-    "skills/build_and_test.md": "0.5.30",
-    "skills/dependency_mapping.md": "0.5.30",
-    "skills/destination_integration.md": "0.5.30",
-    "skills/failure_diagnosis.md": "0.5.30",
-    "skills/operational_readiness.md": "0.5.30",
-    "skills/repository_exploration.md": "0.5.30",
-    "skills/work_item_context.md": "0.5.30",
-    "skills/work_record_maintenance.md": "0.5.30",
-    "skills/workflow_planning.md": "0.5.30",
-    "strategies/collaborative.md": "0.5.30",
-    "templates/code_review.md": "0.5.30",
-    "templates/evaluation_work_record_addendum.md": "0.5.30",
-    "templates/feature_delivery_run_prompt.md": "0.5.30",
-    "templates/implementation_handoff.md": "0.5.30",
-    "templates/implementation_plan.md": "0.5.30",
-    "templates/sentry_issue_run_prompt.md": "0.5.30",
-    "templates/sentry_work_record.md": "0.5.30",
-    "templates/specification_assessment.md": "0.5.30",
-    "templates/spike_report.md": "0.5.30",
-    "templates/technical_spike_run_prompt.md": "0.5.30",
-    "templates/techops_issue_run_prompt.md": "0.5.30",
-    "templates/validation_report.md": "0.5.30",
-    "templates/vulnerability_issue_run_prompt.md": "0.5.30",
-    "templates/work_record.md": "0.5.30"
+    "CONTRIBUTING.md": "0.5.31",
+    "OPERATING_GUIDE.md": "0.5.31",
+    "PLAYBOOK_CATALOG.md": "0.5.31",
+    "SETUP.md": "0.5.31",
+    "contracts/claims.md": "0.5.31",
+    "contracts/code_review.md": "0.5.31",
+    "contracts/portable_implementation_handoff.md": "0.5.31",
+    "contracts/workflow_execution.md": "0.5.31",
+    "contracts/workflow_execution_guidance.md": "0.5.31",
+    "contracts/workflow_vocabulary.md": "0.5.31",
+    "examples/feature_delivery.md": "0.5.31",
+    "examples/sentry_issue_remediation.md": "0.5.31",
+    "examples/technical_spike.md": "0.5.31",
+    "examples/techops_issue_remediation.md": "0.5.31",
+    "examples/vulnerability_investigation.md": "0.5.31",
+    "frameworks/experimental/workflow_evaluation.md": "0.5.31",
+    "frameworks/investigation.md": "0.5.31",
+    "integrations/jira.md": "0.5.31",
+    "integrations/sentry.md": "0.5.31",
+    "playbooks/feature_delivery.md": "0.5.31",
+    "playbooks/sentry_issue_remediation.md": "0.5.31",
+    "playbooks/technical_spike.md": "0.5.31",
+    "playbooks/techops_issue_remediation.md": "0.5.31",
+    "playbooks/vulnerability_investigation.md": "0.5.31",
+    "providers/claude.md": "0.5.31",
+    "providers/codex/model_effort_policy.md": "0.5.31",
+    "providers/codex.md": "0.5.31",
+    "providers/cursor.md": "0.5.31",
+    "providers/generic.md": "0.5.31",
+    "roles/current_state_investigator.md": "0.5.31",
+    "roles/dependency_analyst.md": "0.5.31",
+    "roles/documenter.md": "0.5.31",
+    "roles/implementer.md": "0.5.31",
+    "roles/orchestrator.md": "0.5.31",
+    "roles/repository_integrator.md": "0.5.31",
+    "roles/reviewer.md": "0.5.31",
+    "roles/solution_architect.md": "0.5.31",
+    "roles/tester.md": "0.5.31",
+    "skills/architecture_mapping.md": "0.5.31",
+    "skills/build_and_test.md": "0.5.31",
+    "skills/dependency_mapping.md": "0.5.31",
+    "skills/destination_integration.md": "0.5.31",
+    "skills/failure_diagnosis.md": "0.5.31",
+    "skills/operational_readiness.md": "0.5.31",
+    "skills/repository_exploration.md": "0.5.31",
+    "skills/work_item_context.md": "0.5.31",
+    "skills/work_record_maintenance.md": "0.5.31",
+    "skills/workflow_planning.md": "0.5.31",
+    "strategies/collaborative.md": "0.5.31",
+    "templates/code_review.md": "0.5.31",
+    "templates/evaluation_work_record_addendum.md": "0.5.31",
+    "templates/feature_delivery_run_prompt.md": "0.5.31",
+    "templates/implementation_handoff.md": "0.5.31",
+    "templates/implementation_plan.md": "0.5.31",
+    "templates/sentry_issue_run_prompt.md": "0.5.31",
+    "templates/sentry_work_record.md": "0.5.31",
+    "templates/specification_assessment.md": "0.5.31",
+    "templates/spike_report.md": "0.5.31",
+    "templates/technical_spike_run_prompt.md": "0.5.31",
+    "templates/techops_issue_run_prompt.md": "0.5.31",
+    "templates/validation_report.md": "0.5.31",
+    "templates/vulnerability_issue_run_prompt.md": "0.5.31",
+    "templates/work_record.md": "0.5.31"
   }
 }

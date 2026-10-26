@@ -1,12 +1,12 @@
 ---
 
 title: Tester Role
-version: 0.5.30
+version: 0.5.31
 status: Pilot
 category: Validation
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-10-23
+last_updated: 2026-10-26
 required_documents:
 
   - ../frameworks/investigation.md

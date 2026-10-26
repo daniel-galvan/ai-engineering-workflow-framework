@@ -1,9 +1,9 @@
 ---
 title: Playbook Architecture Catalog
-version: 0.5.30
+version: 0.5.31
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-23
+last_updated: 2026-10-26
 ---
 
 # Playbook Architecture Catalog
@@ -26,11 +26,11 @@ means the lifecycle is unavailable. Historical exercise scope remains visible wi
 <!-- BEGIN GENERATED PLAYBOOK STATUS -->
 | Playbook | Version | Updated | Status | Maturity | Supported lifecycles | Exercise scope | Exercise status | Validation summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [Feature Delivery](playbooks/feature_delivery.md) | 0.5.30 | 2026-10-23 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: pending; standard_remediation: exercised; deep_remediation: pending | prior scope retained; continuity and partial Draft fixes locally checked, not live-validated |
-| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | 0.5.30 | 2026-10-23 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: exercised; standard_remediation: exercised; deep_remediation: exercised | all combinations exercised; mixed reliability; not delivery-validated |
-| [Technical Spike](playbooks/technical_spike.md) | 0.5.30 | 2026-10-23 | Pilot | exercising | planning | standard + planning; deep + planning | standard_planning: exercised; deep_planning: pending; standard_remediation: unsupported; deep_remediation: unsupported | tiered Jira retrieval contract-tested; live rerun pending |
-| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | 0.5.30 | 2026-10-23 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: pending; standard_remediation: exercised; deep_remediation: pending | prior exercise scope retained; tiered Jira retrieval not live-validated |
-| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | 0.5.30 | 2026-10-23 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: pending; standard_remediation: exercised; deep_remediation: pending | prior exercise scope retained; tiered Jira retrieval not live-validated |
+| [Feature Delivery](playbooks/feature_delivery.md) | 0.5.31 | 2026-10-26 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: pending; standard_remediation: exercised; deep_remediation: pending | prior scope retained; continuity and partial Draft fixes locally checked, not live-validated |
+| [Sentry Issue Remediation](playbooks/sentry_issue_remediation.md) | 0.5.31 | 2026-10-26 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: exercised; standard_remediation: exercised; deep_remediation: exercised | all combinations exercised; mixed reliability; not delivery-validated |
+| [Technical Spike](playbooks/technical_spike.md) | 0.5.31 | 2026-10-26 | Pilot | exercising | planning | standard + planning; deep + planning | standard_planning: exercised; deep_planning: pending; standard_remediation: unsupported; deep_remediation: unsupported | tiered Jira retrieval contract-tested; live rerun pending |
+| [TechOps Issue Remediation](playbooks/techops_issue_remediation.md) | 0.5.31 | 2026-10-26 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: pending; standard_remediation: exercised; deep_remediation: pending | prior exercise scope retained; tiered Jira retrieval not live-validated |
+| [Vulnerability Investigation](playbooks/vulnerability_investigation.md) | 0.5.31 | 2026-10-26 | Pilot | exercising | planning, remediation | standard + planning; deep + planning; standard + remediation; deep + remediation | standard_planning: exercised; deep_planning: pending; standard_remediation: exercised; deep_remediation: pending | prior exercise scope retained; tiered Jira retrieval not live-validated |
 <!-- END GENERATED PLAYBOOK STATUS -->
 
 ## Shared Architecture
