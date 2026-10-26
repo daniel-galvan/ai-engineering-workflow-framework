@@ -129,6 +129,53 @@ def _materialize_worker_response(root: Path, role: str, dispatch_at: str, respon
     return receipt
 
 
+def _misassigned_role(trace: dict, root: Path) -> str | None:
+    try:
+        from runtime_checks import observed_dispatch_binding
+    except ModuleNotFoundError:
+        from scripts.runtime_checks import observed_dispatch_binding
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    expected = worker_binding(bindings, trace["spawn"]["agent"])
+    if observed_dispatch_binding(trace, root):
+        return None
+    spawn = {key: value for key, value in trace["spawn"].items()
+             if key not in {"dispatch_file", "dispatch_file_sha256", "binding_agent", "dispatch_proof_source"}}
+    for role in bindings.get("bindings", {}):
+        if role != expected and observed_dispatch_binding({**trace, "spawn": {**spawn, "agent": role}}, root):
+            return role
+    return None
+
+
+def _misassigned_rejection(root: Path, role: str, receipt: dict, current: dict, ledger: dict, run_id: str) -> bool:
+    try:
+        path = Path(receipt["trace"])
+        if path.resolve().parent != root.resolve() or hashlib.sha256(path.read_bytes()).hexdigest() != receipt["sha256"]:
+            return False
+        rejected = json.loads(path.read_text())
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        handle = rejected["spawn"]["provider_handle"]
+        thread = rejected["thread_id"]
+        return (receipt["run_id"] == rejected["run_id"] == current["run_id"] == run_id
+                and rejected["audit"]["status"] == "rejected"
+                and current["audit"]["status"] == "passed"
+                and current["audit"]["errors"] == []
+                and worker_binding(bindings, rejected["spawn"]["agent"]) == role
+                and worker_binding(bindings, current["spawn"]["agent"]) == role
+                and handle == receipt["Provider handle"] and thread != current["thread_id"]
+                and handle != current["spawn"]["provider_handle"]
+                and rejected["spawn"]["thread_id"] == thread
+                and current["spawn"]["thread_id"] == current["thread_id"]
+                and ledger["thread_mappings"].get(handle) == thread
+                and ledger["thread_mappings"].get(current["spawn"]["provider_handle"]) == current["thread_id"]
+                and current["last_dispatch_at"] == latest_worker_dispatch(
+                    ledger, current["spawn"]["provider_handle"])["Last dispatch at"]
+                and rejected["last_dispatch_at"] == receipt["Last dispatch at"]
+                == latest_worker_dispatch(ledger, handle)["Last dispatch at"]
+                and bool(_misassigned_role(rejected, root)))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dict | None = None, *, run_id: str | None = None, artifact_root: Path | None = None) -> dict:
     """Export tool activity only, using the exact parent mapping and fresh status receipt."""
     try:
@@ -205,6 +252,12 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         result["run_id"] = run_id
     if artifact_root is not None and not result["spawn"].get("dispatch_file"):
         result["spawn"].update(observed_dispatch_binding(result, artifact_root))
+    if artifact_root is not None:
+        actual = _misassigned_role(result, artifact_root)
+        if actual:
+            bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+            raise ValueError("worker_trace_role_mismatch:expected=" + worker_binding(bindings, agent)
+                             + ";observed=" + actual + ";thread=" + thread)
     launch_errors = launch_binding_errors(result, artifact_root, agent, ledger) if artifact_root else []
     result["launch_errors"] = launch_errors
     response_errors = []
@@ -609,7 +662,8 @@ def main() -> int:
                     repair = json.loads(packet_path.read_text()).get("activation_repairs", {}).get(role, {})
                     same_turn = (pending[role]["Last dispatch at"] == trace["last_dispatch_at"]
                                  and pending[role]["Provider handle"] == trace["spawn"]["provider_handle"])
-                    if same_turn or repair.get("Rejected trace SHA256") == pending[role]["sha256"]:
+                    if (same_turn or repair.get("Rejected trace SHA256") == pending[role]["sha256"]
+                            or _misassigned_rejection(args.trace.parent, role, pending[role], trace, result, run_id)):
                         pending.pop(role)
                 result["rejected_results"] = pending
         args.ledger.write_text(json.dumps(result, indent=2) + "\n")

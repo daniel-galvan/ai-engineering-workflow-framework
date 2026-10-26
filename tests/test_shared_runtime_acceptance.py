@@ -1,5 +1,6 @@
 """Shared receipt acceptance across prepared playbook roles; no live workers."""
 
+import hashlib
 import json
 import io
 import subprocess
@@ -455,6 +456,96 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(packet["worker_results"][0]["Outcome"], "complete")
             merge_result(packet_path, role, trace=path)
             self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
+
+    def test_wrong_worker_session_is_a_collector_error_and_correct_session_can_be_collected(self):
+        from scripts import worker_runtime_evidence as collector
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, role, *_ = fixture
+            self.export(fixture)
+            ledger_path = Path(run["runtime_evidence"]["ledger"])
+            observation_path = root / "observation.json"
+            observation_path.write_text(json.dumps(fixture[7]))
+            wrong_path, correct_path = root / "wrong.trace.json", root / "correct.trace.json"
+            arguments = [str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", str(ledger_path),
+                "--worker-session", str(root / "child.jsonl"), "--observation", str(observation_path),
+                "--agent", "repository_integrator", "--trace", str(wrong_path)]
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), redirect_stdout(output):
+                self.assertEqual(collector.main(), 2)
+            self.assertIn("worker_trace_role_mismatch:expected=repository_integrator;observed=" + role,
+                          json.loads(output.getvalue())["reason"])
+            self.assertFalse(wrong_path.exists())
+            if ledger_path.exists():
+                self.assertNotIn("repository_integrator", json.loads(ledger_path.read_text()).get("rejected_results", {}))
+            arguments[arguments.index("--agent") + 1] = role
+            arguments[arguments.index("--trace") + 1] = str(correct_path)
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), redirect_stdout(output):
+                self.assertEqual(collector.main(), 0, output.getvalue())
+            self.assertEqual(json.loads(correct_path.read_text())["audit"]["status"], "passed")
+
+    def test_previously_recorded_wrong_session_rejection_requires_verified_identity(self):
+        from scripts import worker_runtime_evidence as collector
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, _, *_ = fixture
+            original, ledger = self.export(fixture)
+            wrong = json.loads(json.dumps(original))
+            wrong["spawn"] = {"agent": "repository_integrator",
+                              "provider_handle": original["spawn"]["provider_handle"], "thread_id": CHILD}
+            wrong["audit"] = {"status": "rejected", "errors": ["provider_binding_not_delivered"]}
+            path = root / "wrong.trace.json"
+            path.write_text(json.dumps(wrong))
+            receipt = {"trace": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                       "run_id": run["run_id"], "Provider handle": wrong["spawn"]["provider_handle"],
+                       "Last dispatch at": wrong["last_dispatch_at"]}
+            current = {"run_id": run["run_id"], "thread_id": "00000000-0000-0000-0000-000000000099",
+                       "spawn": {"agent": "repository_integrator", "provider_handle": "/root/repo",
+                                 "thread_id": "00000000-0000-0000-0000-000000000099"},
+                       "last_dispatch_at": wrong["last_dispatch_at"], "audit": {"status": "passed", "errors": []}}
+            ledger["thread_mappings"]["/root/repo"] = current["thread_id"]
+            ledger["events"].append({"Provider handle": "/root/repo", "Operation": "spawn_agent",
+                                     "Last dispatch at": current["last_dispatch_at"]})
+            check = lambda: collector._misassigned_rejection(root, "repository_integrator", receipt, current, ledger, run["run_id"])
+            self.assertTrue(check())
+            saved = path.read_bytes()
+            ledger_path = Path(run["runtime_evidence"]["ledger"])
+            ledger_path.write_text(json.dumps({**ledger, "rejected_results": {"repository_integrator": receipt}}))
+            observation_path = root / "observation.json"
+            observation_path.write_text(json.dumps(fixture[7]))
+            arguments = [str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", str(ledger_path),
+                "--worker-session", str(root / "child.jsonl"), "--observation", str(observation_path),
+                "--agent", "repository_integrator", "--trace", str(root / "correct.trace.json")]
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), patch.object(collector, "read_runtime_events", return_value=ledger), \
+                 patch.object(collector, "export_worker_trace", return_value=current), \
+                 patch.object(collector, "register_worker_audit"), redirect_stdout(output):
+                self.assertEqual(collector.main(), 0, output.getvalue())
+            self.assertEqual(json.loads(ledger_path.read_text())["rejected_results"], {})
+            self.assertEqual(path.read_bytes(), saved)
+            current["thread_id"] = CHILD
+            self.assertFalse(check())
+            current["thread_id"] = "00000000-0000-0000-0000-000000000099"
+            receipt["sha256"] = "0" * 64
+            self.assertFalse(check())
+
+    def test_wrong_session_with_recorded_dispatch_metadata_is_rejected_before_worker_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = list(self.fixture(directory, "techops_issue_remediation", "current_state_investigator"))
+            run, root, role, _, _, parent, *_ = fixture
+            packet = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"][role]
+            dispatch = root / "activation.txt"
+            arguments = json.loads(parent[1]["payload"]["arguments"])
+            arguments["message"] = runtime.dispatch_notice(packet, dispatch.read_text(), dispatch)
+            parent[1]["payload"]["arguments"] = json.dumps(arguments)
+            fixture[2] = "repository_integrator"
+            with self.assertRaisesRegex(ValueError, "worker_trace_role_mismatch:expected=repository_integrator;observed=" + role):
+                self.export(fixture)
 
     def test_collector_audit_registration_failure_does_not_reject_passed_worker(self):
         from scripts import worker_runtime_evidence as collector

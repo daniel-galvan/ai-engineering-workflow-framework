@@ -632,6 +632,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    instead of handwriting a receipt from rounded timestamps. `worker_final_response_turn_id_required` is a
    Coordinator receipt error: refresh the raw status read and re-export without reactivating the worker or spending
    its analytical correction allowance.
+   If collection returns `worker_trace_role_mismatch`, select the exact child session mapped to the requested worker
+   in the current ledger and export again. This is a Coordinator collection error, not a rejected worker result.
+   For an earlier wrong-session rejected trace, retain it and export the correctly mapped worker to a new trace path;
+   the collector reconciles the rejection only when authenticated dispatch and thread evidence prove the mismatch.
    Before Documenter activation run the packaged guard. The ordinary planning guard checks required upstream results,
    current provider audits and asset evidence references. Coordinator repairs provider/closure bookkeeping; owning
    analysts repair their evidence; Documenter writes the handoff from those supplied facts. Never send provider
