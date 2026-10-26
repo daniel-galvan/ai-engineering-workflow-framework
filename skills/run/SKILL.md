@@ -416,8 +416,16 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `task created at or after the captured current turn start`
    is the current run and MUST NOT be classified as a related run. After the initial passing preflight, inspect only
    status metadata for provider-visible tasks and sibling artifact roots; do not inspect prior thread content, task
-   summaries, or stale analytical files. From `role_bindings.json` and `runtime_dispatches.json`, use only the prior
-   parent and worker thread IDs; do not read analytical fields. The parent-context audit permits one exact
+   summaries, or stale analytical files. Before calling the provider status tools, run this read-only helper using
+   the `provider_session` returned by preflight:
+   ```bash
+   python3 <framework-root>/scripts/prepare_run.py --status-projection \
+     --execution-repository <path> --work-item <ID> --provider-session <preflight-provider-session>
+   ```
+   Execute its complete `projection` value as the `functions.exec` source, exactly once. The helper derives the prior
+   parent and worker IDs from current-root identity receipts and emits no historical analytical content; do not guess
+   an empty list or run the projection before this helper. If it blocks, stop without creating run artifacts.
+   The parent-context audit permits one exact
    related-run status projection for the current work item per turn. It uses the recency-limited
    `list_threads({limit: 50})` only to find visible tasks with this work-item key, then calls `read_thread` by exact
    ID for each visible related task and each prior parent/worker ID. The wrapper requests one turn with outputs
@@ -425,7 +433,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    For `notLoaded`, one immediate `wait_threads` lookup can confirm terminal status only when it reports
    `inactiveStatus` and a terminal latest-turn status for the same ID. An unavailable lookup emits
    `status: unavailable` and blocks archival. Do not call these tools outside this projection.
-   Use this exact projection, replacing `ECHO-2806` with the current work-item key,
+   The following shows this exact projection as an example, replacing `ECHO-2806` with the current work-item key,
    `PARENT-THREAD-UUID` with the provider-verified current parent thread ID, and `PRIOR-WORKER-THREAD-UUID` with the
    JSON array of prior parent and worker thread IDs (use `[]` when empty):
    ```javascript

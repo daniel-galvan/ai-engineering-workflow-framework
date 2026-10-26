@@ -356,6 +356,56 @@ class ParentContext(unittest.TestCase):
         result = self.audit(artifact_root=artifact_root)
         self.assertIn("parent_unassigned_thread_read:" + CHILD, result["errors"])
 
+    def test_status_projection_helper_includes_prior_parent_and_worker_without_writing(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        artifact_root.mkdir(parents=True)
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "parent_context": {"parent_thread_id": TURN}, "private": "do not expose"}))
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "thread_mappings": {"/root/prior-worker": CHILD}, "events": [], "failed_dispatches": [],
+            "private": "do not expose"}))
+        self.audit()
+        before = {path.name: path.read_bytes() for path in artifact_root.iterdir()}
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        command = ["python3", str(script), "--status-projection", "--execution-repository", str(self.root),
+                   "--work-item", "ECHO-2806", "--provider-session", str(self.source)]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["prior_thread_ids"], sorted([TURN, CHILD]))
+        self.assertEqual(output["projection"], related_run_status_projection_source(
+            "ECHO-2806", PARENT, tuple(sorted([TURN, CHILD]))))
+        self.assertNotIn("do not expose", result.stdout)
+        self.assertEqual(before, {path.name: path.read_bytes() for path in artifact_root.iterdir()})
+        call = {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+                "call_id": "status", "input": output["projection"]}}
+        response = {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "status",
+                    "output": [{"type": "text", "text": json.dumps([
+                        {"id": TURN, "status": "idle"}, {"id": CHILD, "status": "completed"}])}]}}
+        self.rows.extend([self.call("exec_command", cmd=shlex.join(command)), call, response])
+        audit = self.audit(artifact_root=artifact_root)
+        self.assertEqual(audit["status"], "passed", audit["errors"])
+        self.assertEqual(stale_run_status_errors(audit, "active"), [])
+
+        ledger = artifact_root / "runtime_dispatches.json"
+        ledger.write_text('{"thread_mappings": {"/root/prior-worker": "invalid"}, "events": []}')
+        rejected = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("stale_run_thread_identity_invalid", json.loads(rejected.stdout)["reason"])
+        self.assertEqual(ledger.read_text(), '{"thread_mappings": {"/root/prior-worker": "invalid"}, "events": []}')
+
+    def test_status_projection_helper_does_not_create_a_new_artifact_root(self):
+        self.audit()
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        result = subprocess.run(["python3", str(script), "--status-projection", "--execution-repository",
+                                 str(self.root), "--work-item", "ECHO-2806", "--provider-session", str(self.source)],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["prior_thread_ids"], [])
+        self.assertEqual(output["projection"], related_run_status_projection_source("ECHO-2806", PARENT))
+        self.assertFalse((self.root / ".thoughts").exists())
+
     def test_related_status_probe_requires_correlated_minimal_output(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
         artifact_root.mkdir(parents=True)

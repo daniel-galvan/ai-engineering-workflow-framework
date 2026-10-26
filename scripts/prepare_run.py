@@ -1570,6 +1570,29 @@ def self_test() -> None:
     run_self_check("prepare_run", "self_test")
 
 
+def status_projection(execution_repository: Path, work_item: str, provider_session: Path | None) -> dict:
+    try:
+        from provider_runtime import current_parent_session, prior_run_status_thread_ids, related_run_status_projection_source
+    except ModuleNotFoundError:
+        from scripts.provider_runtime import current_parent_session, prior_run_status_thread_ids, related_run_status_projection_source
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
+        raise ValueError("invalid_work_item")
+    if not execution_repository.resolve().is_dir():
+        raise ValueError("execution_repository_unavailable")
+    session = current_parent_session(provider_session)
+    if session is None:
+        raise ValueError("provider_current_session_unavailable")
+    with session.open() as stream:
+        header = json.loads(next(stream, ""))
+    if header.get("type") != "session_meta":
+        raise ValueError("provider_session_parent_mismatch")
+    parent = header.get("payload", {}).get("id")
+    repository, _ = resolve_repository_paths(execution_repository)
+    ids = prior_run_status_thread_ids(repository / ".thoughts" / work_item, parent)
+    return {"status": "ready", "parent_thread_id": parent, "prior_thread_ids": list(ids),
+            "projection": related_run_status_projection_source(work_item, parent, ids)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execution-repository", type=Path)
@@ -1588,6 +1611,8 @@ def main() -> int:
     parser.add_argument("--planning-recovery", action="store_true",
                         help="Preserve a closed planning invocation and start an explicitly authorized recovery")
     parser.add_argument("--archive-stale-run", action="store_true")
+    parser.add_argument("--status-projection", action="store_true",
+                        help="Produce the redacted prior-run status query without changing artifacts")
     parser.add_argument("--workflow-objective")
     parser.add_argument("--requested-outcome")
     parser.add_argument("--started-at", help="RFC 3339 end-to-end task start")
@@ -1605,6 +1630,16 @@ def main() -> int:
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return 0
+    if args.status_projection:
+        if not args.execution_repository or not args.work_item:
+            parser.error("--status-projection requires --execution-repository and --work-item")
+        try:
+            print(json.dumps(status_projection(args.execution_repository, args.work_item, args.provider_session),
+                             sort_keys=True))
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
+            return 2
         return 0
     if not args.execution_repository or not args.work_item or not args.playbook:
         parser.error("--execution-repository, --work-item, and --playbook are required")
