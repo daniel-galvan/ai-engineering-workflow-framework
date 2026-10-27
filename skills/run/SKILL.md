@@ -430,7 +430,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `list_threads({limit: 50})` only to find visible tasks with this work-item key, then calls `read_thread` by exact
    ID for each visible related task and each prior parent/worker ID. The wrapper requests one turn with outputs
    disabled and emits only the exact thread ID and status; never expose titles, summaries, previews, or turn contents.
-   For `notLoaded`, one immediate `wait_threads` lookup can confirm terminal status only when it reports
+   For `idle`, the projection returns the terminal latest-turn status when available; accept that terminal status.
+   An idle thread with an absent or nonterminal latest turn is `unavailable` and blocks archival. For `notLoaded`,
+   one immediate `wait_threads` lookup can confirm terminal status only when it reports
    `inactiveStatus` and a terminal latest-turn status for the same ID. An unavailable lookup emits
    `status: unavailable` and blocks archival. Do not call these tools outside this projection.
    The following shows this exact projection as an example, replacing `ECHO-2806` with the current work-item key,
@@ -452,10 +454,16 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
        if (typeof hostId === 'string') args.hostId = hostId;
        const result = await tools.mcp__codex_app__read_thread(args);
        if (result.isError) return {id, status: 'unavailable'};
-       const thread = JSON.parse(result.content[0].text).thread;
+       const read = JSON.parse(result.content[0].text);
+       const thread = read.thread;
        if (thread.id !== id || typeof thread.status?.type !== 'string')
          return {id, status: 'unavailable'};
        let status = thread.status.type;
+       if (status === 'idle') {
+         const latestTurn = read.turns?.[0]?.status;
+         status = ['completed', 'failed', 'stopped', 'interrupted', 'cancelled'].includes(latestTurn)
+           ? latestTurn : 'unavailable';
+       }
        if (status === 'notLoaded') {
          const target = {threadId: id};
          if (typeof hostId === 'string') target.hostId = hostId;

@@ -295,6 +295,24 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(example.strip(), projection)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
+    def test_related_status_projection_requires_terminal_latest_turn_for_idle(self):
+        projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
+        for latest, expected in (("completed", "completed"), ("failed", "failed"),
+                                 ("inProgress", "unavailable"), (None, "unavailable")):
+            with self.subTest(latest=latest):
+                read = {"thread": {"id": CHILD, "status": {"type": "idle"}},
+                        "turns": [] if latest is None else [{"status": latest}]}
+                stub = ("const tools = {mcp__codex_app__list_threads: async () => ({content: [{text: "
+                        + json.dumps(json.dumps({"threads": []})) + "}]}),\n"
+                        "mcp__codex_app__read_thread: async () => ({content: [{text: "
+                        + json.dumps(json.dumps(read)) + "}]})};\n"
+                        "const text = value => process.stdout.write(value);\n")
+                result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=stub + projection,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), [{"id": CHILD, "status": expected}])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
     def test_related_status_projection_marks_unavailable_exact_ids(self):
         projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
         inventory = {"threads": [{"id": TURN, "title": "ECHO-2806 other", "hostId": "local"}]}
