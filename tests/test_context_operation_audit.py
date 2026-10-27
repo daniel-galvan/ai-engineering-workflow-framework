@@ -110,6 +110,31 @@ class ContextOperationAudit(unittest.TestCase):
         return [{"type": "custom_tool_call", "name": "functions.exec", "call_id": "read-1", "input": source},
                 {"type": "custom_tool_call_output", "call_id": "read-1", "output": output}]
 
+    def test_verified_framework_search_lines_do_not_count_as_archive_reads(self):
+        package = self.repository / "framework"
+        package.mkdir()
+        source = package / "example.py"
+        content = 'example = "/tmp/.thoughts/OTHER/runs/prior/plan.md"'
+        source.write_text(content + "\n")
+        bindings_path = self.root / "role_bindings.json"
+        bindings = json.loads(bindings_path.read_text())
+        bindings["framework_package"]["root"] = str(package)
+        bindings_path.write_text(json.dumps(bindings))
+        command = 'rg -n example ' + str(package)
+        call = 'const r = await tools.exec_command(' + json.dumps({"cmd": command}) + '); text(r.output);'
+        line = str(source) + ':1:' + content
+        trace = {"tool_trace": self.paired(call, line)}
+        self.assertEqual(runtime.context_trace_errors(trace, artifact_root=self.root), [])
+        for change in (line + "\n/tmp/.thoughts/OTHER/runs/prior/secret.md",
+                       line.replace('example =', 'invented =')):
+            trace["tool_trace"][1]["output"] = change
+            self.assertIn("forbidden_context_reference:archived_artifact",
+                          runtime.context_trace_errors(trace, artifact_root=self.root))
+        trace["tool_trace"][1]["output"] = line
+        trace["tool_trace"][0]["input"] += '; await tools.exec_command({cmd:"cat /tmp/.thoughts/OTHER/runs/prior/secret.md"});'
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      runtime.context_trace_errors(trace, artifact_root=self.root))
+
     def test_authorized_thread_output_does_not_execute_quoted_memory_commands(self):
         trace = self.dispatch_trace(["codex://threads/" + SOURCE])
         code = ('const [issue, thread] = await Promise.all(['
@@ -178,6 +203,15 @@ class ContextOperationAudit(unittest.TestCase):
         trace["tool_trace"][0]["input"] += (
             'await tools.exec_command({cmd:"cat ' + archive + '"});')
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_inverted_listing_filter_is_name_only(self):
+        command = "rg --files --hidden " + str(self.root) + " | rg -v '/runs/'"
+        trace = {"tool_trace": [{"type": "function_call", "name": "exec_command",
+                                  "arguments": {"cmd": command}}]}
+        self.assertEqual(runtime.context_trace_errors(trace, artifact_root=self.root), [])
+        trace["tool_trace"][0]["arguments"]["cmd"] += " ; cat /tmp/.thoughts/OTHER/runs/old/secret"
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      runtime.context_trace_errors(trace, artifact_root=self.root))
 
     def test_mixed_reads_and_listing_keep_read_content_audited(self):
         report = self.repository / "report.md"

@@ -579,7 +579,8 @@ def _listing_command(command: object) -> bool:
                            "-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf"}))
             filter_only = (previous == "|" and (
                 (tool in {"head", "tail"} and all(re.fullmatch(r"-?(?:n|[0-9]+)", arg) for arg in args[1:]))
-                or (tool in {"rg", "grep"} and len(args) == 2 and not args[1].startswith("-"))))
+                or (tool in {"rg", "grep"} and ((len(args) == 2 and not args[1].startswith("-"))
+                    or (len(args) == 3 and args[1] in {"-v", "--invert-match"} and not args[2].startswith("-"))))))
             metadata = (tool == "wc" and len(args) in {3, 4}
                         and all(arg in {"-l", "-c", "-lc", "-cl"} for arg in args[1:-1])
                         and not args[-1].startswith("-")
@@ -1420,6 +1421,55 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
     return reads
 
 
+def _framework_searches(trace: dict, root: Path | None) -> dict[str, list[Path]]:
+    """Identify single literal searches restricted to the prepared framework package."""
+    try:
+        package = Path(json.loads((root / "role_bindings.json").read_text())["framework_package"]["root"]).resolve()
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    searches = {}
+    for row in trace.get("tool_trace", []):
+        if not isinstance(row, dict) or not row.get("call_id"):
+            continue
+        operations = _tool_operations(row)
+        if len(operations) != 1 or operations[0][0] != "exec_command":
+            continue
+        command = operations[0][1].get("cmd", "")
+        if not isinstance(command, str) or any(c in command for c in "$`;&<>\n"):
+            continue
+        try:
+            lexer = shlex.shlex(command, posix=True, punctuation_chars="|")
+            lexer.whitespace_split = True
+            tokens = list(lexer)
+            if "|" in tokens or len(tokens) < 4 or tokens[:2] != ["rg", "-n"]:
+                continue
+            targets = [Path(token).resolve() for token in tokens[3:] if Path(token).is_absolute()]
+            if len(targets) == len(tokens) - 3 and all(path.is_relative_to(package) for path in targets):
+                searches[row["call_id"]] = targets
+        except (ValueError, OSError):
+            continue
+    return searches
+
+
+def _without_verified_search_lines(value: str, targets: list[Path]) -> str:
+    remaining = []
+    for line in value.splitlines(keepends=True):
+        match = re.match(r"^(/[^\n:]+):(\d+):(.*?)(?:\r?\n)?$", line)
+        if match:
+            path = Path(match[1]).resolve()
+            try:
+                if (any(path == target or path.is_relative_to(target) for target in targets)
+                        and path.stat().st_size <= 262144):
+                    lines = path.read_text().splitlines()
+                    number = int(match[2])
+                    if 0 < number <= len(lines) and lines[number - 1] == match[3]:
+                        continue
+            except (OSError, UnicodeError):
+                pass
+        remaining.append(line)
+    return "".join(remaining)
+
+
 def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
                          input_paths: tuple[str, ...] = (), artifact_root: Path | None = None) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
@@ -1445,6 +1495,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
+    framework_searches = _framework_searches(trace, root) if root else {}
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
              if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
     instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(
@@ -1465,6 +1516,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:
+            if row.get("call_id") in framework_searches:
+                candidate = _without_verified_search_lines(candidate, framework_searches[row["call_id"]])
             for content in call_contents.get("dispatch", []) + call_contents.get("ancestor", []):
                 candidate = candidate.replace(content, "")
         listing = any(path[:len(prefix)] == prefix for prefix in listings)
@@ -1477,7 +1530,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
             for instruction in instructions:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
-            checked = candidate if ancestor_instruction_output or label == "archived_artifact" else value
+            checked = candidate if ancestor_instruction_output or label == "archived_artifact" or (output and row.get("call_id") in framework_searches) else value
             if label == "archived_artifact" and listing:
                 continue
             match = pattern.search(checked)
