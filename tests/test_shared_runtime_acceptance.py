@@ -88,6 +88,40 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             terminal_closure(ledger)
 
+    def test_compact_worker_status_is_correlated_and_fails_closed(self):
+        from scripts.provider_runtime import targeted_status_projection_source
+        from scripts.worker_runtime_evidence import terminal_closure
+        for state in ("completed", "running", "wrong_thread", "missing_turn", "stale", "truncated", "modified_source", "modified_envelope"):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                run, root, _, time, event, parent, *_ = self.fixture(directory)
+                status = {"thread": {"id": CHILD, "status": {"type": "notLoaded"}},
+                          "turns": [{"id": CHILD, "status": "completed", "startedAt": time(5),
+                                     "completedAt": time(10)}]}
+                if state == "running": status["thread"]["status"]["type"] = "active"
+                if state == "wrong_thread": status["thread"]["id"] = PARENT
+                if state == "missing_turn": status["turns"] = []
+                if state == "stale": status["turns"][0]["startedAt"] = time(1)
+                code = targeted_status_projection_source(CHILD)
+                if state in {"modified_source", "modified_envelope"}: code += '\ntext("untrusted");'
+                if state == "modified_envelope":
+                    status = {"content": [{"type": "text", "text": json.dumps(status)}]}
+                parent += [event(19, "response_item", type="function_call", namespace="collaboration",
+                                 name="list_agents", call_id="inventory", arguments="{}"),
+                           event(20, "response_item", type="function_call_output", call_id="inventory",
+                                 output=json.dumps({"agents": []})),
+                           event(21, "response_item", type="custom_tool_call", name="exec", call_id="status",
+                                 input=code),
+                           event(22, "response_item", type="custom_tool_call_output", call_id="status",
+                                 output=[{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                                         {"type": "input_text", "text": json.dumps(status)[:-5] if state == "truncated" else json.dumps(status)}])]
+                source = root / "parent.jsonl"
+                source.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+                ledger = read_runtime_events(source, PARENT, run["runtime_evidence"]["run_started_at"])
+                if state == "completed":
+                    self.assertEqual(terminal_closure(ledger)["runtime_closure"][0]["Runtime status"], "Terminal")
+                else:
+                    with self.assertRaises(ValueError): terminal_closure(ledger)
+
     def test_failure_before_worker_dispatch_has_verified_zero_handle_closure(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")

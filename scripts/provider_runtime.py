@@ -710,6 +710,19 @@ def timestamp(value: str) -> datetime:
     return result
 
 
+def targeted_status_projection_source(thread_id: str) -> str:
+    """Return the exact status-only provider call recognized by the runtime ledger."""
+    if not isinstance(thread_id, str) or not UUID.fullmatch(thread_id):
+        raise ValueError("targeted_status_thread_id_invalid")
+    return (f"const r = await tools.mcp__codex_app__read_thread({{threadId: {json.dumps(thread_id)}, "
+            "turnLimit: 1, includeOutputs: false});\n"
+            "if (r.isError || !Array.isArray(r.content) || r.content.length !== 1) throw new Error('status unavailable');\n"
+            "const d = JSON.parse(r.content[0].text);\n"
+            "const t = d.turns?.[0];\n"
+            "text(JSON.stringify({thread: {id: d.thread?.id, status: d.thread?.status}, "
+            "turns: t ? [{id: t.id, status: t.status, startedAt: t.startedAt, completedAt: t.completedAt}] : []}));")
+
+
 def provider_json_value(value):
     if (isinstance(value, list) and len(value) == 2
             and all(isinstance(row, dict) and row.get("type") == "input_text"
@@ -855,9 +868,19 @@ def read_runtime_events(
             if key in seen:
                 continue
             seen.add(key)
-            if payload.get("type") == "custom_tool_call":
+            custom_status_call = payload.get("type") == "custom_tool_call"
+            compact = []
+            if custom_status_call:
                 operations = _tool_operations(payload)
-                if len(operations) != 1 or operations[0][0].rsplit("__", 1)[-1] not in {"read_thread", "wait_threads"}:
+                source = payload.get("input", "")
+                compact = [thread for thread in mappings.values()
+                           if isinstance(source, str) and source.strip() == targeted_status_projection_source(thread)]
+                if compact:
+                    operations = [("mcp__codex_app__read_thread", {"threadId": compact[0], "turnLimit": 1,
+                                                                    "includeOutputs": False})]
+                elif isinstance(source, str) and "const d = JSON.parse(r.content[0].text);" in source:
+                    continue
+                elif len(operations) != 1 or operations[0][0].rsplit("__", 1)[-1] not in {"read_thread", "wait_threads"}:
                     continue
                 name, arguments = operations[0]
                 payload = {**payload, "type": "function_call", "name": name, "arguments": arguments}
@@ -954,7 +977,8 @@ def read_runtime_events(
                         probes.append({"Provider handle": handles[0], "Thread ID": thread})
                 if probes and isinstance(payload.get("call_id"), str):
                     pending_status_probes[payload["call_id"]] = {
-                        "Operation": operation, "Attempted at": row["timestamp"], "Targets": probes}
+                        "Operation": operation, "Attempted at": row["timestamp"], "Targets": probes,
+                        "Custom call": custom_status_call, "Compact": bool(compact)}
             elif payload.get("type") in {"function_call_output", "custom_tool_call_output"}:
                 call_id = payload.get("call_id")
                 if (call_id not in pending_followups and call_id not in spawn_calls
@@ -989,7 +1013,9 @@ def read_runtime_events(
                     for target in probe["Targets"]:
                         dispatch = latest_worker_dispatch({"events": events, "failed_dispatches": failed_dispatches},
                                                           target["Provider handle"], include_failed=True)
-                        observation = (None if explicit_error else targeted_thread_observation(
+                        unverified_projection = (probe["Custom call"] and not probe["Compact"]
+                                                 and isinstance(raw, dict) and "thread" in raw and "turns" in raw)
+                        observation = (None if explicit_error or unverified_projection else targeted_thread_observation(
                             raw, target["Provider handle"], target["Thread ID"], dispatch["Last dispatch at"],
                             row["timestamp"], probe["Operation"]))
                         status_probes.append({**target, "Operation": probe["Operation"],

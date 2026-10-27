@@ -61,6 +61,13 @@ class ExecutionLayers(unittest.TestCase):
                 self.assertIn(control, adapter)
         self.assertIn("../integrations/jira.md#feature-delivery-source-access-gate", adapter)
 
+    def test_techops_starts_independent_integration_before_failure_path_finishes(self):
+        launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
+        self.assertIn("After issue-evidence is accepted, assess the conditional integration trigger immediately", launcher)
+        self.assertIn("activate both independent workers before waiting for either", launcher)
+        self.assertIn("merge completed results sequentially", launcher)
+        self.assertIn("Fix Design still waits for both required accepted results", launcher)
+
     def test_idle_worker_corrections_require_an_execution_triggering_dispatch(self):
         for path in ("providers/codex.md", "skills/run/SKILL.md"):
             text = (ROOT / path).read_text()
@@ -192,7 +199,9 @@ class ExecutionLayers(unittest.TestCase):
                          "observation timeout", "completion is unknown", "authentication failures",
                          "`permission_denied`", "`not_found`", "Jira writes", "retry due time",
                          "without creating files", "existing authorized artifact root",
-                         "do not consume an analytical correction allowance"):
+                         "do not consume an analytical correction allowance", "60-second observation checkpoint",
+                         "confirmed provider cancellation", "does not prove provider cancellation",
+                         "one distinct configured connector", "same exact issue", "counts toward the three-call limit"):
             with self.subTest(boundary=boundary):
                 self.assertIn(boundary, recovery)
         launcher = (ROOT / "skills/run/SKILL.md").read_text()

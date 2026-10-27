@@ -38,15 +38,25 @@ retrieval policy.
 Apply this policy to required read-only Jira connector operations, including the initial exact-issue probe and
 worker evidence reads. After a completed `MCP_REQUEST_TIMEOUT`, explicit request timeout, connection reset, or
 temporary service-unavailable response, allow at most two retries: wait 1 minute before the first retry and
-3 minutes before the second retry. There are at most three calls total for the same read. Retry the same connector,
-operation, and arguments in the same invocation; do not switch routes or create a fresh run to reset this allowance.
+3 minutes before the second retry. There are at most three calls total for the same read. Keep retries in the same
+invocation; do not create a fresh run to reset this allowance.
+For an exact-issue read only, after a completed transient failure or confirmed provider cancellation, one retry may use
+one distinct configured connector for the same exact issue and requested fields, if that route supports them. It
+counts toward the three-call limit and follows the same 1-minute and 3-minute retry schedule. Verify the returned issue
+key; record the original route, reason, alternate route, and result. For all other retries, use the same connector,
+operation, and arguments. Do not
+switch routes for item-specific denial, not-found, invalid input, writes, or an unresolved in-flight request.
 Stop retrying immediately on success or a non-transient failure. Do not automatically retry authentication failures,
 `permission_denied`, `not_found`, invalid requests, or Jira writes. An ambiguous failure is not evidence of a
 transient error.
 
-A pending call or an observation timeout is not a completed connector failure. Keep waiting on the existing handle;
-never issue a duplicate request while that call is pending or its completion is unknown. Use interruptible waits,
-honor cancellation and any existing deadline, and do not retry early if the required delay cannot be honored.
+Use a 60-second observation checkpoint for each required read. If it remains pending, report the wait and continue only
+independent work. A wrapper or wait timeout does not prove provider cancellation; request cancellation only when the
+provider supports it, and treat it as completed only after confirmed provider cancellation. If cancellation is
+unavailable or unconfirmed, keep waiting on the existing handle. A pending call or an observation timeout is not a
+completed connector failure. Never issue a duplicate request while that call is pending or its completion is unknown.
+Use interruptible waits, honor cancellation and any existing deadline, and do not retry early if the required delay
+cannot be honored.
 Announce each failure and scheduled retry. Preserve the connector, operation, arguments, safe failure code, attempt
 number, failure time, retry due time, and outcome in current-run evidence. Before initialization, keep this evidence
 in the chat/tool trace without creating files; afterward use the existing authorized artifact root. Preserve accepted

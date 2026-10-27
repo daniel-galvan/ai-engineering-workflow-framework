@@ -612,6 +612,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `prepare_run.py`; when unavailable, stop with `worker_runtime_unavailable` without creating user-owned tasks.
    For TechOps and Feature Delivery planning, the Coordinator runs the prepared
    `scripts/stage_documenter_packet.py` transition after analytical fan-in and before Documenter activation.
+   For TechOps planning: After issue-evidence is accepted, assess the conditional integration trigger immediately
+   using that accepted evidence. When it establishes an independent repository, service, deployment, ownership, or
+   contract seam, activate both independent workers before waiting for either: `failure-path` and
+   `repository-integration`. Keep their assignments and outputs separate and merge completed results sequentially.
+   If integration needs the completed failure trace, record that dependency and wait; never invent a seam or start an
+   unnecessary worker. Fix Design still waits for both required accepted results before its own activation.
    For an idle or completed Codex worker, use `followup_task` to start a correction turn on its existing handle.
    `send_message` only delivers a message; it does not start an idle worker. Use it for steering an active turn,
    then verify consumption. After an idle-worker correction, verify a new turn actually started before waiting
@@ -969,8 +975,18 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    self-attestation alone do not establish
    terminal status. If no supported targeted read can verify a worker, retain the blocked receipt.
 
-   Do not hand-build `terminal_observations`. Preserve the raw `read_thread` response in the current parent session and
-   rerun the prepared collector with `--closure`; it maps the response to the exact provider handle and emits only
+   Do not hand-build `terminal_observations`. For each literal child UUID, execute this exact status-only projection
+   in a separate `functions.exec` call, replacing only the example UUID. It avoids truncating a full thread response;
+   the collector recognizes this exact source and correlates it with the dispatched worker. Do not alter the projection.
+   ```javascript
+   const r = await tools.mcp__codex_app__read_thread({threadId: "00000000-0000-0000-0000-000000000002", turnLimit: 1, includeOutputs: false});
+   if (r.isError || !Array.isArray(r.content) || r.content.length !== 1) throw new Error('status unavailable');
+   const d = JSON.parse(r.content[0].text);
+   const t = d.turns?.[0];
+   text(JSON.stringify({thread: {id: d.thread?.id, status: d.thread?.status}, turns: t ? [{id: t.id, status: t.status, startedAt: t.startedAt, completedAt: t.completedAt}] : []}));
+   ```
+   A direct untruncated `read_thread` response remains supported. Rerun the prepared collector with `--closure`;
+   it maps the response to the exact provider handle and emits only
    status metadata. It selects the latest post-dispatch inventory or targeted `read_thread` result per handle, then
    validates the combined receipt. Successful `wait_threads` output is not currently normalized for closure; use
    `read_thread` for a successful targeted observation. Do not dispatch follow-ups during collection; a later

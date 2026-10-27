@@ -693,6 +693,19 @@ class ParentContext(unittest.TestCase):
         self.rows[-1]["payload"]["input"] = source + '\nawait tools.exec_command({cmd:"cat /repo/other"})'
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_compact_status_projection_is_audited_as_one_assigned_read(self):
+        from scripts.provider_runtime import targeted_status_projection_source
+        self.rows.append({"type": "event_msg", "payload": {"item": {
+            "type": "SubAgentActivity", "kind": "started", "agent_path": "/root/first",
+            "agent_thread_id": CHILD}}})
+        self.rows.append({"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+            "input": targeted_status_projection_source(CHILD)}})
+        self.assertEqual(self.audit()["status"], "passed")
+        self.rows[-1]["payload"]["input"] = targeted_status_projection_source(TURN)
+        self.assertIn("parent_unassigned_thread_read:" + TURN, self.audit()["errors"])
+        skill = (Path(__file__).resolve().parents[1] / "skills/run/SKILL.md").read_text()
+        self.assertIn(targeted_status_projection_source(TURN), "\n".join(line.strip() for line in skill.splitlines()))
+
     def test_literal_wait_batch_checks_every_target_and_rejects_extra_operations(self):
         from scripts.provider_runtime import _literal_parent_thread_read_batch
         source = ('const ids=' + json.dumps([CHILD, TURN]) + ';\n'
