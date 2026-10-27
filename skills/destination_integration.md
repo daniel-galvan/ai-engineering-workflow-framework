@@ -1,12 +1,12 @@
 ---
 
 title: Destination Integration
-version: 0.5.32
+version: 0.5.33
 status: Pilot
 category: Integration
 provider_independent: true
 owner: Engineering
-last_updated: 2026-10-26
+last_updated: 2026-10-27
 ---
 
 # Destination Integration

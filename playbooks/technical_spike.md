@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.32
+version: 0.5.33
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning
@@ -13,7 +13,7 @@ exercise_status_standard_remediation: unsupported
 exercise_status_deep_remediation: unsupported
 validation_summary: tiered Jira retrieval contract-tested; live rerun pending
 owner: Engineering
-last_updated: 2026-10-26
+last_updated: 2026-10-27
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md

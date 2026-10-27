@@ -1,9 +1,9 @@
 ---
 title: Portable Implementation Handoff
-version: 0.5.32
+version: 0.5.33
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-26
+last_updated: 2026-10-27
 depends_on:
   - ../contracts/portable_implementation_handoff.md
 ---

@@ -1,12 +1,12 @@
 ---
 
 title: Implementer Role
-version: 0.5.32
+version: 0.5.33
 status: Pilot
 category: Implementation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-10-26
+last_updated: 2026-10-27
 required_documents:
 
   - ../frameworks/investigation.md

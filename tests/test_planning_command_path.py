@@ -324,7 +324,7 @@ class PlanningCommandPath(unittest.TestCase):
                         "artifacts": [str(plan), str(root / "work_record.md")],
                         "execution": "standard/planning; source changes none; runtime closure pending",
                         "provenance": "plugin ai-engineering-workflows " + preflight["plugin_version"] + "; framework revision "
-                            + preflight["framework_revision"] + " (clean); playbook " + playbook + " 0.5.32."}
+                            + preflight["framework_revision"] + " (clean); playbook " + playbook + " 0.5.33."}
                     if playbook == "feature_delivery":
                         assets = root / "asset_manifest.json"
                         plan.write_text(plan.read_text() + "\n## Asset Baseline\n\n"
@@ -648,7 +648,7 @@ class PlanningCommandPath(unittest.TestCase):
                     "artifacts": [str(root / name) for name in handoff_artifacts],
                     "execution": playbook + " remediation completed; external release was not performed.",
                     "provenance": "plugin ai-engineering-workflows " + preflight["plugin_version"] +
-                        "; framework revision " + preflight["framework_revision"] + "; " + playbook + " 0.5.32"})
+                        "; framework revision " + preflight["framework_revision"] + "; " + playbook + " 0.5.33"})
                 for name, status, purpose in durable_outputs:
                     packet["durable_artifacts"].append({"Artifact": name, "Path": str(root / name),
                         "Status": status, "Purpose": purpose})

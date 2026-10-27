@@ -1,9 +1,9 @@
 ---
 title: Technical Spike Example
-version: 0.5.32
+version: 0.5.33
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-26
+last_updated: 2026-10-27
 depends_on:
   - ../playbooks/technical_spike.md
   - ../templates/technical_spike_run_prompt.md
