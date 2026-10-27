@@ -365,6 +365,23 @@ def current_parent_session(source: Path | None = None) -> Path | None:
 
 def _literal_parent_thread_read_batch(source: str) -> list[tuple[str, dict]] | None:
     """Expand only the literal assigned-thread status loop used by coordinator closure."""
+    wait_batch = re.fullmatch(r'\s*const ids\s*=\s*(\[[\s\S]*?\]);\s*(?P<body>[\s\S]*)', source)
+    wait_body = ('const rs=await Promise.allSettled(ids.map(threadId=>tools.mcp__codex_app__wait_threads({targets:[{threadId,hostId:"local"}],timeoutMs:0})));\n'
+                 'for(let i=0;i<rs.length;i++){\n'
+                 ' if(rs[i].status!=="fulfilled"){text(JSON.stringify({i,error:String(rs[i].reason)}));continue;}\n'
+                 ' const raw=rs[i].value.content?.[0]?.text||"";\n'
+                 ' try {const d=JSON.parse(raw); const p=d.polls?.[0]||{}; text(JSON.stringify({i,threadId:ids[i],wake:d.wake,thread:p.thread,latestTurn:p.latestTurn,revision:p.revision,cursor:p.cursor}));} catch {text(JSON.stringify({i,raw:raw.slice(0,200)}));}\n'
+                 '}')
+    if wait_batch and wait_batch["body"].strip() == wait_body:
+        try:
+            identities = json.loads(wait_batch[1])
+        except json.JSONDecodeError:
+            return None
+        if (isinstance(identities, list) and identities and len(identities) <= 8
+                and all(isinstance(identity, str) and UUID.fullmatch(identity) for identity in identities)):
+            return [("mcp__codex_app__wait_threads", {"targets": [{"threadId": identity, "hostId": "local"}],
+                     "timeoutMs": 0}) for identity in identities]
+        return None
     match = re.fullmatch(
         r'\s*const ids\s*=\s*(\[[\s\S]*?\]);\s*'
         r'for\s*\(const\s*\[threadId,\s*handle\]\s*of\s*ids\)\s*\{\s*'

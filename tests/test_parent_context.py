@@ -693,6 +693,21 @@ class ParentContext(unittest.TestCase):
         self.rows[-1]["payload"]["input"] = source + '\nawait tools.exec_command({cmd:"cat /repo/other"})'
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_literal_wait_batch_checks_every_target_and_rejects_extra_operations(self):
+        from scripts.provider_runtime import _literal_parent_thread_read_batch
+        source = ('const ids=' + json.dumps([CHILD, TURN]) + ';\n'
+            'const rs=await Promise.allSettled(ids.map(threadId=>tools.mcp__codex_app__wait_threads({targets:[{threadId,hostId:"local"}],timeoutMs:0})));\n'
+            'for(let i=0;i<rs.length;i++){\n'
+            ' if(rs[i].status!=="fulfilled"){text(JSON.stringify({i,error:String(rs[i].reason)}));continue;}\n'
+            ' const raw=rs[i].value.content?.[0]?.text||"";\n'
+            ' try {const d=JSON.parse(raw); const p=d.polls?.[0]||{}; text(JSON.stringify({i,threadId:ids[i],wake:d.wake,thread:p.thread,latestTurn:p.latestTurn,revision:p.revision,cursor:p.cursor}));} catch {text(JSON.stringify({i,raw:raw.slice(0,200)}));}\n'
+            '}\n')
+        rows = _literal_parent_thread_read_batch(source)
+        self.assertEqual([row[1]["targets"][0]["threadId"] for row in rows], [CHILD, TURN])
+        self.assertIsNone(_literal_parent_thread_read_batch(source + 'await tools.exec_command({cmd:"cat x"});'))
+        self.assertIsNone(_literal_parent_thread_read_batch(source.replace(CHILD, "not-a-uuid")))
+        self.assertIsNone(_literal_parent_thread_read_batch(source.replace('timeoutMs:0', 'timeoutMs:0, extra:true')))
+
     def test_literal_const_tool_arguments_are_audited_but_dynamic_values_fail_closed(self):
         patch = ("*** Begin Patch\n*** Add File: " + str(self.root / ".thoughts" / "ITEM-1" / "runs" /
                  "current" / "receipt.json") + "\n+{}\n*** End Patch")
