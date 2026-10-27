@@ -224,7 +224,7 @@ class TechOpsCorrections(unittest.TestCase):
             self.assertEqual(worker["Provider-observed model/effort"], "gpt-6-luna / high")
 
     def test_techops_pre_release_rejects_nonterminal_planning_identity(self):
-        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.31",
+        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.32",
                                "Lifecycle": "planning", "State": "handoff", "Workflow outcome": "incomplete"}}
         with self.assertRaisesRegex(ValueError, "TechOps planning.*ready_for_implementation"):
             finalizer._validate_pre_release_state(packet)
@@ -290,7 +290,7 @@ class TechOpsCorrections(unittest.TestCase):
             self.assertIn("worker_activation_requires_planning_recovery", errors(continued))
 
     def test_pre_handoff_checks_upstream_audits_without_accepting_rejected_handoff(self):
-        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.31",
+        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.32",
                               "Lifecycle": "planning", "Engineering outcome": "plan_only"},
                   "worker_results": [{"Worker": name, "Outcome": "complete"}
                                      for name in ("issue-evidence", "failure-path", "fix-design", "handoff")],
@@ -459,7 +459,7 @@ class TechOpsCorrections(unittest.TestCase):
         self.assertIn("runtime not released", packet["handoff"]["execution"])
 
     def test_techops_summary_is_not_a_readiness_token(self):
-        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.31",
+        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.32",
                                "State": "awaiting_input", "Workflow outcome": "completed",
                                "Engineering outcome": "partially_solved"},
                   "handoff": {"workflow_result": "The source stages edits; a draft-only persistence plan is proposed; production is unverified.",
@@ -475,7 +475,7 @@ class TechOpsCorrections(unittest.TestCase):
                 packet["handoff"]["workflow_result"] = token
                 with self.assertRaisesRegex(ValueError, "plain-language work summary"):
                     finalizer._validate_handoff(packet, check_provenance=False)
-        packet["identity"]["Playbook / version"] = "playbooks/feature_delivery.md / 0.5.31"
+        packet["identity"]["Playbook / version"] = "playbooks/feature_delivery.md / 0.5.32"
         finalizer._validate_handoff(packet, check_provenance=False)
 
     def test_terminal_failure_preserves_work_summary_without_publishing(self):

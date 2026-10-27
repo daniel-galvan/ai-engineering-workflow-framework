@@ -1,6 +1,6 @@
 ---
 title: Evaluation Work Record Addendum
-version: 0.5.31
+version: 0.5.32
 status: Experimental / Deferred
 owner: Engineering
 last_updated: 2026-10-26

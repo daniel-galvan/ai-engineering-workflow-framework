@@ -45,7 +45,7 @@ class PlaybookCatalog(unittest.TestCase):
 
     def test_each_metadata_change_requires_refresh(self):
         original = self.source.read_text()
-        for old, new in (("0.5.29", "0.5.31"), ("2026-10-22", "2026-10-26"),
+        for old, new in (("0.5.29", "0.5.32"), ("2026-10-22", "2026-10-26"),
                          ("Pilot", "Draft"), ("exercising", "draft"),
                          ("standard + planning", "deep + planning"), ("live rerun pending", "new run pending"),
                          ("exercise_status_standard_planning: pending", "exercise_status_standard_planning: exercised")):

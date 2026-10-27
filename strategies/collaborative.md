@@ -1,7 +1,7 @@
 ---
 
 title: Collaborative Workflow Strategy
-version: 0.5.31
+version: 0.5.32
 status: Pilot
 owner: Engineering
 last_updated: 2026-10-26

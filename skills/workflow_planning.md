@@ -1,7 +1,7 @@
 ---
 
 title: Workflow Planning
-version: 0.5.31
+version: 0.5.32
 status: Pilot
 category: Coordination
 provider_independent: true

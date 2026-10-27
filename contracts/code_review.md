@@ -1,6 +1,6 @@
 ---
 title: Evidence-Driven Code Review Contract
-version: 0.5.31
+version: 0.5.32
 status: Pilot
 provider_independent: true
 owner: Engineering

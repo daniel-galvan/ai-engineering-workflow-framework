@@ -1,6 +1,6 @@
 ---
 title: Technical Spike Playbook
-version: 0.5.31
+version: 0.5.32
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning

@@ -1,7 +1,7 @@
 ---
 
 title: Destination Integration
-version: 0.5.31
+version: 0.5.32
 status: Pilot
 category: Integration
 provider_independent: true

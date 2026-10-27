@@ -1,7 +1,7 @@
 ---
 
 title: Dependency Mapping
-version: 0.5.31
+version: 0.5.32
 status: Pilot
 category: Analysis
 provider_independent: true

@@ -1,7 +1,7 @@
 ---
 
 title: Tester Role
-version: 0.5.31
+version: 0.5.32
 status: Pilot
 category: Validation
 produces_decisions: true

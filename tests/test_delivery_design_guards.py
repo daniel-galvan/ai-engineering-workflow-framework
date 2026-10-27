@@ -26,7 +26,7 @@ class DeliveryDesignGuards(unittest.TestCase):
         self.plan = self.root / "implementation_plan.md"
         self.plan.write_text(PLAN_FIXTURE)
         self.path = self.root / "finalization_packet.json"
-        self.packet = {"identity": {"Playbook / version": "playbooks/feature_delivery.md / 0.5.31",
+        self.packet = {"identity": {"Playbook / version": "playbooks/feature_delivery.md / 0.5.32",
             "Lifecycle": "remediation", "Run ID": "ITEM-1-delivery", "Requested profile": "standard",
             "Activated profile": "standard", "Profile status": "in_progress", "State": "in_progress"},
             "reentry": {"Prior run ID": "ITEM-1-planning", "Approval reference": "User approved plan",
