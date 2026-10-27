@@ -8,8 +8,9 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from scripts.prepare_run import prepare_run
+from scripts.prepare_run import _archive_existing_run, prepare_run
 from scripts.provider_runtime import (
     parent_context_audit,
     prior_run_status_thread_ids,
@@ -564,6 +565,59 @@ class ParentContext(unittest.TestCase):
             "open_worker_intervals": None}))
         with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
             prior_run_status_thread_ids(artifact_root, PARENT)
+
+    def test_blocked_closure_recovers_identities_only_from_verified_dispatch_ledger(self):
+        root = self.root / ".thoughts" / "ITEM-1"
+        root.mkdir(parents=True)
+        session = self.root / "provider.jsonl"
+        ledger = {"parent_thread_id": CHILD, "provider_session": str(session),
+                  "run_started_at": "2026-10-01T00:00:00Z",
+                  "events": [{"Operation": "spawn_agent", "Provider handle": "/root/worker", "Thread ID": TURN}],
+                  "thread_mappings": {"/root/worker": TURN}, "failed_dispatches": []}
+        bindings = {"parent_context": {"parent_thread_id": CHILD, "provider_session": str(session)},
+                    "runtime_evidence": {"run_started_at": ledger["run_started_at"]}}
+        closure = {"runtime_closure": [{"Runtime status": "Blocked", "Run or stage": "Current run",
+                    "Receipt owner": "Coordinator", "Closure evidence or blocker":
+                    "worker_runtime_release_unavailable: unavailable; dispatched handles: /root/worker"}]}
+        for name, value in (("role_bindings.json", bindings), ("runtime_dispatches.json", ledger),
+                            ("runtime_closure.json", closure)):
+            (root / name).write_text(json.dumps(value))
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=ledger):
+            self.assertEqual(prior_run_status_thread_ids(root, PARENT), tuple(sorted((CHILD, TURN))))
+            for key, value in (("events", []), ("thread_mappings", {}), ("failed_dispatches", [{"Status": "failed"}])):
+                with self.subTest(stale=key), patch("scripts.provider_runtime.read_runtime_events",
+                                                   return_value={**ledger, key: value}):
+                    with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+                        prior_run_status_thread_ids(root, PARENT)
+            closure["runtime_closure"][0]["Runtime status"] = "Terminal"
+            (root / "runtime_closure.json").write_text(json.dumps(closure))
+            with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+                prior_run_status_thread_ids(root, PARENT)
+            closure["runtime_closure"][0]["Runtime status"] = "Blocked"
+            closure["runtime_closure"][0]["Closure evidence or blocker"] += "; /root/extra"
+            (root / "runtime_closure.json").write_text(json.dumps(closure))
+            with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+                prior_run_status_thread_ids(root, PARENT)
+
+            closure["runtime_closure"][0]["Closure evidence or blocker"] = (
+                "worker_runtime_release_unavailable: unavailable; dispatched handles: /root/worker")
+            (root / "runtime_closure.json").write_text(json.dumps(closure))
+            (root / "work_record.md").write_text("| State | blocked |\n| Run ID | ITEM-1-prior |\n")
+            (root / "previous-artifact.txt").write_text("preserve this")
+            ids = list(prior_run_status_thread_ids(root, PARENT))
+            context = {"parent_thread_id": PARENT, "verified_related_run_status_probes": 1,
+                       "related_run_status_probe_attempts": 1, "related_run_thread_ids": ids,
+                       "prior_run_dispatch_ledger_present": True,
+                       "related_run_status_rows": [{"id": value, "status": "completed"} for value in ids]}
+            for status in ("running", "unavailable"):
+                context["related_run_status_rows"][0]["status"] = status
+                with self.assertRaisesRegex(ValueError, "prior_run_archive_blocked"):
+                    _archive_existing_run(root, True, parent_context=context)
+                self.assertEqual((root / "previous-artifact.txt").read_text(), "preserve this")
+            context["related_run_status_rows"][0]["status"] = "completed"
+            archived = Path(_archive_existing_run(root, True, parent_context=context))
+            self.assertEqual((archived / "previous-artifact.txt").read_text(), "preserve this")
+            self.assertFalse((root / "previous-artifact.txt").exists())
 
     def test_preflight_order_blocks_workflow_reads_until_preflight_call(self):
         framework = self.root / "framework"

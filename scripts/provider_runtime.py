@@ -50,6 +50,7 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
             identities.add(value)
 
     ledger_proves_no_dispatches = False
+    bindings = ledger = None
     try:
         if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
             raise ValueError("stale_run_thread_identity_invalid")
@@ -106,6 +107,36 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
                 raise ValueError("stale_run_closure_identity_invalid")
             if "terminal_observations" not in closure and ledger_proves_no_dispatches:
                 pass  # A zero-dispatch ledger has no worker identities for closure to report.
+            elif "terminal_observations" not in closure and isinstance(bindings, dict) and isinstance(ledger, dict):
+                # A blocked closure has no terminal observations; authenticate its identities, then probe them anew.
+                try:
+                    rows = closure["runtime_closure"]
+                    row = rows[0]
+                    parent = bindings["parent_context"]
+                    contract = bindings["runtime_evidence"]
+                    source = Path(ledger["provider_session"])
+                    if (len(rows) != 1 or row["Runtime status"] != "Blocked"
+                            or row["Run or stage"] != "Current run" or row["Receipt owner"] != "Coordinator"
+                            or ledger["parent_thread_id"] != parent["parent_thread_id"]
+                            or source.resolve() != Path(parent["provider_session"]).resolve()
+                            or timestamp(ledger["run_started_at"]) != timestamp(contract["run_started_at"])):
+                        raise ValueError("receipt mismatch")
+                    handles = dispatched_worker_handles(ledger)
+                    evidence = row["Closure evidence or blocker"]
+                    if (not handles or set(handles) != set(mappings) or len(set(mappings.values())) != len(mappings)
+                            or not isinstance(evidence, str)
+                            or not evidence.endswith("; dispatched handles: " + "; ".join(handles))):
+                        raise ValueError("worker identity mismatch")
+                    for event in ledger["events"]:
+                        if mappings.get(event.get("Provider handle")) != event.get("Thread ID"):
+                            raise ValueError("dispatch identity mismatch")
+                    native = read_runtime_events(source, ledger["parent_thread_id"], ledger["run_started_at"],
+                                                 tuple(Path(value) for value in ledger.get("identity_sessions", [])))
+                    if any(ledger.get(key, []) != native.get(key, [])
+                           for key in ("events", "thread_mappings", "failed_dispatches")):
+                        raise ValueError("stale ledger")
+                except (OSError, ValueError, KeyError, TypeError, IndexError, StopIteration, AttributeError) as error:
+                    raise ValueError("stale_run_closure_identity_invalid") from error
             elif not isinstance(closure.get("terminal_observations"), list):
                 raise ValueError("stale_run_closure_identity_invalid")
             else:
