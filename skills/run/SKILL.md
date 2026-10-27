@@ -113,6 +113,10 @@ These rules preserve the existing context audit; a forbidden operation still req
    checkout. Use returned `execution_repository`, `source_checkout`, and `artifact_root` paths unchanged. Never create
    `.thoughts` in a linked worktree, even when that worktree was named explicitly. Non-Git record folders retain their
    declared path. Do not ask for an Execution repository field when the current repository is unambiguous.
+   All run-created files, including temporary command output, diagnostic files, and recovery files, must stay inside
+   the returned artifact root. Never redirect them to `/tmp`, a repository root, or another directory. Before the
+   artifact root is prepared, use tool output or memory only; do not create temporary files. Include this restriction
+   in every worker assignment and recovery instruction.
 5. When the prompt supplies an existing playbook, resolve relative paths against the verified packaged framework root,
    use it directly, and do not read `PLAYBOOK_CATALOG.md`; record the
    primary evidence, primary goal, closest alternative, and selection rationale from the supplied playbook and request.
