@@ -813,10 +813,13 @@ def _recover_unactivated_remediation(artifact_root: Path, bindings: dict) -> tup
             from worker_runtime_evidence import dispatch_audit_errors
         except ModuleNotFoundError:
             from scripts.worker_runtime_evidence import dispatch_audit_errors
+        recoverable_error = (failure.get("errors") == ["remediation_not_activated"] or
+                             (failure.get("errors") == ["worker_activation_requires_planning_recovery"]
+                              and failure.get("historical_errors") == ["remediation_not_activated"]))
         if not (bindings.get("playbook") == "techops_issue_remediation"
                 and identity.get("Lifecycle") == "remediation"
                 and failure.get("status") == "failed" and failure.get("stage") == "workflow"
-                and failure.get("errors") == ["remediation_not_activated"]
+                and recoverable_error
                 and failure.get("runtime_closure") == "terminal" and failure.get("reported_by") == "Coordinator"
                 and int(failure.get("attempt_count", 0)) == 0
                 and identity["Run ID"] == failure.get("run_id") == bindings.get("run_id")
@@ -835,12 +838,14 @@ def _recover_unactivated_remediation(artifact_root: Path, bindings: dict) -> tup
                 and ledger.get("thread_mappings") == {}
                 and len(closure) == 1 and closure[0].get("Runtime status") == "Terminal"
                 and closure[0].get("Remaining active handles") == "0"
-                and closure[0].get("Completed worker handles") == "None dispatched"
-                and not dispatch_audit_errors(packet, packet_path, closure_only=True)):
+                and closure[0].get("Completed worker handles") == "None dispatched"):
             return None
-        return failure_path, raw, closure_bytes
+        audit_errors = dispatch_audit_errors(packet, packet_path, closure_only=True)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
         return None
+    if audit_errors:
+        raise ValueError("remediation_recovery_evidence_unverified:" + ";".join(audit_errors))
+    return failure_path, raw, closure_bytes
 
 
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:

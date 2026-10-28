@@ -899,6 +899,24 @@ def _finalization_status(packet_path: Path) -> tuple[Path, dict[str, object]]:
         return path, {}
 
 
+def _preserve_failure_receipts(root: Path) -> None:
+    """Keep the previous failure and closure before a new failure replaces them."""
+    if not (root / FINALIZATION_STATUS_FILENAME).is_file():
+        return
+    for name in (FINALIZATION_STATUS_FILENAME, "runtime_closure.json"):
+        source = root / name
+        if not source.is_file():
+            continue
+        content = source.read_bytes()
+        target = root / (source.stem + ".recovered." + hashlib.sha256(content).hexdigest() + ".json")
+        if target.exists():
+            if target.read_bytes() != content:
+                raise ValueError("failure_receipt_snapshot_conflict")
+        else:
+            with target.open("xb") as stream:
+                stream.write(content)
+
+
 def _record_pre_release(
     packet_path: Path, status: str, errors: list[str], previous: dict[str, object],
 ) -> dict[str, object]:
@@ -2117,6 +2135,7 @@ def main() -> int:
         try:
             packet_path = args.packet.resolve()
             # This receipt reports failure; it never certifies activation, readiness or runtime release.
+            _preserve_failure_receipts(packet_path.parent)
             closure_state = collect_failure_closure(packet_path, args.provider_session, args.parent_thread_id)
             _, previous = _finalization_status(packet_path)
             packet = json.loads(packet_path.read_text())

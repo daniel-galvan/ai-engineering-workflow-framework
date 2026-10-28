@@ -469,6 +469,19 @@ class PlanningCommandPath(unittest.TestCase):
                     failure_path = root / "finalization_failure.json"
                     original_failure = failure_path.read_bytes()
                     original_closure = (root / "runtime_closure.json").read_bytes()
+                    completed.clear()
+                    statuses.clear()
+                    inventory()
+                    stale = command("prepare_run.py", "--execution-repository", repository,
+                        "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
+                        "--input-manifest", run["run_input_manifest"]["path"], expected=2)
+                    self.assertIn("remediation_recovery_evidence_unverified", stale)
+                    self.assertEqual(failure_path.read_bytes(), original_failure)
+                    command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
+                            "worker_activation_requires_planning_recovery", expected=2)
+                    previous_copy = root / ("finalization_failure.recovered." + hashlib.sha256(original_failure).hexdigest() + ".json")
+                    self.assertEqual(previous_copy.read_bytes(), original_failure)
+                    current_failure = failure_path.read_bytes()
                     debug = {name: json.loads((root / name).read_text()) for name in
                              ("runtime_closure.json", "runtime_dispatches.json", "finalization_failure.json")}
                     run = json.loads(command("prepare_run.py", "--execution-repository", repository,
@@ -476,7 +489,7 @@ class PlanningCommandPath(unittest.TestCase):
                         "--input-manifest", run["run_input_manifest"]["path"]))
                     self.assertEqual(run["run_id"], delivery_run_id)
                     self.assertIsNotNone(run["recovered_failure"], str(debug))
-                    self.assertEqual(Path(run["recovered_failure"]).read_bytes(), original_failure)
+                    self.assertEqual(Path(run["recovered_failure"]).read_bytes(), current_failure)
                     closure_copy = root / ("runtime_closure.recovered." + hashlib.sha256(original_closure).hexdigest() + ".json")
                     self.assertEqual(closure_copy.read_bytes(), original_closure)
                     self.assertFalse((root / "runtime_closure.json").exists())

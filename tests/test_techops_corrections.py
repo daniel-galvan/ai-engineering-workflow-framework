@@ -345,9 +345,29 @@ class TechOpsCorrections(unittest.TestCase):
                     "Runtime status": "Blocked", "Remaining active handles": "Unknown"}]}))
                 self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
                 (root / "runtime_closure.json").write_text(json.dumps(closure))
+                retry_failure = {**failure, "errors": ["worker_activation_requires_planning_recovery"],
+                                 "historical_errors": ["remediation_not_activated"]}
+                failure_path.write_text(json.dumps(retry_failure))
+                self.assertIsNotNone(prepare._recover_unactivated_remediation(root, bindings))
+                failure_path.write_text(json.dumps({**retry_failure, "historical_errors": ["other"]}))
+                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
             failure_path.write_text(json.dumps(failure))
             with patch("worker_runtime_evidence.dispatch_audit_errors", return_value=["stale"]):
-                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified:stale"):
+                    prepare._recover_unactivated_remediation(root, bindings)
+
+    def test_preserve_old_failure_and_closure_before_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            failure = root / "finalization_failure.json"
+            closure = root / "runtime_closure.json"
+            failure.write_bytes(b"original failure\n")
+            closure.write_bytes(b"original closure\n")
+            finalizer._preserve_failure_receipts(root)
+            for source in (failure, closure):
+                saved = root / (source.stem + ".recovered." + hashlib.sha256(source.read_bytes()).hexdigest() + ".json")
+                self.assertEqual(saved.read_bytes(), source.read_bytes())
+            finalizer._preserve_failure_receipts(root)
 
     def test_pre_handoff_checks_upstream_audits_without_accepting_rejected_handoff(self):
         packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.33",
