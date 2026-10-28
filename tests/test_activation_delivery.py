@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import prepare_run as prepare
 from scripts import runtime_checks
@@ -199,6 +200,32 @@ class ActivationDelivery(unittest.TestCase):
         self.assertEqual(runtime_checks._read_targets(command), [str(path.resolve())])
         self.assertIn("Use separate tool calls for verification and the complete instruction read", notice)
         self.assertIn("max_output_tokens to at least 12; truncated output is not delivery", notice)
+
+    def test_live_opaque_dispatch_requires_paired_instruction_read_before_inventory(self):
+        trace = self.instruction_trace()
+        role = "current_state_investigator"
+        event = {"Thread ID": CHILD, "Last dispatch at": DISPATCH}
+        sessions = self.root / "codex" / "sessions"
+        sessions.mkdir(parents=True)
+        source = sessions / ("rollout-" + CHILD + ".jsonl")
+        rows = [{"timestamp": DISPATCH, "type": "session_meta", "payload": {"id": CHILD}},
+                {"timestamp": "2026-10-12T20:01:00Z", "type": "response_item", "payload": trace["tool_trace"][0]},
+                {"timestamp": "2026-10-12T20:01:01Z", "type": "response_item", "payload": trace["tool_trace"][1]}]
+        def write_rows():
+            source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        write_rows()
+        with patch.dict(os.environ, {"CODEX_HOME": str(sessions.parent)}):
+            proof = runtime_checks.live_dispatch_binding(event, role, self.artifacts, trace["run_id"],
+                                                         "2026-10-12T20:02:00Z")
+            self.assertEqual(proof.get("dispatch_file"), trace["spawn"]["dispatch_file"])
+            self.assertEqual(runtime_checks.live_dispatch_binding(event, role, self.artifacts, trace["run_id"],
+                                                                 "2026-10-12T20:01:00Z"), {})
+            self.assertEqual(runtime_checks.live_dispatch_binding(event, "reviewer", self.artifacts, trace["run_id"],
+                                                                 "2026-10-12T20:02:00Z"), {})
+            rows[2]["payload"] = {**rows[2]["payload"], "output": "truncated"}
+            write_rows()
+            self.assertEqual(runtime_checks.live_dispatch_binding(event, role, self.artifacts, trace["run_id"],
+                                                                 "2026-10-12T20:02:00Z"), {})
 
     def test_full_dispatch_read_followed_by_checksum_authenticates_delivery(self):
         trace = self.instruction_trace()

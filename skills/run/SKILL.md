@@ -359,6 +359,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    must be reconciled first. The helper preserves prior artifacts and accepted decisions, starts a new remediation
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
    sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.
+   For explicitly authorized TechOps recovery after the pre-edit activation-profile failure, use these same re-entry
+   flags. Preparation verifies every prior worker is terminal, the native ledger, the unchanged approved plan and clean
+   checkout, then preserves the failed delivery and starts a new remediation identity. Never repeat the investigation.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
    An ordinary continuation cannot reopen a completed Feature Delivery planning execution or bypass exhausted
    finalization attempts. For explicitly authorized planning recovery, reconcile prior actual worker rows and fresh
@@ -1066,8 +1069,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    dispatch receipts retain their original binding; do not edit old dispatch files or manually rewrite role bindings.
    For a TechOps remediation stopped before any worker dispatch, explicit recovery uses `--continuation` and the current
    input manifest. Before preparation, refresh the existing run's native dispatch ledger using its prepared collector;
-   use its recorded parent and start identity. Preparation verifies the approved plan, native ledger, prior failure and
-   terminal closure; only when
+   if that package was removed by a plugin refresh, use the preflight-verified current package's collector instead.
+   Use the recorded parent, start identity and ledger path. Preparation verifies the approved plan, native ledger,
+   prior failure and terminal closure; only when
    those checks pass does it preserve the failure and closure as hash-named snapshots and clear them for the resumed
    run.
    Do not delete or rewrite either receipt manually. If preparation cannot prove that no worker was dispatched, stop.

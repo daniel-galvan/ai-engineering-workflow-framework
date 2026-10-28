@@ -658,6 +658,62 @@ def _prepare_run_inputs(
     return write_manifest(destination, source), destination
 
 
+def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict) -> None:
+    """Verify a failed TechOps activation before starting a replacement delivery run."""
+    try:
+        from planning_contracts import terminal_closure_dispatch_errors
+        from worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    except ModuleNotFoundError:
+        from scripts.planning_contracts import terminal_closure_dispatch_errors
+        from scripts.worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    packet_path = artifact_root / "finalization_packet.json"
+    failure = json.loads((artifact_root / "finalization_failure.json").read_text())
+    snapshot = Path(failure["packet_snapshot"]).resolve()
+    frozen = snapshot.read_bytes()
+    frozen_packet = json.loads(frozen)
+    reentry = prior["reentry"]
+    plan = artifact_root / "implementation_plan.md"
+    ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+    observations = closure["terminal_observations"]
+    handles = sorted(ledger["thread_mappings"])
+    expected_error = "remediation_not_activated:expected_matching_active_profile_and_in_progress_state"
+    if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
+            and failure.get("errors") == [expected_error] and failure.get("runtime_closure") == "terminal"
+            and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
+            and failure.get("run_id") == prior["identity"]["Run ID"]
+            and snapshot.parent == artifact_root.resolve()
+            and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+            and frozen_packet["identity"]["Run ID"] == prior["identity"]["Run ID"]
+            and frozen_packet["identity"].get("Lifecycle") == "remediation"
+            and not frozen_packet.get("workers") and not frozen_packet.get("worker_results")
+            and frozen_packet.get("reentry") == reentry and not prior.get("workers")
+            and not prior.get("worker_results") and not prior.get("runtime_audits")
+            and reentry.get("Approval reference") and reentry.get("Prior run ID")
+            and reentry.get("Approved plan") == str(plan.resolve())
+            and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")
+            and handles and ledger.get("timing", {}).get("open_worker_intervals") == 0
+            and isinstance(observations, list) and len(observations) == len(handles)
+            and not terminal_closure_dispatch_errors(packet_path, observations)
+            and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+            and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
+        raise ValueError("remediation_recovery_evidence_unverified")
+    repositories = [row for row in prior.get("repositories", []) if row.get("Repository role") == "Execution repository"]
+    if len(repositories) != 1 or not repositories[0].get("Full revision"):
+        raise ValueError("remediation_recovery_baseline_unavailable")
+    repository = Path(repositories[0]["Resolved path"])
+    if repository.resolve() != artifact_root.resolve().parent.parent:
+        raise ValueError("remediation_recovery_repository_mismatch")
+    try:
+        revision = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], check=True,
+                                  capture_output=True, text=True, timeout=30).stdout.strip()
+        status = subprocess.run(["git", "-C", str(repository), "-c", "core.fsmonitor=false", "status", "--porcelain"],
+                                check=True, capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError("remediation_recovery_checkout_unverified") from error
+    if status or revision != repositories[0]["Full revision"]:
+        raise ValueError("remediation_recovery_checkout_changed")
+
+
 def _reentry_source(
     artifact_root: Path, approval_reference: str | None, *, planning_recovery: bool = False,
     expected_playbook: str = "feature_delivery",
@@ -697,7 +753,11 @@ def _reentry_source(
         prior_playbook = Path(str(prior["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
         if prior_playbook != expected_playbook:
             raise ValueError("remediation_reentry_playbook_mismatch")
-        if not planning_recovery and prior["identity"].get("State") != "ready_for_implementation":
+        failed_delivery = (not planning_recovery and expected_playbook == "techops_issue_remediation"
+                           and prior["identity"].get("Lifecycle") == "remediation")
+        if failed_delivery:
+            _recover_failed_remediation(artifact_root, prior, closure)
+        if not planning_recovery and not failed_delivery and prior["identity"].get("State") != "ready_for_implementation":
             raise ValueError("remediation_requires_ready_plan")
         if planning_recovery and prior["identity"].get("State") not in {
                 "awaiting_input", "ready_for_implementation", "completed", "blocked"}:
@@ -716,7 +776,7 @@ def _reentry_source(
                                  and frozen_packet["identity"]["Lifecycle"] == "planning")
             if (receipt.get("status") != "failed" or receipt.get("stage") != "workflow" or not proof_matches):
                 raise ValueError("planning_recovery_requires_terminal_invocation")
-        if prior["identity"]["Lifecycle"] != "planning":
+        if prior["identity"]["Lifecycle"] != "planning" and not failed_delivery:
             raise ValueError("remediation_reentry_requires_planning_run")
         if prior["identity"]["Requested profile"] not in {"standard", "deep"}:
             raise ValueError("remediation_prior_profile_invalid")

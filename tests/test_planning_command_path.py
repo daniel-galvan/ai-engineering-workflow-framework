@@ -36,6 +36,13 @@ class PlanningCommandPath(unittest.TestCase):
     def test_techops_recovery_with_in_turn_message_reenters_remediation(self):
         self.planning_path("techops_issue_remediation", recover_failed_worker=True, continue_to_remediation=True)
 
+    def test_techops_remediation_with_opaque_launch_messages(self):
+        self.planning_path("techops_issue_remediation", continue_to_remediation=True, opaque_delivery=True)
+
+    def test_interrupted_pre_edit_delivery_recovers_with_approved_plan(self):
+        self.planning_path("techops_issue_remediation", continue_to_remediation=True,
+                           recover_interrupted_delivery=True)
+
     def test_unactivated_techops_remediation_resumes_through_shipped_commands(self):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True,
                            recover_unactivated_remediation=True)
@@ -66,7 +73,7 @@ class PlanningCommandPath(unittest.TestCase):
     def planning_path(self, playbook, *, late_parent_violation=False, recover_failed_worker=False,
                       native_continuation=False, continue_to_remediation=False,
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
-                      recover_unactivated_remediation=False):
+                      recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -86,6 +93,10 @@ class PlanningCommandPath(unittest.TestCase):
             parent_id, turn_id = str(UUID(int=1)), str(UUID(int=2))
             provider = Path(directory) / ("native/sessions" if native_continuation else "provider")
             provider.mkdir(parents=True)
+            if opaque_delivery:
+                session_home = Path(directory) / "worker-home"
+                (session_home / "sessions").mkdir(parents=True)
+                environment.enter_context(patch.dict(os.environ, {"CODEX_HOME": str(session_home)}))
             parent = provider / ("rollout-" + parent_id + ".jsonl" if native_continuation else "parent.jsonl")
             if native_continuation:
                 environment.enter_context(patch.dict(os.environ, {"CODEX_THREAD_ID": parent_id,
@@ -447,7 +458,7 @@ class PlanningCommandPath(unittest.TestCase):
                     "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
                     "--remediation-reentry", "--approval-reference", "Explicit approval of the exact plan",
                     "--input-manifest", run["run_input_manifest"]["path"],
-                    *(("--provider-session", parent) if recover_unactivated_remediation else ())))
+                    *(("--provider-session", parent) if recover_unactivated_remediation or recover_interrupted_delivery else ())))
                 self.assertNotEqual(run["run_id"], prior_run_id)
                 self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
                 packet_path = Path(run["finalization_packet"])
@@ -495,6 +506,45 @@ class PlanningCommandPath(unittest.TestCase):
                     self.assertFalse((root / "runtime_closure.json").exists())
                     self.assertFalse(failure_path.exists())
                     self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
+                if recover_interrupted_delivery:
+                    stopped_run_id = run["run_id"]
+                    completed.clear()
+                    statuses.clear()
+                    Path(run["runtime_evidence"]["ledger"]).unlink(missing_ok=True)
+                    for index, agent in enumerate(("implementer", "reviewer", "tester"), 1):
+                        assignment = root / ("stopped-" + agent + "-assignment.json")
+                        assignment.write_text(json.dumps({"objective": "Guarded pre-edit worker",
+                                                          "input_paths": [str(root / "implementation_plan.md")]}))
+                        activation = root / ("stopped-" + agent + "-activation.txt")
+                        guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
+                            run["activation_packet_bundle"]["path"], "--expected-agent", agent,
+                            "--expected-bundle-sha256", run["activation_packet_bundle"]["sha256"],
+                            "--assignment", assignment, "--dispatch-file", activation))
+                        handle, thread = "/root/stopped_" + agent, str(UUID(int=500 + index))
+                        append(parent, "response_item", type="function_call", namespace="collaboration",
+                               name="spawn_agent", call_id="stopped-spawn-" + agent,
+                               arguments=json.dumps({"task_name": "stopped_" + agent,
+                                                     "message": guarded["activation_message"],
+                                                     **guarded["launch_arguments"]}))
+                        append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                                                          "agent_path": handle, "agent_thread_id": thread})
+                        append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "interrupted",
+                                                          "agent_path": handle, "agent_thread_id": thread})
+                        completed[handle], statuses[handle] = thread, "interrupted"
+                    inventory()
+                    command("worker_runtime_evidence.py", "--provider-session", parent, "--parent-thread-id", parent_id,
+                            "--started-at", run["runtime_evidence"]["run_started_at"],
+                            "--ledger", run["runtime_evidence"]["ledger"])
+                    command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
+                            "remediation_not_activated:expected_matching_active_profile_and_in_progress_state", expected=2)
+                    old_failure = (root / "finalization_failure.json").read_bytes()
+                    run = json.loads(command("prepare_run.py", "--execution-repository", repository,
+                        "--work-item", "DEMO-1", "--playbook", playbook, "--continuation", "--remediation-reentry",
+                        "--approval-reference", "Explicitly recover the approved remediation", "--provider-session", parent,
+                        "--input-manifest", run["run_input_manifest"]["path"]))
+                    self.assertNotEqual(run["run_id"], stopped_run_id)
+                    self.assertEqual((Path(run["archived_prior_run"]) / "finalization_failure.json").read_bytes(), old_failure)
+                    self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
                 completed.clear()
                 statuses.clear()
                 remediation_collector = ("--provider-session", parent, "--parent-thread-id", parent_id,
@@ -523,16 +573,23 @@ class PlanningCommandPath(unittest.TestCase):
                         "--assignment", assignment, "--dispatch-file", activation))
                     handle = "/root/" + worker
                     thread = str(UUID(int=700 + delivery_index))
-                    child = provider / (worker + "-remediation.jsonl")
+                    child = ((session_home / "sessions" / ("rollout-" + thread + ".jsonl")) if opaque_delivery
+                             else provider / (worker + "-remediation.jsonl"))
                     delivery_threads[agent] = thread
                     delivery_dispatches[agent] = {"assignment": assignment, "activation": activation,
                         "guarded": guarded, "handle": handle, "thread": thread, "child": child}
                     append(parent, "response_item", type="function_call", namespace="collaboration",
                         name="spawn_agent", call_id="remediation-spawn-" + worker,
-                        arguments=json.dumps({"task_name": worker, "message": guarded["activation_message"],
+                        arguments=json.dumps({"task_name": worker, "message": "opaque" if opaque_delivery else guarded["activation_message"],
                             **guarded["launch_arguments"]}))
                     append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
                         "agent_path": handle, "agent_thread_id": thread})
+                    if opaque_delivery:
+                        append(child, "session_meta", id=thread, cwd=str(repository))
+                        append(child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
+                            arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
+                        append(child, "response_item", type="function_call_output", call_id="bootstrap",
+                            output=activation.read_text())
                     statuses[handle] = "running"
                     completed[handle] = thread
                 inventory()
@@ -543,12 +600,13 @@ class PlanningCommandPath(unittest.TestCase):
                     dispatch = delivery_dispatches[agent]
                     activation, guarded = dispatch["activation"], dispatch["guarded"]
                     handle, thread, child = dispatch["handle"], dispatch["thread"], dispatch["child"]
-                    child.write_text("")
-                    append(child, "session_meta", id=thread, cwd=str(repository))
-                    append(child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
-                        arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
-                    append(child, "response_item", type="function_call_output", call_id="bootstrap",
-                        output=activation.read_text())
+                    if not opaque_delivery:
+                        child.write_text("")
+                        append(child, "session_meta", id=thread, cwd=str(repository))
+                        append(child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
+                            arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
+                        append(child, "response_item", type="function_call_output", call_id="bootstrap",
+                            output=activation.read_text())
                     append(child, "turn_context", turn_id=str(UUID(int=800 + delivery_index)),
                         model=guarded["launch_arguments"]["model"],
                         effort=guarded["launch_arguments"]["reasoning_effort"])

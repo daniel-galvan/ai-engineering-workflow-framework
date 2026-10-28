@@ -522,9 +522,15 @@ def activate_verified_remediation(packet_path: Path, ledger: dict) -> dict | Non
             status = next(iter(status))
         statuses[row.get("agent_name")] = str(status).strip().lower().replace(" ", "_")
     active = {"pending_init", "running", "in_progress", "awaiting_dependency"}
+    try:
+        from runtime_checks import live_dispatch_binding
+    except ModuleNotFoundError:
+        from scripts.runtime_checks import live_dispatch_binding
     candidates = [row for row in ledger.get("events", [])
-                  if row.get("Operation") == "spawn_agent" and row.get("Binding agent") == "implementer"
-                  and row.get("Provider handle") in statuses and statuses[row["Provider handle"]] in active]
+                  if row.get("Operation") == "spawn_agent" and row.get("Provider handle") in statuses
+                  and statuses[row["Provider handle"]] in active
+                  and live_dispatch_binding(row, "implementer", packet_path.parent,
+                                            identity["Run ID"], inventory["Observed at"])]
     if len(candidates) != 1:
         return {"status": "pending", "errors": ["delivery_worker_live_activation_required:implement"]}
 

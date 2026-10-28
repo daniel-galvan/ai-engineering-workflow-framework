@@ -7,6 +7,7 @@ import ast
 import io
 import hashlib
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -369,13 +370,18 @@ def _feature_delivery_activation_errors(path: Path, manifest: dict, implementer_
         selected, handles = {}, []
         inventory_at = timestamp(inventory["Observed at"])
         for worker, role in required.items():
-            candidates = [row for row in current["events"] if row.get("Operation") == "spawn_agent"
-                          and row.get("Binding agent") == role and row.get("Provider handle") in statuses
-                          and statuses[row["Provider handle"]] in {"pending_init", "running", "in_progress", "awaiting_dependency"}]
-            candidates = [row for row in candidates if timestamp(row["Last dispatch at"]) <= inventory_at]
+            candidates = []
+            for row in current["events"]:
+                if (row.get("Operation") != "spawn_agent" or row.get("Provider handle") not in statuses
+                        or statuses[row["Provider handle"]] not in ACTIVE_STATUSES
+                        or timestamp(row["Last dispatch at"]) > inventory_at):
+                    continue
+                proof = live_dispatch_binding(row, role, path.parent, run_id, inventory["Observed at"])
+                if proof:
+                    candidates.append((row, proof))
             if len(candidates) != 1:
                 return ["delivery_worker_live_activation_required:" + worker]
-            dispatch = candidates[0]
+            dispatch, proof = candidates[0]
             handle = dispatch["Provider handle"]
             latest = latest_worker_dispatch(current, handle)
             if timestamp(latest["Last dispatch at"]) > inventory_at:
@@ -387,9 +393,9 @@ def _feature_delivery_activation_errors(path: Path, manifest: dict, implementer_
                 return ["worker_launch_binding_mismatch:" + role]
             trace = {"run_id": run_id, "spawn": {
                 "agent": handle.rsplit("/", 1)[-1], "binding_agent": role, "provider_handle": handle,
-                "dispatch_file": dispatch.get("Dispatch file"),
-                "dispatch_file_sha256": dispatch.get("Dispatch SHA256")}}
-            if not dispatch.get("Dispatch file") or not _verified_dispatch_content(trace):
+                "dispatch_file": proof.get("dispatch_file"),
+                "dispatch_file_sha256": proof.get("dispatch_file_sha256")}}
+            if not proof.get("dispatch_file") or not _verified_dispatch_content(trace):
                 return ["worker_dispatch_assignment_unverified:" + role]
             selected[worker] = handle
             handles.append(handle)
@@ -1327,6 +1333,49 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
                                         for _, value in _trace_strings({"tool_trace": [output]}))):
                             return proof
     return {}
+
+
+def live_dispatch_binding(event: dict, role: str, root: Path, run_id: str, observed_at: str) -> dict:
+    """Authenticate a live worker's complete instruction read when its launch message is opaque."""
+    if event.get("Binding agent"):
+        if event.get("Binding agent") != role:
+            return {}
+        return {"dispatch_file": event.get("Dispatch file"),
+                "dispatch_file_sha256": event.get("Dispatch SHA256"), "binding_agent": role}
+    thread = event.get("Thread ID")
+    if not isinstance(thread, str) or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", thread):
+        return {}
+    sessions = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
+    try:
+        matching = []
+        for source in sessions.rglob("*" + thread + "*.jsonl"):
+            with source.open() as stream:
+                header = json.loads(next(stream, ""))
+            if header.get("type") == "session_meta" and header.get("payload", {}).get("id") == thread:
+                matching.append(source)
+        if len(matching) != 1:
+            return {}
+        trace = {"run_id": run_id, "spawn": {"agent": role}, "tool_trace": []}
+        with matching[0].open() as stream:
+            next(stream)
+            for line in stream:
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    if not line.endswith("\n"):
+                        break
+                    raise
+                if timestamp(row["timestamp"]) < timestamp(event["Last dispatch at"]):
+                    continue
+                if timestamp(row["timestamp"]) > timestamp(observed_at):
+                    continue
+                payload = row.get("payload", {})
+                if row.get("type") == "response_item" and payload.get("type") in {
+                        "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output"}:
+                    trace["tool_trace"].append(payload)
+        return observed_dispatch_binding(trace, root)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
 
 
 def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -> dict[str, dict[str, list[str]]]:

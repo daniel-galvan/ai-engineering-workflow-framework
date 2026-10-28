@@ -356,6 +356,52 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified:stale"):
                     prepare._recover_unactivated_remediation(root, bindings)
 
+    def test_failed_delivery_recovery_requires_terminal_workers_and_unchanged_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory).resolve()
+            for args in (("init", "-q"), ("config", "user.name", "Fixture"),
+                         ("config", "user.email", "fixture@example.invalid")):
+                subprocess.run(["git", "-C", str(repository), *args], check=True, capture_output=True)
+            (repository / ".gitignore").write_text(".thoughts/\n")
+            (repository / "source.txt").write_text("original\n")
+            subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repository), "commit", "-qm", "baseline"], check=True)
+            revision = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"], text=True).strip()
+            root = repository / ".thoughts" / "ISSUE-1"
+            root.mkdir(parents=True)
+            plan = root / "implementation_plan.md"
+            plan.write_text("approved plan")
+            reentry = {"Prior run ID": "planning", "Approval reference": "approved", "Approved plan": str(plan),
+                       "Approved plan SHA256": hashlib.sha256(plan.read_bytes()).hexdigest()}
+            packet = {"identity": {"Run ID": "delivery", "Lifecycle": "remediation"}, "reentry": reentry,
+                      "workers": [], "worker_results": [], "runtime_audits": [], "repositories": [{
+                          "Repository role": "Execution repository", "Resolved path": str(repository),
+                          "Full revision": revision}]}
+            (root / "finalization_packet.json").write_text(json.dumps(packet))
+            snapshot = root / "finalization_snapshot.json"
+            snapshot.write_text(json.dumps(packet))
+            digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+            failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator", "run_id": "delivery",
+                       "errors": ["remediation_not_activated:expected_matching_active_profile_and_in_progress_state"],
+                       "runtime_closure": "terminal", "packet_snapshot": str(snapshot),
+                       "snapshot_sha256": digest, "packet_sha256": digest}
+            (root / "finalization_failure.json").write_text(json.dumps(failure))
+            ledger = {"thread_mappings": {"/root/implement": "thread"}, "timing": {"open_worker_intervals": 0}}
+            (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+            observations = [{"Provider handle": "/root/implement", "Provider status": "interrupted"}]
+            closure = {"terminal_observations": observations}
+            with patch("planning_contracts.terminal_closure_dispatch_errors", return_value=[]), \
+                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations):
+                self.assertIsNone(prepare._recover_failed_remediation(root, packet, closure))
+                (repository / "source.txt").write_text("changed\n")
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_checkout_changed"):
+                    prepare._recover_failed_remediation(root, packet, closure)
+                (repository / "source.txt").write_text("original\n")
+                (root / "runtime_dispatches.json").write_text(json.dumps({**ledger, "timing": {"open_worker_intervals": 1}}))
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_failed_remediation(root, packet, closure)
+
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
