@@ -725,7 +725,18 @@ class ParentContext(unittest.TestCase):
             '${results[i].status === "fulfilled" ? results[i].value.output : String(results[i].reason)}`)'
         )
         self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        self.rows[-1]["payload"]["input"] = (
+            'const rs=await Promise.allSettled([tools.exec_command({cmd:"cat /repo/one"}),'
+            'tools.exec_command({cmd:"cat /repo/two"})]);'
+            'for(let i=0;i<rs.length;i++)text(`--- ${i+1} ---\\n'
+            '${rs[i].status==="fulfilled"?rs[i].value.output:String(rs[i].reason)}`);'
+        )
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
         self.rows[-1]["payload"]["input"] += ' text(`${tools.exec_command({cmd:"cat /secret"})}`)'
+        self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        self.rows[-1]["payload"]["input"] = (
+            'await tools.exec_command({cmd:`cat /repo/one\\ncat /secret`});'
+        )
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
     def test_literal_assigned_thread_batch_is_audited_without_executing_the_loop(self):

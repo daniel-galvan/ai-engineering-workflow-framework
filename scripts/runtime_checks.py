@@ -955,10 +955,10 @@ def _literal_templates(source: str) -> str:
         if end < 0:
             raise ValueError("unterminated template")
         raw = source[start + 1:end]
-        if "\\" in raw:
-            raise ValueError("escaped templates are not literal arguments")
         output_template = (re.search(r"(?<![\w.])text\s*\(\s*$", source[:start]) is not None
                            and re.match(r"\s*\)", source[end + 1:]) is not None)
+        if "\\" in raw and (not output_template or re.search(r"\\(?!n)", raw)):
+            raise ValueError("escaped templates are not literal arguments")
         parts, offset = [], 0
         for match in re.finditer(r"\$\{([^}]*)\}", raw):
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", match[1]):
