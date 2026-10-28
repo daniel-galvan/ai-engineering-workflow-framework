@@ -359,9 +359,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    must be reconciled first. The helper preserves prior artifacts and accepted decisions, starts a new remediation
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
    sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.
-   For explicitly authorized TechOps recovery after the pre-edit activation-profile failure, use these same re-entry
-   flags. Preparation verifies every prior worker is terminal, the native ledger, the unchanged approved plan and clean
-   checkout, then preserves the failed delivery and starts a new remediation identity. Never repeat the investigation.
+   For explicitly authorized TechOps recovery after the pre-edit activation-profile failure or an archive-context block
+   before dispatch, use these same re-entry flags. Preparation verifies every prior worker is terminal, the native
+   ledger, the approved plan and clean checkout. After a context block it also checks accepted evidence against the
+   prior saved packet. It preserves the failed delivery and starts a new remediation identity. Never repeat the
+   investigation.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
    An ordinary continuation cannot reopen a completed Feature Delivery planning execution or bypass exhausted
    finalization attempts. For explicitly authorized planning recovery, reconcile prior actual worker rows and fresh

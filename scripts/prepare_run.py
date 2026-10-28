@@ -677,8 +677,28 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
     observations = closure["terminal_observations"]
     handles = sorted(ledger["thread_mappings"])
     expected_error = "remediation_not_activated:expected_matching_active_profile_and_in_progress_state"
+    context_error = "parent_context_nonconformant:forbidden_context_reference:archived_artifact"
+    context_recovery = failure.get("errors") == [context_error] and not handles
+    if context_recovery:
+        archive = Path(reentry["Prior artifacts"]).resolve()
+        expected_archive = (artifact_root / "runs" / reentry["Prior run ID"]).resolve()
+        if archive != expected_archive or archive.parent != (artifact_root / "runs").resolve():
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        manifest = json.loads((archive / "archive_manifest.json").read_text())
+        entries = [row for row in manifest.get("files", []) if row.get("path") == "finalization_packet.json"]
+        saved = (archive / "finalization_packet.json").read_bytes()
+        approved_source = json.loads(saved)
+        fields = ("decisions", "claims", "actions", "evidence", "techops_checks", "reproduction")
+        current_item = {k: v for k, v in prior.get("work_item", {}).items() if k != "Last Updated"}
+        saved_item = {k: v for k, v in approved_source.get("work_item", {}).items() if k != "Last Updated"}
+        if (manifest.get("run_id") != reentry["Prior run ID"] or len(entries) != 1
+                or entries[0].get("sha256") != hashlib.sha256(saved).hexdigest()
+                or current_item != saved_item
+                or any(prior.get(field) != approved_source.get(field) for field in fields)):
+            raise ValueError("remediation_recovery_accepted_evidence_changed")
     if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-            and failure.get("errors") == [expected_error] and failure.get("runtime_closure") == "terminal"
+            and (failure.get("errors") == [expected_error] or context_recovery)
+            and failure.get("runtime_closure") == "terminal"
             and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
             and failure.get("run_id") == prior["identity"]["Run ID"]
             and snapshot.parent == artifact_root.resolve()
@@ -691,11 +711,12 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
             and reentry.get("Approval reference") and reentry.get("Prior run ID")
             and reentry.get("Approved plan") == str(plan.resolve())
             and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")
-            and handles and ledger.get("timing", {}).get("open_worker_intervals") == 0
+            and (handles or context_recovery and not ledger.get("events") and not ledger.get("failed_dispatches"))
+            and ledger.get("timing", {}).get("open_worker_intervals") == 0
             and isinstance(observations, list) and len(observations) == len(handles)
             and not terminal_closure_dispatch_errors(packet_path, observations)
             and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
-            and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
+            and (not handles or _native_terminal_observations(ledger, handles, require_terminal=False) == observations)):
         raise ValueError("remediation_recovery_evidence_unverified")
     repositories = [row for row in prior.get("repositories", []) if row.get("Repository role") == "Execution repository"]
     if len(repositories) != 1 or not repositories[0].get("Full revision"):
@@ -787,7 +808,8 @@ def _reentry_source(
                        for row in rows)):
             raise ValueError("prior_worker_runtime_closure_required")
         handles = [handle.strip() for row in rows if row["Runtime status"].lower() == "terminal"
-                   for handle in re.split(r",|;", row["Completed worker handles"])]
+                   for handle in re.split(r",|;", row["Completed worker handles"])
+                   if handle.strip() and not (failed_delivery and handle.strip().lower() == "none dispatched")]
         if handles and terminal_observation_errors(closure.get("terminal_observations"), handles,
                                                    require_completed=False, allow_inactive_message=True):
             raise ValueError("prior_worker_runtime_closure_required")

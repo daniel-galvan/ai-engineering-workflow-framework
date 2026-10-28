@@ -43,6 +43,10 @@ class PlanningCommandPath(unittest.TestCase):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True,
                            recover_interrupted_delivery=True)
 
+    def test_context_block_before_dispatch_recovers_with_accepted_evidence(self):
+        self.planning_path("techops_issue_remediation", continue_to_remediation=True,
+                           recover_context_block=True)
+
     def test_unactivated_techops_remediation_resumes_through_shipped_commands(self):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True,
                            recover_unactivated_remediation=True)
@@ -73,7 +77,8 @@ class PlanningCommandPath(unittest.TestCase):
     def planning_path(self, playbook, *, late_parent_violation=False, recover_failed_worker=False,
                       native_continuation=False, continue_to_remediation=False,
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
-                      recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False):
+                      recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
+                      recover_context_block=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -458,7 +463,8 @@ class PlanningCommandPath(unittest.TestCase):
                     "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
                     "--remediation-reentry", "--approval-reference", "Explicit approval of the exact plan",
                     "--input-manifest", run["run_input_manifest"]["path"],
-                    *(("--provider-session", parent) if recover_unactivated_remediation or recover_interrupted_delivery else ())))
+                    *(("--provider-session", parent) if recover_unactivated_remediation or recover_interrupted_delivery
+                      or recover_context_block else ())))
                 self.assertNotEqual(run["run_id"], prior_run_id)
                 self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
                 packet_path = Path(run["finalization_packet"])
@@ -505,6 +511,32 @@ class PlanningCommandPath(unittest.TestCase):
                     self.assertEqual(closure_copy.read_bytes(), original_closure)
                     self.assertFalse((root / "runtime_closure.json").exists())
                     self.assertFalse(failure_path.exists())
+                    self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
+                if recover_context_block:
+                    stopped_run_id = run["run_id"]
+                    Path(run["runtime_evidence"]["ledger"]).unlink(missing_ok=True)
+                    command("worker_runtime_evidence.py", "--provider-session", parent, "--parent-thread-id", parent_id,
+                            "--started-at", run["runtime_evidence"]["run_started_at"],
+                            "--ledger", run["runtime_evidence"]["ledger"])
+                    command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
+                            "parent_context_nonconformant:forbidden_context_reference:archived_artifact", expected=2)
+                    old_failure = (root / "finalization_failure.json").read_bytes()
+                    original_packet = packet_path.read_bytes()
+                    changed = json.loads(original_packet)
+                    changed["claims"][0]["Claim"] += " unauthorized change"
+                    packet_path.write_text(json.dumps(changed, indent=2) + "\n")
+                    blocked = command("prepare_run.py", "--execution-repository", repository,
+                        "--work-item", "DEMO-1", "--playbook", playbook, "--continuation", "--remediation-reentry",
+                        "--approval-reference", "Explicitly recover the approved remediation", "--provider-session", parent,
+                        "--input-manifest", run["run_input_manifest"]["path"], expected=2)
+                    self.assertIn("remediation_recovery_accepted_evidence_changed", blocked)
+                    packet_path.write_bytes(original_packet)
+                    run = json.loads(command("prepare_run.py", "--execution-repository", repository,
+                        "--work-item", "DEMO-1", "--playbook", playbook, "--continuation", "--remediation-reentry",
+                        "--approval-reference", "Explicitly recover the approved remediation", "--provider-session", parent,
+                        "--input-manifest", run["run_input_manifest"]["path"]))
+                    self.assertNotEqual(run["run_id"], stopped_run_id)
+                    self.assertEqual((Path(run["archived_prior_run"]) / "finalization_failure.json").read_bytes(), old_failure)
                     self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
                 if recover_interrupted_delivery:
                     stopped_run_id = run["run_id"]
