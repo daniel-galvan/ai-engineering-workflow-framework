@@ -110,6 +110,19 @@ class ContextOperationAudit(unittest.TestCase):
         return [{"type": "custom_tool_call", "name": "functions.exec", "call_id": "read-1", "input": source},
                 {"type": "custom_tool_call_output", "call_id": "read-1", "output": output}]
 
+    def test_command_echo_delimiter_does_not_change_current_path(self):
+        command = "git status --short -- " + str(self.root)
+        call = "const cmds=[" + json.dumps(command) + "]; /* command output labels */"
+        trace = {"tool_trace": self.paired(call, "---" + command + "---\n")}
+        self.assertEqual(runtime.context_trace_errors(trace, artifact_root=self.root), [])
+        archived = "git status --short -- " + str(self.root) + "---"
+        trace = {"tool_trace": self.paired("const cmds=[" + json.dumps(archived) + "];", "---" + archived + "---\n")}
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      runtime.context_trace_errors(trace, artifact_root=self.root))
+        trace = {"tool_trace": self.paired(call, "---" + command + "---\n" + str(self.root.parent / "OTHER/runs/old/file"))}
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      runtime.context_trace_errors(trace, artifact_root=self.root))
+
     def test_verified_framework_search_lines_do_not_count_as_archive_reads(self):
         package = self.repository / "framework"
         package.mkdir()

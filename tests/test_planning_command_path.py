@@ -120,6 +120,8 @@ class PlanningCommandPath(unittest.TestCase):
             if playbook == "techops_issue_remediation":
                 documenter_instructions = run["worker_contracts"]["documenter"]["instructions"]
                 self.assertIn("Preserve the Coordinator-prepared State", documenter_instructions)
+                for heading in ("# Behavior Applicability", "# Design Justification", "# Complete Solution"):
+                    self.assertIn(heading, documenter_instructions)
                 self.assertNotIn("set State ready_for_implementation", documenter_instructions)
             template = json.loads((package / "templates/finalization_packet.json").read_text())
             roles = (("issue-evidence", "current_state_investigator", "ISS"),

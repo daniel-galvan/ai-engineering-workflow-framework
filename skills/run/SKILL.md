@@ -272,6 +272,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    tests and product builds require a separate input row with `Classification: "execution authorization"`,
    `Authority: "User"`, `Status: "Approved"`, and `Authorized operations: ["test_run"]` or `["build_run"]`,
    only when the user has actually authorized those actions. An explicit prohibition overrides an authorization.
+   Do not describe planning as a blanket ban on focused diagnostic tests or assign such a ban to Failure Path or Fix
+   Design unless the user imposed it. If a focused test is not useful, record why rather than claiming a user ban.
    A delegated objective cannot grant that authorization. Check executed commands against these constraints before
    fan-in; reject unauthorized results rather than merging them. Keep the full restrictions in every assignment.
    Before creating any current-run file, perform the related-run status projection described below. Construct the

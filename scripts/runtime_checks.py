@@ -1550,6 +1550,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
     framework_searches = _framework_searches(trace, root) if root else {}
+    call_sources = {row.get("call_id"): row.get("input", "") for row in trace.get("tool_trace", [])
+                    if isinstance(row, dict) and row.get("type") == "custom_tool_call" and row.get("call_id")
+                    and isinstance(row.get("input"), str)}
     reads = {row.get("call_id") for row in trace.get("tool_trace", [])
              if isinstance(row, dict) and row.get("call_id") and _authorized_read(row, assigned)}
     instruction_reads = {row.get("call_id"): _ancestor_instruction_reads(
@@ -1570,6 +1573,10 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:
+            source = call_sources.get(row.get("call_id"), "")
+            candidate = "".join(line[:-4] + "\n" if line.startswith("---") and line.endswith("---\n")
+                                and json.dumps(line[3:-4], ensure_ascii=False) in source else line
+                                for line in candidate.splitlines(keepends=True))
             if row.get("call_id") in framework_searches:
                 candidate = _without_verified_search_lines(candidate, framework_searches[row["call_id"]])
             for content in call_contents.get("dispatch", []) + call_contents.get("ancestor", []):

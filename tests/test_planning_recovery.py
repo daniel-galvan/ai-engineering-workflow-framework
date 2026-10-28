@@ -208,17 +208,20 @@ class PlanningRecovery(unittest.TestCase):
             event("2026-10-12T00:01:00Z", "response_item", type="function_call", namespace="collaboration",
                   name="spawn_agent", call_id="failed", arguments='{"task_name":"old"}'),
             event("2026-10-12T00:01:01Z", "response_item", type="function_call_output", call_id="failed",
-                  output="agent path already exists"),
+                  output="agent path `/root/old` already exists"),
             event("2026-10-12T00:02:00Z", "response_item", type="function_call", namespace="collaboration",
                   name="spawn_agent", call_id="new", arguments='{"task_name":"new"}'),
             event("2026-10-12T00:02:01Z", "event_msg", item={"type": "SubAgentActivity", "kind": "started",
                   "agent_path": "/root/new", "agent_thread_id": CHILD})]
         source = self.root / "provider.jsonl"
-        source.write_text("".join(json.dumps(row) + "\n" for row in events))
-        ledger = read_runtime_events(source, PARENT, START)
-        self.assertEqual(ledger["failed_dispatches"][0]["Task"], "old")
-        self.assertEqual(ledger["thread_mappings"], {"/root/new": CHILD})
-        self.assertEqual(len(ledger["events"]), 1)
+        for output in ("agent path already exists", "agent path `/root/old` already exists"):
+            with self.subTest(output=output):
+                events[2]["payload"]["output"] = output
+                source.write_text("".join(json.dumps(row) + "\n" for row in events))
+                ledger = read_runtime_events(source, PARENT, START)
+                self.assertEqual(ledger["failed_dispatches"][0]["Task"], "old")
+                self.assertEqual(ledger["thread_mappings"], {"/root/new": CHILD})
+                self.assertEqual(len(ledger["events"]), 1)
 
     def test_identity_fragment_maps_redispatch_without_importing_prior_results(self):
         source = self.root / "prior.jsonl"

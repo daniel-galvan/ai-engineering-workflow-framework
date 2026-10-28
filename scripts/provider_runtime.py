@@ -1022,7 +1022,7 @@ def read_runtime_events(
                     or isinstance(raw, dict) and bool(raw.get("error") or raw.get("isError")
                                                   or raw.get("status") in ("failed", "error"))
                     or isinstance(raw, str) and bool(re.match(
-                        r"^(?:Error[: ]|Failed[: ]|collab tool failed:|Worker unavailable$|agent path already exists$)",
+                        r"^(?:Error[: ]|Failed[: ]|collab tool failed:|Worker unavailable$|agent path(?: `[^`]+`)? already exists$)",
                         raw, re.I)))
                 if call_id in pending_followups:
                     handle, event, was_active = pending_followups.pop(call_id)
