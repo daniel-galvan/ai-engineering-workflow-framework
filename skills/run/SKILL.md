@@ -1064,6 +1064,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Pin the preflight-resolved packaged framework root for the entire run. If it disappears or changes, stop with
    `plugin_revision_mismatch`; use explicitly authorized recovery to prepare against a refreshed package. Historical
    dispatch receipts retain their original binding; do not edit old dispatch files or manually rewrite role bindings.
+   For a TechOps remediation stopped before any worker dispatch, explicit recovery uses `--continuation` and the current
+   input manifest. Preparation verifies the approved plan, native ledger, prior failure and terminal closure; only when
+   those checks pass does it preserve the failure and closure as hash-named snapshots and clear them for the resumed
+   run.
+   Do not delete or rewrite either receipt manually. If preparation cannot prove that no worker was dispatched, stop.
    A nonzero result is a handoff
    failure. On a deterministic Standard planning failure, stop with `finalization_contract_failure`; do not add a
    Documenter fallback or patch generated artifacts. Return Documenter-owned packet, path, table and rendering errors

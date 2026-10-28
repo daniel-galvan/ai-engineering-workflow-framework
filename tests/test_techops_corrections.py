@@ -297,6 +297,58 @@ class TechOpsCorrections(unittest.TestCase):
                                     input_manifest=inputs)
             self.assertIn("worker_activation_requires_planning_recovery", errors(continued))
 
+    def test_unactivated_remediation_recovery_requires_matching_native_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = root / "implementation_plan.md"
+            plan.write_text("approved plan")
+            reentry = {"Prior run ID": "planning", "Approval reference": "approved",
+                       "Approved plan": str(plan.resolve()), "Approved plan SHA256": hashlib.sha256(plan.read_bytes()).hexdigest()}
+            packet = {"identity": {"Run ID": "delivery", "Lifecycle": "remediation"}, "reentry": reentry,
+                      "workers": [], "worker_results": [], "runtime_audits": []}
+            (root / "finalization_packet.json").write_text(json.dumps(packet))
+            snapshot = root / "finalization_snapshot.json"
+            snapshot.write_text(json.dumps(packet))
+            failure = {"status": "failed", "stage": "workflow", "run_id": "delivery",
+                       "errors": ["remediation_not_activated"], "runtime_closure": "terminal",
+                       "reported_by": "Coordinator", "packet_snapshot": str(snapshot),
+                       "snapshot_sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+                       "packet_sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest()}
+            failure_path = root / "finalization_failure.json"
+            failure_path.write_text(json.dumps(failure))
+            ledger = {"events": [], "failed_dispatches": [], "thread_mappings": {}}
+            ledger_path = root / "runtime_dispatches.json"
+            ledger_path.write_text(json.dumps(ledger))
+            closure = {"runtime_closure": [{"Runtime status": "Terminal", "Remaining active handles": "0",
+                                            "Completed worker handles": "None dispatched"}]}
+            (root / "runtime_closure.json").write_text(json.dumps(closure))
+            bindings = {"playbook": "techops_issue_remediation", "run_id": "delivery", "runtime_evidence": {"ledger": "bound"}}
+            with patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]):
+                self.assertEqual(prepare._recover_unactivated_remediation(root, bindings),
+                                 (failure_path, failure_path.read_bytes(), (root / "runtime_closure.json").read_bytes()))
+                for changed in ({**ledger, "events": [{"Operation": "spawn_agent"}]},
+                                {**ledger, "failed_dispatches": [{}]}, {**ledger, "thread_mappings": {"x": "y"}}):
+                    ledger_path.write_text(json.dumps(changed))
+                    self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                ledger_path.write_text(json.dumps(ledger))
+                plan.write_text("changed plan")
+                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                plan.write_text("approved plan")
+                failure_path.write_text(json.dumps({**failure, "errors": ["different_failure"]}))
+                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                failure_path.write_text(json.dumps({**failure, "snapshot_sha256": "bad"}))
+                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                failure_path.write_text(json.dumps({**failure, "attempt_count": 2}))
+                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                failure_path.write_text(json.dumps(failure))
+                (root / "runtime_closure.json").write_text(json.dumps({"runtime_closure": [{
+                    "Runtime status": "Blocked", "Remaining active handles": "Unknown"}]}))
+                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                (root / "runtime_closure.json").write_text(json.dumps(closure))
+            failure_path.write_text(json.dumps(failure))
+            with patch("worker_runtime_evidence.dispatch_audit_errors", return_value=["stale"]):
+                self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+
     def test_pre_handoff_checks_upstream_audits_without_accepting_rejected_handoff(self):
         packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.33",
                               "Lifecycle": "planning", "Engineering outcome": "plan_only"},

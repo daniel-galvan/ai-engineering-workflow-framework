@@ -36,6 +36,10 @@ class PlanningCommandPath(unittest.TestCase):
     def test_techops_recovery_with_in_turn_message_reenters_remediation(self):
         self.planning_path("techops_issue_remediation", recover_failed_worker=True, continue_to_remediation=True)
 
+    def test_unactivated_techops_remediation_resumes_through_shipped_commands(self):
+        self.planning_path("techops_issue_remediation", continue_to_remediation=True,
+                           recover_unactivated_remediation=True)
+
     def test_techops_remediation_publishes_blocked_runtime_snapshot(self):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True,
                            blocked_runtime_snapshot=True)
@@ -61,7 +65,8 @@ class PlanningCommandPath(unittest.TestCase):
 
     def planning_path(self, playbook, *, late_parent_violation=False, recover_failed_worker=False,
                       native_continuation=False, continue_to_remediation=False,
-                      blocked_runtime_snapshot=False, targeted_runtime_observation=False):
+                      blocked_runtime_snapshot=False, targeted_runtime_observation=False,
+                      recover_unactivated_remediation=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -441,7 +446,8 @@ class PlanningCommandPath(unittest.TestCase):
                 run = json.loads(command("prepare_run.py", "--execution-repository", repository,
                     "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
                     "--remediation-reentry", "--approval-reference", "Explicit approval of the exact plan",
-                    "--input-manifest", run["run_input_manifest"]["path"]))
+                    "--input-manifest", run["run_input_manifest"]["path"],
+                    *(("--provider-session", parent) if recover_unactivated_remediation else ())))
                 self.assertNotEqual(run["run_id"], prior_run_id)
                 self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
                 packet_path = Path(run["finalization_packet"])
@@ -452,6 +458,30 @@ class PlanningCommandPath(unittest.TestCase):
                     self.assertEqual(current_packet.get("techops_checks"), prior_checks)
                     self.assertEqual(current_packet.get("reproduction"), prior_reproduction)
                     self.assertEqual(set(run["worker_contracts"]), {"implementer", "reviewer", "tester", "documenter"})
+                if recover_unactivated_remediation:
+                    delivery_run_id = run["run_id"]
+                    Path(run["runtime_evidence"]["ledger"]).unlink(missing_ok=True)
+                    command("worker_runtime_evidence.py", "--provider-session", parent,
+                            "--parent-thread-id", parent_id, "--started-at", run["runtime_evidence"]["run_started_at"],
+                            "--ledger", run["runtime_evidence"]["ledger"])
+                    command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
+                            "remediation_not_activated", expected=2)
+                    failure_path = root / "finalization_failure.json"
+                    original_failure = failure_path.read_bytes()
+                    original_closure = (root / "runtime_closure.json").read_bytes()
+                    debug = {name: json.loads((root / name).read_text()) for name in
+                             ("runtime_closure.json", "runtime_dispatches.json", "finalization_failure.json")}
+                    run = json.loads(command("prepare_run.py", "--execution-repository", repository,
+                        "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
+                        "--input-manifest", run["run_input_manifest"]["path"]))
+                    self.assertEqual(run["run_id"], delivery_run_id)
+                    self.assertIsNotNone(run["recovered_failure"], str(debug))
+                    self.assertEqual(Path(run["recovered_failure"]).read_bytes(), original_failure)
+                    closure_copy = root / ("runtime_closure.recovered." + hashlib.sha256(original_closure).hexdigest() + ".json")
+                    self.assertEqual(closure_copy.read_bytes(), original_closure)
+                    self.assertFalse((root / "runtime_closure.json").exists())
+                    self.assertFalse(failure_path.exists())
+                    self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
                 completed.clear()
                 statuses.clear()
                 remediation_collector = ("--provider-session", parent, "--parent-thread-id", parent_id,

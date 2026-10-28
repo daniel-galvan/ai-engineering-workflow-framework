@@ -790,6 +790,59 @@ def _configure_remediation_result_contracts(artifact_root: Path, worker_contract
         })
 
 
+def _recover_unactivated_remediation(artifact_root: Path, bindings: dict) -> tuple[Path, bytes, bytes] | None:
+    """Identify a failed TechOps delivery before any native worker dispatch."""
+    failure_path = artifact_root / "finalization_failure.json"
+    if not failure_path.is_file() or not bindings.get("runtime_evidence"):
+        return None
+    try:
+        raw = failure_path.read_bytes()
+        failure = json.loads(raw)
+        packet_path = artifact_root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        identity = packet["identity"]
+        reentry = packet["reentry"]
+        snapshot = Path(failure["packet_snapshot"])
+        frozen = snapshot.read_bytes()
+        previous = json.loads(frozen)
+        plan = artifact_root / "implementation_plan.md"
+        ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+        closure_bytes = (artifact_root / "runtime_closure.json").read_bytes()
+        closure = json.loads(closure_bytes)["runtime_closure"]
+        try:
+            from worker_runtime_evidence import dispatch_audit_errors
+        except ModuleNotFoundError:
+            from scripts.worker_runtime_evidence import dispatch_audit_errors
+        if not (bindings.get("playbook") == "techops_issue_remediation"
+                and identity.get("Lifecycle") == "remediation"
+                and failure.get("status") == "failed" and failure.get("stage") == "workflow"
+                and failure.get("errors") == ["remediation_not_activated"]
+                and failure.get("runtime_closure") == "terminal" and failure.get("reported_by") == "Coordinator"
+                and int(failure.get("attempt_count", 0)) == 0
+                and identity["Run ID"] == failure.get("run_id") == bindings.get("run_id")
+                and snapshot.resolve().parent == artifact_root.resolve()
+                and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+                and previous["identity"]["Run ID"] == identity["Run ID"]
+                and previous["identity"].get("Lifecycle") == "remediation"
+                and previous.get("reentry") == reentry and previous.get("workers") == []
+                and previous.get("worker_results") == [] and not previous.get("runtime_audits")
+                and packet.get("workers") == []
+                and packet.get("worker_results") == [] and not packet.get("runtime_audits")
+                and reentry.get("Approval reference") and reentry.get("Prior run ID")
+                and reentry.get("Approved plan") == str(plan.resolve())
+                and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")
+                and ledger.get("events") == [] and ledger.get("failed_dispatches") == []
+                and ledger.get("thread_mappings") == {}
+                and len(closure) == 1 and closure[0].get("Runtime status") == "Terminal"
+                and closure[0].get("Remaining active handles") == "0"
+                and closure[0].get("Completed worker handles") == "None dispatched"
+                and not dispatch_audit_errors(packet, packet_path, closure_only=True)):
+            return None
+        return failure_path, raw, closure_bytes
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
+        return None
+
+
 def resolve_bindings(playbook: str, runtime_agents: Path | None) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     names = SENTRY_AGENTS if playbook == "sentry_issue_remediation" else GENERIC_AGENTS
@@ -1129,6 +1182,7 @@ def prepare_run(
     prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery,
                              expected_playbook=playbook)
              if remediation_reentry or planning_recovery else None)
+    unactivated_failure = None
     if continuation and not prior:
         existing_packet = artifact_root / "finalization_packet.json"
         if playbook == "feature_delivery" and existing_packet.is_file():
@@ -1142,6 +1196,9 @@ def prepare_run(
                 raise ValueError("finalization_receipt_invalid")
             if failure.get("status") == "failed" and int(failure.get("attempt_count", 0)) >= 2:
                 raise ValueError("finalization_recovery_required:exhausted_attempts")
+            if (playbook == "techops_issue_remediation" and provider_session is not None
+                    and previous_run_bindings.get("parent_context")):
+                unactivated_failure = _recover_unactivated_remediation(artifact_root, previous_run_bindings)
     if planning_recovery and (workflow_objective, requested_outcome) != ("implementation_planning", "implementation_plan"):
         raise ValueError("planning_recovery_requires_implementation_planning")
     if prior and goal_defaults_used:
@@ -1576,6 +1633,26 @@ def prepare_run(
                       "Role binding manifest", "Provider/runtime configuration", "Provider configuration source/status", "Lifecycle", "Requested profile"):
             packet["identity"][field] = refreshed["identity"][field]
         packet_path.write_text(json.dumps(packet, indent=2) + "\n")
+    recovered_failure = None
+    if unactivated_failure:
+        failure_path, failure_bytes, closure_bytes = unactivated_failure
+        closure_path = artifact_root / "runtime_closure.json"
+        if failure_path.read_bytes() != failure_bytes or closure_path.read_bytes() != closure_bytes:
+            raise ValueError("remediation_failure_changed_during_recovery")
+        recovered_failure = artifact_root / ("finalization_failure.recovered."
+                                             + hashlib.sha256(failure_bytes).hexdigest() + ".json")
+        if recovered_failure.exists() and recovered_failure.read_bytes() != failure_bytes:
+            raise ValueError("remediation_failure_snapshot_conflict")
+        if not recovered_failure.exists():
+            recovered_failure.write_bytes(failure_bytes)
+        recovered_closure = artifact_root / ("runtime_closure.recovered."
+                                             + hashlib.sha256(closure_bytes).hexdigest() + ".json")
+        if recovered_closure.exists() and recovered_closure.read_bytes() != closure_bytes:
+            raise ValueError("remediation_closure_snapshot_conflict")
+        if not recovered_closure.exists():
+            recovered_closure.write_bytes(closure_bytes)
+        closure_path.unlink()
+        failure_path.unlink()
     return {
         "status": "prepared",
         "lifecycle": resolved_lifecycle,
@@ -1595,6 +1672,7 @@ def prepare_run(
             str(normalized_evidence_contract) if normalized_evidence_contract else None
         ),
         "archived_prior_run": archived,
+        "recovered_failure": str(recovered_failure) if recovered_failure else None,
         **manifest,
     }
 
