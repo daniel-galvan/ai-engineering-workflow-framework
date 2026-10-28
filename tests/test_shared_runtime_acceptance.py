@@ -1010,6 +1010,46 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "terminal_observation_latest_turn_stale"):
                 self.export(fixture)
 
+    def test_inactive_worker_after_in_turn_message_is_closable_but_not_accepted(self):
+        from scripts.worker_runtime_evidence import terminal_closure
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation")
+            run, root, _, time, _, _, _, status = fixture
+            _, ledger = self.export(fixture)
+            handle = "/root/worker"
+            ledger["events"].append({"Operation": "send_message", "Provider handle": handle,
+                                     "Last dispatch at": time(7)})
+            ledger["inventories"] = []
+            observation = {**status, "Provider status": "idle", "Status source": "read_thread",
+                           "Last dispatch at": time(7), "Latest turn started at": time(1),
+                           "Latest turn completed at": time(10)}
+            ledger["status_probes"] = [{"Provider handle": handle, "Attempted at": time(19),
+                "Observed at": time(20), "terminal_observation": observation}]
+            receipt = terminal_closure(ledger)
+            row = receipt["terminal_observations"][0]
+            self.assertEqual(row["Last dispatch operation"], "send_message")
+            self.assertTrue(runtime.terminal_observation_errors([row], [handle]))
+            from scripts.planning_contracts import terminal_closure_dispatch_errors
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            self.assertEqual(terminal_closure_dispatch_errors(root / "finalization_packet.json", [row]), [])
+            forged = {**row, "Latest turn completed at": time(11)}
+            self.assertIn("terminal_closure_native_observation_mismatch",
+                          terminal_closure_dispatch_errors(root / "finalization_packet.json", [forged]))
+            ledger["events"][-1]["Operation"] = "followup_task"
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            self.assertIn("terminal_closure_worker_operation_mismatch",
+                          terminal_closure_dispatch_errors(root / "finalization_packet.json", [row]))
+            for operation, completed, state in (("followup_task", time(10), "idle"),
+                                                 ("send_message", time(6), "idle"),
+                                                 ("send_message", time(7), "idle"),
+                                                 ("send_message", time(10), "active")):
+                with self.subTest(operation=operation, completed=completed, state=state):
+                    ledger["events"][-1]["Operation"] = operation
+                    observation["Latest turn completed at"] = completed
+                    observation["Thread status"] = state
+                    with self.assertRaises(ValueError):
+                        terminal_closure(ledger)
+
     def test_in_turn_correction_retains_pre_correction_context(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory)

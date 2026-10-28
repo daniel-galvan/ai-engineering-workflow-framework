@@ -979,10 +979,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    an ID. Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events
    before declaring child identity unavailable. Sync its ledger after dispatches and status reads, following
    `providers/codex.md#worker-identity-and-correction-observations`; derive audit times from actual events.
-   A targeted `read_thread` closure read must show no active or pending thread and an inactive latest turn started at
-   or after the last dispatch. For corrections during an active turn, an earlier start requires provider-observed
-   `Latest turn completed at` after dispatch, `Dispatch consumed: true`, and concrete `Dispatch consumption evidence`
-   from the accepted corrected result. Missing inventory entries, historical completion events and worker
+   A targeted `read_thread` closure read must show no active or pending thread and an inactive latest turn. If the
+   last dispatch was `send_message`, the native ledger and provider-observed turn completion after that dispatch prove
+   inactivity even when the turn started earlier; this does not prove the message was consumed or accept its result.
+   Accepting an in-turn correction still requires `Dispatch consumed: true` and concrete consumption evidence from the
+   corrected result. Missing inventory entries, historical completion events and worker
    self-attestation alone do not establish
    terminal status. If no supported targeted read can verify a worker, retain the blocked receipt.
 

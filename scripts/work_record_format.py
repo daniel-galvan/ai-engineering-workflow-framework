@@ -391,8 +391,8 @@ def render(packet: dict[str, object]) -> str:
     for key, title, headers in (
         ("terminal_observations", "Worker Terminal Observations", (
             "Provider handle", "Provider status", "Last dispatch at", "Observed at", "Status source",
-            "Thread ID", "Latest turn started at", "Latest turn status",
-            "Thread status",
+            "Thread ID", "Latest turn started at", "Latest turn completed at", "Latest turn status",
+            "Thread status", "Last dispatch operation",
         )),
         ("techops_checks", "TechOps Planning Checks", (
             "Check", "Status", "Evidence refs", "Detail", "Commit", "Patch evidence refs",

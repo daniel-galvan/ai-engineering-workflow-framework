@@ -447,7 +447,8 @@ def rejected_result_errors(trace: dict, handle: str, dispatch: str) -> list[str]
     return errors
 
 
-def terminal_observation_errors(observations: object, handles: list[str], *, require_completed: bool = True) -> list[str]:
+def terminal_observation_errors(observations: object, handles: list[str], *, require_completed: bool = True,
+                                allow_inactive_message: bool = False) -> list[str]:
     """Require completion for fan-in; closure may also prove a failed worker is inactive."""
     if not isinstance(observations, list) or not observations:
         return ["terminal_observations_required"]
@@ -489,6 +490,11 @@ def terminal_observation_errors(observations: object, handles: list[str], *, req
                     completed = datetime.fromisoformat(str(row["Latest turn completed at"]).replace("Z", "+00:00"))
                     fresh_turn = (completed.tzinfo is not None and
                                   times[0].replace(microsecond=0) <= completed <= times[1] and started <= completed)
+                if (not fresh_turn and allow_inactive_message and not require_completed
+                        and row.get("Last dispatch operation") == "send_message"):
+                    completed = datetime.fromisoformat(str(row["Latest turn completed at"]).replace("Z", "+00:00"))
+                    fresh_turn = (completed.tzinfo is not None and
+                                  times[0] < completed <= times[1] and started <= completed)
                 if started.tzinfo is None or not fresh_turn or started > times[1]:
                     errors.append(f"terminal_observation_latest_turn_stale:{handle}")
                 turn_statuses = {"completed"} if require_completed else TERMINAL_STATUSES

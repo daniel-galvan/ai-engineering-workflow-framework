@@ -1319,7 +1319,8 @@ def finalize(
                                 for handle in re.split(r",|;", str(row.get("Completed worker handles", "")))
                                 if handle.strip().lower() not in {"", "none", "none dispatched", "unknown", "unavailable"}]
             if terminal_handles:
-                errors.extend(terminal_observation_errors(closure.get("terminal_observations"), terminal_handles, require_completed=False))
+                errors.extend(terminal_observation_errors(closure.get("terminal_observations"), terminal_handles,
+                                                          require_completed=False, allow_inactive_message=True))
             # These workflows use the same two-phase packet protocol and native status reads.
             playbook_name = Path(str(packet["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
             uses_two_phase_release = (

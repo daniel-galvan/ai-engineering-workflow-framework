@@ -349,7 +349,8 @@ def _native_terminal_observations(ledger: dict, handles: list[str], *, require_t
               if inventory else {})
     observations = []
     for handle in handles:
-        dispatch = latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"]
+        dispatch_record = latest_worker_dispatch(ledger, handle, include_failed=True)
+        dispatch = dispatch_record["Last dispatch at"]
         status = agents.get(handle)
         if isinstance(status, dict) and len(status) == 1:
             status = next(iter(status))
@@ -367,8 +368,8 @@ def _native_terminal_observations(ledger: dict, handles: list[str], *, require_t
                     "Provider handle": handle, "Provider status": None,
                     "Thread ID": ledger["thread_mappings"][handle], "Status source": latest.get("Operation"),
                     "Last dispatch at": dispatch, "Observed at": latest.get("Observed at")})
-        observations.append(row)
-    errors = terminal_observation_errors(observations, handles, require_completed=False)
+        observations.append({**row, "Last dispatch operation": dispatch_record["Operation"]})
+    errors = terminal_observation_errors(observations, handles, require_completed=False, allow_inactive_message=True)
     if not handles or (require_terminal and errors):
         raise ValueError("terminal_inventory_unverified:" + ";".join(errors))
     return observations
@@ -413,7 +414,7 @@ def blocked_runtime_closure(ledger: dict, blocker: str) -> dict:
         except ModuleNotFoundError:
             from scripts.runtime_checks import terminal_observation_errors
         observations = _native_terminal_observations(ledger, handles, require_terminal=False)
-        errors = terminal_observation_errors(observations, handles, require_completed=False)
+        errors = terminal_observation_errors(observations, handles, require_completed=False, allow_inactive_message=True)
         if not errors:
             raise ValueError("worker_runtime_terminal_receipt_available: use --closure")
         inventory = ledger["inventories"][-1]

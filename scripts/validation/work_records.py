@@ -557,7 +557,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
             observations = markdown_table(text, "# Worker Terminal Observations")
             for error in terminal_observation_errors(
                 [item for item in observations if item.get("Provider handle", "").lower() in handles], handles,
-                require_completed=False,
+                require_completed=False, allow_inactive_message=True,
             ):
                 fail(f"{path}: {error}")
         if row.get("Runtime status", "").strip().lower() == "released":

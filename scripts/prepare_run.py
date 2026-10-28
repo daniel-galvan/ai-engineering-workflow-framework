@@ -689,10 +689,10 @@ def _reentry_source(
         prior = json.loads((artifact_root / "finalization_packet.json").read_text())
         closure = json.loads((artifact_root / "runtime_closure.json").read_text())
         try:
-            from planning_contracts import _runtime_closed, _planning_runtime_closure_errors
+            from planning_contracts import _runtime_closed, _planning_runtime_closure_errors, terminal_closure_dispatch_errors
             from runtime_checks import terminal_observation_errors
         except ModuleNotFoundError:
-            from scripts.planning_contracts import _runtime_closed, _planning_runtime_closure_errors
+            from scripts.planning_contracts import _runtime_closed, _planning_runtime_closure_errors, terminal_closure_dispatch_errors
             from scripts.runtime_checks import terminal_observation_errors
         prior_playbook = Path(str(prior["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
         if prior_playbook != expected_playbook:
@@ -728,8 +728,19 @@ def _reentry_source(
             raise ValueError("prior_worker_runtime_closure_required")
         handles = [handle.strip() for row in rows if row["Runtime status"].lower() == "terminal"
                    for handle in re.split(r",|;", row["Completed worker handles"])]
-        if handles and terminal_observation_errors(closure.get("terminal_observations"), handles, require_completed=False):
+        if handles and terminal_observation_errors(closure.get("terminal_observations"), handles,
+                                                   require_completed=False, allow_inactive_message=True):
             raise ValueError("prior_worker_runtime_closure_required")
+        if any(row.get("Last dispatch operation") == "send_message"
+               for row in closure.get("terminal_observations", []) if isinstance(row, dict)):
+            try:
+                from worker_runtime_evidence import dispatch_audit_errors
+            except ModuleNotFoundError:
+                from scripts.worker_runtime_evidence import dispatch_audit_errors
+            packet_path = artifact_root / "finalization_packet.json"
+            if (terminal_closure_dispatch_errors(packet_path, closure["terminal_observations"])
+                    or dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)):
+                raise ValueError("prior_worker_runtime_closure_required")
         return prior
     except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:
         raise ValueError(f"remediation_reentry_artifact_invalid:{error}") from error

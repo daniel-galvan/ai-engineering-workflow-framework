@@ -84,9 +84,9 @@ except ModuleNotFoundError:
     )
 
 try:
-    from worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles, latest_worker_dispatch
+    from worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles, latest_worker_dispatch, _native_terminal_observations
 except ModuleNotFoundError:
-    from scripts.worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles, latest_worker_dispatch
+    from scripts.worker_runtime_evidence import dispatch_audit_errors, dispatched_worker_handles, latest_worker_dispatch, _native_terminal_observations
 
 
 try:
@@ -1389,12 +1389,28 @@ def terminal_closure_dispatch_errors(packet_path: Path, observations: object,
             return freshness_errors
         if not observations:
             return ["terminal_observations_required"]
-        errors.extend(terminal_observation_errors(observations, handles, require_completed=False))
+        errors.extend(terminal_observation_errors(observations, handles, require_completed=False,
+                                                  allow_inactive_message=True))
         if {row.get("Provider handle") for row in observations if isinstance(row, dict)} != set(dispatches):
             errors.append("terminal_closure_worker_handle_mismatch")
+        message_rows = [row for row in observations if isinstance(row, dict)
+                        and row.get("Last dispatch operation") == "send_message"
+                        and row.get("Status source") in {"read_thread", "wait_threads"}]
+        native = ({row["Provider handle"]: row for row in _native_terminal_observations(ledger, handles, require_terminal=False)}
+                  if contract and message_rows else {})
         for row in observations:
             if isinstance(row, dict) and row.get("Last dispatch at") != dispatches.get(row.get("Provider handle")):
                 errors.append("terminal_closure_worker_audit_stale")
+            if isinstance(row, dict) and row.get("Last dispatch operation"):
+                if not contract or row["Last dispatch operation"] != latest_worker_dispatch(
+                        ledger, row.get("Provider handle"), include_failed=True)["Operation"]:
+                    errors.append("terminal_closure_worker_operation_mismatch")
+            if isinstance(row, dict) and row in message_rows:
+                fields = ("Provider status", "Thread ID", "Status source", "Last dispatch at", "Observed at",
+                          "Latest turn started at", "Latest turn completed at", "Latest turn status", "Thread status")
+                actual = native.get(row.get("Provider handle"), {})
+                if any(row.get(field) != actual.get(field) for field in fields):
+                    errors.append("terminal_closure_native_observation_mismatch")
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         errors.append("terminal_closure_dispatch_evidence_invalid:" + str(error))
     return list(dict.fromkeys(errors))

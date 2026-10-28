@@ -33,6 +33,9 @@ class PlanningCommandPath(unittest.TestCase):
     def test_techops_remediation_through_actual_shipped_commands(self):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True)
 
+    def test_techops_recovery_with_in_turn_message_reenters_remediation(self):
+        self.planning_path("techops_issue_remediation", recover_failed_worker=True, continue_to_remediation=True)
+
     def test_techops_remediation_publishes_blocked_runtime_snapshot(self):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True,
                            blocked_runtime_snapshot=True)
@@ -180,6 +183,9 @@ class PlanningCommandPath(unittest.TestCase):
                     append(failed_child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
                            arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
                     append(failed_child, "response_item", type="function_call_output", call_id="bootstrap", output=activation.read_text())
+                    append(parent, "response_item", type="function_call", namespace="collaboration", name="send_message",
+                           call_id="failed-message", arguments=json.dumps({"target": failed_handle, "message": "Inspect the result"}))
+                    append(parent, "response_item", type="function_call_output", call_id="failed-message", output="")
                     append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "failed",
                            "agent_path": failed_handle, "agent_thread_id": failed_id})
                     completed[failed_handle], statuses[failed_handle] = failed_id, "failed"
@@ -401,9 +407,20 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(closure.read_bytes(), blocked)
                 snapshot = root / ("runtime_closure.blocked." + hashlib.sha256(blocked).hexdigest() + ".json")
                 snapshot.write_bytes(blocked)
-            inventory()
+            inventory(omit_handles={failed_handle} if recover_failed_worker else ())
+            if recover_failed_worker:
+                dispatch_time = datetime.fromisoformat(dispatch_at.replace("Z", "+00:00"))
+                status = {"thread": {"id": failed_id, "status": {"type": "notLoaded"}},
+                          "turns": [{"id": str(UUID(int=901)), "status": "failed",
+                                     "startedAt": (dispatch_time - timedelta(seconds=3)).isoformat(),
+                                     "completedAt": (dispatch_time + timedelta(seconds=1)).isoformat()}]}
+                append(parent, "response_item", type="function_call", name="mcp__codex_app__read_thread",
+                       call_id="old-worker-status", arguments=json.dumps({"threadId": failed_id}))
+                append(parent, "response_item", type="function_call_output", call_id="old-worker-status",
+                       output=json.dumps({"content": [{"type": "text", "text": json.dumps(status)}]}))
             command("worker_runtime_evidence.py", *collector, "--closure", closure)
             receipt = json.loads(closure.read_text())
+            planning_receipt = receipt
             self.assertEqual({row["Provider handle"] for row in receipt["terminal_observations"]}, set(completed))
             if pending_closure != closure:
                 self.assertEqual(snapshot.read_bytes(), blocked)
@@ -843,7 +860,7 @@ class PlanningCommandPath(unittest.TestCase):
             for rejected, original in rejected_traces.items():
                 self.assertEqual(rejected.read_bytes(), original)
             if recover_failed_worker:
-                self.assertEqual({row["Provider handle"]: row["Provider status"] for row in receipt["terminal_observations"]}["/root/failed_original"], "failed")
+                self.assertEqual({row["Provider handle"]: row["Provider status"] for row in planning_receipt["terminal_observations"]}["/root/failed_original"], "failed")
             if not continue_to_remediation:
                 self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), source_hash)
             changed = subprocess.run(["git", "-C", str(repository), "status", "--porcelain"], capture_output=True, text=True, check=True)
