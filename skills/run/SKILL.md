@@ -890,6 +890,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    closure probe with the prepared collector arguments plus
    `--pending-closure <artifact-root>/runtime_closure.json`. This writes a Coordinator-owned Pending probe;
    it makes no claim about completed handles or release. Replace it with a fresh verified receipt after pre-release.
+   During authorized recovery, if `runtime_closure.json` contains an earlier Blocked receipt, do not replace it with
+   Pending. Create `runtime_closure.pending.json` instead and pass that path to the packet and pre-release checks.
+   Before writing a fresh Terminal receipt to `runtime_closure.json`, preserve the Blocked file as a direct-child
+   `runtime_closure.blocked.<SHA256>.json` snapshot. Verify its bytes and refuse to overwrite a conflicting snapshot.
    Closure retains every activated handle, including failed, stopped, interrupted, and cancelled workers.
    Record their exact inactive status; accepting analytical results still requires completed worker execution.
    Run the same finalizer arguments below with `--check-packet` first. It checks
@@ -903,7 +907,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Then run:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --pre-release --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
-   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
+   `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record` (or the separate pending receipt
+   described above during recovery)
    to validate the complete packet shape and candidate record without replacing `work_record.md`. Return the aggregated
    error to the owning worker once. If the corrected packet still fails, stop within two minutes with
    `finalization_contract_failure`, preserve generated `finalization_failure.json` plus artifacts, and release all

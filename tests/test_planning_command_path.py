@@ -385,16 +385,29 @@ class PlanningCommandPath(unittest.TestCase):
                     append(parent, "response_item", type="function_call", name="mcp__codex_app__read_thread",
                            call_id="continued-worker-status", arguments=json.dumps({"threadId": child_id}))
             closure = root / "runtime_closure.json"
-            command("worker_runtime_evidence.py", *collector, "--pending-closure", closure)
-            finalize = ("--packet", packet_path, "--closure", closure, "--record", root / "work_record.md",
+            pending_closure = closure
+            if playbook == "techops_issue_remediation":
+                closure.write_text(json.dumps({"runtime_closure": [{"Runtime status": "Blocked",
+                    "Closure evidence or blocker": "Previous recovery could not verify closure"}]}))
+                blocked = closure.read_bytes()
+                pending_closure = root / "runtime_closure.pending.json"
+            command("worker_runtime_evidence.py", *collector, "--pending-closure", pending_closure)
+            finalize = ("--packet", packet_path, "--closure", pending_closure, "--record", root / "work_record.md",
                         "--coordinator-model-effort", "Not exposed / Not exposed", "--framework-revision",
                         preflight["framework_revision"], "--framework-status", "clean")
             command("finalize_work_record.py", *finalize, "--check-packet")
             command("finalize_work_record.py", *finalize, "--pre-release")
+            if pending_closure != closure:
+                self.assertEqual(closure.read_bytes(), blocked)
+                snapshot = root / ("runtime_closure.blocked." + hashlib.sha256(blocked).hexdigest() + ".json")
+                snapshot.write_bytes(blocked)
             inventory()
             command("worker_runtime_evidence.py", *collector, "--closure", closure)
             receipt = json.loads(closure.read_text())
             self.assertEqual({row["Provider handle"] for row in receipt["terminal_observations"]}, set(completed))
+            if pending_closure != closure:
+                self.assertEqual(snapshot.read_bytes(), blocked)
+                finalize = ("--packet", packet_path, "--closure", closure, *finalize[4:])
             command("finalize_work_record.py", *finalize)
             response = root / "handoff_response.md"
             emitted = command("finalize_work_record.py", "--packet", packet_path, "--publish-response", response)

@@ -355,6 +355,14 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(rejected.returncode, 2)
             self.assertIn("runtime_pending_closure_would_replace_evidence", rejected.stdout)
             self.assertEqual(closure.read_bytes(), before)
+            receipt["runtime_closure"][0]["Runtime status"] = "Blocked"
+            closure.write_text(json.dumps(receipt))
+            before = closure.read_bytes()
+            separate = root / "runtime_closure.pending.json"
+            result = subprocess.run(arguments[:-1] + [str(separate)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(closure.read_bytes(), before)
+            self.assertEqual(json.loads(separate.read_text())["runtime_closure"][0]["Runtime status"], "Pending")
 
     def fixture(self, directory, playbook="feature_delivery", role="current_state_investigator", remediation=False):
         repository = Path(directory)
