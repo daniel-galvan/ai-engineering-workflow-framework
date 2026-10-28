@@ -236,14 +236,14 @@ class FrameworkCorrections(unittest.TestCase):
         run = prepare.prepare_run(self.repository, "SEMANTIC-1", "techops_issue_remediation", None, False,
                                   input_manifest=self.inputs)
         contract = run["worker_contracts"]["solution_architect"]
-        self.assertIn("Do not include Feature Delivery-only", contract["result_instructions"])
+        self.assertIn("plan_readiness", contract["result_instructions"])
         packet = Path(run["finalization_packet"])
         result_path = Path(contract["result"])
         fields = json.loads(finalizer.PACKET_TEMPLATE.read_text())["worker_results"][0]
         result = {"run_id": json.loads(packet.read_text())["identity"]["Run ID"],
                   "worker_result": {**dict.fromkeys(fields, "Recorded"), "Worker": "fix-design", "Outcome": "complete"},
                   "evidence": [{**self.evidence, "Evidence ID": name} for name in ("E-FD-1", "E-FD-2")],
-                  "plan_readiness": "awaiting_input", "implementation_plan_action": "omit",
+                  "plan_readiness": "awaiting_input", "implementation_plan_action": "create",
                   "techops_checks": [{"Check": name, "Status": "passed", "Evidence refs": "E-FD-1, E-FD-2",
                                       "Detail": "Observed"} for name in runtime.TECHOPS_CHECKS]}
         result["worker_result"]["Evidence / claim refs"] = ["E-FD-1", "E-FD-2"]
@@ -252,12 +252,11 @@ class FrameworkCorrections(unittest.TestCase):
             trace, _ = stage_worker_response(run, "solution_architect", result)
             merge_result(packet, "solution_architect", trace=trace)
         self.assertIn("worker_result.Evidence / claim refs must be str", str(caught.exception))
-        self.assertIn("feature_planning_disposition_invalid", str(caught.exception))
+        self.assertIn("techops_planning_disposition_invalid", str(caught.exception))
         self.assertIn("techops_history_patch_and_work_item_required", str(caught.exception))
         self.assertEqual(packet.read_bytes(), before)
         self.assertFalse(result_path.exists())
-        result.pop("plan_readiness")
-        result.pop("implementation_plan_action")
+        result["implementation_plan_action"] = "omit"
         result["worker_result"]["Evidence / claim refs"] = "E-FD-1, E-FD-2"
         history = next(row for row in result["techops_checks"] if row["Check"] == "history_reconciliation")
         history.update({"Commit": "abcdef012345", "Patch evidence refs": "E-FD-1", "Work item": "ITEM-2",
@@ -304,6 +303,9 @@ class FrameworkCorrections(unittest.TestCase):
                           "claims": [{**dict.fromkeys(template["claims"][0], "Observed"),
                                       "Claim ID": f"CL-{namespace}-{i}", "Evidence refs": [evidence_id]}
                                      for i in range(4)]}
+                if playbook == "techops_issue_remediation":
+                    result["integration_decision"] = {"decision": "not_required", "reason": "One component",
+                                                      "evidence_refs": evidence_id}
                 result_path = Path(contract["result"])
                 packet_before = packet_path.read_bytes()
                 with self.assertRaises(ValueError) as caught:

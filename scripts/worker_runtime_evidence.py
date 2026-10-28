@@ -544,7 +544,7 @@ def activate_verified_remediation(packet_path: Path, ledger: dict) -> dict | Non
         except ModuleNotFoundError:
             from scripts.runtime_checks import delivery_start_errors
         handle = candidates[0]["Provider handle"]
-        errors = delivery_start_errors(temporary, handle, statuses[handle])
+        errors = delivery_start_errors(temporary, handle, statuses[handle], require_conformance=False)
         if errors:
             return {"status": "pending", "errors": errors}
         temporary.replace(packet_path)

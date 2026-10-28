@@ -233,7 +233,28 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
               "this launch notice for those instructions. Do not rerun Coordinator initialization.")
 
 
-def delivery_start_errors(path: Path, implementer_handle: str, provider_status: str) -> list[str]:
+def techops_conformance_errors(path: Path, run_id: str, plan_hash: str) -> list[str]:
+    """Check the Implementer's current-run pre-edit file mapping."""
+    if not path.is_file() or path.is_symlink():
+        return ["techops_conformance_record_required"]
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return ["techops_conformance_record_invalid"]
+    if not isinstance(record, dict) or record.get("run_id") != run_id or record.get("plan_sha256") != plan_hash:
+        return ["techops_conformance_identity_mismatch"]
+    entries = record.get("files")
+    if not isinstance(entries, list) or not entries:
+        return ["techops_conformance_files_required"]
+    fields = ("path", "plan_step", "reuse", "change", "validation")
+    if any(not isinstance(row, dict) or any(not isinstance(row.get(field), str) or not row[field].strip()
+                                             for field in fields) for row in entries):
+        return ["techops_conformance_file_mapping_incomplete"]
+    return []
+
+
+def delivery_start_errors(path: Path, implementer_handle: str, provider_status: str, *,
+                          require_conformance: bool = True) -> list[str]:
     """Check an approved plan before an Implementer edits in a supported remediation playbook."""
     try:
         packet = json.loads(path.read_text())
@@ -261,6 +282,9 @@ def delivery_start_errors(path: Path, implementer_handle: str, provider_status: 
             except ModuleNotFoundError:
                 from scripts.review_evidence import applicability_errors
             errors = applicability_errors(plan.read_text())
+            if playbook == "techops_issue_remediation" and require_conformance:
+                errors.extend(techops_conformance_errors(path.parent / "implementation_conformance.json",
+                                                         identity["Run ID"], reentry["Approved plan SHA256"]))
         else:
             try:
                 from validation.api import checked
@@ -481,6 +505,36 @@ def terminal_observation_errors(observations: object, handles: list[str], *, req
     if observed != set(handles):
         errors.append("terminal_observations_incomplete")
     return list(dict.fromkeys(errors))
+
+
+def techops_integration_decision_errors(record: object, evidence_ids: set[str]) -> list[str]:
+    """Require a supported decision on the conditional integration worker."""
+    if not isinstance(record, dict):
+        return ["techops_integration_decision_required"]
+    errors = []
+    if record.get("decision") not in {"required", "not_required"}:
+        errors.append("techops_integration_decision_invalid")
+    if not isinstance(record.get("reason"), str) or not record["reason"].strip():
+        errors.append("techops_integration_reason_required")
+    refs = re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(record.get("evidence_refs", "")))
+    if not refs or not set(refs) <= evidence_ids:
+        errors.append("techops_integration_evidence_required")
+    return errors
+
+
+def techops_reproduction_errors(record: object, evidence_ids: set[str]) -> list[str]:
+    """Require a concrete account of the check without requiring reproduction to succeed."""
+    if not isinstance(record, dict):
+        return ["techops_reproduction_record_required"]
+    fields = ("status", "expected", "observed", "check", "environment", "revision", "limitation", "evidence_refs")
+    errors = ["techops_reproduction_field_required:" + field for field in fields
+              if not isinstance(record.get(field), str) or not record[field].strip()]
+    if record.get("status") not in {"reproduced", "verified_by_evidence", "not_reproduced", "unable_to_attempt"}:
+        errors.append("techops_reproduction_status_invalid")
+    refs = re.findall(r"\bE-[A-Za-z0-9_-]+\b", str(record.get("evidence_refs", "")))
+    if not refs or not set(refs) <= evidence_ids:
+        errors.append("techops_reproduction_evidence_required")
+    return errors
 
 
 def techops_check_errors(checks: object, evidence_ids: set[str]) -> list[str]:
@@ -1558,7 +1612,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
 
 
 def planning_permission_errors(trace: dict) -> list[str]:
-    """Planning checks require explicit user authorization, independent of delegated objectives."""
+    """Enforce planning permissions and explicit user restrictions."""
     content = _verified_dispatch_content(trace)
     if not content:
         return []
@@ -1582,13 +1636,21 @@ def planning_permission_errors(trace: dict) -> list[str]:
         allowed_writes.difference_update(Path(contract[key]).resolve() for key in ("output", "result")
                                         if isinstance(contract.get(key), str))
     authorized = set()
+    denied = set()
     for row in packet.get("run_input_manifest", {}).get("inputs", []):
+        if row.get("Authority") == "User" and row.get("Classification") == "execution restriction":
+            denied.update(row.get("Denied operations", []))
         if (row.get("Classification") == "execution authorization" and row.get("Status") == "Approved"
                 and row.get("Authority") == "User"):
             operations = row.get("Authorized operations", [])
             if isinstance(operations, list) and all(isinstance(value, str) and value in {"test_run", "build_run"}
                                                     for value in operations):
                 authorized.update(operations)
+    explicit_test = "test_run" in authorized
+    if (Path(str(contract.get("contract", ""))).name == "techops_issue_remediation.md"
+            and packet.get("agent") in {"dependency_analyst", "solution_architect"}):
+        authorized.add("test_run")
+    authorized.difference_update(denied)
     for row in trace.get("tool_trace", []):
         for tool, arguments in _tool_operations(row):
             if tool == "apply_patch":
@@ -1686,6 +1748,14 @@ def planning_permission_errors(trace: dict) -> list[str]:
                         operation = "test_run"
                     if operation and operation not in authorized:
                         errors.append("planning_operation_not_authorized:" + operation)
+                    elif operation == "test_run" and not explicit_test:
+                        broad = (any(value.endswith("/...") for value in operands)
+                                 or name in {"npm", "pnpm", "yarn", "make"}
+                                 or name in {"pytest", "pytest-3"} and not operands
+                                 or name in {"python", "python3"} and operands == ["pytest"]
+                                 or name in {"python", "python3"} and "discover" in operands)
+                        if broad:
+                            errors.append("planning_diagnostic_test_not_focused")
             except (ValueError, TypeError):
                 continue
     return list(dict.fromkeys(errors))

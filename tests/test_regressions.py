@@ -199,7 +199,9 @@ class V4Regressions(unittest.TestCase):
         summary.update({"Worker": "issue-evidence", "Outcome": "complete"})
         evidence = dict.fromkeys(template["evidence"][0], "Current issue")
         evidence["Evidence ID"] = "E-ISS-001"
-        result = {"run_id": packet["identity"]["Run ID"], "worker_result": summary, "evidence": [evidence]}
+        result = {"run_id": packet["identity"]["Run ID"], "worker_result": summary, "evidence": [evidence],
+                  "integration_decision": {"decision": "not_required", "reason": "One component",
+                                           "evidence_refs": "E-ISS-001"}}
         trace, _ = stage_worker_response(prepared, "current_state_investigator", result)
         merge_result(packet_path, "current_state_investigator", trace=trace)
         accepted = packet_path.read_bytes()

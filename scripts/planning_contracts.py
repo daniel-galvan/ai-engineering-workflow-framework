@@ -68,6 +68,8 @@ try:
     from runtime_checks import (
         terminal_observation_errors,
         techops_check_errors,
+        techops_integration_decision_errors,
+        techops_reproduction_errors,
         trace_errors,
         trace_identity_errors,
     )
@@ -75,6 +77,8 @@ except ModuleNotFoundError:
     from scripts.runtime_checks import (
         terminal_observation_errors,
         techops_check_errors,
+        techops_integration_decision_errors,
+        techops_reproduction_errors,
         trace_errors,
         trace_identity_errors,
     )
@@ -899,6 +903,21 @@ def _techops_remediation_contract_errors(
     evidence_ids = {str(row.get("Evidence ID")) for row in packet.get("evidence", [])
                     if isinstance(row, dict) and row.get("Evidence ID")}
     errors.extend(techops_check_errors(packet.get("techops_checks"), evidence_ids))
+    if identity.get("Engineering outcome") in {"solved", "partially_solved"}:
+        try:
+            from runtime_checks import techops_conformance_errors
+        except ModuleNotFoundError:
+            from scripts.runtime_checks import techops_conformance_errors
+        conformance = packet_path.parent / "implementation_conformance.json"
+        errors.extend(techops_conformance_errors(conformance, str(identity.get("Run ID", "")),
+                                                str(reentry.get("Approved plan SHA256", ""))))
+        if not pre_handoff:
+            registered = {_feature_asset_artifact_path(row.get("Path"), packet_path.parent)
+                          for row in packet.get("durable_artifacts", []) if isinstance(row, dict)}
+            linked = {_feature_asset_artifact_path(value, packet_path.parent)
+                      for value in packet.get("handoff", {}).get("artifacts", [])}
+            if conformance.resolve() not in registered or conformance.resolve() not in linked:
+                errors.append("techops_conformance_handoff_reference_required")
     return list(dict.fromkeys(errors))
 
 
@@ -1191,6 +1210,22 @@ def _canonicalize_technical_spike_worker_ids(
                 row["Worker"] = aliases[worker]
 
 
+def techops_design_gate_errors(packet: dict[str, object]) -> list[str]:
+    """Require accepted analytical prerequisites before TechOps Fix Design starts."""
+    completed = {row.get("Worker") for row in packet.get("worker_results", [])
+                 if isinstance(row, dict) and row.get("Outcome") == "complete"}
+    evidence = {str(row.get("Evidence ID")) for row in packet.get("evidence", []) if isinstance(row, dict)}
+    decision = packet.get("integration_decision")
+    errors = techops_integration_decision_errors(decision, evidence)
+    required = {"issue-evidence", "failure-path"}
+    if (isinstance(decision, dict) and decision.get("decision") == "required"
+            or packet.get("identity", {}).get("Requested profile") == "deep"):
+        required.add("repository-integration")
+    if not required <= completed:
+        errors.append("techops_design_prerequisites_incomplete")
+    return errors
+
+
 def _techops_planning_contract_errors(
     packet: dict[str, object], packet_path: Path, *, pre_handoff: bool = False, table_projection: bool = False,
 ) -> list[str]:
@@ -1203,9 +1238,27 @@ def _techops_planning_contract_errors(
     ready_plan = identity.get("Engineering outcome") == "plan_only" or identity.get("State") == "ready_for_implementation"
     if "fix-design" not in completed and not ready_plan:
         return []  # Early source-access blocks have no design to accept.
+    if not table_projection and identity.get("State") in {"ready_for_implementation", "awaiting_input"}:
+        disposition = packet.get("planning_disposition", {})
+        if (not isinstance(disposition, dict) or disposition.get("plan_readiness") != identity["State"]
+                or disposition.get("implementation_plan_action") != (
+                    "create" if identity["State"] == "ready_for_implementation" else "omit")):
+            return ["techops_planning_disposition_state_mismatch"]
     errors = techops_check_errors(packet.get("techops_checks"), {
         str(row.get("Evidence ID")) for row in packet.get("evidence", [])
     })
+    if "issue-evidence" in completed:
+        errors.extend(techops_integration_decision_errors(packet.get("integration_decision"), {
+            str(row.get("Evidence ID")) for row in packet.get("evidence", [])
+        }))
+        if (isinstance(packet.get("integration_decision"), dict)
+                and packet["integration_decision"].get("decision") == "required"
+                and "repository-integration" not in completed):
+            errors.append("techops_required_integration_incomplete")
+    if "failure-path" in completed:
+        errors.extend(techops_reproduction_errors(packet.get("reproduction"), {
+            str(row.get("Evidence ID")) for row in packet.get("evidence", [])
+        }))
     if ready_plan:
         required = {"issue-evidence", "failure-path", "fix-design"}
         if not pre_handoff:
@@ -1214,6 +1267,11 @@ def _techops_planning_contract_errors(
             required.update({"repository-integration", "planning-review"})
         if not required <= completed:
             errors.append("techops_planning_workers_incomplete")
+        if not pre_handoff:
+            try:
+                errors.extend(applicability_errors((packet_path.parent / "implementation_plan.md").read_text()))
+            except OSError:
+                errors.append("techops_implementation_plan_required")
     if pre_handoff:
         completed.discard("handoff")
         packet = {**packet, "runtime_audits": [row for row in packet.get("runtime_audits", [])

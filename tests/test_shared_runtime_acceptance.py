@@ -390,6 +390,13 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             result = {"run_id": run["run_id"], "worker_result": {
                 **dict.fromkeys(fields, "Synthetic evidence blocker"),
                 "Worker": workers[role][0], "Outcome": "complete"}}
+            if playbook == "techops_issue_remediation" and role == "current_state_investigator":
+                evidence_id = "E-ISS-SYN001"
+                evidence_fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())["evidence"][0]
+                result["evidence"] = [{**dict.fromkeys(evidence_fields, "Synthetic fixture evidence"),
+                                       "Evidence ID": evidence_id}]
+                result["integration_decision"] = {"decision": "not_required", "reason": "Single fixture component",
+                                                  "evidence_refs": evidence_id}
             if playbook == "techops_issue_remediation" and role == "solution_architect":
                 evidence_id = "E-FD-SYN001"
                 evidence_fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())[
@@ -470,7 +477,10 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             template = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())
             self.set_worker_response(fixture, {"run_id": run["run_id"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
-                "Worker": "issue-evidence", "Outcome": "complete"}})
+                "Worker": "issue-evidence", "Outcome": "complete"},
+                "evidence": [{**dict.fromkeys(template["evidence"][0], "Current evidence"), "Evidence ID": "E-ISS-1"}],
+                "integration_decision": {"decision": "not_required", "reason": "Single component",
+                                         "evidence_refs": "E-ISS-1"}})
             trace, ledger = self.export(fixture)
             Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
             path = root / "trace.json"

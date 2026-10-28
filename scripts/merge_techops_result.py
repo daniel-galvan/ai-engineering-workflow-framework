@@ -54,6 +54,25 @@ def merged_result_errors(packet: dict, manifest: dict, root: Path, *, table_proj
             errors.append("worker_result_source_missing:" + worker)
             continue
         result = json.loads(source.read_text())
+        if (manifest.get("playbook") == "techops_issue_remediation" and manifest.get("lifecycle") == "planning"
+                and worker == "issue-evidence"):
+            expected = result.get("integration_decision")
+            if table_projection and isinstance(expected, dict):
+                expected = {key: str(value).replace("\n", "<br>").strip() for key, value in expected.items()}
+            if packet.get("integration_decision") != expected:
+                errors.append("worker_owned_record_changed:issue-evidence:integration_decision")
+        if (manifest.get("playbook") == "techops_issue_remediation" and manifest.get("lifecycle") == "planning"
+                and worker == "failure-path"):
+            expected = result.get("reproduction")
+            if table_projection and isinstance(expected, dict):
+                expected = {key: str(value).replace("\n", "<br>").strip() for key, value in expected.items()}
+            if packet.get("reproduction") != expected:
+                errors.append("worker_owned_record_changed:failure-path:reproduction")
+        if (manifest.get("playbook") == "techops_issue_remediation" and manifest.get("lifecycle") == "planning"
+                and worker == "fix-design" and not table_projection):
+            expected = {key: result.get(key) for key in ("plan_readiness", "implementation_plan_action")}
+            if packet.get("planning_disposition") != expected:
+                errors.append("worker_owned_record_changed:fix-design:planning_disposition")
         for table, key in TABLES.items():
             current = {row.get(key): row for row in packet.get(table, [])}
             for row in result.get(table, []):
@@ -155,13 +174,36 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
             (contract.get("planning_disposition_required") or "plan_readiness" in result
              or "implementation_plan_action" in result)):
         pair = (result.get("plan_readiness"), result.get("implementation_plan_action"))
-        if (bindings.get("playbook") != "feature_delivery" or agent != "solution_architect"
+        allowed = {("ready_for_implementation", "create"), ("awaiting_input", "omit")}
+        if bindings.get("playbook") == "feature_delivery":
+            allowed.add(("awaiting_input", "create_draft"))
+        elif bindings.get("playbook") == "techops_issue_remediation":
+            allowed.add(("blocked", "omit"))
+        if (bindings.get("playbook") not in {"feature_delivery", "techops_issue_remediation"} or agent != "solution_architect"
                 or not all(isinstance(value, str) for value in pair)
-                or pair not in {("ready_for_implementation", "create"), ("awaiting_input", "create_draft"),
-                                ("awaiting_input", "omit")}):
-            errors.append("feature_planning_disposition_invalid")
+                or pair not in allowed):
+            errors.append(("feature" if bindings.get("playbook") == "feature_delivery" else "techops")
+                          + "_planning_disposition_invalid")
         else:
             packet["planning_disposition"] = {key: result[key] for key in ("plan_readiness", "implementation_plan_action")}
+    if (bindings.get("playbook") == "techops_issue_remediation" and lifecycle == "planning"
+            and agent == "current_state_investigator" and isinstance(summary, dict) and summary.get("Outcome") == "complete"):
+        try:
+            from runtime_checks import techops_integration_decision_errors
+        except ModuleNotFoundError:
+            from scripts.runtime_checks import techops_integration_decision_errors
+        errors.extend(techops_integration_decision_errors(result.get("integration_decision"),
+                                                          {row["Evidence ID"] for row in packet["evidence"]}))
+        packet["integration_decision"] = result.get("integration_decision")
+    if (bindings.get("playbook") == "techops_issue_remediation" and lifecycle == "planning"
+            and agent == "dependency_analyst" and isinstance(summary, dict) and summary.get("Outcome") == "complete"):
+        try:
+            from runtime_checks import techops_reproduction_errors
+        except ModuleNotFoundError:
+            from scripts.runtime_checks import techops_reproduction_errors
+        errors.extend(techops_reproduction_errors(result.get("reproduction"),
+                                                  {row["Evidence ID"] for row in packet["evidence"]}))
+        packet["reproduction"] = result.get("reproduction")
     if "techops_checks" in result or (
             bindings.get("playbook") == "techops_issue_remediation" and agent == "solution_architect"
             and isinstance(summary, dict) and summary.get("Outcome") == "complete"):

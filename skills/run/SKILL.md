@@ -265,9 +265,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Use stable Input IDs and include each item's short value, source/path, authority, classification, expected use, and
    status. Include the current request as an input with credentials redacted, and preserve each prohibition explicitly;
    do not replace
-   a build/test prohibition with the broader phrase "planning-only". Planning product builds/tests require a separate
-   input row with `Classification: "execution authorization"`, `Authority: "User"`, `Status: "Approved"`, and
-   `Authorized operations: ["test_run"]` or `["build_run"]`, only when the user has actually authorized those actions.
+   a build/test prohibition with the broader phrase "planning-only". Record user prohibitions as an input row with
+   `Classification: "execution restriction"`, `Authority: "User"`, and `Denied operations` containing `test_run`
+   and/or `build_run`. TechOps planning permits a focused existing diagnostic test by its Failure Path or Fix Design
+   worker when the shared evidence-to-hypothesis conditions are met and no user restriction forbids it. Other planning
+   tests and product builds require a separate input row with `Classification: "execution authorization"`,
+   `Authority: "User"`, `Status: "Approved"`, and `Authorized operations: ["test_run"]` or `["build_run"]`,
+   only when the user has actually authorized those actions. An explicit prohibition overrides an authorization.
    A delegated objective cannot grant that authorization. Check executed commands against these constraints before
    fan-in; reject unauthorized results rather than merging them. Keep the full restrictions in every assignment.
    Before creating any current-run file, perform the related-run status projection described below. Construct the
@@ -705,13 +709,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `documenter_packet_stager` from `role_bindings.json`:
    `python3 <documenter_packet_stager> --packet <artifact-root>/finalization_packet.json`
    `--coordinator-model-effort "<observed value or Not exposed / Not exposed>" --prompt-conformance pass`.
-   TechOps also requires `--state ready_for_implementation|awaiting_input|blocked`; select the state from the accepted
-   analysis and the shared planning-readiness rule. Feature Delivery derives State and outcomes from the accepted
-   Fix Design `planning_disposition`. The stager validates current-run result/audit fan-in, writes Coordinator-owned
-   identity and synchronization fields atomically, and stops on incomplete or conflicting evidence. The merger
-   registers each analytical worker ledger row from the authenticated typed assignment, launch binding and accepted
-   result. Do not edit those rows by hand or ask Documenter to reconstruct them. Continue to the packaged activation
-   guard only after this command exits successfully.
+   TechOps also requires `--state ready_for_implementation|awaiting_input|blocked`; reconcile this state with the
+   accepted Fix Design disposition and the shared planning-readiness rule. Feature Delivery derives State and outcomes
+   from the accepted Fix Design `planning_disposition`. The stager validates current-run result/audit fan-in, writes
+   Coordinator-owned identity and synchronization fields atomically, and stops on incomplete or conflicting evidence.
+   The merger registers each analytical worker ledger row from the authenticated typed assignment, launch binding and
+   accepted result. Do not edit those rows by hand or ask Documenter to reconstruct them. Continue to the packaged
+   activation guard only after this command exits successfully.
    For Feature Delivery remediation, after merging `implement`, `review`, and `validate`, stage the delivery barrier
    with `--engineering-outcome solved|partially_solved|blocked`. The command requires current accepted result artifacts,
    matching provider audits, the approved plan, review and validation reports. It writes the handoff identity and

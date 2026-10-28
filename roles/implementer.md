@@ -139,7 +139,8 @@ another unregistered worker changed source before that barrier passed, report a
 workflow violation and do not present the changes as successful playbook
 execution.
 
-Before the first edit, record a plan-conformance manifest in the work record.
+Before the first edit, record a plan-conformance manifest. For TechOps, write `implementation_conformance.json` in the
+active run root; link it from the final work record instead of editing the prepared work record.
 For every proposed file, identify the approved plan step, existing implementation
 or reuse target, intended change, and validation. Map every new table, model,
 fixture, runtime abstraction, or dependency to an explicit plan step. If a

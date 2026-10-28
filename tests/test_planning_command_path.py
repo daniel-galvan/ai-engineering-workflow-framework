@@ -243,6 +243,14 @@ class PlanningCommandPath(unittest.TestCase):
                         "Claim ID": "CL-" + namespace + "-001", "Claim": "Change the existing subtraction to addition.",
                         "Evidence refs": evidence["Evidence ID"], "Confidence": "High", "Uncertainty": "None",
                         "Status": "Supported"}], "decisions": [], "actions": []}
+                    if playbook == "techops_issue_remediation" and role == "current_state_investigator":
+                        result["integration_decision"] = {"decision": "not_required", "reason": "One local component",
+                                                          "evidence_refs": "E-ISS-001"}
+                    if playbook == "techops_issue_remediation" and role == "dependency_analyst":
+                        result["reproduction"] = {"status": "verified_by_evidence", "expected": "Increment by one",
+                            "observed": "Current source subtracts one", "check": "Inspect counter source",
+                            "environment": "Synthetic checkout", "revision": "Fixture baseline",
+                            "limitation": "Test not executed during planning", "evidence_refs": "E-FP-001"}
                     if role == "solution_architect":
                         evidence["Source"] = str(source.parent / "test_counter.py")
                         evidence["Summary"] = "The existing fixture expects increment(2) == 3; zero and negative cases remain planned."
@@ -253,6 +261,7 @@ class PlanningCommandPath(unittest.TestCase):
                         if playbook == "feature_delivery":
                             result.update(plan_readiness="ready_for_implementation", implementation_plan_action="create")
                         else:
+                            result.update(plan_readiness="ready_for_implementation", implementation_plan_action="create")
                             result["techops_checks"] = [{"Check": check, "Status": "not_applicable" if check == "history_reconciliation" else "passed",
                             "Evidence refs": "E-ISS-001, E-FP-001, E-FD-001", "Detail":
                             "No report/current-code mismatch; current source confirms the reported subtraction."
@@ -393,6 +402,7 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertIn(playbook, {"feature_delivery", "techops_issue_remediation"})
                 approved_plan = (root / "implementation_plan.md").read_bytes()
                 prior_checks = json.loads(packet_path.read_text()).get("techops_checks")
+                prior_reproduction = json.loads(packet_path.read_text()).get("reproduction")
                 append(parent, "response_item", role="user", content=[{"type": "input_text", "text":
                     "The exact prepared implementation plan is approved for remediation. Preserve its scope."}])
                 prior_run_id = run["run_id"]
@@ -408,6 +418,7 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(current_packet["reentry"]["Approved plan SHA256"], hashlib.sha256(approved_plan).hexdigest())
                 if playbook == "techops_issue_remediation":
                     self.assertEqual(current_packet.get("techops_checks"), prior_checks)
+                    self.assertEqual(current_packet.get("reproduction"), prior_reproduction)
                     self.assertEqual(set(run["worker_contracts"]), {"implementer", "reviewer", "tester", "documenter"})
                 completed.clear()
                 statuses.clear()
@@ -467,6 +478,15 @@ class PlanningCommandPath(unittest.TestCase):
                         model=guarded["launch_arguments"]["model"],
                         effort=guarded["launch_arguments"]["reasoning_effort"])
                     if agent == "implementer":
+                        if playbook == "techops_issue_remediation":
+                            (root / "implementation_conformance.json").write_text(json.dumps({
+                                "run_id": run["run_id"], "plan_sha256": hashlib.sha256(approved_plan).hexdigest(),
+                                "files": [{"path": str(source), "plan_step": "Correct counter operator",
+                                           "reuse": "Existing counter", "change": "Use addition",
+                                           "validation": "Counter regression assertions"},
+                                          {"path": str(source.parent / "test_counter.py"), "plan_step": "Extend regression",
+                                           "reuse": "Existing test", "change": "Add cases",
+                                           "validation": "Counter regression assertions"}]}))
                         source_guard = json.loads(command("validate_worker_runtime.py", "--before-source-change",
                             packet_path, "--implementer-handle", handle, "--provider-status", "running"))
                         self.assertEqual(source_guard["status"], "allowed")
@@ -636,6 +656,9 @@ class PlanningCommandPath(unittest.TestCase):
                 durable_outputs = [("code_review.md", "Accepted", "Independent implementation review"),
                     ("validation_report.md", "Passed", "Current candidate validation"),
                     ("implementation_plan.md", "Implemented", "Approved plan and execution record")]
+                if playbook == "techops_issue_remediation":
+                    handoff_artifacts.append("implementation_conformance.json")
+                    durable_outputs.append(("implementation_conformance.json", "Verified", "Approved file mapping"))
                 if playbook == "feature_delivery":
                     handoff_artifacts.append("asset_manifest.json")
                     durable_outputs.append(("asset_manifest.json", "Passed", "Feature input inventory"))

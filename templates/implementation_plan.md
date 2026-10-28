@@ -91,7 +91,7 @@ residual uncertainty, and confidence. Preserve the evidence, claim, and decision
 
 # Behavior Applicability
 
-For Feature Delivery, record every material behavior using the
+For Feature Delivery and TechOps, record every material behavior using the
 [applicability contract](../contracts/code_review.md#requirement-applicability). Separate outcomes, mechanisms, and
 inferred policy extensions. Preserve the exact condition of conditional approval. Cite actual source
 comparisons or existing-test results that could contradict the proposal, including unchanged payloads and consumers.

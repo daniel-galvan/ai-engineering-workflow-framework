@@ -49,7 +49,8 @@ class TechOpsCorrections(unittest.TestCase):
             template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
             result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
-                "Worker": "issue-evidence", "Outcome": "complete"}}
+                "Worker": "issue-evidence", "Outcome": "complete"},
+                "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}}
             for table, key, identity in (("evidence", "Evidence ID", "E-ISS-1"),
                                          ("claims", "Claim ID", "CL-ISS-1"),
                                          ("decisions", "Decision ID", "DE-ISS-1"),
@@ -110,6 +111,7 @@ class TechOpsCorrections(unittest.TestCase):
             result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
                 "Worker": "issue-evidence", "Outcome": "complete"}}
+            result["integration_decision"] = {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}
             rows = {}
             for table, key, identity in (("evidence", "Evidence ID", "E-ISS-1"),
                                          ("claims", "Claim ID", "CL-ISS-1"),
@@ -151,7 +153,9 @@ class TechOpsCorrections(unittest.TestCase):
             template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
             result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
-                "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
+                "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": [
+                    {**dict.fromkeys(template["evidence"][0], "Observed"), "Evidence ID": "E-ISS-1"}],
+                "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}}
             trace, exported = stage_worker_response(run, "current_state_investigator", result)
             source = Path(exported["result_artifact"]["path"])
             merge_result(packet_path, "current_state_investigator", trace=trace)
@@ -183,7 +187,9 @@ class TechOpsCorrections(unittest.TestCase):
             template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
             result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
-                "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
+                "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": [
+                    {**dict.fromkeys(template["evidence"][0], "Observed"), "Evidence ID": "E-ISS-1"}],
+                "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}}
             trace_path, _ = stage_worker_response(run, "current_state_investigator", result)
             repository_relative_trace = trace_path.resolve().relative_to(root.resolve())
             previous_cwd = Path.cwd()
@@ -212,7 +218,9 @@ class TechOpsCorrections(unittest.TestCase):
             result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
                 "Worker": "issue-evidence", "Outcome": "complete",
-                "Actual model/effort": "gpt-6-luna / high"}, "evidence": []}
+                "Actual model/effort": "gpt-6-luna / high"}, "evidence": [
+                    {**dict.fromkeys(template["evidence"][0], "Observed"), "Evidence ID": "E-ISS-1"}],
+                "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}}
             trace_path, trace = stage_worker_response(run, "current_state_investigator", result,
                                                       include_runtime_configuration=False)
             self.assertIsNone(trace["runtime_configurations"][0]["model"])
@@ -399,6 +407,227 @@ class TechOpsCorrections(unittest.TestCase):
         precise = copy.deepcopy(observations)
         precise[0]["Last dispatch at"] = "2026-10-07T23:40:01.900Z"
         self.assertEqual(runtime.terminal_observation_errors(precise, handles), [])
+
+    def test_techops_stager_rejects_conflicting_disposition(self):
+        from scripts import stage_documenter_packet as stager
+        from scripts import runtime_checks
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = {"identity": {"Lifecycle": "planning", "Playbook / version": "techops_issue_remediation.md / 0.5.33",
+                                   "Run ID": "run-1", "Requested profile": "standard",
+                                   "Prompt template / revision / conformance": "template / 0.5.33 / pending"},
+                      "planning_disposition": {"plan_readiness": "awaiting_input", "implementation_plan_action": "omit"}}
+            path = root / "finalization_packet.json"
+            path.write_text(json.dumps(packet))
+            (root / "role_bindings.json").write_text(json.dumps({"playbook": "techops_issue_remediation", "run_id": "run-1"}))
+            with patch.object(runtime_checks, "prepared_package_errors", return_value=[]):
+                with self.assertRaisesRegex(ValueError, "techops_planning_disposition_state_mismatch"):
+                    stager.stage(path, coordinator_model_effort="test", prompt_conformance="pass", state="ready_for_implementation")
+            self.assertEqual(json.loads(path.read_text()), packet)
+
+    def test_ready_plan_must_pass_remediation_entry_contract(self):
+        from review_evidence import PLAN_FIXTURE
+        packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.33",
+                               "Lifecycle": "planning", "State": "ready_for_implementation"},
+                  "planning_disposition": {"plan_readiness": "ready_for_implementation", "implementation_plan_action": "create"},
+                  "worker_results": [], "evidence": []}
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                planning_contracts, "_worker_runtime_audit_errors", return_value=[]):
+            root = Path(directory)
+            plan = root / "implementation_plan.md"
+            plan.write_text(PLAN_FIXTURE)
+            valid = planning_contracts._techops_planning_contract_errors(packet, root / "packet.json")
+            plan.write_text(PLAN_FIXTURE.replace("# Behavior Applicability", "## Behavior Applicability"))
+            invalid = planning_contracts._techops_planning_contract_errors(packet, root / "packet.json")
+            self.assertNotIn("requires exactly one # Behavior Applicability", valid)
+            self.assertIn("requires exactly one # Behavior Applicability", invalid)
+            plan.unlink()
+            self.assertIn("techops_implementation_plan_required",
+                          planning_contracts._techops_planning_contract_errors(packet, root / "packet.json"))
+            self.assertNotIn("techops_implementation_plan_required",
+                             planning_contracts._techops_planning_contract_errors(packet, root / "packet.json", pre_handoff=True))
+
+    def test_techops_remediation_handoff_requires_conformance_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            record = {"run_id": "run-1", "plan_sha256": "a" * 64, "files": [{"path": "a.py",
+                "plan_step": "Step 1", "reuse": "Existing function", "change": "Repair", "validation": "Focused test"}]}
+            conformance = root / "implementation_conformance.json"
+            conformance.write_text(json.dumps(record))
+            packet = {"identity": {"Playbook / version": "techops_issue_remediation.md / 0.5.33",
+                      "Lifecycle": "remediation", "Run ID": "run-1", "Engineering outcome": "solved"},
+                      "reentry": {"Prior run ID": "prior", "Approval reference": "Approved",
+                                  "Approved plan": str(root / "implementation_plan.md"), "Approved plan SHA256": "a" * 64},
+                      "durable_artifacts": [], "handoff": {"artifacts": []}, "evidence": []}
+            with patch.object(planning_contracts, "_feature_delivery_remediation_errors", side_effect=lambda *a, **k: []), \
+                 patch.object(planning_contracts, "techops_check_errors", return_value=[]):
+                errors = planning_contracts._techops_remediation_contract_errors(packet, root / "packet.json")
+                self.assertIn("techops_conformance_handoff_reference_required", errors)
+                packet["durable_artifacts"].append({"Path": str(conformance)})
+                packet["handoff"]["artifacts"].append(str(conformance))
+                self.assertEqual(planning_contracts._techops_remediation_contract_errors(packet, root / "packet.json"), [])
+                target = root / "other.json"
+                conformance.rename(target)
+                conformance.symlink_to(target)
+                self.assertIn("techops_conformance_record_required",
+                              planning_contracts._techops_remediation_contract_errors(packet, root / "packet.json"))
+
+    def test_techops_conformance_requires_current_run_and_complete_file_mapping(self):
+        from scripts.runtime_checks import techops_conformance_errors
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "implementation_conformance.json"
+            self.assertIn("techops_conformance_record_required", techops_conformance_errors(path, "run-1", "hash"))
+            record = {"run_id": "run-1", "plan_sha256": "hash", "files": [{"path": "a.py",
+                "plan_step": "Step 1", "reuse": "Existing function", "change": "Repair", "validation": "Focused test"}]}
+            path.write_text(json.dumps(record))
+            self.assertEqual(techops_conformance_errors(path, "run-1", "hash"), [])
+            self.assertIn("techops_conformance_identity_mismatch", techops_conformance_errors(path, "run-2", "hash"))
+            record["files"][0]["validation"] = ""
+            path.write_text(json.dumps(record))
+            self.assertIn("techops_conformance_file_mapping_incomplete", techops_conformance_errors(path, "run-1", "hash"))
+
+    def test_techops_planning_test_permission_respects_user_restrictions(self):
+        from scripts import runtime_checks
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            final = root / "finalization_packet.json"
+            final.write_text(json.dumps({"identity": {"Lifecycle": "planning"}}))
+            packet = {"agent": "dependency_analyst", "lifecycle": "planning", "finalization_packet": str(final),
+                      "worker_contract": {"contract": "/package/playbooks/techops_issue_remediation.md"},
+                      "run_input_manifest": {"inputs": []}}
+            trace = {"spawn": {"dispatch_file": str(root / "dispatch")}, "tool_trace": [
+                {"tool": "exec_command", "arguments": {"cmd": "bazel test //service:focused"}}]}
+            def check():
+                with patch.object(runtime_checks, "_verified_dispatch_content", return_value="prefix\n" + json.dumps(packet) + "\n"):
+                    return runtime_checks.planning_permission_errors(trace)
+            self.assertEqual(check(), [])
+            for command in ("bazel test //...", "go test ./...", "python3 -m unittest discover", "pytest",
+                            "python3 -m pytest -q"):
+                trace["tool_trace"][0]["arguments"]["cmd"] = command
+                self.assertIn("planning_diagnostic_test_not_focused", check())
+            packet["run_input_manifest"]["inputs"].append({"Authority": "User", "Classification": "execution authorization",
+                                                           "Status": "Approved", "Authorized operations": ["test_run"]})
+            self.assertEqual(check(), [])
+            packet["run_input_manifest"]["inputs"] = []
+            trace["tool_trace"][0]["arguments"]["cmd"] = "bazel build //service:binary"
+            self.assertIn("planning_operation_not_authorized:build_run", check())
+            trace["tool_trace"][0]["arguments"]["cmd"] = "bazel test //service:focused"
+            packet["run_input_manifest"]["inputs"].append({"Authority": "User", "Classification": "execution restriction",
+                                                           "Denied operations": ["test_run"]})
+            self.assertIn("planning_operation_not_authorized:test_run", check())
+            packet["agent"] = "current_state_investigator"
+            packet["run_input_manifest"]["inputs"] = []
+            self.assertIn("planning_operation_not_authorized:test_run", check())
+
+    def test_integration_decision_requires_reason_and_current_evidence(self):
+        from scripts.runtime_checks import techops_integration_decision_errors
+        record = {"decision": "required", "reason": "Report crosses a service boundary", "evidence_refs": "E-ISS-1"}
+        self.assertEqual(techops_integration_decision_errors(record, {"E-ISS-1"}), [])
+        self.assertEqual(techops_integration_decision_errors({**record, "decision": "not_required"}, {"E-ISS-1"}), [])
+        self.assertIn("techops_integration_decision_invalid",
+                      techops_integration_decision_errors({**record, "decision": "maybe"}, {"E-ISS-1"}))
+        self.assertIn("techops_integration_reason_required",
+                      techops_integration_decision_errors({**record, "reason": ""}, {"E-ISS-1"}))
+        self.assertIn("techops_integration_evidence_required", techops_integration_decision_errors(record, set()))
+
+    def test_standard_required_integration_must_complete(self):
+        packet = {"identity": {"Playbook / version": "techops_issue_remediation.md / 0.5.33", "Lifecycle": "planning"},
+                  "worker_results": [{"Worker": "issue-evidence", "Outcome": "complete"},
+                                     {"Worker": "fix-design", "Outcome": "complete"}],
+                  "evidence": [{"Evidence ID": "E-ISS-1"}],
+                  "integration_decision": {"decision": "required", "reason": "Service boundary",
+                                           "evidence_refs": "E-ISS-1"}}
+        with patch.object(planning_contracts, "_worker_runtime_audit_errors", return_value=[]):
+            errors = planning_contracts._techops_planning_contract_errors(packet, Path("/tmp/packet.json"), pre_handoff=True)
+            self.assertIn("techops_required_integration_incomplete", errors)
+            packet["integration_decision"]["decision"] = "not_required"
+            errors = planning_contracts._techops_planning_contract_errors(packet, Path("/tmp/packet.json"), pre_handoff=True)
+            self.assertNotIn("techops_required_integration_incomplete", errors)
+
+    def test_fix_design_waits_for_required_integration(self):
+        packet = {"identity": {"Requested profile": "standard"},
+                  "worker_results": [{"Worker": "issue-evidence", "Outcome": "complete"},
+                                     {"Worker": "failure-path", "Outcome": "complete"}],
+                  "evidence": [{"Evidence ID": "E-ISS-1"}],
+                  "integration_decision": {"decision": "required", "reason": "Service boundary",
+                                           "evidence_refs": "E-ISS-1"}}
+        self.assertIn("techops_design_prerequisites_incomplete", planning_contracts.techops_design_gate_errors(packet))
+        packet["worker_results"].append({"Worker": "repository-integration", "Outcome": "complete"})
+        self.assertEqual(planning_contracts.techops_design_gate_errors(packet), [])
+        packet["worker_results"].pop()
+        packet["integration_decision"]["decision"] = "not_required"
+        self.assertEqual(planning_contracts.techops_design_gate_errors(packet), [])
+        packet["identity"]["Requested profile"] = "deep"
+        self.assertIn("techops_design_prerequisites_incomplete", planning_contracts.techops_design_gate_errors(packet))
+
+    def test_fix_design_activation_rejects_missing_required_integration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare.prepare_run(Path(directory), "DESIGN-GATE", "techops_issue_remediation", None, False)
+            packet_path = Path(run["finalization_packet"])
+            packet = json.loads(packet_path.read_text())
+            packet["worker_results"] = [{"Worker": "issue-evidence", "Outcome": "complete"},
+                                        {"Worker": "failure-path", "Outcome": "complete"}]
+            packet["evidence"] = [{"Evidence ID": "E-ISS-1"}]
+            packet["integration_decision"] = {"decision": "required", "reason": "Service boundary",
+                                              "evidence_refs": "E-ISS-1"}
+            packet_path.write_text(json.dumps(packet))
+            bundle = run["activation_packet_bundle"]
+            errors = runtime.activation_packet_errors(Path(bundle["path"]), "solution_architect", bundle["sha256"])
+            self.assertIn("techops_design_prerequisites_incomplete", errors)
+
+    def test_reproduction_record_distinguishes_results_and_requires_evidence(self):
+        from scripts.runtime_checks import techops_reproduction_errors
+        record = {"status": "unable_to_attempt", "expected": "Saved values persist",
+                  "observed": "No runtime check performed", "check": "Inspected current save path",
+                  "environment": "Local checkout", "revision": "abc1234", "limitation": "Fixture unavailable",
+                  "evidence_refs": "E-FP-1"}
+        self.assertEqual(techops_reproduction_errors(record, {"E-FP-1"}), [])
+        for status in ("reproduced", "verified_by_evidence", "not_reproduced"):
+            self.assertEqual(techops_reproduction_errors({**record, "status": status}, {"E-FP-1"}), [])
+        self.assertIn("techops_reproduction_status_invalid",
+                      techops_reproduction_errors({**record, "status": "passed"}, {"E-FP-1"}))
+        self.assertIn("techops_reproduction_evidence_required",
+                      techops_reproduction_errors(record, {"E-FP-2"}))
+        self.assertIn("techops_reproduction_field_required:check",
+                      techops_reproduction_errors({**record, "check": ""}, {"E-FP-1"}))
+
+    def test_failure_path_result_requires_reproduction_record(self):
+        from scripts.merge_techops_result import validated_result
+        template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
+        packet = copy.deepcopy(template)
+        packet["identity"].update({"Run ID": "run-1", "Lifecycle": "planning"})
+        for name in ("worker_results", "evidence", "claims", "decisions", "actions"):
+            packet[name] = []
+        result = {"run_id": "run-1", "worker_result": {
+            **dict.fromkeys(template["worker_results"][0], "Evidence"),
+            "Worker": "failure-path", "Outcome": "complete"},
+            "evidence": [{**dict.fromkeys(template["evidence"][0], "Evidence"), "Evidence ID": "E-FP-1"}]}
+        bindings = {"playbook": "techops_issue_remediation", "lifecycle": "planning",
+                    "worker_contracts": {"dependency_analyst": {}}}
+        with self.assertRaisesRegex(ValueError, "techops_reproduction_record_required"):
+            validated_result(packet, result, bindings, "dependency_analyst")
+        result["reproduction"] = {"status": "unable_to_attempt", "expected": "Saved values persist",
+            "observed": "No runtime check performed", "check": "Inspected current save path",
+            "environment": "Local checkout", "revision": "abc1234", "limitation": "Fixture unavailable",
+            "evidence_refs": "E-FP-1"}
+        accepted = validated_result(packet, result, bindings, "dependency_analyst")
+        self.assertEqual(accepted["reproduction"], result["reproduction"])
+        from scripts.merge_techops_result import merged_result_errors
+        from scripts.work_record_format import _mapping_table
+        from scripts.validation.markdown import markdown_table
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "failure_path_result.json"
+            source.write_text(json.dumps(result))
+            bindings["worker_contracts"]["dependency_analyst"]["result"] = str(source)
+            table = "# TechOps Reproduction\n\n" + _mapping_table(accepted["reproduction"])
+            rows = markdown_table(table, "# TechOps Reproduction")
+            accepted["reproduction"] = {row["Field"]: row["Value"] for row in rows}
+            self.assertNotIn("worker_owned_record_changed:failure-path:reproduction",
+                             merged_result_errors(accepted, bindings, root, table_projection=True))
+            accepted["reproduction"]["status"] = "reproduced"
+            self.assertIn("worker_owned_record_changed:failure-path:reproduction",
+                          merged_result_errors(accepted, bindings, root, table_projection=True))
 
     def test_planning_checks_require_supported_evidence(self):
         checks = [{"Check": name, "Status": "not_applicable" if name == "history_reconciliation" else "passed", "Evidence refs": "E-001",

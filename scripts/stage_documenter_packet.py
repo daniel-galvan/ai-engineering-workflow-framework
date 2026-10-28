@@ -48,6 +48,12 @@ def stage(packet_path: Path, *, coordinator_model_effort: str, prompt_conformanc
             raise ValueError("techops_engineering_outcome_not_applicable")
         if state not in {"ready_for_implementation", "awaiting_input", "blocked"}:
             raise ValueError("techops_coordinator_state_required")
+        disposition = packet.get("planning_disposition", {})
+        if state != "blocked" and (not isinstance(disposition, dict)
+                or disposition.get("plan_readiness") != state
+                or disposition.get("implementation_plan_action") != (
+                    "create" if state == "ready_for_implementation" else "omit")):
+            raise ValueError("techops_planning_disposition_state_mismatch")
         state_outcomes = {
             "ready_for_implementation": ("designed", "completed", "plan_only"),
             "awaiting_input": ("understood", "completed", "partially_solved"),
@@ -241,6 +247,9 @@ def _validate_current_fan_in(packet: dict, packet_path: Path, bindings: dict, pl
         raise ValueError("coordinator_worker_ledger_mismatch")
     if playbook == "techops_issue_remediation":
         required = {"issue-evidence", "failure-path", "fix-design"}
+        if (isinstance(packet.get("integration_decision"), dict)
+                and packet["integration_decision"].get("decision") == "required"):
+            required.add("repository-integration")
         if profile == "deep":
             required.update({"repository-integration", "planning-review"})
         if not required <= workers:

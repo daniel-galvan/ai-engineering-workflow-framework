@@ -220,6 +220,9 @@ class PackagedLifecycle(unittest.TestCase):
                         **dict.fromkeys(template["worker_results"][0], "Synthetic current evidence"),
                         "Worker": worker, "Outcome": "complete", "Evidence / claim refs": evidence["Evidence ID"]},
                         "evidence": [evidence], "claims": [], "decisions": [], "actions": []}
+                    if playbook == "techops_issue_remediation":
+                        worker_result["integration_decision"] = {"decision": "not_required", "reason": "One component",
+                                                                 "evidence_refs": evidence["Evidence ID"]}
                     asset_manifest = {"schema_version": 1, "status": "passed", "work_item": "ITEM-1",
                         "sources": [{"source_id": "SRC-JIRA", "input_id": "IN-001",
                             "kind": "jira_issue_attachments", "locator": "Jira ITEM-1 attachments",

@@ -658,6 +658,10 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
             "decisions": markdown_table(text, "# Decision Log"),
             "actions": markdown_table(text, "# Action Log"),
             "techops_checks": markdown_table(text, "# TechOps Planning Checks"),
+            "reproduction": {row.get("Field", ""): row.get("Value", "")
+                             for row in markdown_table(text, "# TechOps Reproduction")},
+            "integration_decision": {row.get("Field", ""): row.get("Value", "")
+                                     for row in markdown_table(text, "# TechOps Integration Decision")},
             "runtime_audits": markdown_table(text, "# Worker Runtime Audits"),
             "terminal_observations": markdown_table(text, "# Worker Terminal Observations"),
         }, path, table_projection=True):

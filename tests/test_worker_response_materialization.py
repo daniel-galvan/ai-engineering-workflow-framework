@@ -40,7 +40,10 @@ class WorkerResponseMaterialization(unittest.TestCase):
             schema = json.loads((prepare_run.ROOT / "templates/finalization_packet.json").read_text())
             result = {"run_id": run["run_id"], "worker_result": {
                 **dict.fromkeys(schema["worker_results"][0], "Legacy current result"),
-                "Worker": worker, "Outcome": "complete"}, "evidence": [], "claims": [],
+                "Worker": worker, "Outcome": "complete"}, "evidence": [
+                    {**dict.fromkeys(schema["evidence"][0], "Current observation"), "Evidence ID": "E-ISS-001"}],
+                "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-001"},
+                "claims": [],
                 "decisions": [], "actions": []}
             result_path = Path(bindings["worker_contracts"][role]["result"])
             result_path.write_text(json.dumps(result))
@@ -76,6 +79,8 @@ class WorkerResponseMaterialization(unittest.TestCase):
                                   "Evidence / claim refs": evidence_id},
                 "evidence": [{**dict.fromkeys(schema["evidence"][0], "Current request observation"),
                               "Evidence ID": evidence_id}],
+                "integration_decision": {"decision": "not_required", "reason": "One component",
+                                         "evidence_refs": evidence_id},
                 "claims": [], "decisions": [], "actions": [],
             }
             narrative = "Current-run issue evidence."

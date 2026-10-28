@@ -1040,7 +1040,9 @@ completion.
 
 ## Implementation Plan Conformance Check
 
-Before the first source change, the delegated Implementer MUST record a plan-conformance manifest in the work record.
+Before the first source change, the delegated Implementer MUST record a plan-conformance manifest. For TechOps, write
+`implementation_conformance.json` in the active run root and link it from the final work record; keep the prepared work
+record unchanged until finalization. The TechOps pre-source-change guard checks its current run and approved-plan hash.
 For every proposed changed file, the manifest MUST identify the approved plan step, the existing implementation or
 reuse target, the intended change, and the validation that will prove it. Every new table, model, fixture, runtime
 abstraction, or dependency MUST be mapped to an explicit plan step. A change that is not mapped, contradicts an

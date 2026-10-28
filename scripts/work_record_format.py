@@ -384,6 +384,10 @@ def render(packet: dict[str, object]) -> str:
     playbook_name = Path(str(packet["identity"].get("Playbook / version", "")).split(" / ", 1)[0]).stem
     if playbook_name == "feature_delivery":
         sections.insert(4, _section("Asset Inventory and Review", _feature_asset_section(packet)))
+    if isinstance(packet.get("reproduction"), dict):
+        sections.insert(-1, _section("TechOps Reproduction", _mapping_table(packet["reproduction"])))
+    if isinstance(packet.get("integration_decision"), dict):
+        sections.insert(-1, _section("TechOps Integration Decision", _mapping_table(packet["integration_decision"])))
     for key, title, headers in (
         ("terminal_observations", "Worker Terminal Observations", (
             "Provider handle", "Provider status", "Last dispatch at", "Observed at", "Status source",

@@ -82,7 +82,9 @@ class V6Recovery(unittest.TestCase):
         template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
         result = {"run_id": envelope["run_id"], "worker_result": {
             **dict.fromkeys(template["worker_results"][0], "Current-run evidence"),
-            "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
+            "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": [
+                {**dict.fromkeys(template["evidence"][0], "Current issue"), "Evidence ID": "E-ISS-1"}],
+            "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}}
         trace_path, _ = stage_worker_response(run, "current_state_investigator", result)
         merge_result(packet_path, "current_state_investigator", trace=trace_path)
         self.assertEqual(json.loads(packet_path.read_text())["worker_results"][0]["Worker"], "issue-evidence")
@@ -425,7 +427,9 @@ class V6Recovery(unittest.TestCase):
         template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
         result = {"run_id": envelope["run_id"], "worker_result": {
             **dict.fromkeys(template["worker_results"][0], "Reverified current-run evidence"),
-            "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": []}
+            "Worker": "issue-evidence", "Outcome": "complete"}, "evidence": [
+                {**dict.fromkeys(template["evidence"][0], "Current issue"), "Evidence ID": "E-ISS-1"}],
+            "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}}
         child.write_text("\n".join(json.dumps(row) for row in [
             {"timestamp": dispatch, "type": "session_meta", "payload": {"id": fresh_child}},
             {"timestamp": "2026-10-09T20:03:30Z", "type": "response_item", "payload": {

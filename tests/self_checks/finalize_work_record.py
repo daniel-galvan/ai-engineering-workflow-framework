@@ -644,6 +644,13 @@ def self_test() -> None:
                  "repository-integration": "repository_integrator", "fix-design": "solution_architect", "handoff": "documenter"}
         published_techops["workers"] = [feature_ledger(worker, role, "IN-001") for worker, role in roles.items()]
         published_techops["worker_results"] = [feature_result(worker) for worker in roles]
+        published_techops["integration_decision"] = {"decision": "required", "reason": "Cross-service boundary",
+                                                     "evidence_refs": "E-001"}
+        published_techops["reproduction"] = {"status": "verified_by_evidence", "expected": "Expected output",
+            "observed": "Observed output", "check": "Source inspection", "environment": "Fixture",
+            "revision": "Fixture revision", "limitation": "No runtime test", "evidence_refs": "E-001"}
+        published_techops["planning_disposition"] = {"plan_readiness": "ready_for_implementation",
+                                                     "implementation_plan_action": "create"}
         published_techops["techops_checks"] = [
             {"Check": name, "Status": "not_applicable" if name == "history_reconciliation" else "passed",
              "Evidence refs": "E-001", "Detail": "Owning worker evidence; fixture has no history mismatch"}

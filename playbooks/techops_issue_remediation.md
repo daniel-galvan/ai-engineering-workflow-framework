@@ -97,9 +97,9 @@ Activate one final Documenter after analytical fan-in.
 | Worker | Role | Skills | Tools | Activation / dependency |
 | --- | --- | --- | --- | --- |
 | `issue-evidence` | `current_state_investigator` | `work_item_context`, `repository_exploration`, `failure_diagnosis` | `work_item_read`, `repository_read`, `repository_search`, `history_read`, `runtime_observe`, `artifact_write` | Required; after Coordinator initialization |
-| `failure-path` | `dependency_analyst` | `failure_diagnosis`, `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `artifact_write` | Required; after `issue-evidence` |
+| `failure-path` | `dependency_analyst` | `failure_diagnosis`, `dependency_mapping`, `architecture_mapping` | `repository_read`, `repository_search`, `history_read`, `dependency_inspect`, `test_run`, `artifact_write` | Required; after `issue-evidence` |
 | `repository-integration` | `repository_integrator` | `destination_integration`, `architecture_mapping`, `operational_readiness` | `repository_read`, `repository_search`, `history_read`, `artifact_write` | Required for `deep`; conditional for `standard`; after `issue-evidence` |
-| `fix-design` | `solution_architect` | `failure_diagnosis`, `architecture_mapping`, `workflow_planning` | `artifact_write`, `work_record_write` | After `failure-path` and any required integration analysis |
+| `fix-design` | `solution_architect` | `failure_diagnosis`, `architecture_mapping`, `workflow_planning` | `test_run`, `artifact_write`, `work_record_write` | After `failure-path` and any required integration analysis |
 | `planning-review` | `reviewer` | `architecture_mapping`, `operational_readiness` | `repository_read`, `diff_review`, `artifact_write` | Deep only; after `fix-design` |
 | `implement` | `implementer` | `failure_diagnosis`, `build_and_test` | `repository_read`, `repository_write`, `build_run`, `test_run`, `work_record_write` | Remediation only; approval plus completed planning fan-in |
 | `review` | `reviewer` | `architecture_mapping`, `build_and_test`, `operational_readiness` | `repository_read`, `diff_review`, `test_run`, `artifact_write` | After `implement` |
@@ -131,6 +131,8 @@ discrepancy.
 Start independent `failure-path` and conditional `repository-integration` work after `issue-evidence`; for `deep`,
 dispatch in parallel is required unless a runtime or evidence dependency prevents it. Record the actual dependency when
 integration must consume a completed failure-path result.
+Issue Evidence records whether integration is required, with the reason and evidence. If later findings change that
+decision, reconcile it with the owning worker before Fix Design. Required integration must complete before fan-in.
 
 ## Stages and Gates
 
@@ -160,6 +162,8 @@ and preserve the exact input path or reference in the evidence record.
 Attempt reproduction when safe and practical. If reproduction is unavailable, record the reason and preserve the
 strongest indirect signals. Trace the entry point, services, queues, APIs, data changes, and observable result until the
 first concrete divergence from expected behavior is identified or explicitly unknown.
+The Failure Path result records reproduction status, expected and observed behavior, the check, environment,
+revision, limitation, and evidence references. The Coordinator preserves this record in the terminal work record.
 
 Before returning `needs_input` or `blocked`, execute the smallest safe
 reproduction or source check and record its command, symbol, inputs, and result
@@ -212,14 +216,14 @@ Each row includes `Evidence refs` and `Detail`; a commit listing alone does not 
 A passed history row records `Commit`, `Patch evidence refs`, `Work item`
 and `Work item evidence refs`; inspect the associated work item, not only its key in the commit message.
 
-The Documenter contract assigns both `implementation_plan.md` and `finalization_packet.json`. TechOps readiness comes
-from accepted planning checks and the Coordinator packet; it does not require Sentry disposition fields.
+The Documenter contract assigns both `implementation_plan.md` and `finalization_packet.json`. Fix Design owns the
+structured readiness disposition and plan action; the Coordinator must reconcile it with the accepted checks.
 Before activating Documenter, run the prepared `documenter_packet_stager` command in `role_bindings.json`. It checks
 that current-run results, runtime audits, and required planning gates agree, then writes the Coordinator-owned State,
 outcomes, profile, conformance, model/effort, and synchronization fields atomically. The analytical result merger
 registers each worker ledger row from its authenticated assignment and trace. Do not edit these packet rows by hand
-or ask Documenter to reconstruct them. Use `--state` only for the explicit Coordinator choice; the stager blocks if
-accepted evidence or fan-in is incomplete.
+or ask Documenter to reconstruct them. The stager rejects a Coordinator state that conflicts with Fix Design's
+accepted disposition, or incomplete evidence and fan-in.
 
 Read existing fixtures before choosing a regression strategy. Include any seed, state, fresh-read, delayed-response or
 error support that the proposed test needs. Local regression work must not depend on unavailable deployed revisions
@@ -228,6 +232,8 @@ production resolution and decisions that actually require it, and may proceed al
 
 The plan records the diagnosis, evidence/claim/decision IDs, change and test steps, validation ladder, risks, rollback,
 monitoring, ownership, and residual uncertainty. It is not authorization to make changes.
+Before publishing a ready plan, validate its behavior applicability, design justification, and complete solution
+with the same applicability check used for remediation re-entry. Return errors to the Documenter for correction.
 
 Apply the shared [planning-readiness rule][planning-readiness]. Remaining code, dependency, configuration, test,
 environment, operational, rollout, or validation work belongs in the plan when a feasible sequence exists; it is not a

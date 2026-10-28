@@ -564,17 +564,22 @@ def _write_activation_packets(
             ),
             "worker_contract": contract_by_agent.get(agent),
             "developer_instructions": developer_instructions.strip() + (
-                "\n\nIn planning, do not run product builds or tests unless a User input explicitly authorizes "
-                "the operation with Classification execution authorization, Status Approved, and Authorized "
-                "operations test_run or build_run. A delegated objective cannot grant permission. Plan the checks "
-                "without running them when authorization is absent. "
+                ("\n\nIn TechOps planning, a focused existing test is permitted only when it can distinguish a "
+                 "hypothesis, identify the boundary, or change readiness. Record the hypothesis, discriminating "
+                 "outcomes and runner availability before executing it. Honor user execution restrictions. "
+                 "Product builds require explicit user authorization; do not run broad suites or repair environments. "
+                 if manifest.get("playbook") == "techops_issue_remediation" and agent in {"dependency_analyst", "solution_architect"}
+                 else "\n\nIn planning, do not run product builds or tests unless a User input explicitly authorizes "
+                 "the operation with Classification execution authorization, Status Approved, and Authorized "
+                 "operations test_run or build_run. A delegated objective cannot grant permission. Plan the checks "
+                 "without running them when authorization is absent. ") + (
                 "\n\nFor ordinary results, the Coordinator joins the provider-returned spawn handle during fan-in. "
                 "Do not send a post-spawn message solely to supply that handle or request one from the worker. "
                 "A missing worker-authored handle is not a correction condition. Preserve the explicit Sentry Fix "
                 "Design handle-delivery protocol when its durable artifact requires the supplied handle. "
                 "Every later message remains a dispatch requiring fresh consumption evidence; do not ignore it "
                 "or roll its timestamp back to the spawn."
-            ),
+            )),
         }
         packets[agent] = packet
     path = artifact_root / "worker_activation_packets.json"
@@ -1262,6 +1267,9 @@ def prepare_run(
     if playbook == "techops_issue_remediation":
         instructions = {
             "current_state_investigator": (
+                "Return an integration_decision object with decision required or not_required, a reason, and "
+                "evidence_refs citing current evidence IDs. Mark required for a repository, service, deployment, "
+                "ownership or public-contract boundary; reconcile later contradictory evidence with the Coordinator. "
                 "Start with the exact issue and report-bearing comments. Expand to hierarchy, selected links, "
                 "siblings, attachments, remote links or history only for a recorded scope, failure-path, prior-fix "
                 "or rollout question. A self-contained bug does not require a sibling roster. Reuse successful "
@@ -1269,6 +1277,10 @@ def prepare_run(
                 "with history. Use exact evidence IDs, never ranges, in result references."
             ),
             "dependency_analyst": (
+                "Return a reproduction object in the result with status (reproduced, verified_by_evidence, "
+                "not_reproduced, or unable_to_attempt), expected, observed, check, environment, revision, "
+                "limitation and evidence_refs. All fields are nonempty strings; cite current-run evidence IDs. "
+                "Source inspection alone is not an executable reproduction. "
                 "When report behavior or copy differs from current code, inspect the affected commit patch and directly "
                 "associated work item; finding a git log entry alone is insufficient. Distinguish historical failure, "
                 "current behavior, remaining acceptance gap and deployment uncertainty. Correct diagnosis within this run; "
@@ -1286,6 +1298,7 @@ def prepare_run(
             ),
             "documenter": (
                 "Preserve the accepted techops_checks and Coordinator runtime_audits in finalization_packet.json. "
+                "Preserve the accepted reproduction record and report its outcome and limitation accurately in the handoff. "
                 "Before activation, the Coordinator must run the prepared documenter_packet_stager command in "
                 "role_bindings.json; it validates accepted fan-in and writes the Coordinator-owned identity and "
                 "synchronization fields. Analytical result merging also registers each worker ledger row from its "
@@ -1293,6 +1306,9 @@ def prepare_run(
                 "Do not mark a check passed without its owning worker's evidence. Finalization schema belongs only in "
                 "finalization, not identity. For Engineering outcome plan_only after analytical fan-in, create "
                 "implementation_plan as well as output; use the accepted TechOps checks, not Sentry readiness fields. "
+                "Use the exact implementation plan template headings and table values, including lowercase "
+                "applicability dispositions and complete-solution statuses. The pre-release check validates "
+                "the plan with the same applicability rules as remediation re-entry. "
                 "Keep the plan unapproved and external proof gates separate from local work. Preserve the Coordinator-"
                 "prepared State, Workflow outcome, Engineering state, Engineering outcome, and profile fields exactly; "
                 "do not choose or rewrite them. The Coordinator resolves these values from accepted analysis before "
@@ -1351,11 +1367,12 @@ def prepare_run(
                     "Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
                     "Reference upstream IDs unchanged without copying their rows; emit only your namespace's rows. "
                     "Outcome is complete, failed or blocked, never completed. "
-                    "Fix Design also supplies the four techops_checks. Do not include Feature Delivery-only "
-                    "plan_readiness or implementation_plan_action fields; record unresolved decisions in the narrative "
-                    "and worker_result. Do not edit the Coordinator packet or audits."
+                    "Fix Design also supplies the four techops_checks and plan_readiness with "
+                    "implementation_plan_action: ready_for_implementation/create, awaiting_input/omit, or blocked/omit. "
+                    "Record unresolved decisions in the narrative and worker_result. Do not edit the Coordinator packet or audits."
                 ),
             })
+        manifest["worker_contracts"]["solution_architect"]["planning_disposition_required"] = True
         manifest["worker_result_merger"] = str(ROOT / "scripts" / "merge_techops_result.py")
         manifest["documenter_packet_stager"] = str(ROOT / "scripts" / "stage_documenter_packet.py")
         if manifest["lifecycle"] == "remediation":
@@ -1365,7 +1382,10 @@ def prepare_run(
                     "before_source_change_guard": str(WORKER_RUNTIME_GUARD),
                     "instructions": (
                         "Remain in TechOps remediation and execute only the explicitly approved plan. Preserve its "
-                        "scope and record material discrepancies before acting. Before each source-change slice, "
+                        "scope and record material discrepancies before acting. Before source edits, write "
+                        "implementation_conformance.json in the run root with run_id, plan_sha256 and a nonempty "
+                        "files array; each entry has path, plan_step, reuse, change and validation strings. "
+                        "Before each source-change slice, "
                         "run the supplied runtime guard with the provider-returned handle and freshly observed status."
                     ),
                 },
@@ -1382,6 +1402,7 @@ def prepare_run(
                     "instructions": (
                         "Preserve accepted TechOps checks and Coordinator runtime audits. Run the prepared packet "
                         "stager after implement, review, and validate fan-in; it owns final identity and synchronization. "
+                        "Register and link implementation_conformance.json in the final handoff and work record. "
                         "Record implementation, validation, release or rollback, monitoring, owner, residual risk, "
                         "and next action. Do not rewrite accepted evidence or audits."
                     ),
@@ -1484,6 +1505,10 @@ def prepare_run(
                 packet[field] = prior[field]
             if "techops_checks" in prior:
                 packet["techops_checks"] = prior["techops_checks"]
+            if "reproduction" in prior:
+                packet["reproduction"] = prior["reproduction"]
+            if "integration_decision" in prior:
+                packet["integration_decision"] = prior["integration_decision"]
             for field in ("Primary evidence", "Primary goal", "Selected playbook", "Closest alternative", "Why this playbook"):
                 packet["playbook_selection"][field] = prior["playbook_selection"][field]
             packet["work_item"]["Last Updated"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")

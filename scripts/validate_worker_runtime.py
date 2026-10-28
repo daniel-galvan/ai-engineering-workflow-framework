@@ -261,6 +261,32 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         elif manifest_path:
             errors.append("run_input_manifest_unavailable")
     bindings_path = path.parent / "role_bindings.json"
+    if expected_agent == "solution_architect" and bindings_path.is_file():
+        try:
+            bindings = json.loads(bindings_path.read_text())
+            if bindings.get("playbook") == "techops_issue_remediation" and bindings.get("lifecycle") == "planning":
+                try:
+                    from planning_contracts import techops_design_gate_errors
+                except ModuleNotFoundError:
+                    from scripts.planning_contracts import techops_design_gate_errors
+                current = json.loads((path.parent / "finalization_packet.json").read_text())
+                gate_errors = techops_design_gate_errors(current)
+                errors.extend(gate_errors)
+                if not gate_errors:
+                    try:
+                        from merge_techops_result import merged_result_errors
+                        from planning_contracts import _worker_runtime_audit_errors
+                    except ModuleNotFoundError:
+                        from scripts.merge_techops_result import merged_result_errors
+                        from scripts.planning_contracts import _worker_runtime_audit_errors
+                    required = {"issue-evidence", "failure-path"}
+                    if (current["integration_decision"]["decision"] == "required"
+                            or current["identity"].get("Requested profile") == "deep"):
+                        required.add("repository-integration")
+                    errors.extend(merged_result_errors(current, bindings, path.parent))
+                    errors.extend(_worker_runtime_audit_errors(current, path.parent / "finalization_packet.json", required))
+        except (OSError, ValueError, TypeError, AttributeError):
+            errors.append("techops_design_gate_invalid")
     if expected_agent == "documenter" and bindings_path.is_file():
         try:
             bindings = json.loads(bindings_path.read_text())
