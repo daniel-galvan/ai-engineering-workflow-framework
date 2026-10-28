@@ -43,6 +43,10 @@ class PlanningCommandPath(unittest.TestCase):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True,
                            recover_interrupted_delivery=True)
 
+    def test_missing_conformance_pre_edit_failure_recovers_with_approved_plan(self):
+        self.planning_path("techops_issue_remediation", continue_to_remediation=True,
+                           recover_interrupted_delivery=True, missing_mapping=True)
+
     def test_context_block_before_dispatch_recovers_with_accepted_evidence(self):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True,
                            recover_context_block=True)
@@ -78,7 +82,7 @@ class PlanningCommandPath(unittest.TestCase):
                       native_continuation=False, continue_to_remediation=False,
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
-                      recover_context_block=False):
+                      recover_context_block=False, missing_mapping=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -568,7 +572,8 @@ class PlanningCommandPath(unittest.TestCase):
                             "--started-at", run["runtime_evidence"]["run_started_at"],
                             "--ledger", run["runtime_evidence"]["ledger"])
                     command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
-                            "remediation_not_activated:expected_matching_active_profile_and_in_progress_state", expected=2)
+                            ("techops_conformance_record_required" if missing_mapping else
+                             "remediation_not_activated:expected_matching_active_profile_and_in_progress_state"), expected=2)
                     old_failure = (root / "finalization_failure.json").read_bytes()
                     run = json.loads(command("prepare_run.py", "--execution-repository", repository,
                         "--work-item", "DEMO-1", "--playbook", playbook, "--continuation", "--remediation-reentry",

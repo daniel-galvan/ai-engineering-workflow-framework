@@ -359,9 +359,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    must be reconciled first. The helper preserves prior artifacts and accepted decisions, starts a new remediation
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
    sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.
-   For explicitly authorized TechOps recovery after the pre-edit activation-profile failure or an archive-context block
-   before dispatch, use these same re-entry flags. Preparation verifies every prior worker is terminal, the native
-   ledger, the approved plan and clean checkout. After a context block it also checks accepted evidence against the
+   For explicitly authorized TechOps recovery after a pre-edit activation-profile or missing-mapping failure, or an
+   archive-context block before dispatch, use these same re-entry flags. Preparation verifies every prior worker is
+   terminal, the native ledger, the approved plan and clean checkout. After a context block it also checks accepted
+   evidence against the
    prior saved packet. It preserves the failed delivery and starts a new remediation identity. Never repeat the
    investigation.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
@@ -392,6 +393,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    provider inventory, and the approved plan. Do not hand-populate packet worker rows; accepted result merges create
    those rows, and activate handoff only after delivery fan-in. The collector advances the activated profile and
    `in_progress` state only after this same live-evidence gate passes; never edit those identity fields manually.
+   For TechOps, after the three workers are active, let the Implementer inspect the approved scope and create
+   `implementation_conformance.json` before running the source-change guard. That artifact is not a source edit;
+   the guard requires it and must pass before the Implementer changes source files.
    Run `validate_worker_runtime.py --before-source-change <packet> --implementer-handle <observed-handle>`
    `--provider-status <fresh-observed-status>` and require exit zero. The approved plan hash must still match re-entry.
    An approved plan amendment requires its explicit approval reference and exact hash to be reconciled before retry;

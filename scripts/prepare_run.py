@@ -677,6 +677,8 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
     observations = closure["terminal_observations"]
     handles = sorted(ledger["thread_mappings"])
     expected_error = "remediation_not_activated:expected_matching_active_profile_and_in_progress_state"
+    missing_mapping = (failure.get("errors") == ["techops_conformance_record_required"]
+                       and not (artifact_root / "implementation_conformance.json").exists())
     context_error = "parent_context_nonconformant:forbidden_context_reference:archived_artifact"
     context_recovery = failure.get("errors") == [context_error] and not handles
     if context_recovery:
@@ -697,7 +699,7 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
                 or any(prior.get(field) != approved_source.get(field) for field in fields)):
             raise ValueError("remediation_recovery_accepted_evidence_changed")
     if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-            and (failure.get("errors") == [expected_error] or context_recovery)
+            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery)
             and failure.get("runtime_closure") == "terminal"
             and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
             and failure.get("run_id") == prior["identity"]["Run ID"]
