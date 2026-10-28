@@ -538,7 +538,15 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    A guard run after its worker started does not satisfy the activation barrier: stop further dispatch, record
    `activation_sequence_nonconformant`, set `profile_status: blocked` and `Workflow outcome: blocked`, and reconcile
    already-started workers without claiming the check passed. Preserve a ready plan as `Engineering outcome: plan_only`.
-   For a rejected analytical result, use one corrected activation command: include `--rejected-trace`,
+   If a remediation re-entry supplies `worker_contract.recovered_candidate`, include every exact path in its
+   `snapshot_files` in the Implementer's typed `input_paths`. These are unaccepted candidate inputs; do not merge
+   the rejected result. The Implementer writes a new conformance manifest and applies approved changes only after
+   the source-change guard. The new Reviewer and Tester must review and validate the resulting candidate.
+   For a rejected analytical or delivery worker result, including Implementer, Reviewer, and Tester, use one
+   corrected activation command before declaring the invocation failed when recovery is eligible. A result-format
+   rejection alone is not a reason to interrupt the other workers or finalize the run. Preserve the rejected trace;
+   a parent context failure, exhausted correction, or another terminal control failure still requires the failure path.
+   Include `--rejected-trace`,
    `--provider-handle`, `--last-dispatch-at`, and the freshly observed terminal `--provider-status`, along with the
    ordinary activation bundle, corrected assignment and a new dispatch file. This checks the one recovery allowance
    and binds it to the emitted corrected launch. Never run an unguarded follow-up first or merge it as accepted
@@ -773,7 +781,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    an older completion cannot replace it.
    Keep a rejected trace: the exporter writes its `audit.status: rejected`, exact errors and blocked fan-in receipt
    before returning exit 2. Do not merge that result. A forbidden trace read requires a fresh worker with the same
-   typed inputs; correction cannot erase the old worker's context. Output or envelope mistakes may use the same worker.
+   typed inputs; correction cannot erase the old worker's context. Output or envelope mistakes may use the same worker,
+   including a delivery worker. Attempt the guarded correction before terminal failure if the invocation and parent
+   context remain eligible; a saved workflow-failure receipt blocks ordinary corrected activation.
    Leave rejected narrative and result files in place until the corrected-activation guard validates their audit.
    The guard then moves both prepared outputs to `<stem>.rejected.<extension>` in the active root, leaving their
    assigned paths absent. Do not rename or edit these files before the guard; that changes the audited bytes.

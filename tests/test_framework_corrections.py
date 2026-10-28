@@ -46,6 +46,16 @@ class FrameworkCorrections(unittest.TestCase):
         trace, _ = stage_worker_response(self.run, "current_state_investigator", self.result)
         merge_result(self.packet_path, "current_state_investigator", trace=trace)
 
+    def test_delivery_contract_explains_singular_result_and_id_order(self):
+        contracts = {role: {"instructions": ""} for role in ("implementer", "reviewer", "tester")}
+        prepare._configure_remediation_result_contracts(self.root, contracts)
+        for role, namespace in (("implementer", "IM"), ("reviewer", "RV"), ("tester", "TE")):
+            with self.subTest(role=role):
+                instructions = contracts[role]["result_instructions"]
+                self.assertIn("worker_result, a single object, never worker_results", instructions)
+                for prefix in ("E", "CL", "DE", "A"):
+                    self.assertIn(f"{prefix}-{namespace}-001", instructions)
+
     def test_preflight_accepts_only_the_declared_tracked_dirty_snapshot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

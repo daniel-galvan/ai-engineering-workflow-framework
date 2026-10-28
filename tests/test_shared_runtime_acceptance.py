@@ -915,6 +915,26 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(closure["runtime_closure"][0]["Runtime status"], "Blocked")
             self.assertIn("runtime_dispatch_provider_session_mismatch", closure["runtime_closure"][0]["Closure evidence or blocker"])
 
+    def test_failure_closure_preserves_rejected_worker_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, *_ = fixture
+            _, ledger = self.export(fixture)
+            trace = root / "rejected.json"
+            trace.write_text('{"audit":{"status":"rejected"}}\n')
+            receipt = {"trace": str(trace), "run_id": run["run_id"],
+                       "sha256": hashlib.sha256(trace.read_bytes()).hexdigest(),
+                       "Provider handle": "/root/worker", "Last dispatch at": run["runtime_evidence"]["run_started_at"]}
+            ledger["rejected_results"] = {"current_state_investigator": receipt}
+            path = Path(run["runtime_evidence"]["ledger"])
+            path.write_text(json.dumps(ledger))
+            finalizer.collect_failure_closure(root / "finalization_packet.json")
+            self.assertEqual(json.loads(path.read_text())["rejected_results"], ledger["rejected_results"])
+            trace.write_text("changed")
+            before = path.read_bytes()
+            self.assertEqual(finalizer.collect_failure_closure(root / "finalization_packet.json"), "unverified")
+            self.assertEqual(path.read_bytes(), before)
+
     def test_workflow_failure_collects_closure_from_every_native_handle(self):
         for status in ({"completed": "Done"}, {"failed": "Synthetic worker failure"}, "running"):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:

@@ -658,7 +658,65 @@ def _prepare_run_inputs(
     return write_manifest(destination, source), destination
 
 
-def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict) -> None:
+def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failure: dict, ledger: dict,
+                                        *, source_checkout: Path | None = None) -> dict:
+    """Authenticate a format-rejected Implementer's existing changes without accepting its result."""
+    try:
+        from runtime_checks import trace_errors, trace_identity_errors, techops_conformance_errors
+        from recovery_candidate import verify_candidate, verify_edit_authorization
+    except ModuleNotFoundError:
+        from scripts.runtime_checks import trace_errors, trace_identity_errors, techops_conformance_errors
+        from scripts.recovery_candidate import verify_candidate, verify_edit_authorization
+    run_id = prior["identity"]["Run ID"]
+    matches = []
+    for path in artifact_root.glob("trace*.json"):
+        try:
+            trace = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if trace.get("run_id") == run_id and trace.get("worker") == "implementer" and trace.get("audit", {}).get("status") == "rejected":
+            matches.append((path, trace))
+    if len(matches) != 1:
+        raise ValueError("candidate_rejected_trace_required")
+    path, trace = matches[0]
+    handle, thread = trace["spawn"]["provider_handle"], trace["thread_id"]
+    if ledger.get("thread_mappings", {}).get(handle) != thread:
+        raise ValueError("candidate_worker_mapping_mismatch")
+    identity_errors = trace_identity_errors(trace, artifact_root, "implementer", handle, thread)
+    runtime_errors = trace_errors(trace, require_freshness=True)
+    if (len(identity_errors) != 1 or not identity_errors[0].startswith("worker_result_contract_invalid:implementer:")
+            or set(runtime_errors) != {identity_errors[0], "worker_fan_in_rejected"}
+            or trace.get("audit", {}).get("errors") != runtime_errors
+            or not any(identity_errors[0] in error for error in failure.get("historical_errors", []))):
+        raise ValueError("candidate_worker_trace_not_format_only")
+    bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+    conformance = artifact_root / "implementation_conformance.json"
+    if techops_conformance_errors(conformance, run_id, prior["reentry"]["Approved plan SHA256"]):
+        raise ValueError("candidate_conformance_invalid")
+    files = [row["path"] for row in json.loads(conformance.read_text())["files"]]
+    repository = Path(bindings["execution_repository"]).resolve()
+    revision = next(row["Full revision"] for row in prior["repositories"] if row["Repository role"] == "Execution repository")
+    advanced_source = source_checkout is not None and source_checkout.resolve() != repository
+    if advanced_source:
+        source_checkout = source_checkout.resolve()
+        common = _git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        if (common == "Unknown" or _git(source_checkout, "rev-parse", "--path-format=absolute", "--git-common-dir") != common
+                or _git(source_checkout, "rev-parse", "HEAD") != revision
+                or _git(source_checkout, "-c", "core.fsmonitor=false", "status", "--porcelain") != ""):
+            raise ValueError("candidate_recovery_source_checkout_invalid")
+    session = Path(trace["trace_retrieval"])
+    parent = bindings["parent_context"]
+    verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, thread,
+        bindings["runtime_evidence"]["run_started_at"], Path(bindings["worker_runtime_guard"]),
+        artifact_root / "finalization_packet.json", handle, repository, files)
+    hashes = verify_candidate(repository, revision, session, thread, files,
+                              allow_source_revision_advance=advanced_source)
+    return {"prior_run_id": run_id, "status": "unaccepted", "trace_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "baseline_revision": revision, "files": hashes}
+
+
+def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
+                                *, source_checkout: Path | None = None) -> dict | None:
     """Verify a failed TechOps activation before starting a replacement delivery run."""
     try:
         from planning_contracts import terminal_closure_dispatch_errors
@@ -681,7 +739,11 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
                        and not (artifact_root / "implementation_conformance.json").exists())
     context_error = "parent_context_nonconformant:forbidden_context_reference:archived_artifact"
     context_recovery = failure.get("errors") == [context_error] and not handles
-    if context_recovery:
+    candidate_recovery = (source_checkout is not None and len(failure.get("errors", [])) == 1
+                          and failure["errors"][0].startswith("parent_context_nonconformant:")
+                          and any(str(error).startswith("worker_result_contract_invalid:implementer:")
+                                  for error in failure.get("historical_errors", [])))
+    if context_recovery or candidate_recovery:
         archive = Path(reentry["Prior artifacts"]).resolve()
         expected_archive = (artifact_root / "runs" / reentry["Prior run ID"]).resolve()
         if archive != expected_archive or archive.parent != (artifact_root / "runs").resolve():
@@ -690,16 +752,18 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
         entries = [row for row in manifest.get("files", []) if row.get("path") == "finalization_packet.json"]
         saved = (archive / "finalization_packet.json").read_bytes()
         approved_source = json.loads(saved)
-        fields = ("decisions", "claims", "actions", "evidence", "techops_checks", "reproduction")
+        fields = ("decisions", "claims", "actions", "evidence", "techops_checks", "reproduction",
+                  "integration_decision", "playbook_selection")
         current_item = {k: v for k, v in prior.get("work_item", {}).items() if k != "Last Updated"}
         saved_item = {k: v for k, v in approved_source.get("work_item", {}).items() if k != "Last Updated"}
         if (manifest.get("run_id") != reentry["Prior run ID"] or len(entries) != 1
                 or entries[0].get("sha256") != hashlib.sha256(saved).hexdigest()
                 or current_item != saved_item
-                or any(prior.get(field) != approved_source.get(field) for field in fields)):
+                or any(prior.get(field) != approved_source.get(field) or prior.get(field) != frozen_packet.get(field)
+                       for field in fields)):
             raise ValueError("remediation_recovery_accepted_evidence_changed")
     if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery)
+            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery)
             and failure.get("runtime_closure") == "terminal"
             and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
             and failure.get("run_id") == prior["identity"]["Run ID"]
@@ -726,6 +790,11 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
     repository = Path(repositories[0]["Resolved path"])
     if repository.resolve() != artifact_root.resolve().parent.parent:
         raise ValueError("remediation_recovery_repository_mismatch")
+    if candidate_recovery:
+        if source_checkout.resolve() == repository.resolve():
+            raise ValueError("candidate_recovery_requires_clean_worktree")
+        return _verify_rejected_delivery_candidate(artifact_root, prior, failure, ledger,
+                                                   source_checkout=source_checkout)
     try:
         revision = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], check=True,
                                   capture_output=True, text=True, timeout=30).stdout.strip()
@@ -739,7 +808,7 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict)
 
 def _reentry_source(
     artifact_root: Path, approval_reference: str | None, *, planning_recovery: bool = False,
-    expected_playbook: str = "feature_delivery",
+    expected_playbook: str = "feature_delivery", source_checkout: Path | None = None,
 ) -> dict[str, object]:
     """Check re-entry prerequisites before modifying any current-run artifact."""
     if (not approval_reference or approval_reference.strip().lower() in {"none", "unknown", "not provided"}
@@ -779,7 +848,11 @@ def _reentry_source(
         failed_delivery = (not planning_recovery and expected_playbook == "techops_issue_remediation"
                            and prior["identity"].get("Lifecycle") == "remediation")
         if failed_delivery:
-            _recover_failed_remediation(artifact_root, prior, closure)
+            candidate = _recover_failed_remediation(artifact_root, prior, closure, source_checkout=source_checkout)
+            if candidate:
+                if approval_reference != prior["reentry"]["Approval reference"]:
+                    raise ValueError("candidate_recovery_approval_mismatch")
+                prior["_recovered_candidate"] = candidate
         if not planning_recovery and not failed_delivery and prior["identity"].get("State") != "ready_for_implementation":
             raise ValueError("remediation_requires_ready_plan")
         if planning_recovery and prior["identity"].get("State") not in {
@@ -863,9 +936,13 @@ def _configure_remediation_result_contracts(artifact_root: Path, worker_contract
                 "Before ending, return exactly one strict JSON final answer with output (the assigned "
                 "worker artifact contents) and result (the current run_id, one worker_result object with "
                 "the exact worker_results fields, and evidence/claims/decisions/actions arrays using "
-                "result_fields). Every value must be a string. Set Worker to exactly " + worker +
-                "; Outcome is complete, failed, or blocked; use only IDs in the " + namespace +
-                " namespace for rows you own. Reference upstream IDs unchanged. The Coordinator runs the "
+                "result_fields). The result key is worker_result, a single object, never worker_results "
+                "or an array; result_fields.worker_results lists its field names. All row field values "
+                "must be strings, including references. Set Worker to exactly " + worker +
+                "; Outcome is complete, failed, or blocked. For your own rows use IDs in this order: " +
+                ", ".join(f"{prefix}-{namespace}-001" for prefix in ("E", "CL", "DE", "A")) +
+                " for evidence, claims, decisions, and actions respectively; use unique suffixes. "
+                "Reference upstream IDs unchanged. The Coordinator runs the "
                 "prepared result merger with your provider role and current trace; it verifies and registers "
                 "your accepted result and execution ledger row before activating the next role. A missing "
                 "Coordinator row is repaired by rerunning that command with the same trace, not by editing "
@@ -1269,7 +1346,7 @@ def prepare_run(
     if playbook == "sentry_issue_remediation" and validated_supplied:
         retain_source_releases(validated_supplied, provider_session)
     prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery,
-                             expected_playbook=playbook)
+                             expected_playbook=playbook, source_checkout=source_checkout)
              if remediation_reentry or planning_recovery else None)
     unactivated_failure = None
     if continuation and not prior:
@@ -1321,11 +1398,25 @@ def prepare_run(
         artifact_root, archive_stale_run, validated_supplied, parent_context,
         input_manifest.resolve() if input_manifest else None,
     )
+    recovered_candidate = prior.get("_recovered_candidate") if prior else None
+    if recovered_candidate:
+        try:
+            from recovery_candidate import snapshot_candidate
+        except ModuleNotFoundError:
+            from scripts.recovery_candidate import snapshot_candidate
+        destination = artifact_root / ("recovery_candidate." + re.sub(r"[^A-Za-z0-9._-]", "_", prior["identity"]["Run ID"]))
+        snapshot_candidate(resolved_execution_repository, destination, recovered_candidate["files"])
+        recovered_candidate = {**recovered_candidate, "snapshot_files": {
+            str(destination / path): digest for path, digest in recovered_candidate["files"].items()}}
+        manifest["recovered_candidate"] = recovered_candidate
     if prior:
         archived_path = _archive_recovery(artifact_root, prior["identity"]["Run ID"])
         archived = str(archived_path)
         for name in ("pre_release_check.json", "finalization_failure.json", "runtime_closure.json", "run_budget.json"):
             (artifact_root / name).unlink(missing_ok=True)
+        if recovered_candidate:
+            for name in ("runtime_dispatches.json", "activation_receipts.json"):
+                (artifact_root / name).unlink(missing_ok=True)
     record = artifact_root / "work_record.md"
     if continuation:
         if not record.is_file():
@@ -1566,6 +1657,15 @@ def prepare_run(
                     ),
                 },
             }
+            if recovered_candidate:
+                contract = manifest["worker_contracts"]["implementer"]
+                contract["recovered_candidate"] = recovered_candidate
+                contract["instructions"] += (
+                    " The recovered candidate is unaccepted input, not a prior accepted worker result. "
+                    "Inspect its assigned snapshot files against the approved plan, write a new current-run "
+                    "conformance manifest, and apply any in-scope changes only after the source guard passes. "
+                    "Produce your own result; Reviewer and Tester must independently check the resulting candidate."
+                )
             _configure_remediation_result_contracts(artifact_root, manifest["worker_contracts"])
     if playbook == "feature_delivery" and workflow_objective == "implementation_planning":
         try:

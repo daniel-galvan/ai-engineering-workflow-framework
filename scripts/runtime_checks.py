@@ -170,6 +170,33 @@ def activation_message(packet: dict, assignment: dict) -> str:
             or not isinstance(assignment.get("input_paths", []), list)
             or not all(isinstance(path, str) and path.strip() for path in assignment.get("input_paths", []))):
         raise ValueError("expected objective and optional input_paths only")
+    candidate = (packet.get("worker_contract") or {}).get("recovered_candidate")
+    if candidate:
+        files = candidate.get("snapshot_files")
+        if (candidate.get("status") != "unaccepted" or not isinstance(files, dict) or not files
+                or not set(files).issubset(assignment.get("input_paths", []))):
+            raise ValueError("recovered_candidate_assignment_required")
+        root = Path(packet["finalization_packet"]).resolve().parent
+        for name, digest in files.items():
+            path = Path(name)
+            if (not path.is_absolute() or not path.resolve().is_relative_to(root)
+                    or not path.is_file() or path.is_symlink() or not isinstance(digest, str)
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != digest):
+                raise ValueError("recovered_candidate_snapshot_changed")
+        receipts_path = root / "activation_receipts.json"
+        try:
+            receipts = json.loads(receipts_path.read_text()) if receipts_path.exists() else {}
+            previous = any(row.get("run_id") == packet["run_id"] and row.get("agent") == packet["agent"]
+                           for row in receipts.values())
+            if not previous:
+                checkout = packet["coordinator_execution"]["source_checkout"]
+                def git(*args):
+                    return subprocess.run(["git", "-C", checkout, "-c", "core.fsmonitor=false", *args],
+                                          check=True, capture_output=True, text=True, timeout=30).stdout.strip()
+                if git("rev-parse", "HEAD") != candidate["baseline_revision"] or git("status", "--porcelain"):
+                    raise ValueError("recovered_candidate_source_checkout_changed")
+        except (OSError, subprocess.SubprocessError, KeyError, TypeError, AttributeError) as error:
+            raise ValueError("recovered_candidate_source_checkout_unverified") from error
     for source in assignment.get("input_paths", []):
         path = Path(source)
         if path.name == "AGENTS.md":

@@ -1722,12 +1722,15 @@ def collect_failure_closure(packet_path: Path, provider_session: Path | None = N
     try:
         from worker_runtime_evidence import read_runtime_events, terminal_closure
         from provider_runtime import validate_prepared_provider_source
+        from validate_worker_runtime import _pending_rejections
     except ModuleNotFoundError:
         from scripts.worker_runtime_evidence import read_runtime_events, terminal_closure
         from scripts.provider_runtime import validate_prepared_provider_source
+        from scripts.validate_worker_runtime import _pending_rejections
     try:
         if ledger_path.resolve().parent != root.resolve():
             raise ValueError("runtime_dispatch_ledger_outside_current_run")
+        pending = _pending_rejections(root)
         if provider_session is None and not ledger_path.is_file() and bindings.get("parent_context"):
             parent = bindings["parent_context"]
             provider_session, parent_thread_id = Path(parent["provider_session"]), parent["parent_thread_id"]
@@ -1747,6 +1750,8 @@ def collect_failure_closure(packet_path: Path, provider_session: Path | None = N
                                               saved["run_started_at"])
             current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
                 saved["run_started_at"], tuple(Path(p) for p in saved.get("identity_sessions", [])))
+        if pending:
+            current["rejected_results"] = pending
         ledger_path.write_text(json.dumps(current, indent=2) + "\n")
         closure = terminal_closure(current)
         state = "terminal"
