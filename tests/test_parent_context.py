@@ -720,6 +720,13 @@ class ParentContext(unittest.TestCase):
             ("exec_command", {"cmd": "cat /repo/one"}),
             ("exec_command", {"cmd": "cat /repo/two"}),
         ])
+        self.rows[-1]["payload"]["input"] += (
+            'for (let i=0;i<results.length;i++) text(`guard_${i+1}: '
+            '${results[i].status === "fulfilled" ? results[i].value.output : String(results[i].reason)}`)'
+        )
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        self.rows[-1]["payload"]["input"] += ' text(`${tools.exec_command({cmd:"cat /secret"})}`)'
+        self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
     def test_literal_assigned_thread_batch_is_audited_without_executing_the_loop(self):
         child_two = "00000000-0000-0000-0000-000000000004"

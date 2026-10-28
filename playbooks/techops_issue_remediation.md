@@ -241,6 +241,10 @@ planning blocker by itself.
 
 ### Stage 5 — Approved Remediation
 
+Prepare the approved planning-to-remediation transition with `prepare_run.py --continuation --remediation-reentry`
+and `--approval-reference <explicit approval reference>` using the saved input manifest. Reconcile the prior runtime
+closure first. Later remediation follow-ups use `--continuation` without repeating `--remediation-reentry`.
+
 Explicit approval and remediation re-entry activate `implement`, `review`, and `validate` before source changes, then
 activate the final `handoff` after delivery fan-in. In-scope review findings return to `implement` for repair and
 re-review; they are not a new approval gate or final handoff.

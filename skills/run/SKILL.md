@@ -353,7 +353,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    <minutes>` only for run-specific overrides. Technical Spike permits `technical_answer + execute_spike` or
    `spike_assessment + review_spike`; Feature Delivery permits `implementation_plan + implementation_planning` or
    `specification_assessment + specification_assessment`, or `feature_delivery + feature_implementation` for approved
-   remediation. For Feature Delivery planning-to-remediation re-entry, pass `--continuation --remediation-reentry`
+   remediation. For TechOps, Sentry, or Feature Delivery planning-to-remediation re-entry, pass
+   `--continuation --remediation-reentry`
    and `--approval-reference <explicit approval reference>` with the current input JSON. Prior runtime closure
    must be reconciled first. The helper preserves prior artifacts and accepted decisions, starts a new remediation
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added

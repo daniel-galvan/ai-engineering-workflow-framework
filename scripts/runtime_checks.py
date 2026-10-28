@@ -929,10 +929,15 @@ def _literal_templates(source: str) -> str:
         parts, offset = [], 0
         for match in re.finditer(r"\$\{([^}]*)\}", raw):
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", match[1]):
-                # Output-only property checks do not change literal tool arguments.
-                if output_template and re.fullmatch(
-                        r"[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*"
-                        r"\s*===\s*(?:true|false)", match[1]):
+                # Recognize bounded output formatting without evaluating tool arguments.
+                output_expression = (re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*"
+                    r"\s*===\s*(?:true|false)", match[1]) or re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]*\s*\+\s*1", match[1]) or re.fullmatch(
+                    r'(?P<results>[A-Za-z_][A-Za-z0-9_]*)\[(?P<index>[A-Za-z_][A-Za-z0-9_]*)\]'
+                    r'\.status\s*===\s*"fulfilled"\s*\?\s*(?P=results)\[(?P=index)\]'
+                    r'\.value\.output\s*:\s*String\((?P=results)\[(?P=index)\]\.reason\)', match[1]))
+                if output_template and output_expression:
                     parts.append(raw[offset:match.start()].replace("{", "{{").replace("}", "}}"))
                     offset = match.end()
                     continue
