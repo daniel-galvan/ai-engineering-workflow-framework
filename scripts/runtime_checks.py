@@ -1771,11 +1771,12 @@ def _empty_worker_memory_probes(trace: dict) -> dict[int, str]:
         if not isinstance(row, dict) or row.get("type") not in {"function_call", "custom_tool_call"}:
             continue
         operations = _tool_operations(row)
-        if len(operations) != 1 or operations[0][0] != "exec_command":
+        commands = [args.get("cmd") for name, args in operations
+                    if name == "exec_command" and isinstance(args.get("cmd"), str)
+                    and "MEMORY.md" in args["cmd"]]
+        if len(commands) != 1:
             continue
-        command = operations[0][1].get("cmd")
-        if not isinstance(command, str):
-            continue
+        command = commands[0]
         matches = [item for item in observations if isinstance(item.get("command"), list)
                    and item["command"] and item["command"][-1] == command]
         try:

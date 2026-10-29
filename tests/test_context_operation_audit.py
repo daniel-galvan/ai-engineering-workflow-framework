@@ -367,10 +367,19 @@ class ContextOperationAudit(unittest.TestCase):
         with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
             save(header, event)
             self.assertEqual(runtime.context_trace_errors(trace), [])
+            batched = {"thread_id": SOURCE, "trace_retrieval": str(session), "tool_trace": [{
+                "type": "custom_tool_call", "name": "exec", "input":
+                'await tools.exec_command({cmd:"shasum -a 256 dispatch.txt"});\n'
+                + "await tools.exec_command(" + json.dumps({"cmd": command}) + ");"}]}
+            self.assertEqual(runtime.context_trace_errors(batched), [])
             observation.update({"exit_code": 0, "status": "completed", "aggregated_output": "matched historical content"})
             save(header, event)
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(batched))
             observation.update({"exit_code": 1, "status": "failed", "aggregated_output": ""})
+            save(header, event)
+            batched["tool_trace"][0]["input"] += "\nawait tools.exec_command(" + json.dumps({"cmd": "cat " + str(memory)}) + ");"
+            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(batched))
             save(header, event, event)
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
             save({"type": "session_meta", "payload": {"id": "other"}}, event)
