@@ -120,6 +120,44 @@ def _pending_rejections(root: Path) -> dict:
     return pending
 
 
+def _defer_downstream_rejection(root: Path, agent: str, role: str, receipt: dict) -> bool:
+    """Keep an inactive downstream rejection pending while an upstream role repairs the candidate."""
+    order = {"implementer": 0, "reviewer": 1, "tester": 2}
+    if agent not in order or role not in order or order[agent] >= order[role]:
+        return False
+    try:
+        from worker_runtime_evidence import _native_terminal_observations, dispatch_audit_errors
+        from provider_runtime import read_runtime_events
+    except ModuleNotFoundError:
+        from scripts.worker_runtime_evidence import _native_terminal_observations, dispatch_audit_errors
+        from scripts.provider_runtime import read_runtime_events
+    try:
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        if (bindings.get("lifecycle") != "remediation" or bindings.get("playbook") not in {
+                "feature_delivery", "techops_issue_remediation", "sentry_issue_remediation"}):
+            return False
+        ledger = json.loads((root / "runtime_dispatches.json").read_text())
+        if dispatch_audit_errors({"runtime_audits": []}, root / "finalization_packet.json", closure_only=True):
+            return False
+        native = read_runtime_events(Path(ledger["provider_session"]), ledger["parent_thread_id"],
+                                     ledger["run_started_at"], tuple(Path(p) for p in ledger.get("identity_sessions", [])))
+        trace_path = Path(receipt["trace"]).resolve()
+        if (trace_path.parent != root.resolve()
+                or hashlib.sha256(trace_path.read_bytes()).hexdigest() != receipt["sha256"]):
+            return False
+        trace = json.loads(trace_path.read_text())
+        handle, dispatch = receipt["Provider handle"], receipt["Last dispatch at"]
+        if (trace.get("run_id") != receipt["run_id"]
+                or worker_binding(bindings, trace["spawn"].get("agent")) != role
+                or rejected_result_errors(trace, handle, dispatch)):
+            return False
+        observed = _native_terminal_observations(native, [handle])
+        return (len(observed) == 1 and observed[0]["Last dispatch at"] == dispatch
+                and observed[0]["Thread ID"] == trace.get("thread_id"))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def _recovery_errors(path: Path, role: str, handle: str, dispatch: str, provider_status: str) -> list[str]:
     try:
         trace = json.loads(path.read_text())
@@ -238,6 +276,8 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
             errors.append("worker_activation_failure_receipt_invalid")
     try:
         for role, receipt in _pending_rejections(path.parent).items():
+            if role != expected_agent and _defer_downstream_rejection(path.parent, expected_agent, role, receipt):
+                continue
             if role != expected_agent or receipt["sha256"] != rejected_trace_sha256:
                 errors.append("worker_activation_rejected_result_pending:" + role)
                 if recovery_required is not None and not recovery_required:

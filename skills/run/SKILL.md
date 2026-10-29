@@ -552,7 +552,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    For a rejected analytical or delivery worker result, including Implementer, Reviewer, and Tester, use one
    corrected activation command before declaring the invocation failed when recovery is eligible. A result-format
    rejection alone is not a reason to interrupt the other workers or finalize the run. Preserve the rejected trace;
-   a parent context failure, exhausted correction, or another terminal control failure still requires the failure path.
+   if a rejected downstream worker is verified terminal, the activation guard may allow an upstream correction while
+   keeping that rejection pending. Resolve it through its own guarded recovery before accepting that worker or handoff.
+   A parent context failure, exhausted correction, or another terminal control failure still requires the failure path.
    Include `--rejected-trace`,
    `--provider-handle`, `--last-dispatch-at`, and the freshly observed terminal `--provider-status`, along with the
    ordinary activation bundle, corrected assignment and a new dispatch file. This checks the one recovery allowance

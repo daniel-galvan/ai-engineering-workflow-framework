@@ -429,6 +429,79 @@ class TechOpsCorrections(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_failed_remediation(root, packet, closure, source_checkout=repository)
 
+    def test_terminal_delivery_recovery_preserves_only_proven_planning_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            plan = root / "implementation_plan.md"
+            plan.write_text("approved plan")
+            archive = root / "runs" / "planning"
+            archive.mkdir(parents=True)
+            tables = (("claims", "Claim ID"), ("actions", "Action ID"),
+                      ("decisions", "Decision ID"), ("evidence", "Evidence ID"))
+            planning = {"work_item": {"ID": "ITEM-1"}, "techops_checks": {}, "reproduction": {},
+                        "integration_decision": {}, "playbook_selection": {}}
+            implementation = {}
+            for table, key in tables:
+                planning[table] = [{key: "planning-" + table, "value": "preserved"}]
+                implementation[table] = [{key: "implementation-" + table, "value": "verified"}]
+            archived = json.dumps(planning).encode()
+            (archive / "finalization_packet.json").write_bytes(archived)
+            (archive / "archive_manifest.json").write_text(json.dumps({"run_id": "planning", "files": [{
+                "path": "finalization_packet.json", "snapshot": "finalization_packet.json",
+                "sha256": hashlib.sha256(archived).hexdigest()}]}))
+            packet = {**copy.deepcopy(planning), "identity": {"Run ID": "delivery", "Lifecycle": "remediation"},
+                "reentry": {"Prior run ID": "planning", "Prior artifacts": str(archive),
+                            "Approval reference": "approved", "Approved plan": str(plan),
+                            "Approved plan SHA256": hashlib.sha256(plan.read_bytes()).hexdigest()},
+                "workers": [{"Worker": "implement"}], "worker_results": [{"Worker": "implement", "Outcome": "complete"}]}
+            for table, _ in tables:
+                packet[table].extend(copy.deepcopy(implementation[table]))
+            result_path = root / "implement_result.json"
+            result_path.write_text(json.dumps(implementation))
+            (root / "role_bindings.json").write_text(json.dumps({"worker_contracts": {
+                "implementer": {"result": str(result_path)}}}))
+            snapshot = root / "failure_snapshot.json"
+            failure_path = root / "finalization_failure.json"
+            def save_failure(value):
+                snapshot.write_text(json.dumps(value))
+                digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+                failure_path.write_text(json.dumps({"status": "failed", "stage": "workflow", "reported_by": "Coordinator",
+                    "runtime_closure": "unverified", "run_id": "delivery", "packet_snapshot": str(snapshot),
+                    "snapshot_sha256": digest, "packet_sha256": digest,
+                    "errors": ["worker_activation_rejected_result_pending:tester"]}))
+            save_failure(packet)
+            ledger = {"thread_mappings": {"/root/tester": "id"}, "rejected_results": {"tester": {}},
+                      "timing": {"open_worker_intervals": 0}}
+            (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+            observations = [{"Provider handle": "/root/tester"}]
+            closure = {"terminal_observations": observations}
+            candidate = {"status": "unaccepted", "files": {"test.py": "digest"}}
+            with patch.object(runtime, "_defer_downstream_rejection", return_value=True), \
+                 patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
+                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch.object(prepare, "_recover_accepted_candidate", return_value=candidate):
+                recovered, saved = prepare._recover_terminal_accepted_remediation(root, packet, closure, root)
+                self.assertEqual(recovered, candidate)
+                self.assertEqual(saved, planning)
+                changed = copy.deepcopy(packet)
+                changed["claims"][0]["value"] = "tampered"
+                save_failure(changed)
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_accepted_evidence_changed"):
+                    prepare._recover_terminal_accepted_remediation(root, changed, closure, root)
+                changed = copy.deepcopy(packet)
+                changed["evidence"].append({"Evidence ID": "unowned", "value": "extra"})
+                save_failure(changed)
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_accepted_evidence_changed"):
+                    prepare._recover_terminal_accepted_remediation(root, changed, closure, root)
+                save_failure(packet)
+                with patch.object(runtime, "_defer_downstream_rejection", return_value=False):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_terminal_accepted_remediation(root, packet, closure, root)
+                with patch("worker_runtime_evidence._native_terminal_observations", return_value=[]):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_terminal_accepted_remediation(root, packet, closure, root)
+
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

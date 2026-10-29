@@ -561,7 +561,7 @@ def activate_verified_remediation(packet_path: Path, ledger: dict) -> dict | Non
         temporary.unlink(missing_ok=True)
 
 
-def _preserve_blocked_closure(path: Path) -> None:
+def _preserve_closure(path: Path) -> None:
     if path.is_symlink():
         raise ValueError("runtime_closure_symlink_invalid")
     if not path.exists():
@@ -571,9 +571,11 @@ def _preserve_blocked_closure(path: Path) -> None:
     if not isinstance(previous, dict) or not isinstance(previous.get("runtime_closure"), list):
         raise ValueError("runtime_closure_invalid")
     rows = previous["runtime_closure"]
-    if not any(isinstance(row, dict) and row.get("Runtime status") == "Blocked" for row in rows):
+    statuses = {row.get("Runtime status") for row in rows if isinstance(row, dict)}
+    kind = "blocked" if "Blocked" in statuses else "terminal" if "Terminal" in statuses else None
+    if kind is None:
         return
-    snapshot = path.with_name(path.stem + ".blocked." + hashlib.sha256(data).hexdigest() + path.suffix)
+    snapshot = path.with_name(path.stem + "." + kind + "." + hashlib.sha256(data).hexdigest() + path.suffix)
     if snapshot.is_symlink():
         raise ValueError("runtime_closure_snapshot_invalid")
     if snapshot.exists():
@@ -656,7 +658,7 @@ def main() -> int:
                            "Remaining active handles": "Unknown",
                            "Closure evidence or blocker": "Pending final provider observation after pre-release"}]})
             if args.closure:
-                _preserve_blocked_closure(closure_path)
+                _preserve_closure(closure_path)
             closure_path.write_text(json.dumps(receipt, indent=2) + "\n")
         packet_path = args.ledger.parent / "finalization_packet.json"
         if args.trace:

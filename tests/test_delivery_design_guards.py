@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -13,7 +14,7 @@ from unittest.mock import patch
 from scripts.review_evidence import (
     PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, plan_design_errors, plan_review_coverage_errors,
 )
-from scripts.validate_worker_runtime import delivery_dependency_errors, delivery_start_errors
+from scripts.validate_worker_runtime import _defer_downstream_rejection, delivery_dependency_errors, delivery_start_errors
 from scripts.review_evidence import delivery_evidence_fixture
 
 
@@ -131,8 +132,8 @@ class DeliveryDesignGuards(unittest.TestCase):
                          ["delivery_dependency_audit_missing:reviewer"])
         packet["runtime_audits"] = [{"Worker": "implement"}]
         save()
-        with patch("scripts.planning_contracts._worker_runtime_audit_errors", return_value=[]), \
-             patch("scripts.merge_techops_result.merged_result_errors", return_value=[]):
+        with patch(("planning_contracts" if importlib.util.find_spec("planning_contracts") else "scripts.planning_contracts") + "._worker_runtime_audit_errors", return_value=[]), \
+             patch(("merge_techops_result" if importlib.util.find_spec("merge_techops_result") else "scripts.merge_techops_result") + ".merged_result_errors", return_value=[]):
             self.assertEqual(delivery_dependency_errors(self.root, "reviewer", bindings), [])
             self.assertEqual(delivery_dependency_errors(self.root, "tester", bindings),
                              ["delivery_dependency_not_accepted:tester"])
@@ -143,7 +144,7 @@ class DeliveryDesignGuards(unittest.TestCase):
             packet["runtime_audits"].append({"Worker": "review", "Trace path": str(trace)})
             save()
             self.assertEqual(delivery_dependency_errors(self.root, "tester", bindings), [])
-            with patch("scripts.planning_contracts._worker_runtime_audit_errors", return_value=["worker_fan_in_rejected"]):
+            with patch(("planning_contracts" if importlib.util.find_spec("planning_contracts") else "scripts.planning_contracts") + "._worker_runtime_audit_errors", return_value=["worker_fan_in_rejected"]):
                 self.assertIn("delivery_dependency_unverified:tester",
                               delivery_dependency_errors(self.root, "tester", bindings))
             (repository / "asset.py").write_text("version = 3\n")
@@ -155,6 +156,45 @@ class DeliveryDesignGuards(unittest.TestCase):
             (self.root / "code_review.md").write_text(rejected)
             trace.write_text(json.dumps({"result_artifact": {"output_sha256": hashlib.sha256(rejected.encode()).hexdigest()}}))
             self.assertIn("delivery_review_not_accepted", delivery_dependency_errors(self.root, "tester", bindings))
+
+    def test_inactive_downstream_rejection_stays_pending_during_upstream_correction(self):
+        handle = "/root/tester"
+        thread = "00000000-0000-0000-0000-000000000003"
+        dispatched, observed = "2026-10-01T00:00:00Z", "2026-10-01T00:01:00Z"
+        bindings = {"lifecycle": "remediation", "playbook": "techops_issue_remediation", "bindings": {"tester": {}}}
+        (self.root / "role_bindings.json").write_text(json.dumps(bindings))
+        trace = self.root / "rejected.json"
+        trace.write_text(json.dumps({"run_id": "ITEM-1", "thread_id": thread, "spawn": {"agent": "tester"}}))
+        receipt = {"run_id": "ITEM-1", "trace": str(trace), "sha256": hashlib.sha256(trace.read_bytes()).hexdigest(),
+                   "Provider handle": handle, "Last dispatch at": dispatched}
+        ledger = {"provider_session": "/tmp/fixture", "parent_thread_id": thread, "run_started_at": dispatched,
+                  "thread_mappings": {handle: thread}, "events": [{"Provider handle": handle,
+                  "Last dispatch at": dispatched, "Operation": "spawn_agent"}], "inventories": [{"Observed at": observed,
+                  "raw_response": {"agents": [{"agent_name": handle, "agent_status": {"interrupted": "Done"}}]}}]}
+        ledger_path = self.root / "runtime_dispatches.json"
+        ledger_path.write_text(json.dumps(ledger))
+        with patch(("worker_runtime_evidence" if importlib.util.find_spec("worker_runtime_evidence") else "scripts.worker_runtime_evidence") + ".dispatch_audit_errors", return_value=[]), \
+             patch("scripts.validate_worker_runtime.rejected_result_errors", return_value=[]), \
+             patch(("provider_runtime" if importlib.util.find_spec("provider_runtime") else "scripts.provider_runtime") + ".read_runtime_events", side_effect=lambda *args: ledger):
+            self.assertTrue(_defer_downstream_rejection(self.root, "implementer", "tester", receipt))
+            self.assertTrue(_defer_downstream_rejection(self.root, "reviewer", "tester", receipt))
+            self.assertFalse(_defer_downstream_rejection(self.root, "tester", "tester", receipt))
+            self.assertFalse(_defer_downstream_rejection(self.root, "documenter", "tester", receipt))
+            ledger["inventories"][0]["raw_response"]["agents"][0]["agent_status"] = {"running": "Active"}
+            ledger_path.write_text(json.dumps(ledger))
+            self.assertFalse(_defer_downstream_rejection(self.root, "implementer", "tester", receipt))
+            ledger["inventories"][0]["raw_response"]["agents"][0]["agent_status"] = {"interrupted": "Done"}
+            ledger["inventories"][0]["Observed at"] = "2026-09-30T23:59:00Z"
+            ledger_path.write_text(json.dumps(ledger))
+            self.assertFalse(_defer_downstream_rejection(self.root, "implementer", "tester", receipt))
+            ledger["inventories"][0]["Observed at"] = observed
+            ledger_path.write_text(json.dumps(ledger))
+            with patch(("worker_runtime_evidence" if importlib.util.find_spec("worker_runtime_evidence") else "scripts.worker_runtime_evidence") + ".dispatch_audit_errors", return_value=["ledger_stale"]):
+                self.assertFalse(_defer_downstream_rejection(self.root, "implementer", "tester", receipt))
+            with patch("scripts.validate_worker_runtime.rejected_result_errors", return_value=["audit_invalid"]):
+                self.assertFalse(_defer_downstream_rejection(self.root, "implementer", "tester", receipt))
+            trace.write_text("changed")
+            self.assertFalse(_defer_downstream_rejection(self.root, "implementer", "tester", receipt))
 
 
 if __name__ == "__main__":

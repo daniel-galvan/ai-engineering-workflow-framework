@@ -48,7 +48,12 @@ def verify_edit_authorization(parent_session: Path, parent_id: str, worker_sessi
             if observed < start:
                 continue
             try:
-                result = json.loads(item.get("aggregated_output", ""))
+                output = item.get("aggregated_output", "")
+                warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                           "Operation not permitted (os error 1)\n")
+                if isinstance(output, str) and output.startswith(warning):
+                    output = output[len(warning):]
+                result = json.loads(output)
             except (ValueError, TypeError):
                 result = {}
             allowed = (tokens[7] in {"running", "in_progress"} and item.get("status") == "completed"
@@ -134,6 +139,61 @@ def replay_candidate(baseline: Path, revision: str, session: Path, thread_id: st
             if seen != paths:
                 raise ValueError("candidate_edit_records_missing")
             return {name: (scratch / name).read_bytes() for name in sorted(paths)}
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, StopIteration, UnicodeError,
+            AttributeError, TypeError) as error:
+        raise ValueError("candidate_evidence_unavailable") from error
+
+
+def replay_followup_candidate(repository: Path, session: Path, thread_id: str,
+                              initial: dict[str, bytes]) -> tuple[dict[str, bytes], list[str]]:
+    """Replay native updates on a verified candidate snapshot without editing the checkout."""
+    repository = repository.resolve()
+    if not initial:
+        raise ValueError("candidate_paths_invalid")
+    for name, data in initial.items():
+        path = Path(name)
+        if (not name or path.is_absolute() or ".." in path.parts or path.as_posix() != name
+                or not isinstance(data, bytes)):
+            raise ValueError("candidate_path_invalid:" + name)
+    try:
+        with session.open() as source, tempfile.TemporaryDirectory() as directory:
+            header = json.loads(next(source))
+            if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != thread_id:
+                raise ValueError("candidate_worker_session_mismatch")
+            scratch, touched = Path(directory), set()
+            for name, data in initial.items():
+                target = scratch / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            for line in source:
+                row = json.loads(line)
+                payload, item = row.get("payload", {}), row.get("payload", {}).get("item", {})
+                if row.get("type") != "event_msg" or payload.get("type") != "item_completed" or item.get("type") != "FileChange":
+                    continue
+                for name, change in item.get("changes", {}).items():
+                    absolute = Path(name)
+                    if not absolute.is_absolute() or not absolute.is_relative_to(repository):
+                        continue
+                    relative = absolute.relative_to(repository).as_posix()
+                    if relative.startswith(".thoughts/"):
+                        continue
+                    if relative not in initial or change.get("type") != "update":
+                        raise ValueError("candidate_followup_edit_outside_snapshot:" + relative)
+                    diff = change.get("unified_diff")
+                    lines = diff.splitlines() if isinstance(diff, str) else []
+                    if (not lines or not re.fullmatch(r"@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@.*", lines[0])
+                            or any(line.startswith(("--- ", "+++ ")) or
+                                   not (line.startswith((" ", "+", "-")) or line == "\\ No newline at end of file"
+                                        or re.fullmatch(r"@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@.*", line)) for line in lines)):
+                        raise ValueError("candidate_patch_invalid:" + relative)
+                    applied = subprocess.run(["patch", "-s", "-f", "-F", "0", str(scratch / relative)],
+                                             input=diff, text=True, capture_output=True, timeout=30)
+                    if applied.returncode:
+                        raise ValueError("candidate_patch_failed:" + relative)
+                    touched.add(relative)
+            if not touched:
+                raise ValueError("candidate_edit_records_missing")
+            return {name: (scratch / name).read_bytes() for name in sorted(initial)}, sorted(touched)
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError, StopIteration, UnicodeError,
             AttributeError, TypeError) as error:
         raise ValueError("candidate_evidence_unavailable") from error

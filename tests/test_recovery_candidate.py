@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.recovery_candidate import (replay_candidate, snapshot_candidate, snapshot_replayed_candidate,
+from scripts.recovery_candidate import (replay_candidate, replay_followup_candidate, snapshot_candidate, snapshot_replayed_candidate,
                                         verify_candidate, verify_edit_authorization)
 from scripts import prepare_run as prepare
 from scripts.prepare_run import _verify_rejected_delivery_candidate
@@ -56,6 +56,64 @@ class CandidateRecoveryTest(unittest.TestCase):
 
     def test_replays_recorded_updates_and_additions(self):
         self.assertEqual(set(self.verify()), {"tracked.txt", "new.txt"})
+
+    def test_followup_replays_only_authorized_snapshot_updates(self):
+        initial = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}
+        self.rows[1]["payload"]["item"]["changes"] = {
+            str(self.repo / "tracked.txt"): {"type": "update", "unified_diff": "@@ -1,2 +1,2 @@\n one\n-three\n+four\n"}}
+        self.write_session()
+        result, touched = replay_followup_candidate(self.repo, self.session, "worker", initial)
+        self.assertEqual(result, {"tracked.txt": b"one\nfour\n", "new.txt": b"new\n"})
+        self.assertEqual(touched, ["tracked.txt"])
+        self.assertEqual((self.repo / "tracked.txt").read_bytes(), initial["tracked.txt"])
+        with self.assertRaisesRegex(ValueError, "candidate_worker_session_mismatch"):
+            replay_followup_candidate(self.repo, self.session, "other", initial)
+        self.rows[1]["payload"]["item"]["changes"][str(self.repo / "other.txt")] = {"type": "add", "content": "new"}
+        self.write_session()
+        with self.assertRaisesRegex(ValueError, "candidate_followup_edit_outside_snapshot"):
+            replay_followup_candidate(self.repo, self.session, "worker", initial)
+
+    def test_recovered_candidate_requires_bound_followup_and_exact_checkout(self):
+        root = self.root / "run"
+        root.mkdir()
+        initial = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}
+        self.rows[1]["payload"]["item"]["changes"] = {
+            str(self.repo / "tracked.txt"): {"type": "update", "unified_diff": "@@ -1,2 +1,2 @@\n one\n-three\n+four\n"}}
+        self.write_session()
+        (self.repo / "tracked.txt").write_bytes(b"one\nfour\n")
+        candidate = {"status": "unaccepted", "baseline_revision": self.revision}
+        trace = {"run_id": "delivery", "worker": "implementer", "audit": {"status": "rejected"},
+                 "thread_id": "worker", "trace_retrieval": str(self.session), "last_dispatch_at": "dispatch",
+                 "spawn": {"provider_handle": "/root/worker"}}
+        trace_path = root / "trace_followup.json"
+        trace_path.write_text(json.dumps(trace))
+        digest = hashlib.sha256(trace_path.read_bytes()).hexdigest()
+        accepted_path = root / "accepted.json"
+        accepted_path.write_text(json.dumps({"spawn": {"dispatch_file_sha256": "accepted-dispatch"}}))
+        prior = {"identity": {"Run ID": "delivery"}, "runtime_audits": [{"Worker": "implement", "Trace path": str(accepted_path)}],
+                 "activation_repairs": {"implementer": {"Attempt": 1, "Provider handle": "/root/worker",
+                    "Last dispatch at": "dispatch", "Rejected trace SHA256": digest,
+                    "Corrected dispatch SHA256": "accepted-dispatch"}}}
+        bindings = {"parent_context": {"provider_session": str(self.session), "parent_thread_id": "parent"},
+                    "runtime_evidence": {"run_started_at": "start"}}
+        (root / "role_bindings.json").write_text(json.dumps(bindings))
+        dispatch = {"worker_contract": {"recovered_candidate": candidate, "before_source_change_guard": "/guard"},
+                    "coordinator_execution": {"source_checkout": str(self.repo)}}
+        content = "Coordinator initialization: complete\n" + json.dumps(dispatch) + "\nTyped assignment:\n{}"
+        with patch.object(prepare, "_accepted_implementer_candidate", return_value=candidate), \
+             patch.object(prepare, "_recover_preserved_candidate", return_value={"_contents": initial}), \
+             patch(("runtime_checks" if importlib.util.find_spec("runtime_checks") else "scripts.runtime_checks") + "._verified_dispatch_content", return_value=content), \
+             patch(("recovery_candidate" if importlib.util.find_spec("recovery_candidate") else "scripts.recovery_candidate") + ".verify_edit_authorization"):
+            result = prepare._recover_accepted_candidate(root, prior, self.repo)
+            self.assertEqual(result["_contents"], {"tracked.txt": b"one\nfour\n", "new.txt": b"new\n"})
+            self.assertEqual(result["status"], "unaccepted")
+            (self.repo / "tracked.txt").write_text("tampered\n")
+            with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+                prepare._recover_accepted_candidate(root, prior, self.repo)
+            (self.repo / "tracked.txt").write_bytes(b"one\nfour\n")
+            trace_path.write_text(json.dumps({**trace, "run_id": "other"}))
+            with self.assertRaisesRegex(ValueError, "candidate_followup_trace_unverified"):
+                prepare._recover_accepted_candidate(root, prior, self.repo)
 
     def test_replay_from_clean_worktree_ignores_other_checkout_changes(self):
         worktree = self.root / "worktree"
@@ -138,6 +196,10 @@ class CandidateRecoveryTest(unittest.TestCase):
                     "activation_packet_bundle": {"path": str(bundle_path),
                         "sha256": hashlib.sha256(bundle_path.read_bytes()).hexdigest()}}
         (root / "role_bindings.json").write_text(json.dumps(bindings))
+        self.assertEqual(prepare._continued_candidate(root, bindings), candidate)
+        altered = dict(bindings, recovered_candidate={**candidate, "baseline_revision": "other"})
+        with self.assertRaisesRegex(ValueError, "continuation_candidate_binding_invalid"):
+            prepare._continued_candidate(root, altered)
         try:
             recovery = importlib.import_module("recovery_candidate")
         except ModuleNotFoundError:
@@ -173,6 +235,74 @@ class CandidateRecoveryTest(unittest.TestCase):
             (worktree / "new.txt").write_text("tampered")
             with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
                 prepare._recover_preserved_candidate(root, packet, worktree)
+
+    def test_repeated_recovery_replays_verified_followup_and_rejects_tampering(self):
+        root = self.root / "artifacts"
+        root.mkdir()
+        before = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}
+        after = {"tracked.txt": b"one\nfour\n", "new.txt": b"new\n"}
+        hashes = lambda values: {name: hashlib.sha256(data).hexdigest() for name, data in values.items()}
+        def archive(run, values):
+            directory = root / "runs" / run
+            directory.mkdir(parents=True)
+            rows = []
+            for name, value in values.items():
+                data = value if isinstance(value, bytes) else json.dumps(value).encode()
+                (directory / name).write_bytes(data)
+                rows.append({"path": name, "snapshot": name, "sha256": hashlib.sha256(data).hexdigest()})
+            (directory / "archive_manifest.json").write_text(json.dumps({"run_id": run, "files": rows}))
+        def snapshot(run, values):
+            directory = root / ("recovery_candidate." + run)
+            snapshot_replayed_candidate(directory, hashes(values), values)
+            return {str(directory / name): digest for name, digest in hashes(values).items()}
+        base_trace = {"run_id": "first", "worker": "implementer", "audit": {"status": "rejected"},
+                      "trace_retrieval": str(self.session), "thread_id": "worker", "spawn": {"provider_handle": "/root/first"}}
+        parent = {"provider_session": str(self.session), "parent_thread_id": "parent"}
+        bindings = {"execution_repository": str(self.repo), "source_checkout": str(self.repo),
+                    "parent_context": parent, "runtime_evidence": {"run_started_at": "start"},
+                    "worker_runtime_guard": "/guard"}
+        archive("first", {"trace_first.json": base_trace, "role_bindings.json": bindings,
+                          "finalization_packet.json": {"identity": {"Run ID": "first"}, "reentry": {"Approved plan SHA256": "plan"}}})
+        base = {"prior_run_id": "first", "status": "unaccepted", "baseline_revision": self.revision,
+                "trace_sha256": hashlib.sha256(json.dumps(base_trace).encode()).hexdigest(), "files": hashes(before),
+                "source_already_present": True, "snapshot_files": snapshot("first", before)}
+        self.rows[1]["payload"]["item"]["changes"] = {
+            str(self.repo / "tracked.txt"): {"type": "update", "unified_diff": "@@ -1,2 +1,2 @@\n one\n-three\n+four\n"}}
+        self.write_session()
+        (self.repo / "tracked.txt").write_bytes(after["tracked.txt"])
+        dispatch = {"run_id": "second", "agent": "implementer", "coordinator_execution": {"source_checkout": str(self.repo)},
+                    "worker_contract": {"recovered_candidate": base, "before_source_change_guard": "/guard"}}
+        raw = ("Coordinator initialization: complete\n" + json.dumps(dispatch) + "\nTyped assignment:\n{}").encode()
+        dispatch_sha = hashlib.sha256(raw).hexdigest()
+        trace = {"run_id": "second", "worker": "implementer", "audit": {"status": "rejected"},
+                 "trace_retrieval": str(self.session), "thread_id": "worker", "last_dispatch_at": "time",
+                 "spawn": {"provider_handle": "/root/followup", "dispatch_file": str(root / "dispatch.txt"), "dispatch_file_sha256": dispatch_sha}}
+        accepted = {"run_id": "second", "worker": "implementer", "audit": {"status": "passed"},
+                    "spawn": {"dispatch_file": str(root / "dispatch.txt"), "dispatch_file_sha256": dispatch_sha}}
+        trace_sha = hashlib.sha256(json.dumps(trace).encode()).hexdigest()
+        repair = {"Attempt": 1, "Provider handle": "/root/followup", "Last dispatch at": "time",
+                  "Rejected trace SHA256": trace_sha, "Corrected dispatch SHA256": dispatch_sha}
+        archived_packet = {"identity": {"Run ID": "second"}, "reentry": {"Approved plan SHA256": "plan"},
+                           "activation_repairs": {"implementer": repair},
+                           "runtime_audits": [{"Worker": "implement", "Trace path": str(root / "trace_accepted.json")}]}
+        receipts = {"dispatch.txt": {"sha256": dispatch_sha, "run_id": "second", "agent": "implementer"}}
+        archive("second", {"trace_followup.json": trace, "trace_accepted.json": accepted, "dispatch.txt": raw,
+                           "activation_receipts.json": receipts, "role_bindings.json": bindings,
+                           "finalization_packet.json": archived_packet})
+        candidate = {"prior_run_id": "second", "status": "unaccepted", "trace_sha256": trace_sha,
+                     "baseline_revision": self.revision, "files": hashes(after), "source_already_present": True,
+                     "snapshot_files": snapshot("second", after), "base_candidate": base}
+        prior = {"reentry": {"Approved plan SHA256": "plan"}}
+        try:
+            recovery = importlib.import_module("recovery_candidate")
+        except ModuleNotFoundError:
+            recovery = importlib.import_module("scripts.recovery_candidate")
+        with patch.object(recovery, "verify_edit_authorization"), patch.object(recovery, "verify_candidate", return_value=hashes(before)):
+            result = prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
+            self.assertEqual(result["_contents"], after)
+            (root / "runs" / "second" / "dispatch.txt").write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
+                prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
 
     def test_activation_requires_assigned_unchanged_snapshot(self):
         worktree = self.root / "worktree"
@@ -350,6 +480,16 @@ class CandidateRecoveryTest(unittest.TestCase):
                                              guard, packet, "/root/worker", self.repo, ["tracked.txt", "new.txt"])
         write_parent(action)
         self.assertIsNone(check())
+        warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                   "Operation not permitted (os error 1)\n")
+        action["payload"]["item"]["aggregated_output"] = warning + '{"status":"allowed"}'
+        write_parent(action)
+        self.assertIsNone(check())
+        action["payload"]["item"]["aggregated_output"] = "Unexpected output\n" + warning + '{"status":"allowed"}'
+        write_parent(action)
+        with self.assertRaisesRegex(ValueError, "candidate_source_guard_missing"):
+            check()
+        action["payload"]["item"]["aggregated_output"] = '{"status":"allowed"}'
         action["timestamp"] = "2026-01-01T00:00:03Z"
         write_parent(action)
         with self.assertRaisesRegex(ValueError, "candidate_source_guard_missing"):

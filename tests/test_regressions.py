@@ -63,6 +63,18 @@ class V4Regressions(unittest.TestCase):
         self.assertFalse((worktree / ".thoughts").exists())
         self.assertEqual(prepare.resolve_repository_paths(worktree), (main, worktree))
 
+    def test_continuation_cannot_silently_switch_source_checkout(self):
+        main, worktree = self.repository()
+        with patch.object(Path, "cwd", return_value=main):
+            result = self.prepare(main)
+        bindings = Path(result["role_binding_manifest"])
+        packet = Path(result["finalization_packet"])
+        before = (bindings.read_bytes(), packet.read_bytes())
+        with patch.object(Path, "cwd", return_value=worktree):
+            with self.assertRaisesRegex(ValueError, "continuation_source_checkout_mismatch"):
+                self.prepare(main, continuation=True)
+        self.assertEqual((bindings.read_bytes(), packet.read_bytes()), before)
+
     def test_explicit_source_repository_owns_artifacts_from_framework_coordinator(self):
         main, _ = self.repository()
         with patch.object(Path, "cwd", return_value=prepare.ROOT):

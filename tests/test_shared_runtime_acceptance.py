@@ -127,23 +127,38 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                         terminal_closure(ledger)
 
     def test_reconciled_closure_preserves_original_blocked_receipt(self):
-        from scripts.worker_runtime_evidence import _preserve_blocked_closure
+        from scripts.worker_runtime_evidence import _preserve_closure
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "runtime_closure.json"
             data = json.dumps({"runtime_closure": [{"Runtime status": "Blocked"}]}).encode()
             path.write_bytes(data)
-            _preserve_blocked_closure(path)
+            _preserve_closure(path)
             snapshot = path.with_name("runtime_closure.blocked." + hashlib.sha256(data).hexdigest() + ".json")
             self.assertEqual(snapshot.read_bytes(), data)
-            _preserve_blocked_closure(path)
+            _preserve_closure(path)
             snapshot.write_text("tampered")
             with self.assertRaisesRegex(ValueError, "runtime_closure_snapshot_invalid"):
-                _preserve_blocked_closure(path)
+                _preserve_closure(path)
             self.assertEqual(path.read_bytes(), data)
             path.unlink()
             path.symlink_to(Path(directory) / "missing.json")
             with self.assertRaisesRegex(ValueError, "runtime_closure_symlink_invalid"):
-                _preserve_blocked_closure(path)
+                _preserve_closure(path)
+
+    def test_reconciled_closure_preserves_terminal_receipt(self):
+        from scripts.worker_runtime_evidence import _preserve_closure
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime_closure.json"
+            data = json.dumps({"runtime_closure": [{"Runtime status": "Terminal"}]}).encode()
+            path.write_bytes(data)
+            _preserve_closure(path)
+            snapshot = path.with_name("runtime_closure.terminal." + hashlib.sha256(data).hexdigest() + ".json")
+            self.assertEqual(snapshot.read_bytes(), data)
+            _preserve_closure(path)
+            snapshot.write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "runtime_closure_snapshot_invalid"):
+                _preserve_closure(path)
+            self.assertEqual(path.read_bytes(), data)
 
     def test_compact_wait_closure_rejects_modified_projection(self):
         from scripts.provider_runtime import targeted_wait_projection_source
