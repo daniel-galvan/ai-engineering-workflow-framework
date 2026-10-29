@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -145,6 +146,60 @@ def _recovery_errors(path: Path, role: str, handle: str, dispatch: str, provider
         return ["rejected_result_trace_invalid:" + str(error)]
 
 
+def delivery_dependency_errors(root: Path, agent: str, bindings: dict) -> list[str]:
+    """Require coordinator-accepted upstream results before starting a delivery worker."""
+    if bindings.get("lifecycle") != "remediation" or agent not in {"reviewer", "tester"}:
+        return []
+    if bindings.get("playbook") not in {"feature_delivery", "techops_issue_remediation", "sentry_issue_remediation"}:
+        return []
+    try:
+        from planning_contracts import _worker_runtime_audit_errors
+        from merge_techops_result import merged_result_errors
+        from review_evidence import _candidate_fields, candidate_fingerprint, plan_review_coverage_errors, review_report_errors
+    except ModuleNotFoundError:
+        from scripts.planning_contracts import _worker_runtime_audit_errors
+        from scripts.merge_techops_result import merged_result_errors
+        from scripts.review_evidence import _candidate_fields, candidate_fingerprint, plan_review_coverage_errors, review_report_errors
+    try:
+        packet_path = root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        required = {"implement"} if agent == "reviewer" else {"implement", "review"}
+        results = packet.get("worker_results", [])
+        if any(sum(row.get("Worker") == worker and row.get("Outcome") == "complete" for row in results) != 1
+               for worker in required):
+            return ["delivery_dependency_not_accepted:" + agent]
+        audits = packet.get("runtime_audits", [])
+        completed = {row.get("Worker") for row in audits}
+        if not required <= completed:
+            return ["delivery_dependency_audit_missing:" + agent]
+        errors = _worker_runtime_audit_errors(packet, packet_path, completed)
+        errors.extend(merged_result_errors(packet, bindings, root))
+        if errors:
+            return ["delivery_dependency_unverified:" + agent, *errors]
+        if agent == "tester":
+            review = (root / "code_review.md").read_text()
+            audit = next(row for row in audits if row.get("Worker") == "review")
+            trace_path = Path(audit["Trace path"])
+            trace = json.loads((trace_path if trace_path.is_absolute() else root / trace_path).read_text())
+            if hashlib.sha256(review.encode()).hexdigest() != trace["result_artifact"]["output_sha256"]:
+                return ["delivery_review_output_changed"]
+            fields, field_errors = _candidate_fields(review)
+            errors = review_report_errors(review, require_accepted=True) + field_errors
+            if bindings["playbook"] in {"feature_delivery", "techops_issue_remediation"}:
+                errors.extend(plan_review_coverage_errors((root / "implementation_plan.md").read_text(), review))
+            if errors:
+                return ["delivery_review_not_accepted", *errors]
+            repository = Path(fields["Repository"])
+            untracked = json.loads(fields["Untracked candidate files"])
+            if (not repository.is_absolute() or repository.resolve() != Path(bindings["source_checkout"]).resolve()
+                    or not isinstance(untracked, list) or any(not isinstance(name, str) for name in untracked)
+                    or candidate_fingerprint(repository, fields["Base revision"], untracked) != fields["Candidate SHA256"]):
+                return ["delivery_review_candidate_changed"]
+        return []
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration, subprocess.CalledProcessError) as error:
+        return ["delivery_dependency_invalid:" + str(error)]
+
+
 def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: str,
                              *, rejected_trace_sha256: str | None = None,
                              recovery_required: dict | None = None) -> list[str]:
@@ -261,6 +316,11 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         elif manifest_path:
             errors.append("run_input_manifest_unavailable")
     bindings_path = path.parent / "role_bindings.json"
+    if expected_agent in {"reviewer", "tester"} and bindings_path.is_file():
+        try:
+            errors.extend(delivery_dependency_errors(path.parent, expected_agent, json.loads(bindings_path.read_text())))
+        except (OSError, ValueError, TypeError, AttributeError):
+            errors.append("delivery_dependency_bindings_invalid")
     if expected_agent == "solution_architect" and bindings_path.is_file():
         try:
             bindings = json.loads(bindings_path.read_text())

@@ -399,7 +399,10 @@ def _feature_delivery_activation_errors(path: Path, manifest: dict, implementer_
             if isinstance(status, dict) and len(status) == 1:
                 status = next(iter(status))
             statuses[row.get("agent_name")] = str(status).strip().lower().replace(" ", "_")
-        required = {"implement": "implementer", "review": "reviewer", "validate": "tester"}
+        required = {"implement": "implementer"}
+        for role in ("implementer", "reviewer", "tester", "documenter"):
+            if not manifest.get("bindings", {}).get(role) or not manifest.get("worker_contracts", {}).get(role):
+                return ["delivery_worker_binding_required:" + role]
         packet = json.loads(path.read_text())
         run_id = packet["identity"]["Run ID"]
         selected, handles = {}, []

@@ -190,10 +190,10 @@ Required worker sets:
   `repository-integration` is added when the context crosses a repository, service, ownership, deployment, persistence,
   or public-contract seam.
 - `deep + planning`: standard planning workers plus mandatory `repository-integration` and `planning-review`.
-- `standard + remediation`: reuse completed standard planning artifacts, activate `implement`, `review`, and `validate`
+- `standard + remediation`: reuse completed standard planning artifacts; activate `implement`, `review`, and `validate`
+  in order after approval, then activate final `handoff` after delivery fan-in.
+- `deep + remediation`: reuse completed deep planning artifacts; activate `implement`, `review`, and `validate` in order
   after approval, then activate final `handoff` after delivery fan-in.
-- `deep + remediation`: reuse completed deep planning artifacts, activate `implement`, `review`, and `validate` after
-  approval, then activate final `handoff` after delivery fan-in.
 
 The delivery sequence is `implement` ↔ `review` → `validate` → `handoff`. Do not start additional discovery workers
 after approval unless new evidence contradicts the approved plan or expands scope.
@@ -408,11 +408,12 @@ deep-profile alternative.
 
 ### Stage 5 — Approved Remediation
 
-Before source changes, activate `implement`, `review`, and `validate` with their declared dependencies; run the final
-`handoff` only after accepted delivery fan-in. The Coordinator must not perform those roles itself. Refresh the current
+Before source changes, prepare all delivery roles and activate `implement`. Activate `review` after accepting the
+Implementer result, then `validate` after accepting review; run the final `handoff` only after accepted delivery fan-in.
+The Coordinator must not perform those roles itself. Refresh the current
 native dispatch ledger with the prepared `runtime_evidence.collector` before the implementation guard. The guard checks
-the current remediation identity, matching activated profile, exact approved plan hash, three distinct live provider
-handles, their prepared role bindings and hash-checked dispatch files, and a fresh native inventory. It derives launch
+the current remediation identity, matching activated profile, exact approved plan hash, the live Implementer provider
+handle, prepared role bindings and hash-checked dispatch file, and a fresh native inventory. It derives launch
 evidence from the provider stream; do not hand-create packet worker rows to satisfy it. If the graph is unavailable,
 stop as `remediation_not_activated`; do not edit source. Run the guard in `--before-source-change` mode at each
 implementation slice. The guard is an explicit worker obligation; it does not intercept arbitrary editor operations

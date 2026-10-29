@@ -547,7 +547,7 @@ class PlanningCommandPath(unittest.TestCase):
                     completed.clear()
                     statuses.clear()
                     Path(run["runtime_evidence"]["ledger"]).unlink(missing_ok=True)
-                    for index, agent in enumerate(("implementer", "reviewer", "tester"), 1):
+                    for index, agent in enumerate(("implementer",), 1):
                         assignment = root / ("stopped-" + agent + "-assignment.json")
                         assignment.write_text(json.dumps({"objective": "Guarded pre-edit worker",
                                                           "input_paths": [str(root / "implementation_plan.md")]}))
@@ -594,7 +594,6 @@ class PlanningCommandPath(unittest.TestCase):
                     text=True).strip()
                 review_text = validation_text = ""
                 test_command = "python -c 'assert increment(2)==3 and increment(0)==1 and increment(-2)==-1'"
-                delivery_dispatches = {}
                 for delivery_index, (agent, worker, namespace) in enumerate(remediation_roles, 1):
                     assignment = root / (worker + "-assignment.json")
                     assigned_inputs = [str(root / "implementation_plan.md"), str(source),
@@ -613,8 +612,6 @@ class PlanningCommandPath(unittest.TestCase):
                     child = ((session_home / "sessions" / ("rollout-" + thread + ".jsonl")) if opaque_delivery
                              else provider / (worker + "-remediation.jsonl"))
                     delivery_threads[agent] = thread
-                    delivery_dispatches[agent] = {"assignment": assignment, "activation": activation,
-                        "guarded": guarded, "handle": handle, "thread": thread, "child": child}
                     append(parent, "response_item", type="function_call", namespace="collaboration",
                         name="spawn_agent", call_id="remediation-spawn-" + worker,
                         arguments=json.dumps({"task_name": worker, "message": "opaque" if opaque_delivery else guarded["activation_message"],
@@ -629,14 +626,11 @@ class PlanningCommandPath(unittest.TestCase):
                             output=activation.read_text())
                     statuses[handle] = "running"
                     completed[handle] = thread
-                inventory()
-                activation_result = json.loads(command("worker_runtime_evidence.py", *remediation_collector))
-                self.assertEqual(activation_result.get("profile_activation", {}).get("status"), "activated",
-                    json.dumps(activation_result, sort_keys=True))
-                for delivery_index, (agent, worker, namespace) in enumerate(remediation_roles, 1):
-                    dispatch = delivery_dispatches[agent]
-                    activation, guarded = dispatch["activation"], dispatch["guarded"]
-                    handle, thread, child = dispatch["handle"], dispatch["thread"], dispatch["child"]
+                    inventory()
+                    activation_result = json.loads(command("worker_runtime_evidence.py", *remediation_collector))
+                    if agent == "implementer":
+                        self.assertEqual(activation_result.get("profile_activation", {}).get("status"), "activated",
+                            json.dumps(activation_result, sort_keys=True))
                     if not opaque_delivery:
                         child.write_text("")
                         append(child, "session_meta", id=thread, cwd=str(repository))

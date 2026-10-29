@@ -202,6 +202,11 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                     cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
                     env={key: value for key, value in os.environ.items()
                          if key not in {"CODEX_THREAD_ID", "CODEX_SESSION_ID"}})
+                if role != "implementer":
+                    self.assertEqual(result_cli.returncode, 2, result_cli.stdout + result_cli.stderr)
+                    self.assertIn("delivery_dependency_not_accepted:" + role, result_cli.stdout)
+                    self.assertFalse(dispatch.exists())
+                    continue
                 self.assertEqual(result_cli.returncode, 0, result_cli.stdout + result_cli.stderr)
                 guarded = json.loads(result_cli.stdout)
                 rows.extend([event(index * 2 + 1, "response_item", type="function_call", namespace="collaboration",
@@ -233,9 +238,15 @@ class FeatureDeliveryContinuation(unittest.TestCase):
             activated = json.loads(packet_path.read_text())["identity"]
             self.assertEqual(activated["Activated profile"], "deep")
             self.assertEqual(activated["Profile status"], "in_progress")
-            # All three real activations suffice; Documenter is activated only after accepted fan-in.
+            # Only Implementer starts before the upstream results exist.
             accepted = guard()
             self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+            current_bindings = bindings_path.read_bytes()
+            incomplete = json.loads(current_bindings)
+            del incomplete["worker_contracts"]["tester"]
+            bindings_path.write_text(json.dumps(incomplete))
+            self.assertIn("delivery_worker_binding_required:tester", guard().stdout)
+            bindings_path.write_bytes(current_bindings)
             self.assertFalse((artifact_root / "runtime_closure.json").exists())
             current_run_id = current["identity"]["Run ID"]
             result = preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, True,

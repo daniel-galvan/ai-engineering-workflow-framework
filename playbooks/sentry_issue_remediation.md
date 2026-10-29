@@ -199,7 +199,8 @@ re-entry:
 3. start or record a new run with the same profile and `lifecycle: remediation`;
 4. re-read this playbook, the work record, and the implementation plan;
 5. record `profile_status: requested` for the remediation run;
-6. reuse completed planning artifacts and activate `implement`, `review`, and `validate` before source changes;
+6. reuse completed planning artifacts, prepare all roles, and activate `implement` before source changes; activate
+   `review` and `validate` in order after accepting their upstream results;
 7. wait for every required result envelope and complete fan-in before closing the remediation stage; and
 8. activate final `handoff` after delivery fan-in;
 9. complete the shared worker-runtime closure barrier before closing the prior run or starting another lifecycle run;
@@ -239,10 +240,10 @@ Required worker sets are explicit:
   finalization for either readiness result. The `fix-design` worker performs bounded failure analysis before designing
   the fix or returning a structured clarification brief.
 - `deep + planning`: all standard planning workers plus `failure-topology` and mandatory `repository-integration`.
-- `standard + remediation`: reuse completed standard planning artifacts, activate `implement`, `review`, and `validate`
+- `standard + remediation`: reuse completed standard planning artifacts; activate `implement`, `review`, and `validate`
+  in order after approval, then activate final `handoff` after delivery fan-in.
+- `deep + remediation`: reuse completed deep planning artifacts; activate `implement`, `review`, and `validate` in order
   after approval, then activate final `handoff` after delivery fan-in.
-- `deep + remediation`: reuse completed deep planning artifacts, activate `implement`, `review`, and `validate` after
-  approval, then activate final `handoff` after delivery fan-in.
 
 ## Profile Execution
 

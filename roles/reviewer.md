@@ -222,8 +222,8 @@ Also record one workflow disposition: `accepted`, `changes_required`, `replannin
 changes-required findings return to the Implementer and are re-reviewed before validation; they are not a final handoff
 or a new approval gate.
 
-Code Review is valid only after the delegated Implementer returns a terminal
-result for the current diff. A Coordinator summary, a planning review, or an
+Code Review is valid only after the Coordinator accepts the delegated Implementer's
+terminal result for the current diff. A Coordinator summary, a planning review, or an
 unexecuted review cannot be recorded as accepted delivery review.
 
 Before reviewing behavior, compare the diff with the approved plan and the

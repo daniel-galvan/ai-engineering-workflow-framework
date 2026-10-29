@@ -245,8 +245,9 @@ Prepare the approved planning-to-remediation transition with `prepare_run.py --c
 and `--approval-reference <explicit approval reference>` using the saved input manifest. Reconcile the prior runtime
 closure first. Later remediation follow-ups use `--continuation` without repeating `--remediation-reentry`.
 
-Explicit approval and remediation re-entry activate `implement`, `review`, and `validate` before source changes, then
-activate the final `handoff` after delivery fan-in. In-scope review findings return to `implement` for repair and
+Explicit approval and remediation re-entry prepare all delivery roles and activate `implement` before source changes.
+After the Coordinator accepts its result, activate `review`; after accepting the review, activate `validate`. Activate
+the final `handoff` after delivery fan-in. In-scope review findings return to `implement` for repair and
 re-review; they are not a new approval gate or final handoff.
 
 ### Stage 6 — Stabilize and Hand Off

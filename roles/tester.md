@@ -27,7 +27,7 @@ The Tester is responsible for proving that the solution works as intended, not f
 
 The Tester defines and executes an appropriate validation strategy based on the scope and risk of the work.
 
-Validation starts only after the delegated Reviewer accepts the current diff.
+Validation starts only after the Coordinator accepts the delegated Reviewer's current diff review.
 The Tester must return a terminal result with each declared check recorded as
 `pass`, `fail`, `skipped`, `unavailable`, or `inconclusive`.
 

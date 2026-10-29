@@ -78,7 +78,7 @@ expected outcome; reject implementation-coupled or non-falsifying checks when
 they affect the disposition.
 
 Code Review is valid only when this delegated Reviewer inspected the current
-approved diff after the Implementer returned a terminal result. A Coordinator
+approved diff after the Coordinator accepted the Implementer result. A Coordinator
 summary, a pre-implementation plan review, or an unexecuted review is not an
 accepted delivery review. Record the dimensions checked and return
 `blocked` or `changes_required` when the required diff is unavailable.

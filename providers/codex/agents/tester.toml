@@ -43,7 +43,8 @@ comparison or cited verified evidence; otherwise state that baseline comparison
 was not performed. Use inherited resolved tool paths directly instead of first
 retrying known-missing default executables.
 
-Validation is valid only after the delegated Reviewer returns `accepted` for
-the current diff. Do not report validation or remediation completion when this
+Start validation only after Coordinator acceptance of the Reviewer result and the
+guarded activation for the current diff. A Reviewer message alone is not acceptance.
+Do not report validation or remediation completion when this
 Tester did not run the declared checks and return a terminal result.
 """

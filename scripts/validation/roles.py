@@ -51,7 +51,7 @@ def validate_activation_roles(agent_configs: dict) -> None:
             "scripts/review_evidence.py",
         ),
         "tester": (
-            "delegated Reviewer returns `accepted`",
+            "Coordinator acceptance of the Reviewer result",
             "terminal result",
         ),
         "documenter": (
@@ -81,8 +81,8 @@ def validate_delivery_roles() -> None:
     role_requirements = {
         "orchestrator.md": ("Delivery Activation Barrier", "does not implement", "An active worker status is not a handoff"),
         "implementer.md": ("delegated worker", "workflow violation"),
-        "reviewer.md": ("delegated Implementer returns a terminal", "accepted delivery review"),
-        "tester.md": ("delegated Reviewer accepts the current diff", "terminal result"),
+        "reviewer.md": ("Coordinator accepts the delegated Implementer's", "accepted delivery review"),
+        "tester.md": ("Coordinator accepts the delegated Reviewer's current diff review", "terminal result"),
         "documenter.md": ("remediation handoff records terminal Implementer", "runtime closure"),
     }
     for filename, phrases in role_requirements.items():

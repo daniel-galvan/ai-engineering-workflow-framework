@@ -395,11 +395,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    recommendation does not approve a scope change or prove a simpler design satisfies the accepted criteria.
    Prepared delivery envelopes give Implementer the `before_source_change_guard`. Before each implementation slice,
    refresh the native dispatch ledger with the prepared `runtime_evidence.collector`, then run the guard. It checks
-   three distinct live implement/review/validate handles, prepared role bindings, hash-checked dispatch files, a fresh
-   provider inventory, and the approved plan. Do not hand-populate packet worker rows; accepted result merges create
-   those rows, and activate handoff only after delivery fan-in. The collector advances the activated profile and
-   `in_progress` state only after this same live-evidence gate passes; never edit those identity fields manually.
-   For TechOps, after the three workers are active, let the Implementer inspect the approved scope and create
+   the live Implementer handle, all prepared role bindings, its hash-checked dispatch file, a fresh provider inventory,
+   and the approved plan. Dispatch Reviewer only after accepting Implementer, and Tester only after accepting Reviewer;
+   the activation guard checks those dependencies and the reviewed candidate. Do not hand-populate packet worker rows;
+   accepted result merges create those rows, and activate handoff only after delivery fan-in. The collector advances the
+   activated profile and `in_progress` state only after this live-evidence gate passes; never edit those fields by hand.
+   For TechOps, let the active Implementer inspect the approved scope and create
    `implementation_conformance.json` before running the source-change guard. That artifact is not a source edit;
    the guard requires it and must pass before the Implementer changes source files.
    Run `validate_worker_runtime.py --before-source-change <packet> --implementer-handle <observed-handle>`
@@ -725,7 +726,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Do not reconstruct accepted evidence, outcomes or references from prose. The merger preserves immutable identity
    and Coordinator audits; it does not grant readiness or implementation approval. For Feature Delivery remediation
    it also accepts `implementer`, `reviewer`, and `tester` typed terminal results, registering execution/result rows
-   from the provider-authenticated trace. A rejected result still requires guarded recovery. Documenter writes the
+   from the provider-authenticated trace. For remediation, dispatch these roles in that order only after merging the
+   preceding result; run the activation guard before each dispatch. A rejected result still requires guarded recovery.
+   Documenter writes the
    prepared packet directly. Collect its completed trace with
    `worker_runtime_evidence.py --agent documenter` and the prepared collector arguments: the collector automatically
    validates and registers the `handoff` audit in the packet. Then validate that packet through `--check-packet`,

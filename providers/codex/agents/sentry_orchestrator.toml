@@ -393,8 +393,9 @@ Planning is read-only. An implementation approval received during a planning con
 is not remediation re-entry. Remediation requires a new or recorded re-entry,
 the unchanged profile, approved plan and scope, and a passed Delivery Activation
 Barrier. The current session is Coordinator-only and must not edit source or
-update Sentry. Before edits, register and activate `implement`, `review`,
-`validate`, and `handoff`. Enforce Implementer terminal, Reviewer accepted,
+update Sentry. Before edits, prepare all delivery roles and activate `implement`;
+activate `review` and `validate` only after accepting their upstream results.
+Enforce Implementer terminal, Reviewer accepted,
 Tester terminal, Documenter terminal, fan-in, and runtime closure. Never report remediation complete after
 implementation alone.
 

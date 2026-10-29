@@ -976,8 +976,8 @@ re-entry event that:
 3. selects `lifecycle: remediation` without silently changing the profile;
 4. re-reads the playbook, work record, and implementation plan;
 5. records `profile_status: requested` for the remediation run;
-6. activates every required delivery worker before source changes, reusing completed planning artifacts rather than
-   rerunning planning workers;
+6. prepares every required delivery role and activates the Implementer before source changes, reusing completed
+   planning artifacts rather than rerunning planning workers; activate subsequent workers after accepted dependencies;
 7. waits for required result envelopes and completes fan-in; and
 8. reports the new run's requested lifecycle, activated workers, and fan-in status.
 
@@ -1009,19 +1009,21 @@ dependency, or infrastructure change, the current remediation run MUST record a 
 1. the remediation re-entry event, unchanged execution profile, `lifecycle: remediation`, approved plan, and approval
    type, owner, scope, and reference;
 2. the required delivery graph for the selected playbook: `implement`, `review`, `validate`, and `handoff`, with each
-   worker's actual ID, role, dependency, activation state, and result state;
+   prepared role and dependency; record each worker's actual ID, activation state, and result when dispatched;
 3. an active delegated `implement` worker authorized to edit the approved scope; and
 4. the current Coordinator's explicit non-authority to edit source or substitute for the Implementer, Reviewer, or
    Tester.
 
-The graph may execute sequentially. A downstream worker may be recorded as `awaiting_dependency`, but it must not be
-omitted from the current run's worker execution record. If the required graph or active Implementer cannot be created,
+Start delivery workers in dependency order. Prepare all roles before implementation, but dispatch Reviewer only after
+the Coordinator accepts Implementer, and Tester only after the Coordinator accepts Reviewer for the current candidate.
+The activation guard checks these dependencies; a worker's message alone cannot release another worker. If the required
+graph or active Implementer cannot be created,
 stop before source changes with `profile_status: blocked` and reason `remediation_not_activated`.
 Feature Delivery prepares an exact approved-plan hash and a before-source-change worker-runtime guard. Invoke that
 guard before each implementation slice with current provider-observed Implementer status and handle. It validates
-recorded re-entry, plan bytes, matching active profile and distinct delivery handles. A changed plan requires its
-approval and current evidence to be reconciled; changing the hash alone is not approval. These are structural checks,
-not proof of source correctness or an interception of arbitrary edits outside the selected workflow.
+recorded re-entry, plan bytes, matching active profile, prepared role bindings and the active Implementer. A changed
+plan requires its approval and current evidence to be reconciled; changing the hash alone is not approval. These are
+structural checks, not proof of source correctness or an interception of arbitrary edits outside the selected workflow.
 
 The Coordinator may inspect files to coordinate work and maintain durable artifacts, but it MUST NOT implement, review,
 or validate source changes. A source change made before the barrier is a workflow violation and invalidates any claim
@@ -1075,9 +1077,10 @@ not approval gates.
 
 While a remediation delivery graph is active, an `in_progress`, `running`, or `awaiting_dependency` status is an
 intermediate status, not a handoff and not a request for user action. The Coordinator MUST continue polling active
-workers. After an Implementer returns a terminal result, the Coordinator MUST immediately advance the same run to
-Reviewer; after the Reviewer returns `accepted`, it MUST advance to Tester; after Tester validation, it MUST advance to
-Documenter, fan-in, and runtime closure. It MUST NOT end the run with a final-looking status that requires the user to
+workers. After an Implementer result passes the runtime guard and is merged, the Coordinator MUST advance the same run
+to Reviewer; after the Reviewer result passes the runtime guard and is merged with an accepted review, it MUST advance
+to Tester; after Tester validation, it MUST advance to Documenter, fan-in, and runtime closure. It MUST NOT end the run
+with a final-looking status that requires the user to
 say “continue” or “what next?” for an ordinary worker transition.
 
 If the provider yields control while a worker remains active, record `in_progress`, identify the active worker and the

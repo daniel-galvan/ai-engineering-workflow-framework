@@ -8,11 +8,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.review_evidence import (
     PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, plan_design_errors, plan_review_coverage_errors,
 )
-from scripts.validate_worker_runtime import delivery_start_errors
+from scripts.validate_worker_runtime import delivery_dependency_errors, delivery_start_errors
+from scripts.review_evidence import delivery_evidence_fixture
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +113,48 @@ class DeliveryDesignGuards(unittest.TestCase):
         self.assertEqual(blocked.returncode, 2)
         self.assertIn("delivery_activation_invalid", blocked.stdout)
         self.assertNotIn("Traceback", blocked.stderr)
+
+    def test_delivery_activation_requires_accepted_upstream_review_and_current_candidate(self):
+        repository, review, _ = delivery_evidence_fixture(self.root)
+        bindings = {"lifecycle": "remediation", "playbook": "techops_issue_remediation",
+                    "source_checkout": str(repository)}
+        packet = {"worker_results": [], "runtime_audits": []}
+        path = self.root / "finalization_packet.json"
+        def save():
+            path.write_text(json.dumps(packet))
+        save()
+        self.assertEqual(delivery_dependency_errors(self.root, "reviewer", bindings),
+                         ["delivery_dependency_not_accepted:reviewer"])
+        packet["worker_results"] = [{"Worker": "implement", "Outcome": "complete"}]
+        save()
+        self.assertEqual(delivery_dependency_errors(self.root, "reviewer", bindings),
+                         ["delivery_dependency_audit_missing:reviewer"])
+        packet["runtime_audits"] = [{"Worker": "implement"}]
+        save()
+        with patch("scripts.planning_contracts._worker_runtime_audit_errors", return_value=[]), \
+             patch("scripts.merge_techops_result.merged_result_errors", return_value=[]):
+            self.assertEqual(delivery_dependency_errors(self.root, "reviewer", bindings), [])
+            self.assertEqual(delivery_dependency_errors(self.root, "tester", bindings),
+                             ["delivery_dependency_not_accepted:tester"])
+            trace = self.root / "review_trace.json"
+            trace.write_text(json.dumps({"result_artifact": {"output_sha256": hashlib.sha256(review.encode()).hexdigest()}}))
+            (self.root / "code_review.md").write_text(review)
+            packet["worker_results"].append({"Worker": "review", "Outcome": "complete"})
+            packet["runtime_audits"].append({"Worker": "review", "Trace path": str(trace)})
+            save()
+            self.assertEqual(delivery_dependency_errors(self.root, "tester", bindings), [])
+            with patch("scripts.planning_contracts._worker_runtime_audit_errors", return_value=["worker_fan_in_rejected"]):
+                self.assertIn("delivery_dependency_unverified:tester",
+                              delivery_dependency_errors(self.root, "tester", bindings))
+            (repository / "asset.py").write_text("version = 3\n")
+            self.assertIn("delivery_review_candidate_changed", delivery_dependency_errors(self.root, "tester", bindings))
+            (repository / "asset.py").write_text("version = 2\n")
+            (self.root / "code_review.md").write_text(review + "changed\n")
+            self.assertIn("delivery_review_output_changed", delivery_dependency_errors(self.root, "tester", bindings))
+            rejected = review.replace("Disposition: accepted", "Disposition: changes_required")
+            (self.root / "code_review.md").write_text(rejected)
+            trace.write_text(json.dumps({"result_artifact": {"output_sha256": hashlib.sha256(rejected.encode()).hexdigest()}}))
+            self.assertIn("delivery_review_not_accepted", delivery_dependency_errors(self.root, "tester", bindings))
 
 
 if __name__ == "__main__":
