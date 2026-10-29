@@ -591,6 +591,49 @@ class ContextOperationAudit(unittest.TestCase):
         errors = runtime.trace_errors(changed)
         self.assertIn("forbidden_context_reference:archived_artifact", errors)
 
+    def test_current_packet_reentry_projection_is_not_an_archive_read(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["reentry"] = {"Prior artifacts": str(self.root / "runs" / "prior")}
+        packet_path.write_text(json.dumps(packet))
+        call = 'const r = await tools.exec_command(' + json.dumps({"cmd": "jq '.reentry' " + str(packet_path)}) + '); text(r.output);'
+        trace["tool_trace"].extend(self.paired(call, json.dumps(packet["reentry"])))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        altered = json.loads(json.dumps(trace))
+        altered["tool_trace"][-2]["input"] += ' await tools.exec_command({"cmd":"cat .thoughts/ITEM-1/runs/prior/secret.md"});'
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(altered))
+        extra = json.loads(json.dumps(trace))
+        extra["tool_trace"][-1]["output"] = json.dumps({**packet["reentry"], "leaked": str(self.root / "runs" / "secret")})
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(extra))
+        other = json.loads(json.dumps(trace))
+        other["tool_trace"][-2]["input"] = other["tool_trace"][-2]["input"].replace(str(packet_path), str(self.root / "runs" / "prior" / "finalization_packet.json"))
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(other))
+
+    def test_exact_current_packet_output_in_mixed_call_keeps_archive_access_guard(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["reentry"] = {"Prior artifacts": str(self.root / "runs" / "prior")}
+        packet_path.write_text(json.dumps(packet))
+        inputs = self.root / "run_inputs.json"
+        inputs.write_text('{"inputs": []}\n')
+        source = ('text(await tools.exec_command(' + json.dumps({"cmd": "cat " + str(inputs) + " " + str(packet_path)})
+                  + ')); text(await tools.exec_command({"cmd":"git status --short"}));')
+        output = [{"type": "input_text", "text": json.dumps({"exit_code": 0,
+                   "output": inputs.read_text() + packet_path.read_text()})},
+                  {"type": "input_text", "text": json.dumps({"exit_code": 0, "output": "clean"})}]
+        trace["tool_trace"].extend(self.paired(source, output))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        altered = json.loads(json.dumps(trace))
+        result = json.loads(altered["tool_trace"][-1]["output"][0]["text"])
+        result["output"] += "\n" + str(self.root / "runs" / "prior" / "secret.md")
+        altered["tool_trace"][-1]["output"][0]["text"] = json.dumps(result)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(altered))
+        altered = json.loads(json.dumps(trace))
+        altered["tool_trace"][-2]["input"] += ' text(await tools.exec_command({"cmd":"cat .thoughts/ITEM-1/runs/prior/secret.md"}));'
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(altered))
+
     def test_ancestor_filename_probe_is_not_an_archive_read(self):
         for directory in ("", str(self.repository) + "/"):
             trace = self.instruction_read_trace()

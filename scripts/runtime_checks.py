@@ -193,7 +193,16 @@ def activation_message(packet: dict, assignment: dict) -> str:
                 def git(*args):
                     return subprocess.run(["git", "-C", checkout, "-c", "core.fsmonitor=false", *args],
                                           check=True, capture_output=True, text=True, timeout=30).stdout.strip()
-                if git("rev-parse", "HEAD") != candidate["baseline_revision"] or git("status", "--porcelain"):
+                if candidate.get("source_already_present") is True:
+                    try:
+                        from recovery_candidate import verify_checkout_snapshot
+                    except ModuleNotFoundError:
+                        from scripts.recovery_candidate import verify_checkout_snapshot
+                    try:
+                        verify_checkout_snapshot(Path(checkout), candidate["baseline_revision"], candidate["files"])
+                    except (ValueError, KeyError, TypeError) as error:
+                        raise ValueError("recovered_candidate_source_checkout_changed") from error
+                elif git("rev-parse", "HEAD") != candidate["baseline_revision"] or git("status", "--porcelain"):
                     raise ValueError("recovered_candidate_source_checkout_changed")
         except (OSError, subprocess.SubprocessError, KeyError, TypeError, AttributeError) as error:
             raise ValueError("recovered_candidate_source_checkout_unverified") from error
@@ -1300,6 +1309,37 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
     if root is None:
         return set()
     calls, outputs = set(), set()
+    exact_cat_outputs, exact_reentry_outputs = {}, {}
+    for row in trace.get("tool_trace", []):
+        if not isinstance(row, dict) or not row.get("call_id"):
+            continue
+        for name, arguments in _tool_operations(row):
+            if name != "exec_command":
+                continue
+            try:
+                tokens = shlex.split(arguments.get("cmd", ""))
+                targets = _read_targets(arguments.get("cmd", ""))
+                cwd = Path(arguments.get("workdir", root.parent.parent))
+                if len(tokens) == 3 and tokens[:2] == ["jq", ".reentry"]:
+                    packet = Path(tokens[2])
+                    packet = packet if packet.is_absolute() else cwd / packet
+                    if not packet.is_symlink() and packet.resolve() == root / "finalization_packet.json":
+                        projection = json.loads(packet.read_text()).get("reentry")
+                        if isinstance(projection, dict):
+                            exact_reentry_outputs.setdefault(row["call_id"], []).append(projection)
+                    continue
+                paths = [Path(target) if Path(target).is_absolute() else cwd / target for target in targets]
+                receipts = root / "activation_receipts.json"
+                instructions = json.loads(receipts.read_text()) if receipts.is_file() else {}
+                dispatch = Path(trace["spawn"]["dispatch_file"]).resolve()
+                if (not tokens or tokens[0] != "cat" or not targets or tokens[1:] != targets
+                        or any(path.is_symlink() or path.resolve().parent != root or not path.is_file()
+                               or path.resolve() == dispatch or path.name in instructions for path in paths)):
+                    continue
+                content = "".join(path.read_text() for path in paths)
+            except (OSError, ValueError, TypeError, UnicodeError, KeyError):
+                continue
+            exact_cat_outputs.setdefault(row["call_id"], set()).add(content)
     for index, row in enumerate(trace.get("tool_trace", [])):
         if not isinstance(row, dict):
             continue
@@ -1330,6 +1370,27 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 calls.add(row["call_id"])
         if row.get("type") in {"function_call_output", "custom_tool_call_output"} and row.get("call_id") in calls:
             outputs.add(("tool_trace", str(index), "output"))
+        if row.get("type") == "custom_tool_call_output" and isinstance(row.get("output"), str):
+            try:
+                result = json.loads(row["output"])
+            except (ValueError, TypeError):
+                pass
+            else:
+                if result in exact_reentry_outputs.get(row.get("call_id"), []):
+                    outputs.add(("tool_trace", str(index), "output"))
+        if row.get("type") == "custom_tool_call_output" and isinstance(row.get("output"), list):
+            for item_index, item in enumerate(row["output"]):
+                if not isinstance(item, dict) or not isinstance(item.get("text"), str):
+                    continue
+                try:
+                    result = json.loads(item["text"])
+                except (ValueError, TypeError):
+                    continue
+                if ((isinstance(result, dict) and result.get("exit_code") == 0
+                     and isinstance(result.get("output"), str)
+                     and result["output"] in exact_cat_outputs.get(row.get("call_id"), set()))
+                        or result in exact_reentry_outputs.get(row.get("call_id"), [])):
+                    outputs.add(("tool_trace", str(index), "output", str(item_index), "text"))
     return outputs
 
 

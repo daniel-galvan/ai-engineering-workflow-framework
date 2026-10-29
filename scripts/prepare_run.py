@@ -555,6 +555,11 @@ def _write_activation_packets(
             "run_input_manifest": manifest["run_input_manifest"],
             "coordinator_execution": manifest["coordinator_execution"],
             "repository_instructions": (
+                f"Use {manifest['source_checkout']} as the source checkout for repository reads, Git commands, "
+                f"changes, and validation. Use {artifact_root} for current-run workflow artifacts. "
+                "The execution_repository in coordinator_execution is the durable-records repository and may "
+                "be a different checkout or branch; do not use it as the source checkout when paths differ. "
+                "Before source work, verify the source checkout's branch and revision against the prepared run. "
                 "Read local AGENTS.md only in the target directory and its ancestors up to the assigned repository "
                 "root. These instruction files are optional: check existence and read only files that exist. "
                 "Absence is not a blocker; never add a nonexistent instruction file to required input_paths. "
@@ -659,14 +664,15 @@ def _prepare_run_inputs(
 
 
 def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failure: dict, ledger: dict,
-                                        *, source_checkout: Path | None = None) -> dict:
-    """Authenticate a format-rejected Implementer's existing changes without accepting its result."""
+                                        *, source_checkout: Path | None = None,
+                                        source_already_present: bool = False) -> dict:
+    """Authenticate a rejected Implementer's existing changes without accepting its result."""
     try:
         from runtime_checks import trace_errors, trace_identity_errors, techops_conformance_errors
-        from recovery_candidate import replay_candidate, verify_candidate, verify_edit_authorization
+        from recovery_candidate import replay_candidate, verify_candidate, verify_checkout_snapshot, verify_edit_authorization
     except ModuleNotFoundError:
         from scripts.runtime_checks import trace_errors, trace_identity_errors, techops_conformance_errors
-        from scripts.recovery_candidate import replay_candidate, verify_candidate, verify_edit_authorization
+        from scripts.recovery_candidate import replay_candidate, verify_candidate, verify_checkout_snapshot, verify_edit_authorization
     run_id = prior["identity"]["Run ID"]
     matches = []
     for path in artifact_root.glob("trace*.json"):
@@ -684,32 +690,46 @@ def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failur
         raise ValueError("candidate_worker_mapping_mismatch")
     identity_errors = trace_identity_errors(trace, artifact_root, "implementer", handle, thread)
     runtime_errors = trace_errors(trace, require_freshness=True)
+    allowed_errors = {identity_errors[0], "worker_fan_in_rejected"} if len(identity_errors) == 1 else set()
+    if source_already_present:
+        allowed_errors.add("forbidden_context_reference:archived_artifact")
+        receipt = ledger.get("rejected_results", {}).get("implementer", {})
+        if (Path(receipt.get("trace", "")).resolve() != path.resolve() or receipt.get("run_id") != run_id
+                or receipt.get("sha256") != hashlib.sha256(path.read_bytes()).hexdigest()
+                or receipt.get("Provider handle") != handle or receipt.get("Last dispatch at") != trace.get("last_dispatch_at")):
+            raise ValueError("candidate_rejected_receipt_invalid")
     if (len(identity_errors) != 1 or not identity_errors[0].startswith("worker_result_contract_invalid:implementer:")
-            or set(runtime_errors) != {identity_errors[0], "worker_fan_in_rejected"}
-            or trace.get("audit", {}).get("errors") != runtime_errors
-            or not any(identity_errors[0] in error for error in failure.get("historical_errors", []))):
+            or set(runtime_errors) != allowed_errors or trace.get("audit", {}).get("errors") != runtime_errors
+            or (not source_already_present and not any(identity_errors[0] in error for error in failure.get("historical_errors", [])))):
         raise ValueError("candidate_worker_trace_not_format_only")
     bindings = json.loads((artifact_root / "role_bindings.json").read_text())
     conformance = artifact_root / "implementation_conformance.json"
     if techops_conformance_errors(conformance, run_id, prior["reentry"]["Approved plan SHA256"]):
         raise ValueError("candidate_conformance_invalid")
     files = [row["path"] for row in json.loads(conformance.read_text())["files"]]
-    repository = Path(bindings["execution_repository"]).resolve()
-    revision = next(row["Full revision"] for row in prior["repositories"] if row["Repository role"] == "Execution repository")
+    recorded_source = next(row for row in prior["repositories"] if row["Repository role"] == "Execution repository")
+    repository = Path(recorded_source["Resolved path"] if source_already_present else bindings["execution_repository"]).resolve()
+    revision = recorded_source["Full revision"]
     advanced_source = source_checkout is not None and source_checkout.resolve() != repository
     if advanced_source:
         source_checkout = source_checkout.resolve()
         common = _git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
         if (common == "Unknown" or _git(source_checkout, "rev-parse", "--path-format=absolute", "--git-common-dir") != common
                 or _git(source_checkout, "rev-parse", "HEAD") != revision
-                or _git(source_checkout, "-c", "core.fsmonitor=false", "status", "--porcelain") != ""):
+                or (not source_already_present and _git(source_checkout, "-c", "core.fsmonitor=false", "status", "--porcelain") != "")):
             raise ValueError("candidate_recovery_source_checkout_invalid")
     session = Path(trace["trace_retrieval"])
     parent = bindings["parent_context"]
     verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, thread,
         bindings["runtime_evidence"]["run_started_at"], Path(bindings["worker_runtime_guard"]),
         artifact_root / "finalization_packet.json", handle, repository, files)
-    if advanced_source:
+    if source_already_present:
+        if not advanced_source:
+            raise ValueError("candidate_recovery_source_checkout_invalid")
+        hashes = verify_candidate(repository, revision, session, thread, files)
+        verify_checkout_snapshot(source_checkout, revision, hashes)
+        contents = {name: (source_checkout / name).read_bytes() for name in hashes}
+    elif advanced_source:
         contents = replay_candidate(source_checkout, revision, session, thread, repository, files)
         hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
     else:
@@ -719,6 +739,8 @@ def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failur
               "baseline_revision": revision, "files": hashes}
     if contents is not None:
         result["_contents"] = contents
+    if source_already_present:
+        result["source_already_present"] = True
     return result
 
 
@@ -827,7 +849,10 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
     predispatch_candidate = (source_checkout is not None and not handles and not ledger.get("events")
         and not ledger.get("failed_dispatches") and len(failure.get("errors", [])) == 1
         and failure["errors"][0] in launcher_reread_errors)
-    if context_recovery or candidate_recovery or predispatch_candidate:
+    existing_candidate_recovery = (source_checkout is not None and bool(handles)
+        and source_checkout.resolve() == artifact_root.resolve().parent.parent
+        and bool(ledger.get("rejected_results", {}).get("implementer")))
+    if context_recovery or candidate_recovery or predispatch_candidate or existing_candidate_recovery:
         archive = Path(reentry["Prior artifacts"]).resolve()
         expected_archive = (artifact_root / "runs" / reentry["Prior run ID"]).resolve()
         if archive != expected_archive or archive.parent != (artifact_root / "runs").resolve():
@@ -847,7 +872,7 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
                        for field in fields)):
             raise ValueError("remediation_recovery_accepted_evidence_changed")
     if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery or predispatch_candidate)
+            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery or predispatch_candidate or existing_candidate_recovery)
             and failure.get("runtime_closure") == "terminal"
             and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
             and failure.get("run_id") == prior["identity"]["Run ID"]
@@ -876,6 +901,9 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
         if repository.resolve() != source_checkout.resolve():
             raise ValueError("candidate_recovery_source_checkout_invalid")
         return _recover_preserved_candidate(artifact_root, prior, source_checkout)
+    if existing_candidate_recovery:
+        return _verify_rejected_delivery_candidate(artifact_root, prior, failure, ledger,
+                                                   source_checkout=source_checkout, source_already_present=True)
     if repository.resolve() != artifact_root.resolve().parent.parent:
         raise ValueError("remediation_recovery_repository_mismatch")
     if candidate_recovery:
@@ -1018,8 +1046,15 @@ def _configure_remediation_result_contracts(artifact_root: Path, worker_contract
             "result": str(artifact_root / f"{worker}_result.json"),
             "result_hash_required": True,
             "result_response": "strict_json_final_answer",
+            "response_builder": str(ROOT / "scripts" / "prepare_worker_response.py"),
             "result_fields": result_fields,
             "result_instructions": (
+                "Before the final answer, put the result object and output text in separate scratch files, "
+                "not the assigned output paths. Run response_builder with --packet finalization_packet, "
+                "--agent set to your prepared agent, --result-draft and --output-draft set to those scratch "
+                "files; read-only roles can instead pipe their JSON draft to --response-stdin without writing files. "
+                "Correct any reported schema or reference errors and rerun it. Return its successful "
+                "stdout unchanged as your final answer; this preview does not accept or merge your result. "
                 "Do not edit Coordinator-owned packet rows or write assigned output files directly. "
                 "Before ending, return exactly one strict JSON final answer with output (the assigned "
                 "worker artifact contents) and result (the current run_id, one worker_result object with "
@@ -1762,6 +1797,12 @@ def prepare_run(
                     "conformance manifest, and apply any in-scope changes only after the source guard passes. "
                     "Produce your own result; Reviewer and Tester must independently check the resulting candidate."
                 )
+                if recovered_candidate.get("source_already_present") is True:
+                    contract["instructions"] += (
+                        " The verified unaccepted candidate is already present in the source checkout. "
+                        "Do not reset or reapply it; inspect it against the approved plan, then make any "
+                        "necessary source changes only after the source-change guard allows them."
+                    )
             _configure_remediation_result_contracts(artifact_root, manifest["worker_contracts"])
     if playbook == "feature_delivery" and workflow_objective == "implementation_planning":
         try:

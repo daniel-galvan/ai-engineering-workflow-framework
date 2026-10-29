@@ -233,6 +233,35 @@ def verify_candidate(repository: Path, revision: str, session: Path, thread_id: 
         raise ValueError("candidate_evidence_unavailable") from error
 
 
+def verify_checkout_snapshot(repository: Path, revision: str, hashes: dict[str, str]) -> None:
+    """Require a checkout to contain exactly the verified unaccepted candidate."""
+    repository = repository.resolve()
+    if not hashes:
+        raise ValueError("candidate_paths_invalid")
+    for name in hashes:
+        path = Path(name)
+        if (not name or path.is_absolute() or ".." in path.parts or path.as_posix() != name
+                or any((repository / Path(*path.parts[:i])).is_symlink() for i in range(1, len(path.parts) + 1))):
+            raise ValueError("candidate_path_invalid:" + name)
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repository), "-c", "core.fsmonitor=false", *args],
+                              check=True, capture_output=True, timeout=30).stdout
+    try:
+        if git("rev-parse", "HEAD").decode().strip() != revision:
+            raise ValueError("candidate_revision_changed")
+        if git("diff", "--cached", "--name-only", "-z"):
+            raise ValueError("candidate_staged_changes")
+        changed = set(git("diff", "--name-only", "-z").decode().split("\0")) - {""}
+        changed.update(set(git("ls-files", "--others", "--exclude-standard", "-z").decode().split("\0")) - {""})
+        if changed != set(hashes):
+            raise ValueError("candidate_changed_paths_mismatch")
+        for name, digest in hashes.items():
+            if hashlib.sha256((repository / name).read_bytes()).hexdigest() != digest:
+                raise ValueError("candidate_content_changed:" + name)
+    except (OSError, subprocess.SubprocessError, UnicodeError) as error:
+        raise ValueError("candidate_evidence_unavailable") from error
+
+
 def snapshot_candidate(repository: Path, destination: Path, hashes: dict[str, str]) -> None:
     """Preserve verified bytes as unaccepted input without editing source files."""
     repository = repository.resolve()

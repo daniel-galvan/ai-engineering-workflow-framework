@@ -53,7 +53,19 @@ class ActivationDelivery(unittest.TestCase):
                     self.assertIn("do not search unassigned runs/ archives", policy)
                     self.assertIn(policy, runtime.activation_message(packet, {"objective": "Inspect assigned source"}))
 
-    def test_every_role_receives_coordinator_owned_handle_policy(self):
+    def test_worker_instructions_separate_source_checkout_from_artifact_repository(self):
+        worktree = self.root / "linked-worktree"
+        worktree.mkdir()
+        with patch.object(prepare, "resolve_repository_paths", return_value=(self.root, worktree)):
+            run = prepare.prepare_run(worktree, "SEPARATE-1", "techops_issue_remediation", None, False,
+                                      input_manifest=self.root / "inputs.json")
+        packets = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"]
+        for packet in packets.values():
+            instructions = packet["repository_instructions"]
+            self.assertIn(f"Use {worktree} as the source checkout", instructions)
+            self.assertIn(f"Use {self.root / '.thoughts' / 'SEPARATE-1'} for current-run workflow artifacts", instructions)
+            self.assertIn("do not use it as the source checkout when paths differ", instructions)
+
         for index, playbook in enumerate(("feature_delivery", "techops_issue_remediation", "sentry_issue_remediation")):
             run = prepare.prepare_run(self.root, f"IDENTITY-{index}", playbook, None, False,
                                       input_manifest=self.root / "inputs.json")

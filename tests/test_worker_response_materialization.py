@@ -1,10 +1,13 @@
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from scripts import prepare_run
+from scripts.prepare_worker_response import prepare_response
 from scripts.merge_techops_result import WORKERS, merge_result
 from scripts.provider_runtime import read_runtime_events
 from scripts.worker_runtime_evidence import export_worker_trace, worker_final_response
@@ -19,6 +22,47 @@ HANDLE = "/root/current_state_investigator"
 
 
 class WorkerResponseMaterialization(unittest.TestCase):
+    def test_response_builder_checks_schema_and_serializes_without_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            inputs = repository / "inputs.json"
+            inputs.write_text(json.dumps({"schema_version": 1, "status": "explicit", "inputs": [{
+                "Input ID": "IN-001", "Input or artifact": "Current request", "Source or path": "User",
+                "Authority": "User", "Classification": "request", "Expected use": "Investigate", "Status": "Verified"}]}))
+            run = prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
+                                          input_manifest=inputs)
+            packet_path = Path(run["finalization_packet"])
+            original_packet = packet_path.read_bytes()
+            schema = json.loads((prepare_run.ROOT / "templates/finalization_packet.json").read_text())
+            result = {"run_id": run["run_id"], "worker_result": {
+                **dict.fromkeys(schema["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"},
+                "evidence": [{**dict.fromkeys(schema["evidence"][0], "Observed"), "Evidence ID": "E-ISS-001"}],
+                "claims": [], "decisions": [], "actions": [],
+                "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-001"}}
+            result_path, output_path = repository / "draft.json", repository / "draft.md"
+            result_path.write_text(json.dumps(result))
+            output_path.write_text('A quote: " and a newline\n')
+            response = json.loads(prepare_response(packet_path, "current_state_investigator", result_path, output_path))
+            self.assertEqual(response, {"output": output_path.read_text(), "result": result})
+            command = [sys.executable, str(prepare_run.ROOT / "scripts/prepare_worker_response.py"),
+                       "--packet", str(packet_path), "--agent", "current_state_investigator", "--response-stdin"]
+            checked = subprocess.run(command, input=json.dumps(response), text=True, capture_output=True)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+            self.assertEqual(json.loads(checked.stdout), response)
+            malformed = subprocess.run(command, input='{broken', text=True, capture_output=True)
+            self.assertEqual(malformed.returncode, 2)
+            self.assertEqual(json.loads(malformed.stdout)["status"], "invalid")
+            self.assertEqual(packet_path.read_bytes(), original_packet)
+            del result["worker_result"]["Confidence"]
+            result_path.write_text(json.dumps(result))
+            with self.assertRaisesRegex(ValueError, "worker_result_summary_schema_invalid"):
+                prepare_response(packet_path, "current_state_investigator", result_path, output_path)
+            result_path.write_text('{"run_id": "a", "run_id": "b"}')
+            with self.assertRaises(ValueError):
+                prepare_response(packet_path, "current_state_investigator", result_path, output_path)
+            self.assertEqual(packet_path.read_bytes(), original_packet)
+
     def test_legacy_contract_reads_the_prepared_canonical_result(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)

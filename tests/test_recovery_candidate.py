@@ -176,6 +176,29 @@ class CandidateRecoveryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "recovered_candidate_snapshot_changed"):
             activation_message(packet, assignment)
 
+    def test_activation_accepts_only_the_exact_existing_candidate(self):
+        hashes = self.verify()
+        snapshot = self.root / "snapshot"
+        snapshot_candidate(self.repo, snapshot, hashes)
+        files = {str(snapshot / name): digest for name, digest in hashes.items()}
+        packet = {"finalization_packet": str(self.root / "packet.json"), "required_prefix": "Ready",
+                  "run_id": "new-run", "agent": "implementer", "coordinator_execution": {"source_checkout": str(self.repo)},
+                  "worker_contract": {"recovered_candidate": {"status": "unaccepted", "baseline_revision": self.revision,
+                      "files": hashes, "snapshot_files": files, "source_already_present": True}}}
+        assignment = {"objective": "review and complete", "input_paths": list(files)}
+        self.assertIn("unaccepted", activation_message(packet, assignment))
+        (self.repo / "tracked.txt").write_text("tampered")
+        with self.assertRaisesRegex(ValueError, "recovered_candidate_source_checkout_changed"):
+            activation_message(packet, assignment)
+        (self.repo / "tracked.txt").write_text("one\nthree\n")
+        (self.repo / "extra.txt").write_text("unrelated work")
+        with self.assertRaisesRegex(ValueError, "recovered_candidate_source_checkout_changed"):
+            activation_message(packet, assignment)
+        (self.repo / "extra.txt").unlink()
+        self.git("add", "tracked.txt")
+        with self.assertRaisesRegex(ValueError, "recovered_candidate_source_checkout_changed"):
+            activation_message(packet, assignment)
+
     def test_preparation_supplies_unaccepted_snapshot_to_implementer(self):
         hashes = self.verify()
         initial = prepare.prepare_run(self.repo, "CASE-1", "techops_issue_remediation", None, False)
@@ -212,6 +235,32 @@ class CandidateRecoveryTest(unittest.TestCase):
             manifest = json.loads((archive / "archive_manifest.json").read_text())
             entry = next(row for row in manifest["files"] if row["path"] == name)
             self.assertEqual(hashlib.sha256((archive / entry["snapshot"]).read_bytes()).hexdigest(), entry["sha256"])
+
+    def test_preparation_and_activation_keep_an_existing_unaccepted_candidate(self):
+        hashes = self.verify()
+        contents = {name: (self.repo / name).read_bytes() for name in hashes}
+        initial = prepare.prepare_run(self.repo, "CASE-EXISTING", "techops_issue_remediation", None, False)
+        root = Path(initial["artifact_root"])
+        (root / "implementation_plan.md").write_text("approved plan\n")
+        prior = json.loads(Path(initial["finalization_packet"]).read_text())
+        prior["_recovered_candidate"] = {"prior_run_id": prior["identity"]["Run ID"], "status": "unaccepted",
+            "files": hashes, "baseline_revision": self.revision, "source_already_present": True, "_contents": contents}
+        worktree = self.root / "worktree"
+        self.git("worktree", "add", "--detach", str(worktree), self.revision)
+        for name, data in contents.items():
+            (worktree / name).write_bytes(data)
+        with patch.object(prepare, "_reentry_source", return_value=prior), \
+             patch.object(prepare, "resolve_repository_paths", return_value=(self.repo, worktree)):
+            recovered = prepare.prepare_run(self.repo, "CASE-EXISTING", "techops_issue_remediation", None, True,
+                                            remediation_reentry=True, approval_reference="approved")
+        candidate = recovered["worker_contracts"]["implementer"]["recovered_candidate"]
+        self.assertTrue(candidate["source_already_present"])
+        self.assertIn("Do not reset or reapply it", recovered["worker_contracts"]["implementer"]["instructions"])
+        bundle = json.loads(Path(recovered["activation_packet_bundle"]["path"]).read_text())
+        assignment = {"objective": "review candidate", "input_paths": list(candidate["snapshot_files"])}
+        self.assertIn("unaccepted", activation_message(bundle["packets"]["implementer"], assignment))
+        for name, data in contents.items():
+            self.assertEqual((worktree / name).read_bytes(), data)
 
     def test_source_revision_advance_is_explicit_and_requires_unchanged_candidate_baseline(self):
         (self.repo / "unrelated.txt").write_text("other\n")
@@ -332,6 +381,32 @@ class CandidateRecoveryTest(unittest.TestCase):
             (worktree / "unrelated.txt").write_text("dirty")
             with self.assertRaisesRegex(ValueError, "candidate_recovery_source_checkout_invalid"):
                 _verify_rejected_delivery_candidate(root, prior, failure, ledger, source_checkout=worktree)
+            (worktree / "unrelated.txt").unlink()
+            candidate_data = b"candidate"
+            (worktree / "tracked.txt").write_bytes(candidate_data)
+            trace["last_dispatch_at"] = "dispatch"
+            trace["audit"]["errors"] = [error, "worker_fan_in_rejected", "forbidden_context_reference:archived_artifact"]
+            trace_path = root / "trace_worker.json"
+            trace_path.write_text(json.dumps(trace))
+            receipt = {"trace": str(trace_path), "run_id": "run", "sha256": hashlib.sha256(trace_path.read_bytes()).hexdigest(),
+                       "Provider handle": "/root/worker", "Last dispatch at": "dispatch"}
+            prior["repositories"][0]["Resolved path"] = str(self.repo)
+            rejected = {**ledger, "rejected_results": {"implementer": receipt}}
+            with patch.object(checks, "trace_errors", return_value=trace["audit"]["errors"]), \
+                 patch.object(recovery, "verify_candidate", return_value={"tracked.txt": hashlib.sha256(candidate_data).hexdigest()}):
+                result = _verify_rejected_delivery_candidate(root, prior, failure, rejected,
+                    source_checkout=worktree, source_already_present=True)
+                self.assertTrue(result["source_already_present"])
+                self.assertEqual(result["_contents"], {"tracked.txt": candidate_data})
+                (worktree / "tracked.txt").write_text("tampered")
+                with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+                    _verify_rejected_delivery_candidate(root, prior, failure, rejected,
+                        source_checkout=worktree, source_already_present=True)
+                (worktree / "tracked.txt").write_bytes(candidate_data)
+                receipt["sha256"] = "tampered"
+                with self.assertRaisesRegex(ValueError, "candidate_rejected_receipt_invalid"):
+                    _verify_rejected_delivery_candidate(root, prior, failure, rejected,
+                        source_checkout=worktree, source_already_present=True)
 
 
 if __name__ == "__main__":
