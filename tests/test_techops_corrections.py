@@ -402,6 +402,28 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_failed_remediation(root, packet, closure)
 
+                archive = root / "runs" / "planning"
+                archive.mkdir(parents=True)
+                reentry["Prior artifacts"] = str(archive)
+                saved = json.dumps(packet).encode()
+                (archive / "finalization_packet.json").write_bytes(saved)
+                (archive / "archive_manifest.json").write_text(json.dumps({"run_id": "planning", "files": [{
+                    "path": "finalization_packet.json", "sha256": hashlib.sha256(saved).hexdigest()}]}))
+                packet["runtime_audits"] = [{"Provider handle": "/root/implement"}]
+                snapshot.write_text(json.dumps(packet))
+                digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+                failure.update({"errors": ["parent_context_nonconformant:parent_tool_arguments_unavailable"],
+                                "snapshot_sha256": digest, "packet_sha256": digest})
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+                (root / "role_bindings.json").write_text(json.dumps({"recovered_candidate": {"source_already_present": True}}))
+                candidate = {"status": "unaccepted"}
+                with patch.object(prepare, "_recover_preserved_candidate", return_value=candidate):
+                    self.assertEqual(prepare._recover_failed_remediation(root, packet, closure, source_checkout=repository), candidate)
+                    packet["runtime_audits"][0]["Provider handle"] = "/root/other"
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_failed_remediation(root, packet, closure, source_checkout=repository)
+
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

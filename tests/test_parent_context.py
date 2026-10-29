@@ -739,6 +739,24 @@ class ParentContext(unittest.TestCase):
         )
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_literal_command_batch_audits_each_command_and_rejects_extra_code(self):
+        from scripts.provider_runtime import _literal_command_batch
+        source = ('const cmds = [["first", "cat /repo/one"], ["second", "cat /repo/two"]];\n'
+                  'const results = await Promise.all(cmds.map(async ([name, cmd]) => {\n'
+                  '  const r = await tools.exec_command({cmd, workdir:"/repo", yield_time_ms:10000, max_output_tokens:2000});\n'
+                  '  return `${name}\\n${r.output}`;\n'
+                  '}));\nfor (const r of results) text(r);')
+        calls = _literal_command_batch(source)
+        self.assertEqual([args["cmd"] for _, args in calls], ["cat /repo/one", "cat /repo/two"])
+        self.rows.append({"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec", "input": source}})
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        self.rows[-1]["payload"]["input"] = source.replace("cat /repo/two", "cat .thoughts/OTHER/runs/old/secret")
+        self.assertIn("forbidden_context_reference:archived_artifact", self.audit()["errors"])
+        for changed in (source + ' await tools.exec_command({cmd:"cat /secret"});',
+                        source.replace('return `${name}', 'await tools.exec_command({cmd:"cat /secret"}); return `${name}'),
+                        source.replace('cat /repo/one', '${secret}')):
+            self.assertIsNone(_literal_command_batch(changed))
+
     def test_literal_assigned_thread_batch_is_audited_without_executing_the_loop(self):
         child_two = "00000000-0000-0000-0000-000000000004"
         for child, handle in ((CHILD, "/root/first"), (child_two, "/root/second")):

@@ -152,6 +152,27 @@ class CandidateRecoveryTest(unittest.TestCase):
             (archive / "trace_worker.json").write_text("tampered")
             with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
                 prepare._recover_preserved_candidate(root, packet, worktree)
+            (archive / "trace_worker.json").write_bytes(json.dumps(trace).encode())
+            for name, data in contents.items():
+                (worktree / name).write_bytes(data)
+            candidate["source_already_present"] = True
+            bundle_path.write_text(json.dumps({"packets": {"implementer": {"worker_contract": {"recovered_candidate": candidate}}}}))
+            bindings["activation_packet_bundle"]["sha256"] = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+            (root / "role_bindings.json").write_text(json.dumps(bindings))
+            result = prepare._recover_preserved_candidate(root, packet, worktree)
+            self.assertTrue(result["source_already_present"])
+            self.assertEqual(result["_contents"], contents)
+            later_snapshot = root / "recovery_candidate.current"
+            snapshot_replayed_candidate(later_snapshot, hashes, contents)
+            candidate["snapshot_run_id"] = "current"
+            candidate["snapshot_files"] = {str(later_snapshot / name): digest for name, digest in hashes.items()}
+            bundle_path.write_text(json.dumps({"packets": {"implementer": {"worker_contract": {"recovered_candidate": candidate}}}}))
+            bindings["activation_packet_bundle"]["sha256"] = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+            (root / "role_bindings.json").write_text(json.dumps(bindings))
+            self.assertEqual(prepare._recover_preserved_candidate(root, packet, worktree)["_contents"], contents)
+            (worktree / "new.txt").write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+                prepare._recover_preserved_candidate(root, packet, worktree)
 
     def test_activation_requires_assigned_unchanged_snapshot(self):
         worktree = self.root / "worktree"

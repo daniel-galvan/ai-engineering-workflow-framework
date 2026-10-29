@@ -746,11 +746,11 @@ def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failur
 
 
 def _recover_preserved_candidate(artifact_root: Path, prior: dict, source_checkout: Path) -> dict:
-    """Revalidate an unaccepted candidate prepared before a failure with no dispatch."""
+    """Revalidate an unaccepted candidate from its original recorded edits."""
     try:
-        from recovery_candidate import replay_candidate, verify_edit_authorization
+        from recovery_candidate import replay_candidate, verify_candidate, verify_checkout_snapshot, verify_edit_authorization
     except ModuleNotFoundError:
-        from scripts.recovery_candidate import replay_candidate, verify_edit_authorization
+        from scripts.recovery_candidate import replay_candidate, verify_candidate, verify_checkout_snapshot, verify_edit_authorization
     bindings = json.loads((artifact_root / "role_bindings.json").read_text())
     candidate = bindings["recovered_candidate"]
     bundle = bindings["activation_packet_bundle"]
@@ -787,7 +787,7 @@ def _recover_preserved_candidate(artifact_root: Path, prior: dict, source_checko
     original = json.loads(archived("role_bindings.json"))
     original_packet = json.loads(archived("finalization_packet.json"))
     files, revision = candidate["files"], candidate["baseline_revision"]
-    repository = Path(original["execution_repository"]).resolve()
+    repository = Path(original.get("source_checkout", original["execution_repository"])).resolve()
     common = _git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
     if (trace.get("run_id") != run_id or trace.get("worker") != "implementer"
             or trace.get("audit", {}).get("status") != "rejected"
@@ -801,8 +801,18 @@ def _recover_preserved_candidate(artifact_root: Path, prior: dict, source_checko
     verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
         original["runtime_evidence"]["run_started_at"], Path(original["worker_runtime_guard"]),
         artifact_root / "finalization_packet.json", trace["spawn"]["provider_handle"], repository, list(files))
-    contents = replay_candidate(source_checkout, revision, session, trace["thread_id"], repository, list(files))
-    snapshot_root = artifact_root / ("recovery_candidate." + re.sub(r"[^A-Za-z0-9._-]", "_", run_id))
+    if candidate.get("source_already_present") is True:
+        hashes = verify_candidate(repository, revision, session, trace["thread_id"], list(files))
+        if hashes != files:
+            raise ValueError("candidate_recovery_snapshot_invalid")
+        verify_checkout_snapshot(source_checkout, revision, hashes)
+        contents = {name: (source_checkout / name).read_bytes() for name in hashes}
+    else:
+        contents = replay_candidate(source_checkout, revision, session, trace["thread_id"], repository, list(files))
+    snapshot_run_id = candidate.get("snapshot_run_id", run_id)
+    if not isinstance(snapshot_run_id, str) or not snapshot_run_id or Path(snapshot_run_id).name != snapshot_run_id:
+        raise ValueError("candidate_recovery_snapshot_invalid")
+    snapshot_root = artifact_root / ("recovery_candidate." + re.sub(r"[^A-Za-z0-9._-]", "_", snapshot_run_id))
     expected_snapshots = {str(snapshot_root / name): digest for name, digest in files.items()}
     if snapshot_root.is_symlink() or candidate.get("snapshot_files") != expected_snapshots:
         raise ValueError("candidate_recovery_snapshot_invalid")
@@ -811,7 +821,10 @@ def _recover_preserved_candidate(artifact_root: Path, prior: dict, source_checko
         if (any((snapshot_root / Path(*Path(name).parts[:i])).is_symlink() for i in range(1, len(Path(name).parts) + 1))
                 or hashlib.sha256(data).hexdigest() != files[name] or path.read_bytes() != data):
             raise ValueError("candidate_recovery_snapshot_invalid")
-    return {key: candidate[key] for key in ("prior_run_id", "status", "trace_sha256", "baseline_revision", "files")} | {"_contents": contents}
+    result = {key: candidate[key] for key in ("prior_run_id", "status", "trace_sha256", "baseline_revision", "files")} | {"_contents": contents}
+    if candidate.get("source_already_present") is True:
+        result["source_already_present"] = True
+    return result
 
 
 def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
@@ -849,10 +862,14 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
     predispatch_candidate = (source_checkout is not None and not handles and not ledger.get("events")
         and not ledger.get("failed_dispatches") and len(failure.get("errors", [])) == 1
         and failure["errors"][0] in launcher_reread_errors)
+    preserved_candidate_recovery = (source_checkout is not None and bool(handles)
+        and len(failure.get("errors", [])) == 1
+        and failure["errors"][0].startswith("parent_context_nonconformant:")
+        and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate", {}).get("source_already_present") is True)
     existing_candidate_recovery = (source_checkout is not None and bool(handles)
         and source_checkout.resolve() == artifact_root.resolve().parent.parent
         and bool(ledger.get("rejected_results", {}).get("implementer")))
-    if context_recovery or candidate_recovery or predispatch_candidate or existing_candidate_recovery:
+    if context_recovery or candidate_recovery or predispatch_candidate or preserved_candidate_recovery or existing_candidate_recovery:
         archive = Path(reentry["Prior artifacts"]).resolve()
         expected_archive = (artifact_root / "runs" / reentry["Prior run ID"]).resolve()
         if archive != expected_archive or archive.parent != (artifact_root / "runs").resolve():
@@ -872,7 +889,7 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
                        for field in fields)):
             raise ValueError("remediation_recovery_accepted_evidence_changed")
     if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery or predispatch_candidate or existing_candidate_recovery)
+            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery or predispatch_candidate or preserved_candidate_recovery or existing_candidate_recovery)
             and failure.get("runtime_closure") == "terminal"
             and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
             and failure.get("run_id") == prior["identity"]["Run ID"]
@@ -882,7 +899,10 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
             and frozen_packet["identity"].get("Lifecycle") == "remediation"
             and not frozen_packet.get("workers") and not frozen_packet.get("worker_results")
             and frozen_packet.get("reentry") == reentry and not prior.get("workers")
-            and not prior.get("worker_results") and not prior.get("runtime_audits")
+            and not prior.get("worker_results")
+            and (not prior.get("runtime_audits") or preserved_candidate_recovery
+                 and prior.get("runtime_audits") == frozen_packet.get("runtime_audits")
+                 and all(row.get("Provider handle") in handles for row in prior["runtime_audits"]))
             and reentry.get("Approval reference") and reentry.get("Prior run ID")
             and reentry.get("Approved plan") == str(plan.resolve())
             and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")
@@ -897,7 +917,7 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
     if len(repositories) != 1 or not repositories[0].get("Full revision"):
         raise ValueError("remediation_recovery_baseline_unavailable")
     repository = Path(repositories[0]["Resolved path"])
-    if predispatch_candidate:
+    if predispatch_candidate or preserved_candidate_recovery:
         if repository.resolve() != source_checkout.resolve():
             raise ValueError("candidate_recovery_source_checkout_invalid")
         return _recover_preserved_candidate(artifact_root, prior, source_checkout)
@@ -1537,7 +1557,7 @@ def prepare_run(
             except ModuleNotFoundError:
                 from scripts.recovery_candidate import snapshot_replayed_candidate
             snapshot_replayed_candidate(destination, recovered_candidate["files"], contents)
-        recovered_candidate = {**recovered_candidate, "snapshot_files": {
+        recovered_candidate = {**recovered_candidate, "snapshot_run_id": prior["identity"]["Run ID"], "snapshot_files": {
             str(destination / path): digest for path, digest in recovered_candidate["files"].items()}}
         manifest["recovered_candidate"] = recovered_candidate
     if prior:

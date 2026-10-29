@@ -436,6 +436,31 @@ def _literal_parent_thread_read_batch(source: str) -> list[tuple[str, dict]] | N
              "includeOutputs": False, "maxOutputCharsPerItem": 1}) for identity, _ in identities]
 
 
+def _literal_command_batch(source: str) -> list[tuple[str, dict]] | None:
+    """Expand a bounded literal command batch without executing its JavaScript."""
+    match = re.fullmatch(
+        r'\s*const cmds\s*=\s*(\[[\s\S]*?\]);\s*'
+        r'const results\s*=\s*await Promise\.all\(cmds\.map\(async \(\[name,\s*cmd\]\)\s*=>\s*\{\s*'
+        r'const r\s*=\s*await tools\.exec_command\(\{cmd,\s*workdir:("(?:[^"\\]|\\.)*"),\s*'
+        r'yield_time_ms:(\d+),\s*max_output_tokens:(\d+)\}\);\s*'
+        r'return `\$\{name\}\\n\$\{r\.output\}`;\s*\}\)\);\s*'
+        r'for\s*\(const r of results\)\s*text\(r\);\s*', source)
+    if not match:
+        return None
+    try:
+        commands, workdir = json.loads(match[1]), json.loads(match[2])
+    except (ValueError, TypeError):
+        return None
+    if (not isinstance(commands, list) or not 1 <= len(commands) <= 32
+            or any(not isinstance(row, list) or len(row) != 2
+                   or not all(isinstance(value, str) for value in row)
+                   or "$" in row[1] or "`" in row[1] for row in commands)):
+        return None
+    return [("exec_command", {"cmd": command, "workdir": workdir,
+                              "yield_time_ms": int(match[3]), "max_output_tokens": int(match[4])})
+            for _, command in commands]
+
+
 def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None,
                          expected_turn_id: str | None = None, runtime_evidence: dict | None = None,
@@ -540,7 +565,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     if exact_status_projection else _tool_operations(payload)
                 )
                 if not calls and payload.get("type") == "custom_tool_call":
-                    calls = _literal_parent_thread_read_batch(raw_source) or []
+                    calls = _literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source) or []
                 if (not calls and payload.get("type") == "custom_tool_call"
                         and "tools.mcp__codex_app__list_threads({limit: 50})" in str(raw_source or "")):
                     calls = [("mcp__codex_app__list_threads", {})]

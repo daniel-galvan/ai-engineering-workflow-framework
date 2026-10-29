@@ -255,19 +255,18 @@ def dispatch_message(packet: dict, message: str, path: Path) -> str:
 def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     digest = hashlib.sha256(message.encode()).hexdigest()
     return (packet["required_prefix"] + "\n"
-            + "First step: verify and read the supplied file; this bootstrap is self-contained. "
-              "Before that read, do not search memory, previous chats, or historical artifacts.\n"
+            + "First step: verify and read the file; this bootstrap is self-contained. Before reading, "
+              "do not search memory unless required by the host. Use a separate `rg -n -F` search for only "
+              "this work-item ID; only a verified no-match passes. Do not search previous chats or archives.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
-            + f"Verify its SHA256 is {digest} before analytical work; on mismatch stop and report it.\n"
+            + f"Verify its SHA256 is {digest}; stop on mismatch.\n"
             + f"Read it with this separate literal command: {shlex.join(['cat', str(path.resolve())])}\n"
-            + "Use separate tool calls for verification and the complete instruction read; do not combine "
-              "the read with checksum scripts.\n"
-            + f"Set that call's max_output_tokens to at least {len(message.encode())}; truncated output is not delivery.\n"
-            + "After verification, continue in this same turn through the full typed assignment and write its required "
-              "outputs. A bootstrap acknowledgment is not completion.\n"
-            + "The file is the operative role, input, output and policy contract. Read it in full; do not substitute "
-              "this launch notice for those instructions. Do not rerun Coordinator initialization.")
+            + "Use separate tool calls for verification and the complete instruction read.\n"
+            + f"Set max_output_tokens to at least {len(message.encode())}; truncated output is not delivery.\n"
+            + "Please continue in this same turn through the full typed assignment. A bootstrap acknowledgment is not completion. "
+              "The file is the operative role, input, output and policy contract. Read it in full. "
+              "Do not rerun Coordinator initialization.")
 
 
 def techops_conformance_errors(path: Path, run_id: str, plan_hash: str) -> list[str]:
@@ -1309,7 +1308,7 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
     if root is None:
         return set()
     calls, outputs = set(), set()
-    exact_cat_outputs, exact_reentry_outputs = {}, {}
+    exact_cat_outputs, exact_reentry_outputs, packet_projections = {}, {}, {}
     for row in trace.get("tool_trace", []):
         if not isinstance(row, dict) or not row.get("call_id"):
             continue
@@ -1320,6 +1319,17 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 tokens = shlex.split(arguments.get("cmd", ""))
                 targets = _read_targets(arguments.get("cmd", ""))
                 cwd = Path(arguments.get("workdir", root.parent.parent))
+                if (len(tokens) == 3 and tokens[0] == "jq"
+                        and re.fullmatch(r"\{\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*\s*\}", tokens[1])):
+                    fields = {field.strip() for field in tokens[1][1:-1].split(",")}
+                    packet = Path(tokens[2])
+                    packet = packet if packet.is_absolute() else cwd / packet
+                    if ("reentry" in fields and not packet.is_symlink()
+                            and packet.resolve() == root / "finalization_packet.json"):
+                        reentry = json.loads(packet.read_text()).get("reentry")
+                        if isinstance(reentry, dict) and isinstance(reentry.get("Prior artifacts"), str):
+                            packet_projections.setdefault(row["call_id"], []).append((fields, reentry))
+                    continue
                 if len(tokens) == 3 and tokens[:2] == ["jq", ".reentry"]:
                     packet = Path(tokens[2])
                     packet = packet if packet.is_absolute() else cwd / packet
@@ -1386,6 +1396,11 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                     result = json.loads(item["text"])
                 except (ValueError, TypeError):
                     continue
+                if isinstance(result, dict) and any(
+                        set(result) == fields and result.get("reentry") == reentry
+                        for fields, reentry in packet_projections.get(row.get("call_id"), [])):
+                    outputs.add(("tool_trace", str(index), "output", str(item_index), "text",
+                                 "reentry", "Prior artifacts"))
                 if ((isinstance(result, dict) and result.get("exit_code") == 0
                      and isinstance(result.get("output"), str)
                      and result["output"] in exact_cat_outputs.get(row.get("call_id"), set()))
@@ -1672,6 +1687,58 @@ def _without_verified_search_lines(value: str, targets: list[Path]) -> str:
     return "".join(remaining)
 
 
+def _empty_worker_memory_probes(trace: dict) -> dict[int, str]:
+    """Verify no-match host probes from the worker's native session, without accepting memory content."""
+    try:
+        from provider_runtime import _verified_empty_memory_search
+    except ModuleNotFoundError:
+        from scripts.provider_runtime import _verified_empty_memory_search
+    if not any("MEMORY.md" in value for _, value in _trace_strings({"tool_trace": trace.get("tool_trace", [])})):
+        return {}
+    try:
+        session = Path(trace["trace_retrieval"])
+        sessions = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
+        if session.is_symlink() or not session.resolve().is_relative_to(sessions.resolve()):
+            return {}
+        with session.open() as stream:
+            header = json.loads(next(stream))
+            if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != trace.get("thread_id"):
+                return {}
+            observations = []
+            for line in stream:
+                event = json.loads(line)
+                item = event.get("payload", {}).get("item", {})
+                if (event.get("type") == "event_msg" and event.get("payload", {}).get("type") == "item_completed"
+                        and item.get("type") == "CommandExecution"):
+                    observations.append(item)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration):
+        return {}
+    probes = {}
+    for index, row in enumerate(trace.get("tool_trace", [])):
+        if not isinstance(row, dict) or row.get("type") not in {"function_call", "custom_tool_call"}:
+            continue
+        operations = _tool_operations(row)
+        if len(operations) != 1 or operations[0][0] != "exec_command":
+            continue
+        command = operations[0][1].get("cmd")
+        if not isinstance(command, str):
+            continue
+        matches = [item for item in observations if isinstance(item.get("command"), list)
+                   and item["command"] and item["command"][-1] == command]
+        try:
+            if len(matches) != 1 or not _verified_empty_memory_search(command, matches[0]):
+                continue
+            target = shlex.split(command)[-1]
+        except (ValueError, IndexError):
+            continue
+        source = row.get("input") if row.get("type") == "custom_tool_call" else row.get("arguments")
+        source = source if isinstance(source, str) else json.dumps(source)
+        if (source.count(target) == 1
+                and Path(target).resolve() == (sessions.parent / "memories" / "MEMORY.md").resolve()):
+            probes[index] = target
+    return probes
+
+
 def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
                          input_paths: tuple[str, ...] = (), artifact_root: Path | None = None) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
@@ -1696,6 +1763,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     listing_reads = {}
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
+    empty_memory_probes = _empty_worker_memory_probes(trace) if trace.get("trace_retrieval") else {}
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
     framework_searches = _framework_searches(trace, root) if root else {}
     call_sources = {row.get("call_id"): row.get("input", "") for row in trace.get("tool_trace", [])
@@ -1711,6 +1779,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         if any(path[:len(prefix)] == prefix for prefix in source_outputs):
             continue
         candidate = value
+        if (path[:1] == ("tool_trace",) and len(path) > 2 and str(path[1]).isdigit()
+                and path[2] in {"input", "arguments"} and int(path[1]) in empty_memory_probes):
+            candidate = candidate.replace(empty_memory_probes[int(path[1])], "[empty host memory probe]", 1)
         for prefix, content in listing_reads.items():
             if path[:len(prefix)] == prefix and candidate.startswith(content):
                 candidate = content + "\n".join(line for line in candidate[len(content):].splitlines()
@@ -1739,7 +1810,11 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
             for instruction in instructions:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
-            checked = candidate if ancestor_instruction_output or label == "archived_artifact" or (output and row.get("call_id") in framework_searches) else value
+            checked = candidate if (ancestor_instruction_output or label == "archived_artifact"
+                                    or (output and row.get("call_id") in framework_searches)
+                                    or candidate != value and path[:1] == ("tool_trace",)
+                                    and len(path) > 2 and path[2] in {"input", "arguments"}
+                                    and str(path[1]).isdigit() and int(path[1]) in empty_memory_probes) else value
             if label == "archived_artifact" and listing:
                 continue
             match = pattern.search(checked)

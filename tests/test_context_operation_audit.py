@@ -347,6 +347,34 @@ class ContextOperationAudit(unittest.TestCase):
             trace = {"tool_trace": self.paired(code, "Current report\n/Users/example/.codex/memories/MEMORY.md")}
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
 
+    def test_worker_host_memory_probe_requires_native_proof_of_no_matches(self):
+        from unittest.mock import patch
+        codex = self.repository / ".codex"
+        session = codex / "sessions" / "worker.jsonl"
+        session.parent.mkdir(parents=True)
+        memory = codex / "memories" / "MEMORY.md"
+        command = "rg -n -F ITEM-1 " + str(memory)
+        observation = {"type": "CommandExecution", "command": ["bash", "-lc", command],
+                       "parsed_cmd": [{"type": "search", "query": "ITEM-1", "path": "MEMORY.md"}],
+                       "exit_code": 1, "status": "failed", "aggregated_output": ""}
+        header = {"type": "session_meta", "payload": {"id": SOURCE}}
+        event = {"type": "event_msg", "payload": {"type": "item_completed", "item": observation}}
+        def save(*rows):
+            session.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        trace = {"thread_id": SOURCE, "trace_retrieval": str(session), "tool_trace": [{
+            "type": "function_call", "name": "exec_command", "arguments": {"cmd": command}}]}
+        with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
+            save(header, event)
+            self.assertEqual(runtime.context_trace_errors(trace), [])
+            observation.update({"exit_code": 0, "status": "completed", "aggregated_output": "matched historical content"})
+            save(header, event)
+            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+            observation.update({"exit_code": 1, "status": "failed", "aggregated_output": ""})
+            save(header, event, event)
+            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+            save({"type": "session_meta", "payload": {"id": "other"}}, event)
+            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+
     def test_codex_home_memory_paths_are_rejected_when_quoted(self):
         for command, expected in (
             ('cat "$CODEX_HOME/memories/MEMORY.md"', "memory_path"),
@@ -609,6 +637,35 @@ class ContextOperationAudit(unittest.TestCase):
         other = json.loads(json.dumps(trace))
         other["tool_trace"][-2]["input"] = other["tool_trace"][-2]["input"].replace(str(packet_path), str(self.root / "runs" / "prior" / "finalization_packet.json"))
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(other))
+
+    def test_packet_object_projection_exempts_only_verified_reentry_path(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["reentry"] = {"Prior artifacts": str(self.root / "runs" / "prior")}
+        packet["identity"]["State"] = "in_progress"
+        packet_path.write_text(json.dumps(packet))
+        command = "jq '{identity, reentry}' " + str(packet_path)
+        call = 'const r = await tools.exec_command(' + json.dumps({"cmd": command}) + '); text(r.output);'
+        projected = {key: packet[key] for key in ("identity", "reentry")}
+        output = [{"type": "input_text", "text": json.dumps(projected)}]
+        rows = self.paired(call, output)
+        rows[0]["call_id"] = rows[1]["call_id"] = "packet-projection"
+        trace["tool_trace"].extend(rows)
+        self.assertEqual(runtime.trace_errors(trace), [])
+        changed = json.loads(json.dumps(trace))
+        leaked = json.loads(changed["tool_trace"][-1]["output"][0]["text"])
+        leaked["identity"]["leaked"] = str(self.root / "runs" / "secret")
+        changed["tool_trace"][-1]["output"][0]["text"] = json.dumps(leaked)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] += ' await tools.exec_command({"cmd":"cat .thoughts/ITEM-1/runs/prior/secret.md"});'
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        leaked = json.loads(changed["tool_trace"][-1]["output"][0]["text"])
+        leaked["reentry"]["Prior artifacts"] = str(self.root / "runs" / "secret")
+        changed["tool_trace"][-1]["output"][0]["text"] = json.dumps(leaked)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
 
     def test_exact_current_packet_output_in_mixed_call_keeps_archive_access_guard(self):
         trace = self.instruction_read_trace()
