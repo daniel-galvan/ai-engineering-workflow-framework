@@ -783,6 +783,22 @@ class ParentContext(unittest.TestCase):
         self.rows[-1]["payload"]["input"] = source + '\nawait tools.exec_command({cmd:"cat /repo/other"})'
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_prior_worker_only_allows_exact_status_only_projections(self):
+        from scripts.provider_runtime import targeted_status_projection_source, targeted_wait_projection_source
+        for projection in (targeted_status_projection_source, targeted_wait_projection_source):
+            with self.subTest(projection=projection.__name__):
+                self.rows.append({"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+                    "input": projection(CHILD)}})
+                self.assertEqual(self.audit(related_run_thread_ids=(CHILD,))["status"], "passed")
+                self.assertIn("parent_unassigned_thread_read:" + CHILD,
+                              self.audit(related_run_thread_ids=())["errors"])
+                self.rows[-1]["payload"]["input"] += '\ntext("extra");'
+                self.assertIn("parent_unassigned_thread_read:" + CHILD,
+                              self.audit(related_run_thread_ids=(CHILD,))["errors"])
+                self.rows.pop()
+        self.rows.append(self.call("mcp__codex_app__read_thread", threadId=CHILD, turnLimit=1, includeOutputs=False))
+        self.assertIn("parent_unassigned_thread_read:" + CHILD, self.audit(related_run_thread_ids=(CHILD,))["errors"])
+
     def test_compact_status_projection_is_audited_as_one_assigned_read(self):
         from scripts.provider_runtime import targeted_status_projection_source
         self.rows.append({"type": "event_msg", "payload": {"item": {

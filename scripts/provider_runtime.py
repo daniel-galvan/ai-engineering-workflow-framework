@@ -591,7 +591,11 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                         targets = (arguments.get("targets", []) if name.endswith("wait_threads") else [arguments])
                         for target in targets:
                             identity = target.get("threadId")
-                            if identity not in children and "codex://threads/" + str(identity) not in input_paths:
+                            status_only_prior = (identity in prior_ids and isinstance(raw_source, str)
+                                and raw_source.strip() in {targeted_status_projection_source(identity),
+                                                           targeted_wait_projection_source(identity)})
+                            if (identity not in children and "codex://threads/" + str(identity) not in input_paths
+                                    and not status_only_prior):
                                 errors.append("parent_unassigned_thread_read:" + str(identity))
                     elif name.rsplit("__", 1)[-1] in {"list_threads", "list_archived_threads"}:
                         if (name.rsplit("__", 1)[-1] == "list_threads" and status_projection_candidate
