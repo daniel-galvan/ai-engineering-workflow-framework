@@ -381,6 +381,10 @@ class ContextOperationAudit(unittest.TestCase):
             batched["tool_trace"][0]["input"] += "\nawait tools.exec_command(" + json.dumps({"cmd": "cat " + str(memory)}) + ");"
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(batched))
             save(header, event, event)
+            self.assertEqual(runtime.context_trace_errors(trace), [])
+            bad_observation = dict(observation, exit_code=0, status="completed", aggregated_output="matched historical content")
+            bad_event = {"type": "event_msg", "payload": {"type": "item_completed", "item": bad_observation}}
+            save(header, event, bad_event)
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
             save({"type": "session_meta", "payload": {"id": "other"}}, event)
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))

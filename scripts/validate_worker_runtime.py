@@ -210,8 +210,12 @@ def delivery_dependency_errors(root: Path, agent: str, bindings: dict) -> list[s
         completed = {row.get("Worker") for row in audits}
         if not required <= completed:
             return ["delivery_dependency_audit_missing:" + agent]
-        errors = _worker_runtime_audit_errors(packet, packet_path, completed)
-        errors.extend(merged_result_errors(packet, bindings, root))
+        dependencies = {**packet,
+                        "worker_results": [row for row in results if row.get("Worker") in required],
+                        "runtime_audits": [row for row in audits if row.get("Worker") in required],
+                        "terminal_observations": []}
+        errors = _worker_runtime_audit_errors(dependencies, packet_path, required)
+        errors.extend(merged_result_errors(dependencies, bindings, root))
         if errors:
             return ["delivery_dependency_unverified:" + agent, *errors]
         if agent == "tester":

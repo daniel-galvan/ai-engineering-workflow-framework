@@ -108,6 +108,20 @@ class ValidationEvidence(unittest.TestCase):
             deferred_review = review.replace(row, row.replace("| pass |", "| deferred |"))
             self.assertEqual(validation_report_errors(report, deferred_review, require_solved=True), [])
 
+    def test_fingerprint_cli_keeps_all_repeated_untracked_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository, _, _ = delivery_evidence_fixture(Path(directory))
+            base = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"]).decode().strip()
+            for name in ("first.py", "second.py"):
+                (repository / name).write_text(name)
+            command = [sys.executable, str(Path(__file__).resolve().parents[1] / "scripts/review_evidence.py"),
+                       "--fingerprint", "--repository", str(repository), "--base", base]
+            expected = candidate_fingerprint(repository, base, ["first.py", "second.py"])
+            repeated = subprocess.check_output(command + ["--untracked", "first.py", "--untracked", "second.py"], text=True).strip()
+            together = subprocess.check_output(command + ["--untracked", "first.py", "second.py"], text=True).strip()
+            self.assertEqual(repeated, expected)
+            self.assertEqual(together, expected)
+
     def test_untracked_candidate_content_is_bound_and_paths_are_constrained(self):
         with tempfile.TemporaryDirectory() as directory:
             repository, _, _ = delivery_evidence_fixture(Path(directory))

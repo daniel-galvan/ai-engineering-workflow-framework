@@ -447,7 +447,7 @@ if __name__ == "__main__":
     parser.add_argument("--review-report", type=Path)
     parser.add_argument("--repository", type=Path)
     parser.add_argument("--base")
-    parser.add_argument("--untracked", nargs="*", default=[])
+    parser.add_argument("--untracked", nargs="*", action="extend", default=[])
     parser.add_argument("--require-solved", action="store_true")
     parser.add_argument("--require-accepted", action="store_true")
     args = parser.parse_args()

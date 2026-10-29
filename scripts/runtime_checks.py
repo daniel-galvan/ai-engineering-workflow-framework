@@ -1783,7 +1783,7 @@ def _empty_worker_memory_probes(trace: dict) -> dict[int, str]:
         matches = [item for item in observations if isinstance(item.get("command"), list)
                    and item["command"] and item["command"][-1] == command]
         try:
-            if len(matches) != 1 or not _verified_empty_memory_search(command, matches[0]):
+            if not matches or not all(_verified_empty_memory_search(command, item) for item in matches):
                 continue
             target = shlex.split(command)[-1]
         except (ValueError, IndexError):

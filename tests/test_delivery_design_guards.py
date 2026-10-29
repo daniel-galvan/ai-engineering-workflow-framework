@@ -157,6 +157,26 @@ class DeliveryDesignGuards(unittest.TestCase):
             trace.write_text(json.dumps({"result_artifact": {"output_sha256": hashlib.sha256(rejected.encode()).hexdigest()}}))
             self.assertIn("delivery_review_not_accepted", delivery_dependency_errors(self.root, "tester", bindings))
 
+    def test_reviewer_replacement_checks_only_accepted_implementer_dependency(self):
+        repository, _, _ = delivery_evidence_fixture(self.root)
+        bindings = {"lifecycle": "remediation", "playbook": "techops_issue_remediation",
+                    "source_checkout": str(repository)}
+        packet = {"worker_results": [{"Worker": "implement", "Outcome": "complete"},
+                                     {"Worker": "review", "Outcome": "complete"}],
+                  "runtime_audits": [{"Worker": "implement"}, {"Worker": "review"}],
+                  "terminal_observations": [{"Worker": "review"}]}
+        (self.root / "finalization_packet.json").write_text(json.dumps(packet))
+        def audit(value, path, completed):
+            self.assertEqual(completed, {"implement"})
+            self.assertEqual([row["Worker"] for row in value["runtime_audits"]], ["implement"])
+            return []
+        def merged(value, manifest, root):
+            self.assertEqual([row["Worker"] for row in value["worker_results"]], ["implement"])
+            return []
+        with patch(("planning_contracts" if importlib.util.find_spec("planning_contracts") else "scripts.planning_contracts") + "._worker_runtime_audit_errors", side_effect=audit), \
+             patch(("merge_techops_result" if importlib.util.find_spec("merge_techops_result") else "scripts.merge_techops_result") + ".merged_result_errors", side_effect=merged):
+            self.assertEqual(delivery_dependency_errors(self.root, "reviewer", bindings), [])
+
     def test_inactive_downstream_rejection_stays_pending_during_upstream_correction(self):
         handle = "/root/tester"
         thread = "00000000-0000-0000-0000-000000000003"
