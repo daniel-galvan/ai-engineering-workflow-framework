@@ -375,6 +375,31 @@ class ParentContext(unittest.TestCase):
         result = self.audit(artifact_root=artifact_root)
         self.assertIn("parent_unassigned_thread_read:" + CHILD, result["errors"])
 
+    def test_continuation_projection_can_target_only_provider_verified_current_workers(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        call = {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+                "call_id": "status", "input": related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))}}
+        output = {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "status",
+                  "output": [{"type": "text", "text": json.dumps([{"id": CHILD, "status": "completed"}])}]}}
+        self.rows.extend([call, output])
+        runtime = {"run_started_at": "2026-10-01T00:00:00Z"}
+        native = {"thread_mappings": {"/root/worker": CHILD}, "events": [{"Provider handle": "/root/worker"}]}
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
+            result = self.audit(artifact_root=artifact_root, related_run_thread_ids=(TURN,), runtime_evidence=runtime)
+            self.assertEqual(result["status"], "passed", result)
+            self.assertEqual(result["related_run_thread_ids"], [TURN])
+            self.assertIn("stale_run_worker_status_missing:" + TURN,
+                          stale_run_status_errors(result, "in_progress", require_prior_dispatch_ledger=False))
+            call["payload"]["input"] = related_run_status_projection_source("ECHO-2806", PARENT, tuple(sorted((CHILD, TURN))))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(TURN,),
+                                        runtime_evidence=runtime)["status"], "passed")
+            call["payload"]["input"] = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD, PARENT))
+            self.assertIn("parent_unassigned_thread_discovery", self.audit(artifact_root=artifact_root,
+                related_run_thread_ids=(TURN,), runtime_evidence=runtime)["errors"])
+            call["payload"]["input"] = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,)) + '\ntext("extra");'
+            self.assertIn("parent_unassigned_thread_discovery", self.audit(artifact_root=artifact_root,
+                related_run_thread_ids=(TURN,), runtime_evidence=runtime)["errors"])
+
     def test_status_projection_helper_includes_prior_parent_and_worker_without_writing(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
         artifact_root.mkdir(parents=True)

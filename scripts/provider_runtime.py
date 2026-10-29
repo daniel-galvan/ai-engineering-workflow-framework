@@ -554,12 +554,15 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     "function_call", "custom_tool_call"}:
                 raw_source = payload.get("input") if payload.get("type") == "custom_tool_call" else None
                 try:
-                    expected_projection = (related_run_status_projection_source(artifact_root.name, thread, prior_ids)
-                                           if artifact_root is not None else None)
+                    ids_to_check = [prior_ids]
+                    if known_children:
+                        ids_to_check.extend((tuple(sorted(known_children)), tuple(sorted(set(prior_ids) | known_children))))
+                    expected_projections = ({related_run_status_projection_source(artifact_root.name, thread, ids)
+                                             for ids in ids_to_check} if artifact_root is not None else set())
                 except ValueError:
-                    expected_projection = None
-                exact_status_projection = (isinstance(raw_source, str) and expected_projection is not None
-                                           and raw_source.strip() == expected_projection)
+                    expected_projections = set()
+                exact_status_projection = (isinstance(raw_source, str)
+                                           and raw_source.strip() in expected_projections)
                 calls = (
                     [("mcp__codex_app__list_threads", {"limit": 50})]
                     if exact_status_projection else _tool_operations(payload)
