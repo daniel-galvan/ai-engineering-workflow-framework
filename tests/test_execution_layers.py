@@ -19,6 +19,11 @@ class ExecutionLayers(unittest.TestCase):
                               "Do not rerun preflight or preparation", "search local memory"):
                     self.assertIn(value, text)
 
+    def test_accidental_launcher_reread_does_not_end_the_active_run(self):
+        text = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
+        self.assertIn("do not report a workflow failure for the reread alone", text)
+        self.assertIn("actual forbidden-context or guard rejection requires truthful failure handling", text)
+
     def test_core_keeps_invariants_and_normalized_seams_without_concrete_operations(self):
         core = (ROOT / "contracts/workflow_execution.md").read_text()
         for number in range(1, 42):

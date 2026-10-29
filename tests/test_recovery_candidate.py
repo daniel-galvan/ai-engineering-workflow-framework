@@ -102,6 +102,57 @@ class CandidateRecoveryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "candidate_snapshot_destination_invalid"):
             snapshot_candidate(self.repo, destination, hashes)
 
+    def test_preserved_candidate_revalidates_binding_archive_and_snapshot(self):
+        root = self.root / "artifacts"
+        root.mkdir()
+        worktree = self.root / "worktree"
+        self.git("worktree", "add", "--detach", str(worktree), self.revision)
+        contents = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}
+        hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+        previous = "prior-run"
+        snapshot_root = root / ("recovery_candidate." + previous)
+        snapshot_replayed_candidate(snapshot_root, hashes, contents)
+        archive = root / "runs" / previous
+        archive.mkdir(parents=True)
+        trace = {"run_id": previous, "worker": "implementer", "audit": {"status": "rejected"},
+                 "trace_retrieval": str(self.session), "thread_id": "worker", "spawn": {"provider_handle": "/root/worker"}}
+        old_bindings = {"execution_repository": str(self.repo), "parent_context": {"provider_session": str(self.session),
+                        "parent_thread_id": "parent"}, "runtime_evidence": {"run_started_at": "start"},
+                        "worker_runtime_guard": str(self.root / "guard")}
+        old_packet = {"identity": {"Run ID": previous}, "reentry": {"Approved plan SHA256": "plan"}}
+        entries = []
+        for name, value in (("trace_worker.json", trace), ("role_bindings.json", old_bindings),
+                            ("finalization_packet.json", old_packet)):
+            data = json.dumps(value).encode()
+            (archive / name).write_bytes(data)
+            entries.append({"path": name, "snapshot": name, "sha256": hashlib.sha256(data).hexdigest()})
+        (archive / "archive_manifest.json").write_text(json.dumps({"run_id": previous, "files": entries}))
+        candidate = {"prior_run_id": previous, "status": "unaccepted", "trace_sha256": entries[0]["sha256"],
+                     "baseline_revision": self.revision, "files": hashes,
+                     "snapshot_files": {str(snapshot_root / name): digest for name, digest in hashes.items()}}
+        packet = {"identity": {"Run ID": "current"}, "reentry": {"Approved plan SHA256": "plan"}}
+        bundle_path = root / "worker_activation_packets.json"
+        bundle_path.write_text(json.dumps({"packets": {"implementer": {"worker_contract": {"recovered_candidate": candidate}}}}))
+        bindings = {"run_id": "current", "source_checkout": str(worktree), "recovered_candidate": candidate,
+                    "worker_contracts": {"implementer": {"recovered_candidate": candidate}},
+                    "activation_packet_bundle": {"path": str(bundle_path),
+                        "sha256": hashlib.sha256(bundle_path.read_bytes()).hexdigest()}}
+        (root / "role_bindings.json").write_text(json.dumps(bindings))
+        try:
+            recovery = importlib.import_module("recovery_candidate")
+        except ModuleNotFoundError:
+            recovery = importlib.import_module("scripts.recovery_candidate")
+        with patch.object(recovery, "verify_edit_authorization"), patch.object(recovery, "replay_candidate", return_value=contents):
+            result = prepare._recover_preserved_candidate(root, packet, worktree)
+            self.assertEqual(result["_contents"], contents)
+            (snapshot_root / "new.txt").write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "candidate_recovery_snapshot_invalid"):
+                prepare._recover_preserved_candidate(root, packet, worktree)
+            (snapshot_root / "new.txt").write_bytes(contents["new.txt"])
+            (archive / "trace_worker.json").write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
+                prepare._recover_preserved_candidate(root, packet, worktree)
+
     def test_activation_requires_assigned_unchanged_snapshot(self):
         worktree = self.root / "worktree"
         self.git("worktree", "add", "--detach", str(worktree), self.revision)

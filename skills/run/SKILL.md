@@ -17,7 +17,10 @@ Do not rerun preflight or preparation, reread this entire launcher, search plugi
 Use helper paths from the prepared role bindings and read only the section needed for the pending gate. Compaction
 does not authorize another worker, restart, lifecycle change, or import of historical evidence. If the current-run
 identity cannot be recovered from these exact files, stop with that limitation instead of discovering another run.
-These rules preserve the existing context audit; a forbidden operation still requires truthful failure handling.
+The launcher reread restriction avoids unnecessary context growth. If the launcher is accidentally reread, retain
+this run and continue from its pending gate; do not report a workflow failure for the reread alone. The runtime
+context audit and its guards still apply, and an actual forbidden-context or guard rejection requires truthful
+failure handling.
 
 ## New invocation
 

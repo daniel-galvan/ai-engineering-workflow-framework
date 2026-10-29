@@ -722,6 +722,76 @@ def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failur
     return result
 
 
+
+def _recover_preserved_candidate(artifact_root: Path, prior: dict, source_checkout: Path) -> dict:
+    """Revalidate an unaccepted candidate prepared before a failure with no dispatch."""
+    try:
+        from recovery_candidate import replay_candidate, verify_edit_authorization
+    except ModuleNotFoundError:
+        from scripts.recovery_candidate import replay_candidate, verify_edit_authorization
+    bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+    candidate = bindings["recovered_candidate"]
+    bundle = bindings["activation_packet_bundle"]
+    bundle_path = Path(bundle["path"])
+    if (bindings.get("run_id") != prior["identity"]["Run ID"] or candidate.get("status") != "unaccepted"
+            or bundle_path != artifact_root / "worker_activation_packets.json"
+            or hashlib.sha256(bundle_path.read_bytes()).hexdigest() != bundle["sha256"]
+            or bindings["worker_contracts"]["implementer"].get("recovered_candidate") != candidate
+            or json.loads(bundle_path.read_text())["packets"]["implementer"]["worker_contract"].get("recovered_candidate") != candidate):
+        raise ValueError("candidate_recovery_binding_invalid")
+    run_id = candidate["prior_run_id"]
+    if not isinstance(run_id, str) or not run_id or Path(run_id).name != run_id:
+        raise ValueError("candidate_recovery_prior_archive_invalid")
+    archive = artifact_root / "runs" / run_id
+    manifest = json.loads((archive / "archive_manifest.json").read_text())
+    if manifest.get("run_id") != run_id:
+        raise ValueError("candidate_recovery_prior_archive_invalid")
+    def archived(name):
+        rows = [row for row in manifest["files"] if row.get("path") == name]
+        if len(rows) != 1:
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        path = (archive / rows[0]["snapshot"]).resolve()
+        if not path.is_relative_to((artifact_root / "runs").resolve()):
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != rows[0]["sha256"]:
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        return data
+    trace_rows = [row for row in manifest["files"] if row.get("path", "").startswith("trace_")
+                  and row.get("sha256") == candidate["trace_sha256"]]
+    if len(trace_rows) != 1:
+        raise ValueError("candidate_recovery_archive_evidence_invalid")
+    trace = json.loads(archived(trace_rows[0]["path"]))
+    original = json.loads(archived("role_bindings.json"))
+    original_packet = json.loads(archived("finalization_packet.json"))
+    files, revision = candidate["files"], candidate["baseline_revision"]
+    repository = Path(original["execution_repository"]).resolve()
+    common = _git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if (trace.get("run_id") != run_id or trace.get("worker") != "implementer"
+            or trace.get("audit", {}).get("status") != "rejected"
+            or original_packet.get("identity", {}).get("Run ID") != run_id
+            or original_packet.get("reentry", {}).get("Approved plan SHA256") != prior["reentry"]["Approved plan SHA256"]
+            or source_checkout.resolve() != Path(bindings["source_checkout"]).resolve()
+            or common == "Unknown" or common != _git(source_checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")):
+        raise ValueError("candidate_recovery_archive_evidence_invalid")
+    session = Path(trace["trace_retrieval"])
+    parent = original["parent_context"]
+    verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
+        original["runtime_evidence"]["run_started_at"], Path(original["worker_runtime_guard"]),
+        artifact_root / "finalization_packet.json", trace["spawn"]["provider_handle"], repository, list(files))
+    contents = replay_candidate(source_checkout, revision, session, trace["thread_id"], repository, list(files))
+    snapshot_root = artifact_root / ("recovery_candidate." + re.sub(r"[^A-Za-z0-9._-]", "_", run_id))
+    expected_snapshots = {str(snapshot_root / name): digest for name, digest in files.items()}
+    if snapshot_root.is_symlink() or candidate.get("snapshot_files") != expected_snapshots:
+        raise ValueError("candidate_recovery_snapshot_invalid")
+    for name, data in contents.items():
+        path = snapshot_root / name
+        if (any((snapshot_root / Path(*Path(name).parts[:i])).is_symlink() for i in range(1, len(Path(name).parts) + 1))
+                or hashlib.sha256(data).hexdigest() != files[name] or path.read_bytes() != data):
+            raise ValueError("candidate_recovery_snapshot_invalid")
+    return {key: candidate[key] for key in ("prior_run_id", "status", "trace_sha256", "baseline_revision", "files")} | {"_contents": contents}
+
+
 def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
                                 *, source_checkout: Path | None = None) -> dict | None:
     """Verify a failed TechOps activation before starting a replacement delivery run."""
@@ -750,7 +820,14 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
                           and failure["errors"][0].startswith("parent_context_nonconformant:")
                           and any(str(error).startswith("worker_result_contract_invalid:implementer:")
                                   for error in failure.get("historical_errors", [])))
-    if context_recovery or candidate_recovery:
+    launcher_reread_errors = {
+        "launcher_reread_after_compaction",
+        "Continuation protocol violation: the active run launcher was reread after preparation; worker dispatch stopped before activation.",
+    }
+    predispatch_candidate = (source_checkout is not None and not handles and not ledger.get("events")
+        and not ledger.get("failed_dispatches") and len(failure.get("errors", [])) == 1
+        and failure["errors"][0] in launcher_reread_errors)
+    if context_recovery or candidate_recovery or predispatch_candidate:
         archive = Path(reentry["Prior artifacts"]).resolve()
         expected_archive = (artifact_root / "runs" / reentry["Prior run ID"]).resolve()
         if archive != expected_archive or archive.parent != (artifact_root / "runs").resolve():
@@ -770,7 +847,7 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
                        for field in fields)):
             raise ValueError("remediation_recovery_accepted_evidence_changed")
     if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery)
+            and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery or predispatch_candidate)
             and failure.get("runtime_closure") == "terminal"
             and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
             and failure.get("run_id") == prior["identity"]["Run ID"]
@@ -784,7 +861,7 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
             and reentry.get("Approval reference") and reentry.get("Prior run ID")
             and reentry.get("Approved plan") == str(plan.resolve())
             and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")
-            and (handles or context_recovery and not ledger.get("events") and not ledger.get("failed_dispatches"))
+            and (handles or (context_recovery or predispatch_candidate) and not ledger.get("events") and not ledger.get("failed_dispatches"))
             and ledger.get("timing", {}).get("open_worker_intervals") == 0
             and isinstance(observations, list) and len(observations) == len(handles)
             and not terminal_closure_dispatch_errors(packet_path, observations)
@@ -795,6 +872,10 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
     if len(repositories) != 1 or not repositories[0].get("Full revision"):
         raise ValueError("remediation_recovery_baseline_unavailable")
     repository = Path(repositories[0]["Resolved path"])
+    if predispatch_candidate:
+        if repository.resolve() != source_checkout.resolve():
+            raise ValueError("candidate_recovery_source_checkout_invalid")
+        return _recover_preserved_candidate(artifact_root, prior, source_checkout)
     if repository.resolve() != artifact_root.resolve().parent.parent:
         raise ValueError("remediation_recovery_repository_mismatch")
     if candidate_recovery:
