@@ -663,10 +663,10 @@ def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failur
     """Authenticate a format-rejected Implementer's existing changes without accepting its result."""
     try:
         from runtime_checks import trace_errors, trace_identity_errors, techops_conformance_errors
-        from recovery_candidate import verify_candidate, verify_edit_authorization
+        from recovery_candidate import replay_candidate, verify_candidate, verify_edit_authorization
     except ModuleNotFoundError:
         from scripts.runtime_checks import trace_errors, trace_identity_errors, techops_conformance_errors
-        from scripts.recovery_candidate import verify_candidate, verify_edit_authorization
+        from scripts.recovery_candidate import replay_candidate, verify_candidate, verify_edit_authorization
     run_id = prior["identity"]["Run ID"]
     matches = []
     for path in artifact_root.glob("trace*.json"):
@@ -709,10 +709,17 @@ def _verify_rejected_delivery_candidate(artifact_root: Path, prior: dict, failur
     verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, thread,
         bindings["runtime_evidence"]["run_started_at"], Path(bindings["worker_runtime_guard"]),
         artifact_root / "finalization_packet.json", handle, repository, files)
-    hashes = verify_candidate(repository, revision, session, thread, files,
-                              allow_source_revision_advance=advanced_source)
-    return {"prior_run_id": run_id, "status": "unaccepted", "trace_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            "baseline_revision": revision, "files": hashes}
+    if advanced_source:
+        contents = replay_candidate(source_checkout, revision, session, thread, repository, files)
+        hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+    else:
+        contents = None
+        hashes = verify_candidate(repository, revision, session, thread, files)
+    result = {"prior_run_id": run_id, "status": "unaccepted", "trace_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+              "baseline_revision": revision, "files": hashes}
+    if contents is not None:
+        result["_contents"] = contents
+    return result
 
 
 def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
@@ -1405,7 +1412,15 @@ def prepare_run(
         except ModuleNotFoundError:
             from scripts.recovery_candidate import snapshot_candidate
         destination = artifact_root / ("recovery_candidate." + re.sub(r"[^A-Za-z0-9._-]", "_", prior["identity"]["Run ID"]))
-        snapshot_candidate(resolved_execution_repository, destination, recovered_candidate["files"])
+        contents = recovered_candidate.pop("_contents", None)
+        if contents is None:
+            snapshot_candidate(resolved_execution_repository, destination, recovered_candidate["files"])
+        else:
+            try:
+                from recovery_candidate import snapshot_replayed_candidate
+            except ModuleNotFoundError:
+                from scripts.recovery_candidate import snapshot_replayed_candidate
+            snapshot_replayed_candidate(destination, recovered_candidate["files"], contents)
         recovered_candidate = {**recovered_candidate, "snapshot_files": {
             str(destination / path): digest for path, digest in recovered_candidate["files"].items()}}
         manifest["recovered_candidate"] = recovered_candidate

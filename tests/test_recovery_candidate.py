@@ -9,7 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.recovery_candidate import snapshot_candidate, verify_candidate, verify_edit_authorization
+from scripts.recovery_candidate import (replay_candidate, snapshot_candidate, snapshot_replayed_candidate,
+                                        verify_candidate, verify_edit_authorization)
 from scripts import prepare_run as prepare
 from scripts.prepare_run import _verify_rejected_delivery_candidate
 from scripts.runtime_checks import activation_message
@@ -56,6 +57,37 @@ class CandidateRecoveryTest(unittest.TestCase):
     def test_replays_recorded_updates_and_additions(self):
         self.assertEqual(set(self.verify()), {"tracked.txt", "new.txt"})
 
+    def test_replay_from_clean_worktree_ignores_other_checkout_changes(self):
+        worktree = self.root / "worktree"
+        self.git("worktree", "add", "--detach", str(worktree), self.revision)
+        (self.repo / "tracked.txt").write_text("unrelated current work")
+        (self.repo / "new.txt").unlink()
+        paths = ["tracked.txt", "new.txt"]
+        contents = replay_candidate(worktree, self.revision, self.session, "worker", self.repo, paths)
+        self.assertEqual(contents, {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"})
+        hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+        destination = self.root / "snapshot"
+        bad = dict(contents, **{"new.txt": b"tampered"})
+        with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+            snapshot_replayed_candidate(destination, hashes, bad)
+        self.assertFalse(destination.exists())
+        snapshot_replayed_candidate(destination, hashes, contents)
+        self.assertEqual((destination / "new.txt").read_bytes(), b"new\n")
+        with self.assertRaisesRegex(ValueError, "candidate_worker_session_mismatch"):
+            replay_candidate(worktree, self.revision, self.session, "other", self.repo, paths)
+        with self.assertRaisesRegex(ValueError, "candidate_path_invalid"):
+            replay_candidate(worktree, self.revision, self.session, "worker", self.repo, ["../escape"])
+        with self.assertRaisesRegex(ValueError, "candidate_recovery_source_checkout_invalid"):
+            replay_candidate(worktree, "wrong-revision", self.session, "worker", self.repo, paths)
+        change = self.rows[1]["payload"]["item"]["changes"][str(self.repo / "tracked.txt")]
+        change["unified_diff"] += "--- /tmp/other\n+++ /tmp/other\n"
+        self.write_session()
+        with self.assertRaisesRegex(ValueError, "candidate_patch_invalid"):
+            replay_candidate(worktree, self.revision, self.session, "worker", self.repo, paths)
+        (worktree / "dirty").write_text("other")
+        with self.assertRaisesRegex(ValueError, "candidate_recovery_source_checkout_invalid"):
+            replay_candidate(worktree, self.revision, self.session, "worker", self.repo, paths)
+
     def test_snapshot_is_exact_and_atomic_when_candidate_changes(self):
         hashes = self.verify()
         destination = self.root / "snapshot"
@@ -101,8 +133,13 @@ class CandidateRecoveryTest(unittest.TestCase):
         (root / "runtime_dispatches.json").write_text('{"rejected_results":{"worker":"preserve"}}\n')
         (root / "activation_receipts.json").write_text('{"old":"preserve"}\n')
         packet = json.loads(Path(initial["finalization_packet"]).read_text())
+        contents = {name: (self.repo / name).read_bytes() for name in hashes}
         packet["_recovered_candidate"] = {"prior_run_id": packet["identity"]["Run ID"],
-                                          "status": "unaccepted", "files": hashes, "baseline_revision": self.revision}
+                                          "status": "unaccepted", "files": hashes, "baseline_revision": self.revision,
+                                          "_contents": contents}
+        self.git("checkout", "--", "tracked.txt")
+        (self.repo / "new.txt").unlink()
+        (self.repo / "unrelated.txt").write_text("unrelated work")
         worktree = self.root / "worktree"
         self.git("worktree", "add", "--detach", str(worktree), self.revision)
         with patch.object(prepare, "_reentry_source", return_value=packet), \
@@ -229,7 +266,8 @@ class CandidateRecoveryTest(unittest.TestCase):
              patch.object(checks, "trace_errors", return_value=[error, "worker_fan_in_rejected"]), \
              patch.object(checks, "techops_conformance_errors", return_value=[]), \
              patch.object(recovery, "verify_edit_authorization"), \
-             patch.object(recovery, "verify_candidate", return_value={"tracked.txt": "digest"}):
+             patch.object(recovery, "verify_candidate", return_value={"tracked.txt": "digest"}), \
+             patch.object(recovery, "replay_candidate", return_value={"tracked.txt": b"candidate"}):
             result = _verify_rejected_delivery_candidate(root, prior, failure, ledger)
             self.assertEqual(result["status"], "unaccepted")
             with self.assertRaisesRegex(ValueError, "candidate_worker_mapping_mismatch"):

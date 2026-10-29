@@ -72,6 +72,73 @@ def verify_edit_authorization(parent_session: Path, parent_id: str, worker_sessi
         raise ValueError("candidate_authorization_evidence_unavailable") from error
 
 
+def replay_candidate(baseline: Path, revision: str, session: Path, thread_id: str,
+                     recorded_repository: Path, expected_paths: list[str]) -> dict[str, bytes]:
+    """Reconstruct an unaccepted candidate from native edits and a clean baseline checkout."""
+    baseline, recorded_repository = baseline.resolve(), recorded_repository.resolve()
+    paths = set(expected_paths)
+    if not paths or len(paths) != len(expected_paths):
+        raise ValueError("candidate_paths_invalid")
+    for name in paths:
+        path = Path(name)
+        if not name or path.is_absolute() or ".." in path.parts or path.as_posix() != name:
+            raise ValueError("candidate_path_invalid:" + name)
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(baseline), "-c", "core.fsmonitor=false", *args],
+                              check=True, capture_output=True, timeout=30).stdout
+
+    try:
+        if git("rev-parse", "HEAD").decode().strip() != revision or git("status", "--porcelain"):
+            raise ValueError("candidate_recovery_source_checkout_invalid")
+        with session.open() as source, tempfile.TemporaryDirectory() as directory:
+            header = json.loads(next(source))
+            if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != thread_id:
+                raise ValueError("candidate_worker_session_mismatch")
+            scratch, seen = Path(directory), set()
+            for line in source:
+                row = json.loads(line)
+                payload, item = row.get("payload", {}), row.get("payload", {}).get("item", {})
+                if row.get("type") != "event_msg" or payload.get("type") != "item_completed" or item.get("type") != "FileChange":
+                    continue
+                for name, change in item.get("changes", {}).items():
+                    absolute = Path(name)
+                    if not absolute.is_absolute() or not absolute.is_relative_to(recorded_repository):
+                        continue
+                    relative = absolute.relative_to(recorded_repository).as_posix()
+                    if relative not in paths:
+                        continue
+                    target = scratch / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    kind = change.get("type")
+                    if kind == "add" and relative not in seen and isinstance(change.get("content"), str):
+                        target.write_text(change["content"])
+                    elif kind == "update" and isinstance(change.get("unified_diff"), str):
+                        if relative not in seen:
+                            target.write_bytes(git("show", revision + ":" + relative))
+                        diff, lines = change["unified_diff"], change["unified_diff"].splitlines()
+                        if (not lines or not re.fullmatch(r"@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@.*", lines[0])
+                                or any(line.startswith(("--- ", "+++ ")) or
+                                       not (line.startswith((" ", "+", "-")) or
+                                            line == "\\ No newline at end of file" or
+                                            re.fullmatch(r"@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@.*", line))
+                                       for line in lines)):
+                            raise ValueError("candidate_patch_invalid:" + relative)
+                        result = subprocess.run(["patch", "-s", "-f", "-F", "0", str(target)], input=diff,
+                                                text=True, capture_output=True, timeout=30)
+                        if result.returncode:
+                            raise ValueError("candidate_patch_failed:" + relative)
+                    else:
+                        raise ValueError("candidate_edit_unsupported:" + relative)
+                    seen.add(relative)
+            if seen != paths:
+                raise ValueError("candidate_edit_records_missing")
+            return {name: (scratch / name).read_bytes() for name in sorted(paths)}
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, StopIteration, UnicodeError,
+            AttributeError, TypeError) as error:
+        raise ValueError("candidate_evidence_unavailable") from error
+
+
 def verify_candidate(repository: Path, revision: str, session: Path, thread_id: str,
                      expected_paths: list[str], *, allow_source_revision_advance: bool = False) -> dict[str, str]:
     """Replay recorded edits in isolation and return hashes only when the checkout matches.
@@ -182,6 +249,26 @@ def snapshot_candidate(repository: Path, destination: Path, hashes: dict[str, st
                            for i in range(1, len(path.parts) + 1))):
                 raise ValueError("candidate_path_invalid:" + name)
             data = source.read_bytes()
+            if hashlib.sha256(data).hexdigest() != digest:
+                raise ValueError("candidate_content_changed:" + name)
+            target = staging / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        staging.rename(destination)
+
+
+def snapshot_replayed_candidate(destination: Path, hashes: dict[str, str], contents: dict[str, bytes]) -> None:
+    """Publish verified replay bytes atomically as unaccepted candidate input."""
+    if destination.exists() or destination.is_symlink() or not hashes or hashes.keys() != contents.keys():
+        raise ValueError("candidate_snapshot_destination_invalid")
+    with tempfile.TemporaryDirectory(prefix=".candidate-", dir=destination.parent) as temporary:
+        staging = Path(temporary) / "snapshot"
+        staging.mkdir()
+        for name, digest in sorted(hashes.items()):
+            path = Path(name)
+            if not name or path.is_absolute() or ".." in path.parts or path.as_posix() != name:
+                raise ValueError("candidate_path_invalid:" + name)
+            data = contents[name]
             if hashlib.sha256(data).hexdigest() != digest:
                 raise ValueError("candidate_content_changed:" + name)
             target = staging / path
