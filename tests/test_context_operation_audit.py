@@ -2,6 +2,7 @@
 
 import json
 import hashlib
+import shlex
 import subprocess
 import sys
 import unittest
@@ -665,6 +666,32 @@ class ContextOperationAudit(unittest.TestCase):
         leaked = json.loads(changed["tool_trace"][-1]["output"][0]["text"])
         leaked["reentry"]["Prior artifacts"] = str(self.root / "runs" / "secret")
         changed["tool_trace"][-1]["output"][0]["text"] = json.dumps(leaked)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+
+    def test_python_packet_projection_with_native_warning_keeps_archive_guard(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["reentry"] = {"Prior artifacts": str(self.root / "runs" / "prior")}
+        packet_path.write_text(json.dumps(packet))
+        program = (f'import json; p={str(packet_path)!r}; x=json.load(open(p)); '
+                   'print(json.dumps({"identity":x.get("identity"),"reentry":x.get("reentry")}, indent=2))')
+        command = "python3 -c " + shlex.quote(program)
+        call = 'const r = await tools.exec_command(' + json.dumps({"cmd": command}) + '); text(r.output);'
+        warning = "WARNING: proceeding, even though we could not create PATH aliases: Operation not permitted (os error 1)\n"
+        projected = {key: packet.get(key) for key in ("identity", "reentry")}
+        rows = self.paired(call, [{"type": "input_text", "text": warning + json.dumps(projected)}])
+        rows[0]["call_id"] = rows[1]["call_id"] = "python-projection"
+        trace["tool_trace"].extend(rows)
+        self.assertEqual(runtime.trace_errors(trace), [])
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] += ' await tools.exec_command({"cmd":"cat .thoughts/ITEM-1/runs/prior/secret"});'
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-1]["output"][0]["text"] += "\n" + str(self.root / "runs" / "secret")
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] = changed["tool_trace"][-2]["input"].replace("import json;", "import json; open('/tmp/secret').read();")
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
 
     def test_exact_current_packet_output_in_mixed_call_keeps_archive_access_guard(self):

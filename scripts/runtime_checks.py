@@ -622,6 +622,11 @@ def techops_check_errors(checks: object, evidence_ids: set[str]) -> list[str]:
     return list(dict.fromkeys(errors))
 
 
+def _tool_output_json(value: str):
+    warning = "WARNING: proceeding, even though we could not create PATH aliases: Operation not permitted (os error 1)\n"
+    return json.loads(value.removeprefix(warning))
+
+
 def _trace_strings(value: object, path: tuple[str, ...] = ()):
     """Yield strings from provider tool activity, excluding fixture metadata."""
     if isinstance(value, dict):
@@ -635,7 +640,7 @@ def _trace_strings(value: object, path: tuple[str, ...] = ()):
     elif isinstance(value, str):
         if path[:1] == ("tool_trace",) and "output" in path[2:]:
             try:
-                decoded = json.loads(value)
+                decoded = _tool_output_json(value)
                 if isinstance(decoded, (dict, list)):
                     yield from _trace_strings(decoded, path)
                     return
@@ -1304,6 +1309,48 @@ def _allowed_instruction_paths(root: Path, assigned: list[str]) -> set[Path]:
     return {path.resolve() for path in candidates if path.resolve() in candidates}
 
 
+def _python_packet_projection(tokens: list[str], root: Path, cwd: Path) -> set[str] | None:
+    """Recognize a read-only JSON projection without executing its source."""
+    if len(tokens) != 3 or Path(tokens[0]).name not in {"python", "python3"} or tokens[1] != "-c":
+        return None
+    try:
+        program = ast.parse(tokens[2])
+        body = program.body
+        if (len(body) != 4 or not isinstance(body[1], ast.Assign) or len(body[1].targets) != 1
+                or not isinstance(body[1].targets[0], ast.Name) or not isinstance(body[1].value, ast.Constant)
+                or not isinstance(body[1].value.value, str)):
+            return None
+        var = body[1].targets[0].id
+        packet = Path(body[1].value.value)
+        packet = packet if packet.is_absolute() else cwd / packet
+        if packet.is_symlink() or packet.resolve() != root / "finalization_packet.json":
+            return None
+        if (not isinstance(body[2], ast.Assign) or len(body[2].targets) != 1
+                or not isinstance(body[2].targets[0], ast.Name)):
+            return None
+        data_var = body[2].targets[0].id
+        expression = body[3].value
+        mapping = expression.args[0].args[0]
+        if not isinstance(mapping, ast.Dict) or not mapping.keys or not all(
+                isinstance(key, ast.Constant) and isinstance(key.value, str) and key.value.isidentifier()
+                for key in mapping.keys):
+            return None
+        fields = [key.value for key in mapping.keys]
+        if len(fields) != len(set(fields)) or "reentry" not in fields:
+            return None
+        projection = ",".join(f"{field!r}:{data_var}.get({field!r})" for field in fields)
+        expected = (f"import json; {var}={str(packet)!r}; {data_var}=json.load(open({var})); "
+                    f"print(json.dumps({{{projection}}}, indent=2))")
+        actual = tokens[2]
+        if not Path(body[1].value.value).is_absolute():
+            expected = expected.replace(repr(str(packet)), repr(body[1].value.value), 1)
+        if ast.dump(ast.parse(actual)) != ast.dump(ast.parse(expected)):
+            return None
+        return set(fields)
+    except (ValueError, SyntaxError, AttributeError, IndexError, TypeError):
+        return None
+
+
 def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -> set[tuple[str, ...]]:
     if root is None:
         return set()
@@ -1319,6 +1366,12 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 tokens = shlex.split(arguments.get("cmd", ""))
                 targets = _read_targets(arguments.get("cmd", ""))
                 cwd = Path(arguments.get("workdir", root.parent.parent))
+                fields = _python_packet_projection(tokens, root, cwd)
+                if fields is not None:
+                    reentry = json.loads((root / "finalization_packet.json").read_text()).get("reentry")
+                    if isinstance(reentry, dict) and isinstance(reentry.get("Prior artifacts"), str):
+                        packet_projections.setdefault(row["call_id"], []).append((fields, reentry))
+                    continue
                 if (len(tokens) == 3 and tokens[0] == "jq"
                         and re.fullmatch(r"\{\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*\s*\}", tokens[1])):
                     fields = {field.strip() for field in tokens[1][1:-1].split(",")}
@@ -1393,7 +1446,7 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 if not isinstance(item, dict) or not isinstance(item.get("text"), str):
                     continue
                 try:
-                    result = json.loads(item["text"])
+                    result = _tool_output_json(item["text"])
                 except (ValueError, TypeError):
                     continue
                 if isinstance(result, dict) and any(

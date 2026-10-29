@@ -88,6 +88,94 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                         with self.assertRaises(ValueError):
                             terminal_closure(ledger)
 
+    def test_targeted_wait_certifies_only_matching_inactive_terminal_turn(self):
+        from scripts.worker_runtime_evidence import terminal_closure
+        for state in ("completed", "turn_completed", "wrong_wake", "wrong_thread", "wrong_turn", "running",
+                      "active_thread", "missing_completion", "future_completion", "extra_poll"):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                run, root, _, time, event, parent, *_ = self.fixture(directory)
+                turn = {"id": CHILD, "status": "completed", "startedAt": time(5), "completedAt": time(10)}
+                response = {"wake": {"reason": "inactiveStatus", "threadId": CHILD}, "polls": [{
+                    "thread": {"id": CHILD, "status": {"type": "notLoaded"}}, "latestTurn": turn}]}
+                if state in {"turn_completed", "wrong_turn"}:
+                    response["wake"] = {"reason": "turnCompleted", "threadId": CHILD,
+                                        "turnId": CHILD if state == "turn_completed" else PARENT}
+                if state == "wrong_wake": response["wake"]["threadId"] = PARENT
+                if state == "wrong_thread": response["polls"][0]["thread"]["id"] = PARENT
+                if state == "running": turn["status"] = "running"
+                if state == "active_thread": response["polls"][0]["thread"]["status"]["type"] = "active"
+                if state == "missing_completion": turn.pop("completedAt")
+                if state == "future_completion": turn["completedAt"] = time(30)
+                if state == "extra_poll": response["polls"].append(response["polls"][0])
+                arguments = {"targets": [{"threadId": CHILD}], "timeoutMs": 0}
+                parent.extend([
+                    event(19, "response_item", type="function_call", namespace="collaboration",
+                          name="list_agents", call_id="inventory", arguments="{}"),
+                    event(20, "response_item", type="function_call_output", call_id="inventory",
+                          output=json.dumps({"agents": []})),
+                    event(21, "response_item", type="function_call", name="mcp__codex_app__wait_threads",
+                          call_id="status", arguments=json.dumps(arguments)),
+                    event(22, "response_item", type="function_call_output", call_id="status",
+                          output=json.dumps({"content": [{"type": "text", "text": json.dumps(response)}]}))])
+                source = root / "parent.jsonl"
+                source.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+                ledger = read_runtime_events(source, PARENT, run["runtime_evidence"]["run_started_at"])
+                if state in {"completed", "turn_completed"}:
+                    self.assertEqual(terminal_closure(ledger)["runtime_closure"][0]["Runtime status"], "Terminal")
+                else:
+                    with self.assertRaises(ValueError):
+                        terminal_closure(ledger)
+
+    def test_reconciled_closure_preserves_original_blocked_receipt(self):
+        from scripts.worker_runtime_evidence import _preserve_blocked_closure
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime_closure.json"
+            data = json.dumps({"runtime_closure": [{"Runtime status": "Blocked"}]}).encode()
+            path.write_bytes(data)
+            _preserve_blocked_closure(path)
+            snapshot = path.with_name("runtime_closure.blocked." + hashlib.sha256(data).hexdigest() + ".json")
+            self.assertEqual(snapshot.read_bytes(), data)
+            _preserve_blocked_closure(path)
+            snapshot.write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "runtime_closure_snapshot_invalid"):
+                _preserve_blocked_closure(path)
+            self.assertEqual(path.read_bytes(), data)
+            path.unlink()
+            path.symlink_to(Path(directory) / "missing.json")
+            with self.assertRaisesRegex(ValueError, "runtime_closure_symlink_invalid"):
+                _preserve_blocked_closure(path)
+
+    def test_compact_wait_closure_rejects_modified_projection(self):
+        from scripts.provider_runtime import targeted_wait_projection_source
+        from scripts.worker_runtime_evidence import terminal_closure
+        skill = (Path(__file__).resolve().parents[1] / "skills/run/SKILL.md").read_text()
+        self.assertIn(targeted_wait_projection_source(CHILD), "\n".join(line.strip() for line in skill.splitlines()))
+        for altered in (False, True, "wrapped"):
+            with self.subTest(altered=altered), tempfile.TemporaryDirectory() as directory:
+                run, root, _, time, event, parent, *_ = self.fixture(directory)
+                status = {"wake": {"reason": "inactiveStatus", "threadId": CHILD}, "polls": [{
+                    "thread": {"id": CHILD, "status": {"type": "notLoaded"}},
+                    "latestTurn": {"id": CHILD, "status": "completed", "startedAt": time(5), "completedAt": time(10)}}]}
+                source = targeted_wait_projection_source(CHILD) + ('\ntext("extra");' if altered else '')
+                if altered == "wrapped":
+                    status = {"content": [{"type": "text", "text": json.dumps(status)}]}
+                parent.extend([
+                    event(19, "response_item", type="function_call", namespace="collaboration",
+                          name="list_agents", call_id="inventory", arguments="{}"),
+                    event(20, "response_item", type="function_call_output", call_id="inventory",
+                          output=json.dumps({"agents": []})),
+                    event(21, "response_item", type="custom_tool_call", name="exec", call_id="status", input=source),
+                    event(22, "response_item", type="custom_tool_call_output", call_id="status", output=[
+                        {"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                        {"type": "input_text", "text": json.dumps(status)}])])
+                path = root / "parent.jsonl"
+                path.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
+                ledger = read_runtime_events(path, PARENT, run["runtime_evidence"]["run_started_at"])
+                if altered:
+                    with self.assertRaises(ValueError): terminal_closure(ledger)
+                else:
+                    self.assertEqual(terminal_closure(ledger)["runtime_closure"][0]["Runtime status"], "Terminal")
+
     def test_compact_worker_status_is_correlated_and_fails_closed(self):
         from scripts.provider_runtime import targeted_status_projection_source
         from scripts.worker_runtime_evidence import terminal_closure

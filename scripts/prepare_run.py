@@ -890,7 +890,8 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
             raise ValueError("remediation_recovery_accepted_evidence_changed")
     if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
             and (failure.get("errors") == [expected_error] or missing_mapping or context_recovery or candidate_recovery or predispatch_candidate or preserved_candidate_recovery or existing_candidate_recovery)
-            and failure.get("runtime_closure") == "terminal"
+            and (failure.get("runtime_closure") == "terminal" or preserved_candidate_recovery
+                 and failure.get("runtime_closure") == "unverified")
             and failure.get("reported_by") == "Coordinator" and int(failure.get("attempt_count", 0)) < 2
             and failure.get("run_id") == prior["identity"]["Run ID"]
             and snapshot.parent == artifact_root.resolve()

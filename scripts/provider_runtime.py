@@ -779,6 +779,18 @@ def targeted_status_projection_source(thread_id: str) -> str:
             "turns: t ? [{id: t.id, status: t.status, startedAt: t.startedAt, completedAt: t.completedAt}] : []}));")
 
 
+def targeted_wait_projection_source(thread_id: str) -> str:
+    """Return a status-only wait snapshot for a single verified child."""
+    if not isinstance(thread_id, str) or not UUID.fullmatch(thread_id):
+        raise ValueError("targeted_status_thread_id_invalid")
+    return (f"const r = await tools.mcp__codex_app__wait_threads({{targets: [{{threadId: {json.dumps(thread_id)}}}], timeoutMs: 0}});\n"
+            "if (r.isError || !Array.isArray(r.content) || r.content.length !== 1) throw new Error('status unavailable');\n"
+            "const d = JSON.parse(r.content[0].text);\n"
+            "if (!Array.isArray(d.polls) || d.polls.length !== 1) throw new Error('status unavailable');\n"
+            "const p = d.polls[0];\n"
+            "text(JSON.stringify({wake: d.wake, polls: [{thread: p.thread, latestTurn: p.latestTurn}]}));")
+
+
 def provider_json_value(value):
     if (isinstance(value, list) and len(value) == 2
             and all(isinstance(row, dict) and row.get("type") == "input_text"
@@ -817,10 +829,29 @@ def targeted_thread_observation(raw: object, handle: str, thread_id: str, dispat
     raw = provider_json_value(raw)
     if isinstance(raw, dict) and isinstance(raw.get("content"), list) and not (raw.get("isError") or raw.get("error")):
         raw = provider_json_value(raw["content"])
-    if operation != "read_thread" or not isinstance(raw, dict):
+    if not isinstance(raw, dict):
         return None
-    thread = raw.get("thread")
-    turns = raw.get("turns")
+    if operation == "wait_threads":
+        wake, polls = raw.get("wake"), raw.get("polls")
+        if (not isinstance(wake, dict) or wake.get("threadId") != thread_id
+                or wake.get("reason") not in {"inactiveStatus", "turnCompleted"}
+                or not isinstance(polls, list) or len(polls) != 1 or not isinstance(polls[0], dict)):
+            return None
+        poll = polls[0]
+        thread, latest = poll.get("thread"), poll.get("latestTurn")
+        if (not isinstance(thread, dict) or thread.get("id") != thread_id
+                or not isinstance(latest, dict) or not latest.get("completedAt")
+                or wake.get("reason") == "turnCompleted" and wake.get("turnId") != latest.get("id")):
+            return None
+        completed_at = _provider_status_time(latest.get("completedAt"))
+        started_at = _provider_status_time(latest.get("startedAt"))
+        if not completed_at or not started_at or not timestamp(started_at) <= timestamp(completed_at) <= timestamp(observed_at):
+            return None
+        turns = [latest]
+    elif operation == "read_thread":
+        thread, turns = raw.get("thread"), raw.get("turns")
+    else:
+        return None
     if (not isinstance(thread, dict) or thread.get("id") != thread_id or not isinstance(turns, list)
             or not turns):
         return None
@@ -929,11 +960,15 @@ def read_runtime_events(
             if custom_status_call:
                 operations = _tool_operations(payload)
                 source = payload.get("input", "")
-                compact = [thread for thread in mappings.values()
-                           if isinstance(source, str) and source.strip() == targeted_status_projection_source(thread)]
+                compact = [(thread, operation) for thread in mappings.values()
+                           for operation, projection in (("read_thread", targeted_status_projection_source),
+                                                         ("wait_threads", targeted_wait_projection_source))
+                           if isinstance(source, str) and source.strip() == projection(thread)]
                 if compact:
-                    operations = [("mcp__codex_app__read_thread", {"threadId": compact[0], "turnLimit": 1,
-                                                                    "includeOutputs": False})]
+                    thread, operation = compact[0]
+                    arguments = ({"threadId": thread, "turnLimit": 1, "includeOutputs": False}
+                                 if operation == "read_thread" else {"targets": [{"threadId": thread}], "timeoutMs": 0})
+                    operations = [("mcp__codex_app__" + operation, arguments)]
                 elif isinstance(source, str) and "const d = JSON.parse(r.content[0].text);" in source:
                     continue
                 elif len(operations) != 1 or operations[0][0].rsplit("__", 1)[-1] not in {"read_thread", "wait_threads"}:
@@ -1070,7 +1105,8 @@ def read_runtime_events(
                         dispatch = latest_worker_dispatch({"events": events, "failed_dispatches": failed_dispatches},
                                                           target["Provider handle"], include_failed=True)
                         unverified_projection = (probe["Custom call"] and not probe["Compact"]
-                                                 and isinstance(raw, dict) and "thread" in raw and "turns" in raw)
+                                                 and (probe["Operation"] == "wait_threads"
+                                                      or isinstance(raw, dict) and "thread" in raw and "turns" in raw))
                         observation = (None if explicit_error or unverified_projection else targeted_thread_observation(
                             raw, target["Provider handle"], target["Thread ID"], dispatch["Last dispatch at"],
                             row["timestamp"], probe["Operation"]))

@@ -561,6 +561,29 @@ def activate_verified_remediation(packet_path: Path, ledger: dict) -> dict | Non
         temporary.unlink(missing_ok=True)
 
 
+def _preserve_blocked_closure(path: Path) -> None:
+    if path.is_symlink():
+        raise ValueError("runtime_closure_symlink_invalid")
+    if not path.exists():
+        return
+    data = path.read_bytes()
+    previous = json.loads(data)
+    if not isinstance(previous, dict) or not isinstance(previous.get("runtime_closure"), list):
+        raise ValueError("runtime_closure_invalid")
+    rows = previous["runtime_closure"]
+    if not any(isinstance(row, dict) and row.get("Runtime status") == "Blocked" for row in rows):
+        return
+    snapshot = path.with_name(path.stem + ".blocked." + hashlib.sha256(data).hexdigest() + path.suffix)
+    if snapshot.is_symlink():
+        raise ValueError("runtime_closure_snapshot_invalid")
+    if snapshot.exists():
+        if snapshot.read_bytes() != data:
+            raise ValueError("runtime_closure_snapshot_invalid")
+    else:
+        with snapshot.open("xb") as stream:
+            stream.write(data)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider-session", type=Path, required=True)
@@ -632,6 +655,8 @@ def main() -> int:
                            "Completed worker handles": "Unknown", "Runtime status": "Pending",
                            "Remaining active handles": "Unknown",
                            "Closure evidence or blocker": "Pending final provider observation after pre-release"}]})
+            if args.closure:
+                _preserve_blocked_closure(closure_path)
             closure_path.write_text(json.dumps(receipt, indent=2) + "\n")
         packet_path = args.ledger.parent / "finalization_packet.json"
         if args.trace:

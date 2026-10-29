@@ -13,7 +13,10 @@ Context compaction does not start a new invocation. Preserve the current Run ID,
 lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
 current-run `role_bindings.json`, `finalization_packet.json`, and `runtime_dispatches.json` when present; query the
 recorded worker handles for fresh status before dispatch or fan-in. Keep `run_inputs.json` and its hash unchanged.
-Do not rerun preflight or preparation, reread this entire launcher, search plugin caches, or search local memory.
+Do not rerun preflight or preparation, reread this entire launcher, or search plugin caches. Preserve the work-item ID
+in the continuation summary. If higher-priority host instructions require a memory check, use a separate
+`rg -n -F <work-item-ID> <host-memory-index>` search only; the runtime accepts it only when the provider proves no
+matches. A matching memory read remains a context violation and must be reported, not imported as current-run evidence.
 Use helper paths from the prepared role bindings and read only the section needed for the pending gate. Compaction
 does not authorize another worker, restart, lifecycle change, or import of historical evidence. If the current-run
 identity cannot be recovered from these exact files, stop with that limitation instead of discovering another run.
@@ -362,12 +365,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    must be reconciled first. The helper preserves prior artifacts and accepted decisions, starts a new remediation
    identity, and snapshots local file inputs. Use those prepared paths in the asset inventory; reconcile newly added
    sources. Later follow-ups in that remediation use only `--continuation` and retain its delivery goal and Run ID.
-   For explicitly authorized TechOps recovery after a pre-edit activation-profile or missing-mapping failure, or an
-   archive-context block before dispatch, use these same re-entry flags. Preparation verifies every prior worker is
-   terminal, the native ledger, the approved plan and clean checkout. After a context block it also checks accepted
-   evidence against the
-   prior saved packet. It preserves the failed delivery and starts a new remediation identity. Never repeat the
-   investigation.
+   For explicitly authorized TechOps recovery after a supported workflow failure, use the same re-entry flags.
+   Reconcile every prior worker against fresh native status evidence. If the failure recorded unverified closure,
+   retain that failure and use the collector to obtain a fresh terminal closure before preparation. The helper
+   verifies the ledger, approved plan, accepted evidence and source checkout; a preserved unaccepted candidate
+   must match its original recorded edits and current bytes. It preserves the failed delivery and starts a new
+   remediation identity. Never repeat the investigation or accept a rejected worker result.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
    An ordinary continuation cannot reopen a completed Feature Delivery planning execution or bypass exhausted
    finalization attempts. For explicitly authorized planning recovery, reconcile prior actual worker rows and fresh
@@ -1022,10 +1025,20 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    ```
    A direct untruncated `read_thread` response remains supported. Rerun the prepared collector with `--closure`;
    it maps the response to the exact provider handle and emits only
-   status metadata. It selects the latest post-dispatch inventory or targeted `read_thread` result per handle, then
-   validates the combined receipt. Successful `wait_threads` output is not currently normalized for closure; use
-   `read_thread` for a successful targeted observation. Do not dispatch follow-ups during collection; a later
-   follow-up invalidates that worker's observation and requires another read. Record `provider status snapshot
+   status metadata. If the targeted read cannot certify a `notLoaded` worker, use this exact single-target
+   status-only wait projection, replacing only the UUID, then rerun the collector:
+   ```javascript
+   const r = await tools.mcp__codex_app__wait_threads({targets: [{threadId: "00000000-0000-0000-0000-000000000002"}], timeoutMs: 0});
+   if (r.isError || !Array.isArray(r.content) || r.content.length !== 1) throw new Error('status unavailable');
+   const d = JSON.parse(r.content[0].text);
+   if (!Array.isArray(d.polls) || d.polls.length !== 1) throw new Error('status unavailable');
+   const p = d.polls[0];
+   text(JSON.stringify({wake: d.wake, polls: [{thread: p.thread, latestTurn: p.latestTurn}]}));
+   ```
+   The collector uses only a matching inactive or completed wake and terminal latest turn. It selects the latest
+   post-dispatch inventory or verified targeted result per handle and validates the combined receipt. Do not dispatch
+   follow-ups during collection; a later follow-up invalidates that worker's observation and requires another read.
+   Record `provider status snapshot
    <RFC3339 timestamp>: <identifier>=completed; ...` in closure evidence. `Remaining active handles: 0` means no active
    worker turns; it does not assert capacity release or handle destruction.
    If neither closure route is verifiable, create the Coordinator-owned `Blocked` receipt through the prepared

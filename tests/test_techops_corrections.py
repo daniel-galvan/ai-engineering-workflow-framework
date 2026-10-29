@@ -420,6 +420,11 @@ class TechOpsCorrections(unittest.TestCase):
                 candidate = {"status": "unaccepted"}
                 with patch.object(prepare, "_recover_preserved_candidate", return_value=candidate):
                     self.assertEqual(prepare._recover_failed_remediation(root, packet, closure, source_checkout=repository), candidate)
+                    failure["runtime_closure"] = "unverified"
+                    (root / "finalization_failure.json").write_text(json.dumps(failure))
+                    self.assertEqual(prepare._recover_failed_remediation(root, packet, closure, source_checkout=repository), candidate)
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_failed_remediation(root, packet, {"terminal_observations": []}, source_checkout=repository)
                     packet["runtime_audits"][0]["Provider handle"] = "/root/other"
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_failed_remediation(root, packet, closure, source_checkout=repository)
