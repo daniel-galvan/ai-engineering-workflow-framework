@@ -601,6 +601,44 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
 
+    def test_stopped_bootstrap_recovery_requires_terminal_workers_and_unchanged_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            plan = root / "implementation_plan.md"
+            plan.write_text("approved plan")
+            packet = {"identity": {"Run ID": "delivery", "Lifecycle": "remediation"},
+                      "reentry": {"Approval reference": "approved", "Approved plan": str(plan),
+                                  "Approved plan SHA256": hashlib.sha256(plan.read_bytes()).hexdigest()},
+                      "workers": [], "worker_results": [], "runtime_audits": []}
+            snapshot = root / "snapshot.json"
+            frozen = json.dumps(packet).encode()
+            snapshot.write_bytes(frozen)
+            digest = hashlib.sha256(frozen).hexdigest()
+            failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator", "runtime_closure": "terminal",
+                       "run_id": "delivery", "packet_snapshot": str(snapshot), "snapshot_sha256": digest, "packet_sha256": digest,
+                       "errors": ["The bootstrap attempts stopped before reading the assignment."]}
+            (root / "finalization_failure.json").write_text(json.dumps(failure))
+            ledger = {"thread_mappings": {"/root/worker": "thread"}, "events": [{"Operation": "spawn_agent"}],
+                      "failed_dispatches": [], "timing": {"open_worker_intervals": 0}}
+            ledger_path = root / "runtime_dispatches.json"
+            ledger_path.write_text(json.dumps(ledger))
+            observations = [{"Provider handle": "/root/worker", "Provider status": "interrupted"}]
+            closure = {"terminal_observations": observations}
+            candidate = {"status": "unaccepted", "files": {"test.py": "hash"}}
+            with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
+                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch.object(prepare, "_verified_recovery_planning", return_value={}), \
+                 patch.object(prepare, "_recover_preserved_candidate", return_value=candidate) as verify:
+                self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root), candidate)
+                ledger_path.write_text(json.dumps({**ledger, "timing": {"open_worker_intervals": 1}}))
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root)
+                ledger_path.write_text(json.dumps(ledger))
+                verify.side_effect = ValueError("candidate_content_changed")
+                with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+                    prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root)
+
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

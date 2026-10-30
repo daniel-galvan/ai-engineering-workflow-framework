@@ -256,8 +256,9 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     digest = hashlib.sha256(message.encode()).hexdigest()
     return (packet["required_prefix"] + "\n"
             + "First step: verify and read the file; this bootstrap is self-contained. Before reading, "
-              "do not search memory unless required by the host. Use a separate `rg -n -F` search for only "
-              "this work-item ID; only a verified no-match passes. Do not search previous chats or archives.\n"
+              "do not search memory unless required by the host. If required, use a separate `rg -n -F` "
+              "search for this work-item ID only in the host memory index (normally ~/.codex/memories/MEMORY.md); "
+              "only a verified no-match passes. Do not search the artifact directory, previous chats or archives.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
             + f"Verify its SHA256 is {digest}; stop on mismatch.\n"

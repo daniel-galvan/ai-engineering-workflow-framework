@@ -210,6 +210,8 @@ class ActivationDelivery(unittest.TestCase):
             "instructions", path)
         command = notice.split("Read it with this separate literal command: ", 1)[1].split("\n", 1)[0]
         self.assertEqual(runtime_checks._read_targets(command), [str(path.resolve())])
+        self.assertIn("only in the host memory index", notice)
+        self.assertIn("Do not search the artifact directory", notice)
         self.assertIn("Use separate tool calls for verification and the complete instruction read", notice)
         self.assertIn("max_output_tokens to at least 12; truncated output is not delivery", notice)
 

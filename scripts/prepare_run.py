@@ -1189,6 +1189,51 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
+
+def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closure: dict,
+                                         source_checkout: Path) -> dict:
+    """Preserve an unchanged candidate when all bootstrap attempts stopped before a result."""
+    try:
+        from planning_contracts import terminal_closure_dispatch_errors
+        from worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    except ModuleNotFoundError:
+        from scripts.planning_contracts import terminal_closure_dispatch_errors
+        from scripts.worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    try:
+        packet_path = artifact_root / "finalization_packet.json"
+        failure = json.loads((artifact_root / "finalization_failure.json").read_text())
+        ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+        snapshot = Path(failure["packet_snapshot"]).resolve()
+        frozen = snapshot.read_bytes()
+        errors = failure.get("errors", [])
+        handles = sorted(ledger["thread_mappings"])
+        observations = closure["terminal_observations"]
+        reentry = prior["reentry"]
+        plan = artifact_root / "implementation_plan.md"
+        if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
+                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+                and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation"
+                and len(errors) == 1 and isinstance(errors[0], str)
+                and "bootstrap" in errors[0].lower() and "before reading" in errors[0].lower()
+                and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
+                and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+                and not prior.get("workers") and not prior.get("worker_results") and not prior.get("runtime_audits")
+                and handles and not ledger.get("rejected_results") and not ledger.get("failed_dispatches")
+                and ledger.get("timing", {}).get("open_worker_intervals") == 0
+                and isinstance(observations, list) and len(observations) == len(handles)
+                and all(row.get("Provider status") in {"interrupted", "stopped", "cancelled", "failed"} for row in observations)
+                and not terminal_closure_dispatch_errors(packet_path, observations)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and _native_terminal_observations(ledger, handles, require_terminal=False) == observations
+                and reentry.get("Approval reference") and reentry.get("Approved plan") == str(plan.resolve())
+                and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")):
+            raise ValueError("remediation_recovery_evidence_unverified")
+        _verified_recovery_planning(artifact_root, prior)
+        return _recover_preserved_candidate(artifact_root, prior, source_checkout)
+    except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:
+        raise ValueError("remediation_recovery_evidence_unverified") from error
+
+
 def _recover_terminal_accepted_remediation(artifact_root: Path, prior: dict, closure: dict,
                                            source_checkout: Path) -> tuple[dict, dict]:
     """Re-enter a terminal delivery failure without accepting its rejected downstream work."""
@@ -1442,7 +1487,14 @@ def _reentry_source(
             predispatch_context = (not prior.get("workers") and not prior.get("worker_results")
                                    and any(str(error).startswith("parent_context_nonconformant:forbidden_context_reference:")
                                            for error in failure.get("errors", [])))
-            if predispatch_context and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
+            stopped_bootstrap = (not prior.get("workers") and not prior.get("worker_results")
+                                 and any("bootstrap" in str(error).lower() and "before reading" in str(error).lower()
+                                         for error in failure.get("errors", [])))
+            if stopped_bootstrap and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
+                if source_checkout is None:
+                    raise ValueError("candidate_recovery_source_checkout_invalid")
+                candidate = _recover_stopped_bootstrap_candidate(artifact_root, prior, closure, source_checkout)
+            elif predispatch_context and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate = _recover_predispatch_context_candidate(artifact_root, prior, closure, source_checkout)
