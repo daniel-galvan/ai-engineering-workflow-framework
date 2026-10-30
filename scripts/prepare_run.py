@@ -779,10 +779,10 @@ def _accepted_implementer_candidate(artifact_root: Path, prior: dict, source_che
                if row.get("Worker") == "implement" and row.get("Outcome") == "complete"]
     audits = prior.get("runtime_audits", [])
     matched = [row for row in audits if row.get("Worker") == "implement"]
+    implementation = {**prior, "worker_results": results, "runtime_audits": matched, "terminal_observations": []}
     if (len(results) != 1 or len(matched) != 1
-            or _worker_runtime_audit_errors(prior, artifact_root / "finalization_packet.json",
-                                            {row.get("Worker") for row in audits})
-            or merged_result_errors(prior, bindings, artifact_root)):
+            or _worker_runtime_audit_errors(implementation, artifact_root / "finalization_packet.json", {"implement"})
+            or merged_result_errors(implementation, bindings, artifact_root)):
         raise ValueError("candidate_accepted_implementer_unverified")
     trace_path = Path(matched[0]["Trace path"]).resolve()
     if trace_path.parent != artifact_root.resolve():
@@ -853,7 +853,8 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
         if hashlib.sha256(data).hexdigest() != rows[0]["sha256"]:
             raise ValueError("candidate_recovery_archive_evidence_invalid")
         return data
-    trace_rows = [row for row in manifest["files"] if row.get("path", "").startswith("trace_")
+    trace_rows = [row for row in manifest["files"] if isinstance(row.get("path"), str)
+                  and Path(row["path"]).name == row["path"] and row["path"].endswith(".json")
                   and row.get("sha256") == candidate["trace_sha256"]]
     if len(trace_rows) != 1:
         raise ValueError("candidate_recovery_archive_evidence_invalid")
@@ -864,7 +865,7 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
     repository = Path(original.get("source_checkout", original["execution_repository"])).resolve()
     common = _git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
     if (trace.get("run_id") != run_id or trace.get("worker") != "implementer"
-            or trace.get("audit", {}).get("status") != "rejected"
+            or trace.get("audit", {}).get("status") not in ({"rejected", "passed"} if candidate.get("base_candidate") else {"rejected"})
             or original_packet.get("identity", {}).get("Run ID") != run_id
             or original_packet.get("reentry", {}).get("Approved plan SHA256") != prior["reentry"]["Approved plan SHA256"]
             or common == "Unknown" or common != _git(source_checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")):
@@ -886,11 +887,15 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
             from recovery_candidate import replay_followup_candidate
         except ModuleNotFoundError:
             from scripts.recovery_candidate import replay_followup_candidate
-        repair = original_packet["activation_repairs"]["implementer"]
+        repair = original_packet.get("activation_repairs", {}).get("implementer", {})
         audits = [row for row in original_packet["runtime_audits"] if row.get("Worker") == "implement"]
-        if (repair.get("Attempt") != 1 or repair.get("Rejected trace SHA256") != candidate["trace_sha256"]
+        accepted_edit = trace.get("audit", {}).get("status") == "passed"
+        results = [row for row in original_packet.get("worker_results", [])
+                   if row.get("Worker") == "implement" and row.get("Outcome") == "complete"]
+        if (len(audits) != 1 or (accepted_edit and len(results) != 1) or (not accepted_edit and (repair.get("Attempt") != 1
+                or repair.get("Rejected trace SHA256") != candidate["trace_sha256"]
                 or repair.get("Provider handle") != trace["spawn"]["provider_handle"]
-                or repair.get("Last dispatch at") != trace.get("last_dispatch_at") or len(audits) != 1):
+                or repair.get("Last dispatch at") != trace.get("last_dispatch_at")))):
             raise ValueError("candidate_followup_trace_unverified")
         receipts = json.loads(archived("activation_receipts.json"))
         def dispatch_for(saved_trace):
@@ -916,7 +921,10 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
         accepted = json.loads(archived(accepted_path.name))
         if (accepted.get("run_id") != run_id or accepted.get("worker") != "implementer"
                 or accepted.get("audit", {}).get("status") != "passed"
-                or accepted.get("spawn", {}).get("dispatch_file_sha256") != repair.get("Corrected dispatch SHA256")):
+                or (accepted_edit and (accepted != trace or audits[0].get("Provider handle") != trace["spawn"]["provider_handle"]
+                    or audits[0].get("Thread ID") != trace.get("thread_id")
+                    or audits[0].get("Last dispatch at") != trace.get("last_dispatch_at")))
+                or (not accepted_edit and accepted.get("spawn", {}).get("dispatch_file_sha256") != repair.get("Corrected dispatch SHA256"))):
             raise ValueError("candidate_followup_trace_unverified")
         dispatch_for(accepted)
         if (base.get("prior_run_id") in visited or candidate.get("status") != "unaccepted"
@@ -1003,6 +1011,132 @@ def _recover_accepted_candidate(artifact_root: Path, prior: dict, source_checkou
     return {"prior_run_id": prior["identity"]["Run ID"], "status": "unaccepted", "trace_sha256": digest,
             "baseline_revision": candidate["baseline_revision"], "files": hashes, "source_already_present": True,
             "base_candidate": candidate, "_contents": contents}
+
+
+
+def _recover_current_accepted_candidate(artifact_root: Path, prior: dict, source_checkout: Path) -> dict:
+    """Reconstruct a guarded accepted edit on top of its verified unaccepted snapshot."""
+    try:
+        from recovery_candidate import replay_followup_candidate, verify_checkout_snapshot, verify_edit_authorization
+        from runtime_checks import _verified_dispatch_content
+    except ModuleNotFoundError:
+        from scripts.recovery_candidate import replay_followup_candidate, verify_checkout_snapshot, verify_edit_authorization
+        from scripts.runtime_checks import _verified_dispatch_content
+    candidate = _accepted_implementer_candidate(artifact_root, prior, source_checkout)
+    original = _recover_preserved_candidate(artifact_root, prior, source_checkout, candidate_override=candidate)
+    audit = next(row for row in prior["runtime_audits"] if row.get("Worker") == "implement")
+    trace_path = Path(audit["Trace path"]).resolve()
+    raw = trace_path.read_bytes()
+    trace = json.loads(raw)
+    content = _verified_dispatch_content(trace)
+    if not content or trace.get("audit", {}).get("status") != "passed":
+        raise ValueError("candidate_followup_trace_unverified")
+    dispatch = json.loads(content.split("\n", 2)[1])
+    session = Path(trace["trace_retrieval"])
+    contents, touched = replay_followup_candidate(source_checkout, session, trace["thread_id"], original["_contents"])
+    bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+    parent = bindings["parent_context"]
+    verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
+        bindings["runtime_evidence"]["run_started_at"], Path(dispatch["worker_contract"]["before_source_change_guard"]),
+        artifact_root / "finalization_packet.json", trace["spawn"]["provider_handle"], source_checkout, touched)
+    hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+    verify_checkout_snapshot(source_checkout, candidate["baseline_revision"], hashes)
+    return {"prior_run_id": prior["identity"]["Run ID"], "status": "unaccepted", "trace_sha256": hashlib.sha256(raw).hexdigest(),
+            "baseline_revision": candidate["baseline_revision"], "files": hashes, "source_already_present": True,
+            "base_candidate": candidate, "_contents": contents}
+
+
+def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure: dict,
+                                       source_checkout: Path) -> tuple[dict, dict]:
+    """Preserve guarded edits and approved planning after a terminal reviewer audit failure."""
+    try:
+        from planning_contracts import terminal_closure_dispatch_errors
+        from runtime_checks import _verified_dispatch_content, trace_errors
+        from worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    except ModuleNotFoundError:
+        from scripts.planning_contracts import terminal_closure_dispatch_errors
+        from scripts.runtime_checks import _verified_dispatch_content, trace_errors
+        from scripts.worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    try:
+        packet_path = artifact_root / "finalization_packet.json"
+        failure = json.loads((artifact_root / "finalization_failure.json").read_text())
+        ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+        pending = ledger["rejected_results"]["reviewer"]
+        trace_path = Path(pending["trace"]).resolve()
+        raw = trace_path.read_bytes()
+        trace = json.loads(raw)
+        frozen_path = Path(failure["packet_snapshot"]).resolve()
+        frozen = frozen_path.read_bytes()
+        handles = sorted(ledger["thread_mappings"])
+        observations = closure["terminal_observations"]
+        errors = failure.get("errors", [])
+        if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
+                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+                and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation" and len(errors) == 1
+                and "delivery_dependency_unverified:reviewer" in errors[0]
+                and "runtime_audit_dispatch_mismatch:review" in errors[0]
+                and "forbidden_context_reference:memory_path" in errors[0]
+                and frozen_path.parent == artifact_root.resolve() and json.loads(frozen) == prior
+                and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+                and trace_path.parent == artifact_root.resolve() and hashlib.sha256(raw).hexdigest() == pending["sha256"]
+                and pending["run_id"] == trace.get("run_id") == prior["identity"]["Run ID"]
+                and trace.get("worker") == "reviewer" and trace.get("spawn", {}).get("provider_handle") == pending["Provider handle"]
+                and trace.get("last_dispatch_at") == pending["Last dispatch at"]
+                and set(trace.get("audit", {}).get("errors", [])) == {"worker_fan_in_rejected", "forbidden_context_reference:memory_path"}
+                and trace_errors(trace, require_freshness=True) == ["worker_fan_in_rejected"]
+                and _verified_dispatch_content(trace) and handles and ledger["timing"]["open_worker_intervals"] == 0
+                and any(row.get("Provider handle") == pending["Provider handle"] and row.get("Provider status") == "completed"
+                        and row.get("Last dispatch at") == pending["Last dispatch at"]
+                        and row.get("Thread ID") == trace.get("thread_id") for row in observations)
+                and len(observations) == len(handles) and not terminal_closure_dispatch_errors(packet_path, observations)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
+            raise ValueError("remediation_recovery_evidence_unverified")
+        reentry = prior["reentry"]
+        plan = artifact_root / "implementation_plan.md"
+        if (not reentry.get("Approval reference") or reentry.get("Approved plan") != str(plan.resolve())
+                or hashlib.sha256(plan.read_bytes()).hexdigest() != reentry.get("Approved plan SHA256")):
+            raise ValueError("remediation_recovery_plan_changed")
+        planning = prior
+        visited = set()
+        while planning.get("worker_results"):
+            link = planning["reentry"]
+            run_id = link["Prior run ID"]
+            if not isinstance(run_id, str) or not run_id or Path(run_id).name != run_id or run_id in visited:
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+            visited.add(run_id)
+            archive = (artifact_root / "runs" / run_id).resolve()
+            if Path(link["Prior artifacts"]).resolve() != archive:
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+            manifest = json.loads((archive / "archive_manifest.json").read_text())
+            rows = [row for row in manifest["files"] if row.get("path") == "finalization_packet.json"]
+            if manifest.get("run_id") != run_id or len(rows) != 1:
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+            saved = (archive / rows[0]["snapshot"]).resolve()
+            if not saved.is_relative_to((artifact_root / "runs").resolve()):
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+            data = saved.read_bytes()
+            if hashlib.sha256(data).hexdigest() != rows[0]["sha256"]:
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+            planning = json.loads(data)
+            if (planning["identity"]["Run ID"] != run_id or planning["reentry"]["Approved plan SHA256"] != reentry["Approved plan SHA256"]
+                    or planning["reentry"]["Approval reference"] != reentry["Approval reference"]):
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+        for table, key in (("claims", "Claim ID"), ("actions", "Action ID"), ("decisions", "Decision ID"), ("evidence", "Evidence ID")):
+            old = {row[key]: row for row in planning.get(table, [])}
+            current = {row[key]: row for row in prior.get(table, [])}
+            if (len(old) != len(planning.get(table, [])) or len(current) != len(prior.get(table, []))
+                    or any(current.get(key) != value for key, value in old.items())):
+                raise ValueError("remediation_recovery_accepted_evidence_changed")
+        for field in ("techops_checks", "reproduction", "integration_decision", "playbook_selection"):
+            if planning.get(field) != prior.get(field):
+                raise ValueError("remediation_recovery_accepted_evidence_changed")
+        if ({k: v for k, v in prior.get("work_item", {}).items() if k != "Last Updated"}
+                != {k: v for k, v in planning.get("work_item", {}).items() if k != "Last Updated"}):
+            raise ValueError("remediation_recovery_accepted_evidence_changed")
+        return _recover_current_accepted_candidate(artifact_root, prior, source_checkout), planning
+    except (OSError, KeyError, TypeError, AttributeError, StopIteration, json.JSONDecodeError) as error:
+        raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
 def _recover_terminal_accepted_remediation(artifact_root: Path, prior: dict, closure: dict,
@@ -1252,7 +1386,15 @@ def _reentry_source(
             failure = json.loads((artifact_root / "finalization_failure.json").read_text())
             blocked_tester = any("worker_activation_rejected_result_pending:tester" in str(error)
                                  for error in failure.get("errors", []))
-            if blocked_tester:
+            blocked_reviewer = any("delivery_dependency_unverified:reviewer" in str(error)
+                                   and "forbidden_context_reference:memory_path" in str(error)
+                                   for error in failure.get("errors", []))
+            if blocked_reviewer:
+                if source_checkout is None:
+                    raise ValueError("candidate_recovery_source_checkout_invalid")
+                candidate, planning_source = _recover_terminal_reviewer_failure(
+                    artifact_root, prior, closure, source_checkout)
+            elif blocked_tester:
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate, planning_source = _recover_terminal_accepted_remediation(

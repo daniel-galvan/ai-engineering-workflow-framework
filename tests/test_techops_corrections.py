@@ -502,6 +502,70 @@ class TechOpsCorrections(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_terminal_accepted_remediation(root, packet, closure, root)
 
+    def test_terminal_reviewer_recovery_preserves_planning_and_rejects_tampering(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            plan = root / "implementation_plan.md"
+            plan.write_text("approved plan")
+            digest = hashlib.sha256(plan.read_bytes()).hexdigest()
+            archive = root / "runs" / "planning"
+            archive.mkdir(parents=True)
+            planning = {"identity": {"Run ID": "planning"},
+                        "reentry": {"Approved plan SHA256": digest, "Approval reference": "approved"},
+                        "work_item": {"ID": "ITEM-1"}, "techops_checks": {}, "reproduction": {},
+                        "integration_decision": {}, "playbook_selection": {}, "worker_results": [],
+                        "claims": [{"Claim ID": "CL-1", "value": "verified"}],
+                        "actions": [], "decisions": [], "evidence": []}
+            data = json.dumps(planning).encode()
+            (archive / "finalization_packet.json").write_bytes(data)
+            (archive / "archive_manifest.json").write_text(json.dumps({"run_id": "planning", "files": [{
+                "path": "finalization_packet.json", "snapshot": "finalization_packet.json", "sha256": hashlib.sha256(data).hexdigest()}]}))
+            packet = {**copy.deepcopy(planning), "identity": {"Run ID": "delivery", "Lifecycle": "remediation"},
+                      "reentry": {"Prior run ID": "planning", "Prior artifacts": str(archive), "Approval reference": "approved",
+                                  "Approved plan": str(plan), "Approved plan SHA256": digest},
+                      "worker_results": [{"Worker": "implement", "Outcome": "complete"}]}
+            trace = {"run_id": "delivery", "worker": "reviewer", "thread_id": "thread", "last_dispatch_at": "time",
+                     "spawn": {"provider_handle": "/root/review"},
+                     "audit": {"errors": ["worker_fan_in_rejected", "forbidden_context_reference:memory_path"]}}
+            trace_path = root / "review_trace.json"
+            trace_path.write_text(json.dumps(trace))
+            pending = {"trace": str(trace_path), "run_id": "delivery", "sha256": hashlib.sha256(trace_path.read_bytes()).hexdigest(),
+                       "Provider handle": "/root/review", "Last dispatch at": "time"}
+            ledger = {"thread_mappings": {"/root/review": "thread"}, "rejected_results": {"reviewer": pending},
+                      "timing": {"open_worker_intervals": 0}}
+            (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+            observations = [{"Provider handle": "/root/review", "Provider status": "completed",
+                             "Thread ID": "thread", "Last dispatch at": "time"}]
+            closure = {"terminal_observations": observations}
+            def save(value):
+                frozen = json.dumps(value).encode()
+                snapshot = root / "snapshot.json"
+                snapshot.write_bytes(frozen)
+                h = hashlib.sha256(frozen).hexdigest()
+                failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator", "runtime_closure": "terminal",
+                           "run_id": "delivery", "packet_snapshot": str(snapshot), "snapshot_sha256": h, "packet_sha256": h,
+                           "errors": ["delivery_dependency_unverified:reviewer;runtime_audit_dispatch_mismatch:review;forbidden_context_reference:memory_path"]}
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+            save(packet)
+            candidate = {"status": "unaccepted", "files": {"test.py": "hash"}}
+            with patch("runtime_checks._verified_dispatch_content", return_value="verified"), \
+                 patch("runtime_checks.trace_errors", return_value=["worker_fan_in_rejected"]), \
+                 patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
+                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch.object(prepare, "_recover_current_accepted_candidate", return_value=candidate):
+                result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+                self.assertEqual((result, saved), (candidate, planning))
+                changed = copy.deepcopy(packet)
+                changed["claims"][0]["value"] = "tampered"
+                save(changed)
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_accepted_evidence_changed"):
+                    prepare._recover_terminal_reviewer_failure(root, changed, closure, root)
+                save(packet)
+                trace_path.write_text("tampered")
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
