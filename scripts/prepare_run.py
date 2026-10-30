@@ -1418,7 +1418,7 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                     and trace.get("thread_id") == ledger["thread_mappings"].get(handle)
                     and trace.get("last_dispatch_at") == receipt.get("Last dispatch at")
                     and any(row.get("Provider handle") == handle and row.get("Provider status") in
-                            {"completed", "interrupted", "stopped", "cancelled", "failed"}
+                            {"completed", "idle", "interrupted", "stopped", "cancelled", "failed"}
                             and row.get("Last dispatch at") == receipt.get("Last dispatch at") for row in observations)):
                 raise ValueError("candidate_rejected_trace_unverified")
         else:
@@ -1436,7 +1436,7 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                 and handles
                 and ledger.get("timing", {}).get("open_worker_intervals") == 0
                 and isinstance(observations, list) and len(observations) == len(handles)
-                and all(row.get("Provider status") in ({"completed", "interrupted", "stopped", "cancelled", "failed"}
+                and all(row.get("Provider status") in ({"completed", "idle", "interrupted", "stopped", "cancelled", "failed"}
                          if rejected else {"interrupted", "stopped", "cancelled", "failed"}) for row in observations)
                 and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
                 and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)

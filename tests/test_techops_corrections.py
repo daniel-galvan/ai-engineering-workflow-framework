@@ -753,6 +753,11 @@ class TechOpsCorrections(unittest.TestCase):
                 ledger_path.write_text(json.dumps({**ledger, "rejected_results": {"implementer": receipt}}))
                 observations[0].update({"Provider status": "completed", "Last dispatch at": "time"})
                 self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True), candidate)
+                observations[0]["Provider status"] = "idle"
+                self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True), candidate)
+                with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=["not terminal"]):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True)
                 observations[0]["Provider status"] = "interrupted"
                 self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True), candidate)
                 observations[0]["Provider status"] = "running"

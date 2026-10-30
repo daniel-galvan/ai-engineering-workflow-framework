@@ -782,8 +782,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    completed` using observed current status. Run trace validation and fan-in transition validation as separate
    invocations; `--trace` and `--transition` are mutually exclusive. Export tool activity through
    `worker_runtime_evidence.py` with its parent
-   session, start and ledger flags, plus `--worker-session <exact-child-session> --observation <fresh-status-json>`
-   `--agent <role> --trace <path>`. The observation is a JSON object with the status fields listed above.
+   session, start and ledger flags, plus `--worker-session <exact-child-session> --agent <role> --trace <path>`.
+   Prefer omitting `--observation`: the exporter derives the fresh status directly from native inventory or the
+   literal targeted status projection below. Alternatively, use `--observation <collector-closure-json>` with the
+   prepared collector's receipt. Do not construct or normalize an observation with a custom script, computed tool
+   arguments, or hand-written timestamps. Follow the literal status projections below if the latest inventory omits
+   the worker. The collector and exporter must establish the last dispatch and fresh terminal status themselves.
    Optional `Binding evidence` must be a JSON object containing provider-observed role or path metadata.
    Prepared runs require the authenticated activation instruction read and its paired provider output;
    a delivery flag or prepared bundle alone does not prove delivery.
@@ -794,7 +798,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    A malformed result is an audited rejection eligible for the bounded correction below; a legitimate evidence
    blocker with a valid result envelope remains acceptable. Never write an ad hoc exporter or repair
    dispatch timestamps.
-   For the sequential Standard Sentry path, refresh `list_agents`, then run the same collector with its parent,
+   For a sequential run, refresh `list_agents`, then run the same collector with its parent,
    start and ledger arguments plus `--closure <artifact-root>/runtime_closure.json`. This derives canonical Terminal
    observations from the native inventory. Export each worker with that file as `--observation`; the collector selects
    the exact child thread row. Do not reconstruct closure prose or edit provider timestamps.
