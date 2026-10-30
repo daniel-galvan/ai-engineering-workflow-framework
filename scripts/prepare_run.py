@@ -1086,7 +1086,13 @@ def _recover_current_accepted_candidate(artifact_root: Path, prior: dict, source
         raise ValueError("candidate_followup_trace_unverified")
     dispatch = json.loads(content.split("\n", 2)[1])
     session = Path(trace["trace_retrieval"])
-    contents, touched = replay_followup_candidate(source_checkout, session, trace["thread_id"], original["_contents"])
+    try:
+        contents, touched = replay_followup_candidate(source_checkout, session, trace["thread_id"], original["_contents"])
+    except ValueError as error:
+        if str(error) != "candidate_edit_records_missing":
+            raise
+        verify_checkout_snapshot(source_checkout, candidate["baseline_revision"], original["files"])
+        return original
     bindings = json.loads((artifact_root / "role_bindings.json").read_text())
     parent = bindings["parent_context"]
     verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
@@ -1168,20 +1174,27 @@ def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure
         handles = sorted(ledger["thread_mappings"])
         observations = closure["terminal_observations"]
         errors = failure.get("errors", [])
+        recorded_errors = set(trace.get("audit", {}).get("errors", []))
+        current_errors = trace_errors(trace, require_freshness=True)
+        reviewer_failure = (len(errors) == 1 and "delivery_dependency_unverified:reviewer" in errors[0]
+                            and "runtime_audit_dispatch_mismatch:review" in errors[0]
+                            and "forbidden_context_reference:memory_path" in errors[0]
+                            and recorded_errors == {"worker_fan_in_rejected", "forbidden_context_reference:memory_path"}
+                            and current_errors == ["worker_fan_in_rejected"])
+        parent_failure = (len(errors) == 1 and errors[0].startswith("parent_context_nonconformant:")
+                          and trace.get("audit", {}).get("status") == "rejected"
+                          and recorded_errors == {"worker_fan_in_rejected", "forbidden_context_reference:archived_artifact"}
+                          and set(current_errors) == recorded_errors)
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
                 and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation" and len(errors) == 1
-                and "delivery_dependency_unverified:reviewer" in errors[0]
-                and "runtime_audit_dispatch_mismatch:review" in errors[0]
-                and "forbidden_context_reference:memory_path" in errors[0]
+                and (reviewer_failure or parent_failure)
                 and frozen_path.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
                 and trace_path.parent == artifact_root.resolve() and hashlib.sha256(raw).hexdigest() == pending["sha256"]
                 and pending["run_id"] == trace.get("run_id") == prior["identity"]["Run ID"]
                 and trace.get("worker") == "reviewer" and trace.get("spawn", {}).get("provider_handle") == pending["Provider handle"]
                 and trace.get("last_dispatch_at") == pending["Last dispatch at"]
-                and set(trace.get("audit", {}).get("errors", [])) == {"worker_fan_in_rejected", "forbidden_context_reference:memory_path"}
-                and trace_errors(trace, require_freshness=True) == ["worker_fan_in_rejected"]
                 and _verified_dispatch_content(trace) and handles and ledger["timing"]["open_worker_intervals"] == 0
                 and any(row.get("Provider handle") == pending["Provider handle"] and row.get("Provider status") == "completed"
                         and row.get("Last dispatch at") == pending["Last dispatch at"]
@@ -1730,6 +1743,11 @@ def _reentry_source(
             blocked_reviewer = any("delivery_dependency_unverified:reviewer" in str(error)
                                    and "forbidden_context_reference:memory_path" in str(error)
                                    for error in failure.get("errors", []))
+            blocked_reviewer = blocked_reviewer or (any(str(error).startswith("parent_context_nonconformant:")
+                                                        for error in failure.get("errors", []))
+                and "reviewer" in json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("rejected_results", {})
+                and any(row.get("Worker") == "implement" and row.get("Outcome") == "complete"
+                        for row in prior.get("worker_results", [])))
             predispatch_context = (not prior.get("workers") and not prior.get("worker_results")
                                    and not json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("thread_mappings")
                                    and any(str(error).startswith(("parent_context_nonconformant:forbidden_context_reference:",

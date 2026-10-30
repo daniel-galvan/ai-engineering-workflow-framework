@@ -211,6 +211,16 @@ class CandidateRecoveryTest(unittest.TestCase):
             (self.repo / "tracked.txt").write_text("tampered\n")
             with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
                 prepare._recover_current_accepted_candidate(root, prior, self.repo)
+            (self.repo / "tracked.txt").write_bytes(initial["tracked.txt"])
+            self.rows = self.rows[:1]
+            self.write_session()
+            unchanged = {"_contents": initial, "files": {name: hashlib.sha256(data).hexdigest()
+                                                           for name, data in initial.items()}}
+            with patch.object(prepare, "_recover_preserved_candidate", return_value=unchanged):
+                self.assertEqual(prepare._recover_current_accepted_candidate(root, prior, self.repo), unchanged)
+                (self.repo / "tracked.txt").write_text("tampered\n")
+                with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+                    prepare._recover_current_accepted_candidate(root, prior, self.repo)
 
     def test_unmerged_worker_edit_requires_terminal_evidence_and_exact_checkout(self):
         root = self.root / "run"

@@ -562,6 +562,24 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_accepted_evidence_changed"):
                     prepare._recover_terminal_reviewer_failure(root, changed, closure, root)
                 save(packet)
+                rejected = {**trace, "audit": {"status": "rejected", "errors": [
+                    "worker_fan_in_rejected", "forbidden_context_reference:archived_artifact"]}}
+                trace_path.write_text(json.dumps(rejected))
+                ledger["rejected_results"]["reviewer"]["sha256"] = hashlib.sha256(trace_path.read_bytes()).hexdigest()
+                (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+                failure_path = root / "finalization_failure.json"
+                failure = json.loads(failure_path.read_text())
+                failure["errors"] = ["parent_context_nonconformant:forbidden_context_reference:archived_artifact"]
+                failure_path.write_text(json.dumps(failure))
+                with patch("runtime_checks.trace_errors", return_value=rejected["audit"]["errors"]):
+                    result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+                    self.assertEqual((result, saved), (candidate, planning))
+                    rejected["audit"]["status"] = "passed"
+                    trace_path.write_text(json.dumps(rejected))
+                    ledger["rejected_results"]["reviewer"]["sha256"] = hashlib.sha256(trace_path.read_bytes()).hexdigest()
+                    (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
                 trace_path.write_text("tampered")
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
