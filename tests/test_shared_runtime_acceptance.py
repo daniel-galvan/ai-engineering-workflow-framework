@@ -860,6 +860,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                                      {key: value for key, value in before.items() if key != "runtime_audits"})
 
     def test_malformed_result_is_a_rejected_trace_eligible_for_bounded_recovery(self):
+        from scripts import worker_runtime_evidence as collector
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory, "techops_issue_remediation", "dependency_analyst")
             run, root, role, *_ = fixture
@@ -871,6 +872,30 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                                 for error in trace["audit"]["errors"]))
             self.assertEqual(runtime.rejected_result_errors(trace, trace["spawn"]["provider_handle"],
                                                           trace["last_dispatch_at"]), [])
+            observation = root / "observation.json"
+            observation.write_text(json.dumps(fixture[7]))
+            arguments = [str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", run["runtime_evidence"]["ledger"],
+                "--worker-session", str(root / "child.jsonl"), "--observation", str(observation),
+                "--agent", role, "--trace", str(root / "rejected.trace.json")]
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), patch.object(collector, "read_runtime_events", return_value=ledger), \
+                 patch.object(collector, "export_worker_trace", return_value=trace), redirect_stdout(output):
+                self.assertEqual(collector.main(), 2, output.getvalue())
+            guidance = json.loads(output.getvalue())["recovery_required"]
+            self.assertEqual(guidance["agent"], role)
+            self.assertEqual(guidance["provider_handle"], trace["spawn"]["provider_handle"])
+            self.assertIn("corrected activation", guidance["next_action"])
+            packet_path = Path(run["finalization_packet"])
+            packet = json.loads(packet_path.read_text())
+            packet["activation_repairs"] = {role: {"Attempt": 1}}
+            packet_path.write_text(json.dumps(packet))
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), patch.object(collector, "read_runtime_events", return_value=ledger), \
+                 patch.object(collector, "export_worker_trace", return_value=trace), redirect_stdout(output):
+                self.assertEqual(collector.main(), 2, output.getvalue())
+            self.assertNotIn("recovery_required", json.loads(output.getvalue()))
 
     def test_missing_result_is_a_rejected_trace_eligible_for_bounded_recovery(self):
         with tempfile.TemporaryDirectory() as directory:

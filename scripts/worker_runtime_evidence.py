@@ -702,9 +702,18 @@ def main() -> int:
                 result["rejected_results"] = pending
         args.ledger.write_text(json.dumps(result, indent=2) + "\n")
         if args.trace and trace["audit"]["errors"]:
-            print(json.dumps({"status": "blocked", "errors": trace["audit"]["errors"],
-                              "trace": str(args.trace), "ledger": str(args.ledger),
-                              "context_violations": trace["audit"].get("context_violations", [])}))
+            output = {"status": "blocked", "errors": trace["audit"]["errors"],
+                      "trace": str(args.trace), "ledger": str(args.ledger),
+                      "context_violations": trace["audit"].get("context_violations", [])}
+            pending = result.get("rejected_results", {})
+            if pending and packet_path.is_file():
+                role, receipt = next(iter(pending.items()))
+                repairs = json.loads(packet_path.read_text()).get("activation_repairs", {})
+                if role not in repairs:
+                    output["recovery_required"] = {"agent": role, "rejected_trace": receipt["trace"],
+                        "provider_handle": receipt["Provider handle"], "last_dispatch_at": receipt["Last dispatch at"],
+                        "next_action": "Refresh terminal provider status, then run corrected activation before replacement or failure."}
+            print(json.dumps(output))
             return 2
         if args.trace and (args.trace.parent / "role_bindings.json").is_file():
             try:

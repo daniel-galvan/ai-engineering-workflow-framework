@@ -1217,8 +1217,8 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
 
 
 def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closure: dict,
-                                         source_checkout: Path) -> dict:
-    """Preserve an unchanged candidate when all bootstrap attempts stopped before a result."""
+                                         source_checkout: Path, *, rejected: bool = False) -> dict:
+    """Preserve an unchanged candidate after terminal, unaccepted worker attempts."""
     try:
         from planning_contracts import terminal_closure_dispatch_errors
         from worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
@@ -1236,18 +1236,43 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
         observations = closure["terminal_observations"]
         reentry = prior["reentry"]
         plan = artifact_root / "implementation_plan.md"
+        if rejected:
+            pending = ledger.get("rejected_results", {})
+            if not isinstance(pending, dict) or set(pending) != {"implementer"}:
+                raise ValueError("candidate_rejected_trace_unverified")
+            receipt = pending["implementer"]
+            path = Path(receipt["trace"])
+            if path.is_symlink() or path.resolve().parent != artifact_root.resolve():
+                raise ValueError("candidate_rejected_trace_unverified")
+            raw = path.read_bytes()
+            trace = json.loads(raw)
+            handle = receipt["Provider handle"]
+            if not (hashlib.sha256(raw).hexdigest() == receipt.get("sha256")
+                    and receipt.get("run_id") == trace.get("run_id") == prior["identity"]["Run ID"]
+                    and trace.get("worker") == "implementer" and trace.get("audit", {}).get("status") == "rejected"
+                    and trace.get("spawn", {}).get("provider_handle") == handle
+                    and trace.get("thread_id") == ledger["thread_mappings"].get(handle)
+                    and trace.get("last_dispatch_at") == receipt.get("Last dispatch at")
+                    and any(row.get("Provider handle") == handle and row.get("Provider status") == "completed"
+                            and row.get("Last dispatch at") == receipt.get("Last dispatch at") for row in observations)):
+                raise ValueError("candidate_rejected_trace_unverified")
+        else:
+            if (len(errors) != 1 or not isinstance(errors[0], str) or "bootstrap" not in errors[0].lower()
+                    or "before reading" not in errors[0].lower() or ledger.get("rejected_results")
+                    or ledger.get("failed_dispatches")):
+                raise ValueError("remediation_recovery_evidence_unverified")
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
                 and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation"
                 and len(errors) == 1 and isinstance(errors[0], str)
-                and "bootstrap" in errors[0].lower() and "before reading" in errors[0].lower()
                 and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
                 and not prior.get("workers") and not prior.get("worker_results") and not prior.get("runtime_audits")
-                and handles and not ledger.get("rejected_results") and not ledger.get("failed_dispatches")
+                and handles
                 and ledger.get("timing", {}).get("open_worker_intervals") == 0
                 and isinstance(observations, list) and len(observations) == len(handles)
-                and all(row.get("Provider status") in {"interrupted", "stopped", "cancelled", "failed"} for row in observations)
+                and all(row.get("Provider status") in ({"completed", "interrupted", "stopped", "cancelled", "failed"}
+                         if rejected else {"interrupted", "stopped", "cancelled", "failed"}) for row in observations)
                 and not terminal_closure_dispatch_errors(packet_path, observations)
                 and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations
@@ -1594,6 +1619,8 @@ def _reentry_source(
             unmerged_context = (not prior.get("workers") and not prior.get("worker_results")
                                 and any("parent_context_nonconformant:" in str(error)
                                         for error in failure.get("errors", [])))
+            rejected_implementer = (not prior.get("workers") and not prior.get("worker_results")
+                and "implementer" in json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("rejected_results", {}))
             if stopped_bootstrap and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
@@ -1606,6 +1633,10 @@ def _reentry_source(
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate = _recover_unmerged_candidate(artifact_root, prior, closure, source_checkout)
+            elif rejected_implementer and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
+                if source_checkout is None:
+                    raise ValueError("candidate_recovery_source_checkout_invalid")
+                candidate = _recover_stopped_bootstrap_candidate(artifact_root, prior, closure, source_checkout, rejected=True)
             elif blocked_reviewer:
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")

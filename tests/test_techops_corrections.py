@@ -638,6 +638,19 @@ class TechOpsCorrections(unittest.TestCase):
                 verify.side_effect = ValueError("candidate_content_changed")
                 with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
                     prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root)
+                verify.side_effect = None
+                trace = {"run_id": "delivery", "worker": "implementer", "audit": {"status": "rejected"},
+                         "thread_id": "thread", "last_dispatch_at": "time", "spawn": {"provider_handle": "/root/worker"}}
+                trace_path = root / "trace_implementer.json"
+                trace_path.write_text(json.dumps(trace))
+                receipt = {"trace": str(trace_path), "run_id": "delivery", "Provider handle": "/root/worker",
+                           "Last dispatch at": "time", "sha256": hashlib.sha256(trace_path.read_bytes()).hexdigest()}
+                ledger_path.write_text(json.dumps({**ledger, "rejected_results": {"implementer": receipt}}))
+                observations[0].update({"Provider status": "completed", "Last dispatch at": "time"})
+                self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True), candidate)
+                trace_path.write_text(json.dumps({**trace, "run_id": "other"}))
+                with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
+                    prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True)
 
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
