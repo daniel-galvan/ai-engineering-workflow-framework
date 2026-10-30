@@ -47,6 +47,8 @@ class ActivationDelivery(unittest.TestCase):
             for agent, packet in packets.items():
                 with self.subTest(playbook=playbook, agent=agent):
                     policy = packet["repository_instructions"]
+                    self.assertIn(f"Keep every run-created file, including scratch drafts and temporary output, inside {run['artifact_root']}", policy)
+                    self.assertIn("do not write them to a separate temporary directory", policy)
                     self.assertIn("ancestors up to the assigned repository root", policy)
                     self.assertIn("Do not recursively search parent directory trees", policy)
                     self.assertIn("Run filename discovery in a separate tool result from content reads or searches", policy)

@@ -377,16 +377,26 @@ class V6Recovery(unittest.TestCase):
         output.write_text("New rejected output")
         archived = output.with_name(output.stem + ".rejected" + output.suffix)
         archived.write_text("Earlier rejected output")
+        digest = hashlib.sha256(output.read_bytes()).hexdigest()
+        preserved = output.with_name(output.stem + ".rejected." + digest + output.suffix)
+        preserved.write_text("Conflicting bytes")
         assignment = self.root / "correction.json"
         assignment.write_text(json.dumps({"objective": "Reverify current evidence"}))
-        guarded = self.command("validate_worker_runtime.py", "--activation-packet-bundle", bundle["path"],
+        args = ("--activation-packet-bundle", bundle["path"],
             "--expected-agent", "current_state_investigator", "--expected-bundle-sha256", bundle["sha256"],
             "--assignment", assignment, "--dispatch-file", Path(run["artifact_root"]) / "correction.txt",
             "--rejected-trace", rejected_path, "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH,
             "--provider-status", "completed")
+        guarded = self.command("validate_worker_runtime.py", *args)
         self.assertEqual(guarded.returncode, 2)
         self.assertIn("recovery_rejected_output_conflict", guarded.stdout)
         self.assertEqual(output.read_text(), "New rejected output")
+        self.assertEqual(archived.read_text(), "Earlier rejected output")
+        preserved.unlink()
+        guarded = self.command("validate_worker_runtime.py", *args)
+        self.assertEqual(guarded.returncode, 0, guarded.stdout + guarded.stderr)
+        self.assertFalse(output.exists())
+        self.assertEqual(preserved.read_text(), "New rejected output")
         self.assertEqual(archived.read_text(), "Earlier rejected output")
 
     def test_fresh_replacement_preserves_rejected_activity_and_can_merge_current_result(self):

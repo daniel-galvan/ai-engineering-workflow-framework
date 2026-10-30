@@ -622,6 +622,11 @@ def main() -> int:
                                     raise ValueError("recovery_output_outside_current_run")
                                 if target.exists():
                                     rejected = target.with_name(target.stem + ".rejected" + target.suffix)
+                                    if rejected.is_symlink():
+                                        raise ValueError("recovery_rejected_output_conflict")
+                                    if rejected.exists() and rejected.read_bytes() != target.read_bytes():
+                                        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+                                        rejected = target.with_name(target.stem + ".rejected." + digest + target.suffix)
                                     if rejected.is_symlink() or rejected.exists() and rejected.read_bytes() != target.read_bytes():
                                         raise ValueError("recovery_rejected_output_conflict")
                                     quarantine.append((target, rejected))

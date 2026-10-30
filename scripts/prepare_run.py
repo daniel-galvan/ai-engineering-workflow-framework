@@ -557,6 +557,8 @@ def _write_activation_packets(
             "repository_instructions": (
                 f"Use {manifest['source_checkout']} as the source checkout for repository reads, Git commands, "
                 f"changes, and validation. Use {artifact_root} for current-run workflow artifacts. "
+                f"Keep every run-created file, including scratch drafts and temporary output, inside {artifact_root}; "
+                "do not write them to a separate temporary directory. "
                 "The execution_repository in coordinator_execution is the durable-records repository and may "
                 "be a different checkout or branch; do not use it as the source checkout when paths differ. "
                 "Before source work, verify the source checkout's branch and revision against the prepared run. "
@@ -1253,7 +1255,8 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                     and trace.get("spawn", {}).get("provider_handle") == handle
                     and trace.get("thread_id") == ledger["thread_mappings"].get(handle)
                     and trace.get("last_dispatch_at") == receipt.get("Last dispatch at")
-                    and any(row.get("Provider handle") == handle and row.get("Provider status") == "completed"
+                    and any(row.get("Provider handle") == handle and row.get("Provider status") in
+                            {"completed", "interrupted", "stopped", "cancelled", "failed"}
                             and row.get("Last dispatch at") == receipt.get("Last dispatch at") for row in observations)):
                 raise ValueError("candidate_rejected_trace_unverified")
         else:
@@ -1748,7 +1751,7 @@ def _configure_remediation_result_contracts(artifact_root: Path, worker_contract
             "response_builder": str(ROOT / "scripts" / "prepare_worker_response.py"),
             "result_fields": result_fields,
             "result_instructions": (
-                "Before the final answer, put the result object and output text in separate scratch files, "
+                "Before the final answer, put the result object and output text in separate scratch files inside the run artifact root, "
                 "not the assigned output paths. Run response_builder with --packet finalization_packet, "
                 "--agent set to your prepared agent, --result-draft and --output-draft set to those scratch "
                 "files; read-only roles can instead pipe their JSON draft to --response-stdin without writing files. "

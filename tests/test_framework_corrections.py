@@ -52,6 +52,7 @@ class FrameworkCorrections(unittest.TestCase):
         for role, namespace in (("implementer", "IM"), ("reviewer", "RV"), ("tester", "TE")):
             with self.subTest(role=role):
                 instructions = contracts[role]["result_instructions"]
+                self.assertIn("scratch files inside the run artifact root", instructions)
                 self.assertIn("worker_result, a single object, never worker_results", instructions)
                 for prefix in ("E", "CL", "DE", "A"):
                     self.assertIn(f"{prefix}-{namespace}-001", instructions)

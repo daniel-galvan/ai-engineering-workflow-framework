@@ -648,6 +648,12 @@ class TechOpsCorrections(unittest.TestCase):
                 ledger_path.write_text(json.dumps({**ledger, "rejected_results": {"implementer": receipt}}))
                 observations[0].update({"Provider status": "completed", "Last dispatch at": "time"})
                 self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True), candidate)
+                observations[0]["Provider status"] = "interrupted"
+                self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True), candidate)
+                observations[0]["Provider status"] = "running"
+                with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
+                    prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True)
+                observations[0]["Provider status"] = "interrupted"
                 trace_path.write_text(json.dumps({**trace, "run_id": "other"}))
                 with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
                     prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True)
