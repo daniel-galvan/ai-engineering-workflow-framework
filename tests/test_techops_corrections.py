@@ -22,6 +22,63 @@ from tests.worker_response_support import stage_worker_response
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_post_delivery_context_recovery_requires_verified_failure_and_unchanged_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            plan = root / "implementation_plan.md"
+            plan.write_text("approved")
+            prior = {"identity": {"Run ID": "run", "Lifecycle": "remediation"},
+                "reentry": {"Approval reference": "approved", "Approved plan": str(plan),
+                            "Approved plan SHA256": hashlib.sha256(plan.read_bytes()).hexdigest()},
+                "worker_results": [{"Worker": "implement", "Outcome": "complete"},
+                                   {"Worker": "review", "Outcome": "complete"},
+                                   {"Worker": "validate", "Outcome": "blocked"}]}
+            data = json.dumps(prior).encode()
+            snapshot = root / "snapshot.json"
+            snapshot.write_bytes(data)
+            digest = hashlib.sha256(data).hexdigest()
+            failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator",
+                "runtime_closure": "terminal", "run_id": "run", "packet_snapshot": str(snapshot),
+                "snapshot_sha256": digest, "packet_sha256": digest,
+                "errors": ["final work record blocked: parent context is nonconformant: memory_path"]}
+            failure_path = root / "finalization_failure.json"
+            failure_path.write_text(json.dumps(failure))
+            (root / "role_bindings.json").write_text(json.dumps({"parent_context": {
+                "provider_session": "session", "input_paths": [], "parent_thread_id": "parent", "turn_id": "turn"},
+                "runtime_evidence": {}}))
+            ledger_path = root / "runtime_dispatches.json"
+            ledger = {"thread_mappings": {"/root/worker": "worker"}, "timing": {"open_worker_intervals": 0}}
+            ledger_path.write_text(json.dumps(ledger))
+            observations = [{"Provider handle": "/root/worker"}]
+            closure = {"terminal_observations": observations}
+            context = {"status": "rejected", "errors": ["forbidden_context_reference:memory_path"], "turn_id": "turn"}
+            candidate, planning = {"status": "unaccepted"}, {"claims": ["retained"]}
+            with patch("provider_runtime.parent_context_audit", return_value=context) as audit, \
+                 patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
+                 patch.object(planning_contracts, "_worker_runtime_audit_errors", return_value=[]) as worker_audit, \
+                 patch("merge_techops_result.merged_result_errors", return_value=[]), \
+                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch.object(prepare, "_recover_current_accepted_candidate", return_value=candidate), \
+                 patch.object(prepare, "_verified_recovery_planning", return_value=planning):
+                self.assertEqual(prepare._recover_post_delivery_context_failure(root, prior, closure, root), (candidate, planning))
+                audit.return_value = {"status": "passed", "errors": [], "turn_id": "turn"}
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+                audit.return_value = context
+                worker_audit.return_value = ["tampered trace"]
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+                worker_audit.return_value = []
+                ledger["rejected_results"] = {"tester": {}}
+                ledger_path.write_text(json.dumps(ledger))
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+                ledger_path.write_text(json.dumps({"thread_mappings": {"/root/worker": "worker"}, "timing": {"open_worker_intervals": 0}}))
+                plan.write_text("changed")
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_plan_changed"):
+                    prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+
     def test_invalid_techops_goal_provenance_stops_before_creating_run_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

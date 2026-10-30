@@ -1276,6 +1276,67 @@ def _recover_terminal_unmerged_review(artifact_root: Path, prior: dict, closure:
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
+def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, closure: dict,
+                                           source_checkout: Path) -> tuple[dict, dict]:
+    """Preserve approved planning and the candidate after a verified late parent-context failure."""
+    try:
+        from planning_contracts import _worker_runtime_audit_errors, terminal_closure_dispatch_errors
+        from merge_techops_result import merged_result_errors
+        from provider_runtime import parent_context_audit
+        from worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    except ModuleNotFoundError:
+        from scripts.planning_contracts import _worker_runtime_audit_errors, terminal_closure_dispatch_errors
+        from scripts.merge_techops_result import merged_result_errors
+        from scripts.provider_runtime import parent_context_audit
+        from scripts.worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
+    try:
+        packet_path = artifact_root / "finalization_packet.json"
+        failure = json.loads((artifact_root / "finalization_failure.json").read_text())
+        ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+        bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+        snapshot = Path(failure["packet_snapshot"]).resolve()
+        frozen = snapshot.read_bytes()
+        handles = sorted(ledger["thread_mappings"])
+        observations = closure["terminal_observations"]
+        parent = bindings["parent_context"]
+        context = parent_context_audit(Path(parent["provider_session"]), artifact_root=artifact_root,
+            input_paths=tuple(parent["input_paths"]), expected_thread_id=parent["parent_thread_id"],
+            expected_turn_id=parent["turn_id"], runtime_evidence=bindings["runtime_evidence"],
+            related_run_thread_ids=tuple(parent.get("related_run_thread_ids", [])),
+            prior_dispatch_ledger_present=parent.get("prior_run_dispatch_ledger_present", False))
+        results = {row.get("Worker"): row.get("Outcome") for row in prior.get("worker_results", [])}
+        errors = failure.get("errors", [])
+        if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
+                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+                and failure.get("run_id") == prior["identity"]["Run ID"]
+                and prior["identity"].get("Lifecycle") == "remediation" and len(errors) == 1
+                and "parent context" in errors[0].lower() and "nonconformant" in errors[0].lower()
+                and context.get("status") == "rejected" and context.get("errors")
+                and all(error in errors[0] or error.rsplit(":", 1)[-1] in errors[0] for error in context["errors"])
+                and context.get("turn_id") == parent["turn_id"]
+                and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
+                and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+                and len(prior.get("worker_results", [])) == 3
+                and results.get("implement") == results.get("review") == "complete"
+                and results.get("validate") in {"complete", "blocked"}
+                and not ledger.get("rejected_results") and ledger.get("timing", {}).get("open_worker_intervals") == 0
+                and handles and len(observations) == len(handles)
+                and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
+                and _native_terminal_observations(ledger, handles, require_terminal=False) == observations
+                and not _worker_runtime_audit_errors(prior, packet_path, {"implement", "review", "validate"})
+                and not merged_result_errors(prior, bindings, artifact_root)):
+            raise ValueError("remediation_recovery_evidence_unverified")
+        plan = artifact_root / "implementation_plan.md"
+        reentry = prior["reentry"]
+        if (not reentry.get("Approval reference") or reentry.get("Approved plan") != str(plan.resolve())
+                or hashlib.sha256(plan.read_bytes()).hexdigest() != reentry.get("Approved plan SHA256")):
+            raise ValueError("remediation_recovery_plan_changed")
+        return _recover_current_accepted_candidate(artifact_root, prior, source_checkout), _verified_recovery_planning(artifact_root, prior)
+    except (OSError, KeyError, TypeError, AttributeError, StopIteration, json.JSONDecodeError) as error:
+        raise ValueError("remediation_recovery_evidence_unverified") from error
+
+
 def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, closure: dict,
                                            source_checkout: Path) -> dict:
     """Start a fresh run after a terminal context failure before any worker dispatch."""
@@ -1843,6 +1904,13 @@ def _reentry_source(
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate, planning_source = _recover_terminal_reviewer_failure(
+                    artifact_root, prior, closure, source_checkout)
+            elif (any("parent context" in str(error).lower() and "nonconformant" in str(error).lower()
+                      for error in failure.get("errors", []))
+                  and any(row.get("Worker") == "validate" for row in prior.get("worker_results", []))):
+                if source_checkout is None:
+                    raise ValueError("candidate_recovery_source_checkout_invalid")
+                candidate, planning_source = _recover_post_delivery_context_failure(
                     artifact_root, prior, closure, source_checkout)
             elif (any(str(error).startswith("parent_context_nonconformant:") for error in failure.get("errors", []))
                   and any(row.get("Worker") == "implement" and row.get("Outcome") == "complete"

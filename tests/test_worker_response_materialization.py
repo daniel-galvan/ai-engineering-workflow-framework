@@ -5,9 +5,11 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import prepare_run
-from scripts.prepare_worker_response import prepare_response
+from scripts.prepare_worker_response import prepare_response, validate_response
+from scripts.review_evidence import PLAN_FIXTURE, REVIEW_FIXTURE
 from scripts.merge_techops_result import WORKERS, merge_result
 from scripts.provider_runtime import read_runtime_events
 from scripts.worker_runtime_evidence import export_worker_trace, worker_final_response
@@ -22,6 +24,23 @@ HANDLE = "/root/current_state_investigator"
 
 
 class WorkerResponseMaterialization(unittest.TestCase):
+    def test_accepted_remediation_review_checks_plan_coverage_before_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet = root / "finalization_packet.json"
+            packet.write_text(json.dumps({"identity": {"Run ID": "run"}}))
+            (root / "role_bindings.json").write_text(json.dumps({"run_id": "run", "lifecycle": "remediation",
+                "playbook": "techops_issue_remediation"}))
+            (root / "implementation_plan.md").write_text(PLAN_FIXTURE)
+            response = {"result": {}, "output": REVIEW_FIXTURE}
+            with patch("scripts.prepare_worker_response.validated_result"):
+                self.assertEqual(json.loads(validate_response(packet, "reviewer", response)), response)
+                response["output"] = REVIEW_FIXTURE.replace("Asset-only edit preserves publication", "Renamed behavior")
+                with self.assertRaisesRegex(ValueError, "review_plan_coverage_invalid.*review omits"):
+                    validate_response(packet, "reviewer", response)
+                response["output"] = response["output"].replace("Disposition: accepted", "Disposition: changes_required")
+                self.assertEqual(json.loads(validate_response(packet, "reviewer", response)), response)
+
     def test_response_builder_checks_schema_and_serializes_without_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)

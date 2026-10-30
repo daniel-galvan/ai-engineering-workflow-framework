@@ -29,8 +29,9 @@ Disposition: accepted / changes_required / replanning_required / blocked
 
 ## Behavior Review
 
-One row per material changed behavior; cross-check against the full candidate. Evidence must identify real paths or
-current evidence IDs. Counterexample checks must record observations, not just future test plans.
+Include every required or conditional behavior from the approved plan's Behavior Applicability table, using its exact
+behavior name. Add rows for other material changed behaviors found in the full candidate. Evidence must identify real
+paths or current evidence IDs. Counterexample checks must record observations, not just future test plans.
 
 | Behavior | Applicability evidence | Caller / producer | Consumer / contract | Lifecycle / invariant | Counterexample check / result | Regression evidence | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- |

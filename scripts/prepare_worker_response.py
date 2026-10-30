@@ -3,15 +3,18 @@
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 try:
     from merge_techops_result import validated_result
     from provider_runtime import strict_json_loads
+    from review_evidence import plan_review_coverage_errors
 except ModuleNotFoundError:
     from scripts.merge_techops_result import validated_result
     from scripts.provider_runtime import strict_json_loads
+    from scripts.review_evidence import plan_review_coverage_errors
 
 
 def validate_response(packet_path: Path, agent: str, response: dict) -> str:
@@ -24,6 +27,13 @@ def validate_response(packet_path: Path, agent: str, response: dict) -> str:
             or not isinstance(response["output"], str) or not response["output"].strip()):
         raise ValueError("worker_response_envelope_invalid")
     validated_result(packet, response["result"], bindings, agent)
+    if (agent == "reviewer" and bindings.get("lifecycle") == "remediation"
+            and bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}
+            and re.search(r"^Disposition:\s*accepted\s*$", response["output"], re.M)):
+        errors = plan_review_coverage_errors((packet_path.parent / "implementation_plan.md").read_text(),
+                                             response["output"])
+        if errors:
+            raise ValueError("review_plan_coverage_invalid:" + ";".join(errors))
     return json.dumps(response, ensure_ascii=False, separators=(",", ":"))
 
 
