@@ -2848,7 +2848,17 @@ def status_projection(execution_repository: Path, work_item: str, provider_sessi
         raise ValueError("provider_session_parent_mismatch")
     parent = header.get("payload", {}).get("id")
     repository, _ = resolve_repository_paths(execution_repository)
-    ids = prior_run_status_thread_ids(repository / ".thoughts" / work_item, parent)
+    root = repository / ".thoughts" / work_item
+    ids = prior_run_status_thread_ids(root, parent)
+    bindings_path = root / "role_bindings.json"
+    packet_path = root / "finalization_packet.json"
+    if not ids and bindings_path.is_file() and packet_path.is_file() and not (root / "finalization_failure.json").exists():
+        bindings = json.loads(bindings_path.read_text())
+        identity = json.loads(packet_path.read_text()).get("identity", {})
+        saved_parent = bindings.get("parent_context", {})
+        if (bindings.get("run_id") == identity.get("Run ID") and identity.get("State") == "in_progress"
+                and saved_parent.get("parent_thread_id") == parent):
+            ids = tuple(saved_parent.get("related_run_thread_ids", []))
     return {"status": "ready", "parent_thread_id": parent, "prior_thread_ids": list(ids),
             "projection": related_run_status_projection_source(work_item, parent, ids)}
 

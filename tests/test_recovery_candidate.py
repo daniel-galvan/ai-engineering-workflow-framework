@@ -57,6 +57,28 @@ class CandidateRecoveryTest(unittest.TestCase):
     def test_replays_recorded_updates_and_additions(self):
         self.assertEqual(set(self.verify()), {"tracked.txt", "new.txt"})
 
+    def test_prepared_continuation_status_projection_keeps_bound_prior_workers(self):
+        parent = "00000000-0000-0000-0000-000000000001"
+        worker = "00000000-0000-0000-0000-000000000002"
+        self.session.write_text(json.dumps({"type": "session_meta", "payload": {"id": parent}}) + "\n")
+        root = self.repo / ".thoughts" / "ITEM-1"
+        root.mkdir(parents=True)
+        bindings = {"run_id": "run", "parent_context": {"parent_thread_id": parent,
+                    "related_run_thread_ids": [worker]}}
+        (root / "role_bindings.json").write_text(json.dumps(bindings))
+        (root / "finalization_packet.json").write_text(json.dumps({"identity": {"Run ID": "run", "State": "in_progress"}}))
+        prefix = "provider_runtime" if importlib.util.find_spec("provider_runtime") else "scripts.provider_runtime"
+        with patch(prefix + ".current_parent_session", return_value=self.session), \
+             patch(prefix + ".prior_run_status_thread_ids", return_value=()), \
+             patch.object(prepare, "resolve_repository_paths", return_value=(self.repo, None)):
+            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session)["prior_thread_ids"], [worker])
+            (root / "finalization_failure.json").write_text("{}")
+            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session)["prior_thread_ids"], [])
+            (root / "finalization_failure.json").unlink()
+            bindings["parent_context"]["parent_thread_id"] = worker
+            (root / "role_bindings.json").write_text(json.dumps(bindings))
+            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session)["prior_thread_ids"], [])
+
     def test_followup_replays_only_authorized_snapshot_updates(self):
         initial = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}
         self.rows[1]["payload"]["item"]["changes"] = {
