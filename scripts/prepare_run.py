@@ -1306,25 +1306,28 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
             prior_dispatch_ledger_present=parent.get("prior_run_dispatch_ledger_present", False))
         results = {row.get("Worker"): row.get("Outcome") for row in prior.get("worker_results", [])}
         errors = failure.get("errors", [])
+        has_context_failure = (len(errors) == 1 and isinstance(errors[0], str) and
+            ("parent_context_nonconformant:" in errors[0] or
+             "parent context" in errors[0].lower() and "nonconformant" in errors[0].lower()))
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
                 and failure.get("run_id") == prior["identity"]["Run ID"]
-                and prior["identity"].get("Lifecycle") == "remediation" and len(errors) == 1
-                and "parent context" in errors[0].lower() and "nonconformant" in errors[0].lower()
+                and prior["identity"].get("Lifecycle") == "remediation" and has_context_failure
                 and context.get("status") == "rejected" and context.get("errors")
                 and all(error in errors[0] or error.rsplit(":", 1)[-1] in errors[0] for error in context["errors"])
                 and context.get("turn_id") == parent["turn_id"]
                 and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
-                and len(prior.get("worker_results", [])) == 3
+                and len(prior.get("worker_results", [])) == len(results)
                 and results.get("implement") == results.get("review") == "complete"
-                and results.get("validate") in {"complete", "blocked"}
+                and (set(results) == {"implement", "review"} or
+                     set(results) == {"implement", "review", "validate"} and results["validate"] in {"complete", "blocked"})
                 and not ledger.get("rejected_results") and ledger.get("timing", {}).get("open_worker_intervals") == 0
                 and handles and len(observations) == len(handles)
                 and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
                 and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations
-                and not _worker_runtime_audit_errors(prior, packet_path, {"implement", "review", "validate"})
+                and not _worker_runtime_audit_errors(prior, packet_path, set(results))
                 and not merged_result_errors(prior, bindings, artifact_root)):
             raise ValueError("remediation_recovery_evidence_unverified")
         plan = artifact_root / "implementation_plan.md"
@@ -1905,9 +1908,11 @@ def _reentry_source(
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate, planning_source = _recover_terminal_reviewer_failure(
                     artifact_root, prior, closure, source_checkout)
-            elif (any("parent context" in str(error).lower() and "nonconformant" in str(error).lower()
+            elif (any("parent_context_nonconformant:" in str(error) or
+                      "parent context" in str(error).lower() and "nonconformant" in str(error).lower()
                       for error in failure.get("errors", []))
-                  and any(row.get("Worker") == "validate" for row in prior.get("worker_results", []))):
+                  and any(row.get("Worker") == "review" and row.get("Outcome") == "complete"
+                          for row in prior.get("worker_results", []))):
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate, planning_source = _recover_post_delivery_context_failure(

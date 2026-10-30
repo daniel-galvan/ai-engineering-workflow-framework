@@ -62,6 +62,19 @@ class TechOpsCorrections(unittest.TestCase):
                  patch.object(prepare, "_recover_current_accepted_candidate", return_value=candidate), \
                  patch.object(prepare, "_verified_recovery_planning", return_value=planning):
                 self.assertEqual(prepare._recover_post_delivery_context_failure(root, prior, closure, root), (candidate, planning))
+                reviewed = copy.deepcopy(prior)
+                reviewed["worker_results"].pop()
+                reviewed_bytes = json.dumps(reviewed).encode()
+                snapshot.write_bytes(reviewed_bytes)
+                reviewed_hash = hashlib.sha256(reviewed_bytes).hexdigest()
+                failure.update(snapshot_sha256=reviewed_hash, packet_sha256=reviewed_hash,
+                    errors=["correction_blocked:parent_context_nonconformant:forbidden_context_reference:memory_path"])
+                failure_path.write_text(json.dumps(failure))
+                self.assertEqual(prepare._recover_post_delivery_context_failure(root, reviewed, closure, root), (candidate, planning))
+                snapshot.write_bytes(data)
+                failure.update(snapshot_sha256=digest, packet_sha256=digest,
+                    errors=["final work record blocked: parent context is nonconformant: memory_path"])
+                failure_path.write_text(json.dumps(failure))
                 audit.return_value = {"status": "passed", "errors": [], "turn_id": "turn"}
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_post_delivery_context_failure(root, prior, closure, root)

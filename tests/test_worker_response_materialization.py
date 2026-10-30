@@ -38,6 +38,10 @@ class WorkerResponseMaterialization(unittest.TestCase):
                 response["output"] = REVIEW_FIXTURE.replace("Asset-only edit preserves publication", "Renamed behavior")
                 with self.assertRaisesRegex(ValueError, "review_plan_coverage_invalid.*review omits"):
                     validate_response(packet, "reviewer", response)
+                response["output"] = REVIEW_FIXTURE.replace("| Source path trace | pass |", "| Source path trace | verified |")
+                with self.assertRaisesRegex(ValueError, "review_plan_coverage_invalid.*validation row 1 has invalid result"):
+                    validate_response(packet, "reviewer", response)
+                response["output"] = REVIEW_FIXTURE.replace("Asset-only edit preserves publication", "Renamed behavior")
                 response["output"] = response["output"].replace("Disposition: accepted", "Disposition: changes_required")
                 self.assertEqual(json.loads(validate_response(packet, "reviewer", response)), response)
 
