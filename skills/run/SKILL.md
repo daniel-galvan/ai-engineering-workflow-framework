@@ -701,6 +701,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    instead of handwriting a receipt from rounded timestamps. `worker_final_response_turn_id_required` is a
    Coordinator receipt error: refresh the raw status read and re-export without reactivating the worker or spending
    its analytical correction allowance.
+   To locate a completed worker's native session, search session filenames for its exact recorded thread ID. Do not
+   read the Coordinator's own chat or call `list_threads` again; use only the prepared status-only worker projections.
    If collection returns `worker_trace_role_mismatch`, select the exact child session mapped to the requested worker
    in the current ledger and export again. This is a Coordinator collection error, not a rejected worker result.
    For an earlier wrong-session rejected trace, retain it and export the correctly mapped worker to a new trace path;

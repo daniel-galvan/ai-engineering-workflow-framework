@@ -527,7 +527,7 @@ class TechOpsCorrections(unittest.TestCase):
             trace = {"run_id": "delivery", "worker": "reviewer", "thread_id": "thread", "last_dispatch_at": "time",
                      "spawn": {"provider_handle": "/root/review"},
                      "audit": {"errors": ["worker_fan_in_rejected", "forbidden_context_reference:memory_path"]}}
-            trace_path = root / "review_trace.json"
+            trace_path = root / "trace_review.json"
             trace_path.write_text(json.dumps(trace))
             pending = {"trace": str(trace_path), "run_id": "delivery", "sha256": hashlib.sha256(trace_path.read_bytes()).hexdigest(),
                        "Provider handle": "/root/review", "Last dispatch at": "time"}
@@ -583,6 +583,24 @@ class TechOpsCorrections(unittest.TestCase):
                 trace_path.write_text("tampered")
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+                passed = {**trace, "audit": {"status": "passed", "errors": []}}
+                trace_path.write_text(json.dumps(passed))
+                ledger.pop("rejected_results")
+                (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+                with patch("runtime_checks.trace_errors", return_value=[]):
+                    result, saved = prepare._recover_terminal_unmerged_review(root, packet, closure, root)
+                    self.assertEqual((result, saved), (candidate, planning))
+                    passed["worker"] = "review"
+                    trace_path.write_text(json.dumps(passed))
+                    self.assertEqual(prepare._recover_terminal_unmerged_review(root, packet, closure, root),
+                                     (candidate, planning))
+                    with patch("runtime_checks.trace_errors", return_value=["worker_fan_in_rejected"]):
+                        with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                            prepare._recover_terminal_unmerged_review(root, packet, closure, root)
+                    passed["thread_id"] = "other"
+                    trace_path.write_text(json.dumps(passed))
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_terminal_unmerged_review(root, packet, closure, root)
 
     def test_predispatch_context_recovery_requires_no_workers_and_proven_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
