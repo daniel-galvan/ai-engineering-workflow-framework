@@ -773,6 +773,29 @@ class TechOpsCorrections(unittest.TestCase):
                         prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True)
                 observations[0]["Provider status"] = "interrupted"
                 self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True), candidate)
+                corrected = root / "corrected.txt"
+                corrected.write_text("guarded correction")
+                corrected_hash = hashlib.sha256(corrected.read_bytes()).hexdigest()
+                (root / "activation_receipts.json").write_text(json.dumps({corrected.name: {
+                    "run_id": "delivery", "agent": "implementer", "sha256": corrected_hash}}))
+                repaired = copy.deepcopy(packet)
+                repaired["activation_repairs"] = {"implementer": {"Attempt": 1, "Provider handle": "/root/worker",
+                    "Last dispatch at": "time", "Rejected trace SHA256": receipt["sha256"],
+                    "Corrected dispatch SHA256": corrected_hash}}
+                repaired_bytes = json.dumps(repaired).encode()
+                snapshot.write_bytes(repaired_bytes)
+                repaired_hash = hashlib.sha256(repaired_bytes).hexdigest()
+                (root / "finalization_failure.json").write_text(json.dumps({**failure,
+                    "snapshot_sha256": repaired_hash, "packet_sha256": repaired_hash}))
+                observations[0]["Last dispatch at"] = "later"
+                with patch("provider_runtime.latest_worker_dispatch", return_value={"Operation": "followup_task", "Last dispatch at": "later"}):
+                    self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, repaired, closure, root, rejected=True), candidate)
+                    corrected.write_text("tampered")
+                    with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
+                        prepare._recover_stopped_bootstrap_candidate(root, repaired, closure, root, rejected=True)
+                snapshot.write_bytes(frozen)
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                observations[0]["Last dispatch at"] = "time"
                 observations[0]["Provider status"] = "running"
                 with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
                     prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True)

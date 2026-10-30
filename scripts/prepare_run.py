@@ -1414,6 +1414,33 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
             raw = path.read_bytes()
             trace = json.loads(raw)
             handle = receipt["Provider handle"]
+            closure_dispatch = receipt.get("Last dispatch at")
+            repair = prior.get("activation_repairs", {}).get("implementer")
+            if repair:
+                try:
+                    from provider_runtime import latest_worker_dispatch
+                except ModuleNotFoundError:
+                    from scripts.provider_runtime import latest_worker_dispatch
+                # The correction is not accepted as a result; it only determines which
+                # dispatch the independent terminal observation must close.
+                latest = latest_worker_dispatch(ledger, handle)
+                receipts = json.loads((artifact_root / "activation_receipts.json").read_text())
+                approved = [(name, row) for name, row in receipts.items()
+                            if row.get("run_id") == prior["identity"]["Run ID"]
+                            and row.get("agent") == "implementer"
+                            and row.get("sha256") == repair.get("Corrected dispatch SHA256")]
+                if not (repair.get("Attempt") == 1 and repair.get("Provider handle") == handle
+                        and repair.get("Last dispatch at") == receipt.get("Last dispatch at")
+                        and repair.get("Rejected trace SHA256") == receipt.get("sha256")
+                        and latest.get("Operation") == "followup_task"
+                        and latest.get("Last dispatch at") != receipt.get("Last dispatch at")
+                        and len(approved) == 1):
+                    raise ValueError("candidate_rejected_trace_unverified")
+                corrected = artifact_root / approved[0][0]
+                if (corrected.is_symlink() or corrected.resolve().parent != artifact_root.resolve()
+                        or hashlib.sha256(corrected.read_bytes()).hexdigest() != approved[0][1]["sha256"]):
+                    raise ValueError("candidate_rejected_trace_unverified")
+                closure_dispatch = latest["Last dispatch at"]
             if not (hashlib.sha256(raw).hexdigest() == receipt.get("sha256")
                     and receipt.get("run_id") == trace.get("run_id") == prior["identity"]["Run ID"]
                     and trace.get("worker") == "implementer" and trace.get("audit", {}).get("status") == "rejected"
@@ -1422,7 +1449,7 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                     and trace.get("last_dispatch_at") == receipt.get("Last dispatch at")
                     and any(row.get("Provider handle") == handle and row.get("Provider status") in
                             {"completed", "idle", "interrupted", "stopped", "cancelled", "failed"}
-                            and row.get("Last dispatch at") == receipt.get("Last dispatch at") for row in observations)):
+                            and row.get("Last dispatch at") == closure_dispatch for row in observations)):
                 raise ValueError("candidate_rejected_trace_unverified")
         else:
             if (len(errors) != 1 or not isinstance(errors[0], str) or "bootstrap" not in errors[0].lower()

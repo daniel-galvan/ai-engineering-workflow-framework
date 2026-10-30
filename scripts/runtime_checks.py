@@ -254,6 +254,17 @@ def dispatch_message(packet: dict, message: str, path: Path) -> str:
 
 def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     digest = hashlib.sha256(message.encode()).hexdigest()
+    if len(message) > 12000:
+        commands = []
+        for start in range(0, len(message), 6000):
+            code = f"print(open({str(path.resolve())!r}).read()[{start}:{min(start + 6000, len(message))}],end='')"
+            commands.append(shlex.join(["python3", "-c", code]))
+        reading = ("Read the complete file in order with each separate literal command below; "
+                   "do not omit or change any part:\n" + "\n".join(commands) + "\n")
+    else:
+        reading = f"Read it with this separate literal command: {shlex.join(['cat', str(path.resolve())])}\n"
+    file_identity = (f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
+                     if len(message) > 12000 else "")
     return (packet["required_prefix"] + "\n"
             + "First step: verify and read the file; this bootstrap is self-contained. Before reading, "
               "do not search memory unless required by the host. If required, use a separate `rg -n -F` "
@@ -261,10 +272,12 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
               "only a verified no-match passes. Do not search the artifact directory, previous chats or archives.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
+            + file_identity
             + f"Verify its SHA256 is {digest}; stop on mismatch.\n"
-            + f"Read it with this separate literal command: {shlex.join(['cat', str(path.resolve())])}\n"
+            + reading
             + "Use separate tool calls for verification and the complete instruction read.\n"
-            + f"Set max_output_tokens to at least {len(message.encode())}; truncated output is not delivery.\n"
+            + f"Set max_output_tokens to at least {6000 if len(message) > 12000 else len(message.encode())}"
+              "; truncated output is not delivery.\n"
             + "Please continue in this same turn through the full typed assignment. A bootstrap acknowledgment is not completion. "
               "The file is the operative role, input, output and policy contract. Read it in full. "
               "Do not rerun Coordinator initialization.")
@@ -1160,6 +1173,56 @@ def _dispatch_read_output(command: str, content: str) -> str:
     return content
 
 
+def _dispatch_segment(command: str) -> tuple[str, int, int] | None:
+    """Recognize only an exact literal slice read, without evaluating provider code."""
+    try:
+        tokens = shlex.split(command)
+        if len(tokens) != 3 or tokens[:2] != ["python3", "-c"]:
+            return None
+        tree = ast.parse(tokens[2])
+        part = tree.body[0].value.args[0]
+        target = part.value.func.value.args[0].value
+        start, end = part.slice.lower.value, part.slice.upper.value
+        if (not isinstance(target, str) or type(start) is not int or type(end) is not int
+                or start < 0 or not 0 < end - start <= 6000):
+            return None
+        expected = f"print(open({target!r}).read()[{start}:{end}],end='')"
+        if ast.dump(tree) == ast.dump(ast.parse(expected)):
+            return target, start, end
+    except (ValueError, SyntaxError, TypeError, AttributeError, IndexError):
+        pass
+    return None
+
+
+def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path) -> dict[str, str]:
+    """Require ordered, complete, paired outputs for the entire immutable dispatch."""
+    cursor, verified = 0, {}
+    rows = trace.get("tool_trace", [])
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or row.get("type") not in {"function_call", "custom_tool_call"}:
+            continue
+        for name, arguments in _tool_operations(row):
+            segment = _dispatch_segment(arguments.get("cmd", "")) if name == "exec_command" else None
+            if not segment:
+                continue
+            target, start, end = segment
+            target_path = Path(target) if Path(target).is_absolute() else Path(arguments.get("workdir", cwd)) / target
+            if target_path.resolve() != path.resolve():
+                continue
+            if start != cursor or end > len(content) or not row.get("call_id") or row["call_id"] in verified:
+                return {}
+            expected = content[start:end]
+            paired = [item for item in rows[index + 1:] if isinstance(item, dict)
+                      and item.get("type") in {"function_call_output", "custom_tool_call_output"}
+                      and item.get("call_id") == row["call_id"]]
+            if len(paired) != 1 or not any(expected in value and "Warning: truncated output" not in value
+                                           for _, value in _trace_strings({"tool_trace": paired})):
+                return {}
+            verified[row["call_id"]] = expected
+            cursor = end
+    return verified if cursor == len(content) and verified else {}
+
+
 def _python_read_targets(source: str) -> list[str]:
     """Recognize the recorded JSON inspection form; other Python remains unaudited."""
     tree = ast.parse(source)
@@ -1206,6 +1269,9 @@ def _python_read_targets(source: str) -> list[str]:
 def _read_targets(command: str) -> list[str]:
     if not isinstance(command, str):
         return []
+    segment = _dispatch_segment(command)
+    if segment:
+        return [segment[0]]
     chunk = _chunked_dispatch_read(command)
     if chunk:
         return [chunk[0]]
@@ -1529,6 +1595,8 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
                          "binding_agent": role, "dispatch_proof_source": "provider_instruction_read"}
                 candidate = {**trace, "spawn": {**trace["spawn"], **proof}}
                 content = _verified_dispatch_content(candidate)
+                if content and _verified_dispatch_segments(trace, path, content, cwd):
+                    return proof
                 if content and row.get("call_id"):
                     for output in trace.get("tool_trace", []):
                         if (output.get("type") in {"function_call_output", "custom_tool_call_output"}
@@ -1621,6 +1689,8 @@ def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -
             if not content:
                 continue
             dispatch_path = (root / name).resolve()
+            for call_id, segment in _verified_dispatch_segments(trace, dispatch_path, content, root.parent.parent).items():
+                contents.setdefault(call_id, {}).setdefault("dispatch", []).append(segment)
             for row in trace.get("tool_trace", []):
                 if not isinstance(row, dict):
                     continue

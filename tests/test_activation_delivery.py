@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -112,7 +113,7 @@ class ActivationDelivery(unittest.TestCase):
         result = self.command(*args)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         receipt = json.loads(result.stdout)
-        self.assertLess(len(receipt["activation_message"]), 1200)
+        self.assertLess(len(receipt["activation_message"]), len(dispatch.read_text()))
         packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["current_state_investigator"]
         self.assertEqual(receipt["launch_arguments"], {
             "fork_turns": "none", "model": packet["model"], "reasoning_effort": packet["effort"],
@@ -216,6 +217,13 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn("Do not search the artifact directory", notice)
         self.assertIn("Use separate tool calls for verification and the complete instruction read", notice)
         self.assertIn("max_output_tokens to at least 12; truncated output is not delivery", notice)
+        large = runtime.dispatch_notice({"required_prefix": "Coordinator initialization: complete",
+            "agent": "current_state_investigator", "model": "model", "effort": "high", "run_id": "ITEM-1"},
+            "x" * 13001, path)
+        commands = large.split("do not omit or change any part:\n", 1)[1].split("\nUse separate tool calls", 1)[0].splitlines()
+        self.assertEqual([runtime_checks._dispatch_segment(command)[1:] for command in commands],
+                         [(0, 6000), (6000, 12000), (12000, 13001)])
+        self.assertTrue(all(runtime_checks._read_targets(command) == [str(path.resolve())] for command in commands))
 
     def test_live_opaque_dispatch_requires_paired_instruction_read_before_inventory(self):
         trace = self.instruction_trace()
@@ -277,6 +285,44 @@ class ActivationDelivery(unittest.TestCase):
         self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts), {})
         self.assertEqual(runtime._read_targets(command.replace("range(0,", "range(1,")), [])
         self.assertEqual(runtime._read_targets(command.replace("9000]}')", "9000]}'); print(open('extra').read())")), [])
+
+    def test_separate_dispatch_segments_require_complete_ordered_paired_outputs(self):
+        trace = self.instruction_trace()
+        path = trace["spawn"]["dispatch_file"]
+        content = Path(path).read_text()
+        rows = []
+        for index, start in enumerate(range(0, len(content), 900)):
+            end = min(start + 900, len(content))
+            code = f"print(open({path!r}).read()[{start}:{end}],end='')"
+            command = shlex.join(["python3", "-c", code])
+            call = f"part-{index}"
+            rows.extend([{"type": "custom_tool_call", "name": "exec", "call_id": call,
+                          "input": 'text(await tools.exec_command(' + json.dumps({"cmd": command}) + '));'},
+                         {"type": "custom_tool_call_output", "call_id": call,
+                          "output": [{"type": "input_text", "text": content[start:end]}]}])
+        trace["tool_trace"] = rows
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        sessions = self.root / "codex-segmented" / "sessions"
+        sessions.mkdir(parents=True)
+        source = sessions / ("rollout-" + CHILD + ".jsonl")
+        native_rows = [{"timestamp": DISPATCH, "type": "session_meta", "payload": {"id": CHILD}}]
+        native_rows.extend({"timestamp": "2026-10-12T20:01:00Z", "type": "response_item", "payload": row} for row in rows)
+        source.write_text("\n".join(json.dumps(row) for row in native_rows) + "\n")
+        with patch.dict(os.environ, {"CODEX_HOME": str(sessions.parent)}):
+            proof = runtime_checks.live_dispatch_binding({"Thread ID": CHILD, "Last dispatch at": DISPATCH},
+                "current_state_investigator", self.artifacts, trace["run_id"], "2026-10-12T20:02:00Z")
+            self.assertEqual(proof.get("dispatch_file"), path)
+        for mutate in ("missing", "reordered", "truncated", "wrong_pair", "duplicate_id"):
+            invalid = json.loads(json.dumps(trace))
+            if mutate == "missing": invalid["tool_trace"] = invalid["tool_trace"][:-2]
+            if mutate == "reordered": invalid["tool_trace"] = invalid["tool_trace"][2:4] + invalid["tool_trace"][:2] + invalid["tool_trace"][4:]
+            if mutate == "truncated": invalid["tool_trace"][1]["output"][0]["text"] = "Warning: truncated output"
+            if mutate == "wrong_pair": invalid["tool_trace"][1]["call_id"] = "other"
+            if mutate == "duplicate_id": invalid["tool_trace"][2]["call_id"] = invalid["tool_trace"][0]["call_id"]
+            self.assertEqual(runtime.observed_dispatch_binding(invalid, self.artifacts), {}, mutate)
+        trace["tool_trace"][1]["output"][0]["text"] += "\n" + ARCHIVE
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
 
     def test_file_count_and_listing_do_not_count_as_archive_reads(self):
         command = "wc -l -c .thoughts/ITEM-1/activation.txt && rg --files .thoughts/ITEM-1"
