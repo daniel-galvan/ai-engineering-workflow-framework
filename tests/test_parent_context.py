@@ -764,6 +764,19 @@ class ParentContext(unittest.TestCase):
         )
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_incomplete_literal_command_is_still_audited(self):
+        payload = {"type": "custom_tool_call", "name": "exec",
+                   "input": 'const r = await tools.exec_command({cmd:"cat /repo/file"}\n'}
+        self.rows.append({"type": "response_item", "payload": payload})
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        payload["input"] = payload["input"].replace('/repo/file', '.thoughts/OTHER/runs/old/secret')
+        self.assertIn("forbidden_context_reference:archived_artifact", self.audit()["errors"])
+        for source in ('const r = await tools.exec_command({cmd:unknown}',
+                       'await tools.exec_command({cmd:"cat /secret"}); ' + payload["input"],
+                       'const r = await tools.exec_command({cmd:"cat /repo/file", extra:unknown}'):
+            payload["input"] = source
+            self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
     def test_literal_command_batch_audits_each_command_and_rejects_extra_code(self):
         from scripts.provider_runtime import _literal_command_batch
         source = ('const cmds = [["first", "cat /repo/one"], ["second", "cat /repo/two"]];\n'

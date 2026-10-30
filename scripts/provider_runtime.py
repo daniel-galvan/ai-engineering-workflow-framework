@@ -461,6 +461,17 @@ def _literal_command_batch(source: str) -> list[tuple[str, dict]] | None:
             for _, command in commands]
 
 
+def _incomplete_literal_command(source: str) -> list[tuple[str, dict]] | None:
+    """Audit the literal command even when its JavaScript call is missing the closing parenthesis."""
+    match = re.fullmatch(r'\s*const\s+\w+\s*=\s*await\s+tools\.exec_command\(\{\s*cmd\s*:\s*("(?:[^"\\]|\\.)*")\s*\}\s*', source)
+    if not match:
+        return None
+    try:
+        return [("exec_command", {"cmd": json.loads(match[1])})]
+    except ValueError:
+        return None
+
+
 def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None,
                          expected_turn_id: str | None = None, runtime_evidence: dict | None = None,
@@ -568,7 +579,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     if exact_status_projection else _tool_operations(payload)
                 )
                 if not calls and payload.get("type") == "custom_tool_call":
-                    calls = _literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source) or []
+                    calls = (_literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source)
+                             or _incomplete_literal_command(raw_source) or [])
                 if (not calls and payload.get("type") == "custom_tool_call"
                         and "tools.mcp__codex_app__list_threads({limit: 50})" in str(raw_source or "")):
                     calls = [("mcp__codex_app__list_threads", {})]

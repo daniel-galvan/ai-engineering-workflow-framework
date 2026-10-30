@@ -144,6 +144,58 @@ class CandidateRecoveryTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
                 prepare._recover_current_accepted_candidate(root, prior, self.repo)
 
+    def test_unmerged_worker_edit_requires_terminal_evidence_and_exact_checkout(self):
+        root = self.root / "run"
+        root.mkdir()
+        initial = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}
+        self.rows[1]["payload"]["item"]["changes"] = {
+            str(self.repo / "tracked.txt"): {"type": "update", "unified_diff": "@@ -1,2 +1,2 @@\n one\n-three\n+four\n"}}
+        self.write_session()
+        (self.repo / "tracked.txt").write_bytes(b"one\nfour\n")
+        prior = {"identity": {"Run ID": "delivery", "Lifecycle": "remediation"},
+                 "workers": [], "worker_results": [], "runtime_audits": []}
+        frozen = json.dumps(prior).encode()
+        snapshot = root / "snapshot.json"
+        snapshot.write_bytes(frozen)
+        digest = hashlib.sha256(frozen).hexdigest()
+        failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator", "runtime_closure": "terminal",
+                   "run_id": "delivery", "packet_snapshot": str(snapshot), "snapshot_sha256": digest, "packet_sha256": digest,
+                   "errors": ["parent_context_nonconformant:example"]}
+        (root / "finalization_failure.json").write_text(json.dumps(failure))
+        ledger = {"thread_mappings": {"/root/worker": "worker"}, "timing": {"open_worker_intervals": 0}}
+        (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+        candidate = {"status": "unaccepted", "baseline_revision": self.revision}
+        bindings = {"recovered_candidate": candidate, "parent_context": {"provider_session": str(self.session),
+                    "parent_thread_id": "parent"}, "runtime_evidence": {"run_started_at": "start"}}
+        (root / "role_bindings.json").write_text(json.dumps(bindings))
+        trace = {"run_id": "delivery", "worker": "implementer", "audit": {"status": "passed"}, "thread_id": "worker",
+                 "last_dispatch_at": "time",
+                 "trace_retrieval": str(self.session), "spawn": {"provider_handle": "/root/worker"}}
+        (root / "trace_implementer.json").write_text(json.dumps(trace))
+        observations = [{"Provider handle": "/root/worker", "Provider status": "completed", "Thread ID": "worker",
+                         "Last dispatch at": "time"}]
+        dispatch = {"worker_contract": {"recovered_candidate": candidate, "before_source_change_guard": "/guard"},
+                    "coordinator_execution": {"source_checkout": str(self.repo)}}
+        content = "Coordinator initialization: complete\n" + json.dumps(dispatch) + "\nTyped assignment:\n{}"
+        prefix = "" if importlib.util.find_spec("runtime_checks") else "scripts."
+        with patch(prefix + "planning_contracts.terminal_closure_dispatch_errors", return_value=[]), \
+             patch(prefix + "worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+             patch(prefix + "worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+             patch(prefix + "runtime_checks._verified_dispatch_content", return_value=content), \
+             patch(prefix + "recovery_candidate.verify_edit_authorization"), \
+             patch.object(prepare, "_verified_recovery_planning"), \
+             patch.object(prepare, "_recover_preserved_candidate", return_value={"_contents": initial}):
+            result = prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observations}, self.repo)
+            self.assertEqual(result["_contents"], {"tracked.txt": b"one\nfour\n", "new.txt": b"new\n"})
+            self.assertTrue(result["unmerged_parent_failure"])
+            (self.repo / "tracked.txt").write_text("tampered\n")
+            with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+                prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observations}, self.repo)
+            (self.repo / "tracked.txt").write_bytes(b"one\nfour\n")
+            (root / "finalization_failure.json").write_text(json.dumps({**failure, "runtime_closure": "unverified"}))
+            with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observations}, self.repo)
+
     def test_replay_from_clean_worktree_ignores_other_checkout_changes(self):
         worktree = self.root / "worktree"
         self.git("worktree", "add", "--detach", str(worktree), self.revision)
@@ -340,6 +392,33 @@ class CandidateRecoveryTest(unittest.TestCase):
             candidate["trace_sha256"] = accepted_sha
             self.assertEqual(prepare._recover_candidate_archive(root, prior, self.repo, candidate,
                                                                 visited=set(), check_checkout=True)["_contents"], after)
+            unmerged_packet = {"identity": {"Run ID": "second"}, "reentry": {"Approved plan SHA256": "plan"},
+                               "workers": [], "worker_results": [], "runtime_audits": []}
+            packet_sha = hashlib.sha256(json.dumps(unmerged_packet).encode()).hexdigest()
+            failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator",
+                       "runtime_closure": "terminal", "run_id": "second", "snapshot_sha256": packet_sha,
+                       "packet_sha256": packet_sha, "errors": ["parent_context_nonconformant:example"]}
+            observation = {"Provider status": "completed", "Provider handle": "/root/followup", "Thread ID": "worker",
+                           "Last dispatch at": "time"}
+            ledger = {"thread_mappings": {"/root/followup": "worker"}, "timing": {"open_worker_intervals": 0}}
+            archive("second", {"trace_accepted.json": accepted_trace, "dispatch.txt": raw,
+                               "activation_receipts.json": receipts, "role_bindings.json": bindings,
+                               "finalization_packet.json": unmerged_packet, "finalization_failure.json": failure,
+                               "runtime_closure.json": {"terminal_observations": [observation]}, "runtime_dispatches.json": ledger})
+            candidate["unmerged_parent_failure"] = True
+            self.assertEqual(prepare._recover_candidate_archive(root, prior, self.repo, candidate,
+                                                                visited=set(), check_checkout=True)["_contents"], after)
+            archive("second", {"trace_accepted.json": accepted_trace, "dispatch.txt": raw,
+                               "activation_receipts.json": receipts, "role_bindings.json": bindings,
+                               "finalization_packet.json": unmerged_packet,
+                               "finalization_failure.json": {**failure, "runtime_closure": "unverified"},
+                               "runtime_closure.json": {"terminal_observations": [observation]}, "runtime_dispatches.json": ledger})
+            with self.assertRaisesRegex(ValueError, "candidate_followup_trace_unverified"):
+                prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
+            archive("second", {"trace_accepted.json": accepted_trace, "dispatch.txt": raw,
+                               "activation_receipts.json": receipts, "role_bindings.json": bindings,
+                               "finalization_packet.json": unmerged_packet, "finalization_failure.json": failure,
+                               "runtime_closure.json": {"terminal_observations": [observation]}, "runtime_dispatches.json": ledger})
             (root / "runs" / "second" / "dispatch.txt").write_text("tampered")
             with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
                 prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
