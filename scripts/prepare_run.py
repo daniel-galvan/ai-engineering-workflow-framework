@@ -1285,6 +1285,16 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
+def _recover_rejected_candidate(artifact_root: Path, prior: dict, closure: dict, source_checkout: Path) -> dict:
+    """Use the recorded edit replay when the preserved snapshot has changed."""
+    try:
+        return _recover_stopped_bootstrap_candidate(artifact_root, prior, closure, source_checkout, rejected=True)
+    except ValueError as error:
+        if not str(error).startswith(("candidate_content_changed:", "candidate_changed_paths_mismatch")):
+            raise
+        return _recover_failed_remediation(artifact_root, prior, closure, source_checkout=source_checkout)
+
+
 def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict, source_checkout: Path) -> dict:
     """Replay guarded edits from a completed worker whose result the coordinator could not merge."""
     try:
@@ -1629,14 +1639,14 @@ def _reentry_source(
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate = _recover_predispatch_context_candidate(artifact_root, prior, closure, source_checkout)
-            elif unmerged_context and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
+            elif unmerged_context and not rejected_implementer and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate = _recover_unmerged_candidate(artifact_root, prior, closure, source_checkout)
             elif rejected_implementer and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
-                candidate = _recover_stopped_bootstrap_candidate(artifact_root, prior, closure, source_checkout, rejected=True)
+                candidate = _recover_rejected_candidate(artifact_root, prior, closure, source_checkout)
             elif blocked_reviewer:
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")

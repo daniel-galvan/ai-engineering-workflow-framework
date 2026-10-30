@@ -652,6 +652,18 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
                     prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root, rejected=True)
 
+    def test_rejected_candidate_uses_verified_edit_replay_only_when_snapshot_changed(self):
+        root = Path("/candidate")
+        with patch.object(prepare, "_recover_stopped_bootstrap_candidate", return_value={"snapshot": True}) as unchanged, \
+             patch.object(prepare, "_recover_failed_remediation", return_value={"replayed": True}) as replay:
+            self.assertEqual(prepare._recover_rejected_candidate(root, {}, {}, root), {"snapshot": True})
+            replay.assert_not_called()
+            unchanged.side_effect = ValueError("candidate_content_changed:source.py")
+            self.assertEqual(prepare._recover_rejected_candidate(root, {}, {}, root), {"replayed": True})
+            unchanged.side_effect = ValueError("candidate_rejected_trace_unverified")
+            with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
+                prepare._recover_rejected_candidate(root, {}, {}, root)
+
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
