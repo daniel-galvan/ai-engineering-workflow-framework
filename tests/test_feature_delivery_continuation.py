@@ -164,6 +164,8 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                              hashlib.sha256(PLAN_FIXTURE.encode()).hexdigest())
             packets = json.loads(Path(result["activation_packet_bundle"]["path"]).read_text())["packets"]
             self.assertIn("before_source_change_guard", packets["implementer"]["worker_contract"])
+            self.assertIn("ask the Coordinator to run the parent-bound source-change guard",
+                          packets["implementer"]["worker_contract"]["instructions"])
             bindings_path = artifact_root / "role_bindings.json"
             bindings = json.loads(bindings_path.read_text())
             parent_id = str(UUID(int=303))

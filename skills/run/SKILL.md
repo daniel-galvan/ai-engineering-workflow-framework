@@ -412,8 +412,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    For TechOps, let the active Implementer inspect the approved scope and create
    `implementation_conformance.json` before running the source-change guard. That artifact is not a source edit;
    the guard requires it and must pass before the Implementer changes source files.
-   Run `validate_worker_runtime.py --before-source-change <packet> --implementer-handle <observed-handle>`
-   `--provider-status <fresh-observed-status>` and require exit zero. The approved plan hash must still match re-entry.
+   The Coordinator runs `validate_worker_runtime.py` with
+   `--before-source-change <packet> --implementer-handle <observed-handle>` and
+   `--provider-status <fresh-observed-status>` and requires exit zero. The approved plan hash must still match re-entry.
    An approved plan amendment requires its explicit approval reference and exact hash to be reconciled before retry;
    do not refresh a hash to hide an unapproved design change. Pre-existing edits remain an unreviewed candidate;
    recording the graph later cannot certify that earlier edits followed the activation barrier.

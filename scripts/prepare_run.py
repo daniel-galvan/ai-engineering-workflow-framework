@@ -2326,10 +2326,10 @@ def prepare_run(
                     "before_source_change_guard": str(WORKER_RUNTIME_GUARD),
                     "instructions": (
                         "Remain in Sentry remediation. Execute only the approved Sentry implementation plan and "
-                        "record any material discrepancy before changing scope. The implementer must run the "
-                        "runtime guard --before-source-change finalization_packet --implementer-handle the "
-                        "provider-returned handle --provider-status the freshly observed status before each "
-                        "implementation slice. Reviewer and Tester independently inspect the exact candidate."
+                        "record any material discrepancy before changing scope. Before each implementation slice, "
+                        "the Implementer must ask the Coordinator to run the parent-bound source-change guard "
+                        "with the provider-returned handle and freshly observed status. Wait for an allowed result "
+                        "before editing. Reviewer and Tester independently inspect the exact candidate."
                     ),
                 }
             _configure_remediation_result_contracts(artifact_root, manifest["worker_contracts"])
@@ -2348,9 +2348,9 @@ def prepare_run(
                     "before_source_change_guard": str(WORKER_RUNTIME_GUARD),
                     "instructions": (
                         "Remain in Feature Delivery remediation. Required independent roles are implement, review, "
-                        "validate and handoff; Coordinator cannot substitute. Before each implementation slice run "
-                        "the runtime guard --before-source-change finalization_packet --implementer-handle the "
-                        "provider-returned handle --provider-status the freshly observed status. Wait until allowed. "
+                        "validate and handoff; Coordinator cannot substitute. Before each implementation slice, "
+                        "the Implementer must ask the Coordinator to run the parent-bound source-change guard "
+                        "with the provider-returned handle and freshly observed status. Wait for an allowed result. "
                         "Review and validation stay independent and cover the exact candidate and every criterion."
                     ),
                 }
@@ -2477,8 +2477,8 @@ def prepare_run(
                         "scope and record material discrepancies before acting. Before source edits, write "
                         "implementation_conformance.json in the run root with run_id, plan_sha256 and a nonempty "
                         "files array; each entry has path, plan_step, reuse, change and validation strings. "
-                        "Before each source-change slice, "
-                        "run the supplied runtime guard with the provider-returned handle and freshly observed status."
+                        "Before each source-change slice, ask the Coordinator to run the parent-bound runtime guard "
+                        "with the provider-returned handle and freshly observed status; wait for an allowed result."
                     ),
                 },
                 "reviewer": {
