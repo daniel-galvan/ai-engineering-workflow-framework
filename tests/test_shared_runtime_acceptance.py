@@ -1385,6 +1385,35 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                     dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True,
                                           historical_recovery=True)))
 
+    def test_historical_recovery_allows_only_later_terminal_status_observations(self):
+        from scripts import worker_runtime_evidence as evidence
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, *_ = fixture
+            _, saved = self.export(fixture)
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(saved))
+            packet_path = root / "finalization_packet.json"
+            snapshot = root / "failure_snapshot.json"
+            snapshot.write_text("saved packet")
+            digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+            failure = {"status": "failed", "runtime_closure": "terminal", "run_id": run["run_id"], "packet_snapshot": str(snapshot),
+                       "packet_sha256": digest, "snapshot_sha256": digest, "observed_at": "2030-01-01T00:00:00Z"}
+            (root / "finalization_failure.json").write_text(json.dumps(failure))
+            current = {**saved, "inventories": [*saved["inventories"], {"Observed at": "2030-01-02T00:00:00Z"}]}
+            with patch.object(evidence, "validate_prepared_provider_source"), \
+                 patch.object(evidence, "read_runtime_events", return_value=current), \
+                 patch.object(evidence, "_native_terminal_observations", return_value=[]):
+                args = ({"runtime_audits": []}, packet_path)
+                self.assertEqual(evidence.dispatch_audit_errors(*args, closure_only=True, historical_recovery=True), [])
+                self.assertTrue(evidence.dispatch_audit_errors(*args, closure_only=True))
+                current["events"] = [*saved["events"], {"Operation": "spawn_agent"}]
+                self.assertTrue(evidence.dispatch_audit_errors(*args, closure_only=True, historical_recovery=True))
+                current["events"] = saved["events"]
+                with patch.object(evidence, "_native_terminal_observations", side_effect=ValueError("active worker")):
+                    self.assertTrue(evidence.dispatch_audit_errors(*args, closure_only=True, historical_recovery=True))
+                snapshot.write_text("tampered")
+                self.assertTrue(evidence.dispatch_audit_errors(*args, closure_only=True, historical_recovery=True))
+
     def test_failed_required_followup_blocks_export_and_finalizer(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory)

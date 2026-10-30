@@ -115,6 +115,52 @@ class CandidateRecoveryTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "candidate_followup_trace_unverified"):
                 prepare._recover_accepted_candidate(root, prior, self.repo)
 
+    def test_rejected_correction_is_replayed_only_with_bound_dispatch_and_checkout(self):
+        root = self.root / "run"
+        root.mkdir()
+        initial = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}
+        self.rows[1]["payload"]["item"]["changes"] = {str(self.repo / "tracked.txt"): {
+            "type": "update", "unified_diff": "@@ -1,2 +1,2 @@\n one\n-three\n+four\n"}}
+        self.write_session()
+        (self.repo / "tracked.txt").write_bytes(b"one\nfour\n")
+        candidate = {"status": "unaccepted", "baseline_revision": self.revision}
+        prior = {"identity": {"Run ID": "delivery"}, "activation_repairs": {"implementer": {
+            "Attempt": 1, "Provider handle": "/root/first", "Last dispatch at": "first-time",
+            "Rejected trace SHA256": "first-sha", "Corrected dispatch SHA256": "dispatch-sha"}}}
+        trace = {"run_id": "delivery", "worker": "implementer", "audit": {"status": "rejected"},
+                 "thread_id": "worker", "trace_retrieval": str(self.session), "last_dispatch_at": "second-time",
+                 "spawn": {"provider_handle": "/root/second", "dispatch_file_sha256": "dispatch-sha"}}
+        (root / "trace_second.json").write_text(json.dumps(trace))
+        ledger = {"rejected_results": {"implementer": {"run_id": "delivery", "sha256": "first-sha",
+                  "Provider handle": "/root/first", "Last dispatch at": "first-time"}},
+                  "thread_mappings": {"/root/second": "worker"}, "timing": {"open_worker_intervals": 0}}
+        failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator", "runtime_closure": "terminal",
+                   "run_id": "delivery", "errors": ["implementer_corrected_result_rejected:context"]}
+        closure = {"terminal_observations": [{"Provider handle": "/root/second", "Thread ID": "worker",
+                   "Last dispatch at": "second-time", "Provider status": "completed"}]}
+        (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+        (root / "finalization_failure.json").write_text(json.dumps(failure))
+        bindings = {"recovered_candidate": candidate, "parent_context": {"provider_session": str(self.session),
+                    "parent_thread_id": "parent"}, "runtime_evidence": {"run_started_at": "start"}}
+        (root / "role_bindings.json").write_text(json.dumps(bindings))
+        dispatch = {"worker_contract": {"recovered_candidate": candidate, "before_source_change_guard": "/guard"},
+                    "coordinator_execution": {"source_checkout": str(self.repo)}}
+        content = "Coordinator initialization: complete\n" + json.dumps(dispatch) + "\nTyped assignment:\n{}"
+        with patch.object(prepare, "_recover_stopped_bootstrap_candidate", return_value={"_contents": initial}), \
+             patch(("runtime_checks" if importlib.util.find_spec("runtime_checks") else "scripts.runtime_checks") + "._verified_dispatch_content", return_value=content), \
+             patch(("recovery_candidate" if importlib.util.find_spec("recovery_candidate") else "scripts.recovery_candidate") + ".verify_edit_authorization"):
+            result = prepare._recover_rejected_correction(root, prior, closure, self.repo)
+            self.assertEqual(result["_contents"], {"tracked.txt": b"one\nfour\n", "new.txt": b"new\n"})
+            self.assertTrue(result["rejected_correction"])
+            (self.repo / "tracked.txt").write_text("tampered\n")
+            with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
+                prepare._recover_rejected_correction(root, prior, closure, self.repo)
+            (self.repo / "tracked.txt").write_bytes(b"one\nfour\n")
+            trace["spawn"]["dispatch_file_sha256"] = "wrong"
+            (root / "trace_second.json").write_text(json.dumps(trace))
+            with self.assertRaisesRegex(ValueError, "candidate_followup_trace_unverified"):
+                prepare._recover_rejected_correction(root, prior, closure, self.repo)
+
     def test_accepted_followup_is_replayed_and_must_match_checkout(self):
         root = self.root / "run"
         root.mkdir()
@@ -420,6 +466,32 @@ class CandidateRecoveryTest(unittest.TestCase):
                                "finalization_packet.json": unmerged_packet, "finalization_failure.json": failure,
                                "runtime_closure.json": {"terminal_observations": [observation]}, "runtime_dispatches.json": ledger})
             (root / "runs" / "second" / "dispatch.txt").write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
+                prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
+            first = {"run_id": "second", "worker": "implementer", "audit": {"status": "rejected"},
+                     "thread_id": "first-thread", "last_dispatch_at": "first-time",
+                     "spawn": {"provider_handle": "/root/first"}}
+            first_sha = hashlib.sha256(json.dumps(first).encode()).hexdigest()
+            correction_packet = {**unmerged_packet, "activation_repairs": {"implementer": {
+                "Attempt": 1, "Provider handle": "/root/first", "Last dispatch at": "first-time",
+                "Rejected trace SHA256": first_sha, "Corrected dispatch SHA256": dispatch_sha}}}
+            correction_sha = hashlib.sha256(json.dumps(correction_packet).encode()).hexdigest()
+            correction_failure = {**failure, "snapshot_sha256": correction_sha, "packet_sha256": correction_sha,
+                                  "errors": ["implementer_corrected_result_rejected:context"]}
+            correction_ledger = {"thread_mappings": {"/root/first": "first-thread", "/root/followup": "worker"},
+                "timing": {"open_worker_intervals": 0}, "rejected_results": {"implementer": {
+                    "trace": str(root / "trace_first.json"), "run_id": "second", "sha256": first_sha,
+                    "Provider handle": "/root/first", "Last dispatch at": "first-time"}}}
+            archive("second", {"trace_first.json": first, "trace_followup.json": trace, "dispatch.txt": raw,
+                               "activation_receipts.json": receipts, "role_bindings.json": bindings,
+                               "finalization_packet.json": correction_packet, "finalization_failure.json": correction_failure,
+                               "runtime_closure.json": {"terminal_observations": [observation]},
+                               "runtime_dispatches.json": correction_ledger})
+            candidate.pop("unmerged_parent_failure")
+            candidate.update({"rejected_correction": True, "trace_sha256": trace_sha})
+            self.assertEqual(prepare._recover_candidate_archive(root, prior, self.repo, candidate,
+                                                                visited=set(), check_checkout=True)["_contents"], after)
+            (root / "runs" / "second" / "trace_first.json").write_text("tampered")
             with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
                 prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
 

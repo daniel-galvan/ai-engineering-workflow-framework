@@ -308,8 +308,24 @@ def dispatch_audit_errors(packet: dict, packet_path: Path, *, closure_only: bool
                                           saved["run_started_at"], historical_recovery=historical_recovery)
         current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
                                       saved["run_started_at"], tuple(Path(value) for value in saved.get("identity_sessions", [])))
+        inventories_match = saved["inventories"] == current["inventories"]
+        if historical_recovery and not inventories_match:
+            failure = json.loads((packet_path.parent / "finalization_failure.json").read_text())
+            snapshot = Path(failure["packet_snapshot"])
+            old = saved["inventories"]
+            later = current["inventories"][len(old):]
+            inventories_match = bool(
+                failure.get("status") == "failed" and failure.get("runtime_closure") == "terminal"
+                and failure.get("run_id") == manifest.get("run_id")
+                and snapshot.resolve().parent == packet_path.parent.resolve()
+                and hashlib.sha256(snapshot.read_bytes()).hexdigest()
+                    == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+                and current["inventories"][:len(old)] == old and later
+                and all(timestamp(row["Observed at"]) > timestamp(failure["observed_at"]) for row in later))
+            if inventories_match and current["thread_mappings"]:
+                _native_terminal_observations(current, sorted(current["thread_mappings"]))
         if (saved["events"] != current["events"] or saved["thread_mappings"] != current["thread_mappings"]
-                or saved["inventories"] != current["inventories"]
+                or not inventories_match
                 or saved.get("failed_dispatches", []) != current.get("failed_dispatches", [])):
             raise ValueError("runtime_dispatch_ledger_stale")
         errors = []

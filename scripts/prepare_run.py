@@ -893,9 +893,32 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
         audits = [row for row in original_packet["runtime_audits"] if row.get("Worker") == "implement"]
         accepted_edit = trace.get("audit", {}).get("status") == "passed"
         unmerged = candidate.get("unmerged_parent_failure") is True
+        rejected_correction = candidate.get("rejected_correction") is True
         results = [row for row in original_packet.get("worker_results", [])
                    if row.get("Worker") == "implement" and row.get("Outcome") == "complete"]
-        if unmerged:
+        if rejected_correction:
+            failure = json.loads(archived("finalization_failure.json"))
+            closure = json.loads(archived("runtime_closure.json"))
+            ledger = json.loads(archived("runtime_dispatches.json"))
+            receipt = ledger.get("rejected_results", {}).get("implementer", {})
+            first_path = Path(receipt.get("trace", ""))
+            if first_path.parent.resolve() != artifact_root.resolve():
+                raise ValueError("candidate_followup_trace_unverified")
+            first_raw = archived(first_path.name)
+            first = json.loads(first_raw)
+            if not (not accepted_edit and not audits and not original_packet.get("workers")
+                    and not original_packet.get("worker_results") and not original_packet.get("runtime_audits")
+                    and hashlib.sha256(archived("finalization_packet.json")).hexdigest()
+                        == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+                    and first.get("run_id") == run_id and first.get("worker") == "implementer"
+                    and first.get("audit", {}).get("status") == "rejected"
+                    and first.get("spawn", {}).get("provider_handle") == receipt.get("Provider handle")
+                    and first.get("thread_id") == ledger.get("thread_mappings", {}).get(receipt.get("Provider handle"))
+                    and first.get("last_dispatch_at") == receipt.get("Last dispatch at")
+                    and _corrected_rejection_errors(original_packet, failure, ledger, closure, trace,
+                                                    hashlib.sha256(first_raw).hexdigest())):
+                raise ValueError("candidate_followup_trace_unverified")
+        elif unmerged:
             failure = json.loads(archived("finalization_failure.json"))
             closure = json.loads(archived("runtime_closure.json"))
             ledger = json.loads(archived("runtime_dispatches.json"))
@@ -940,7 +963,7 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
                 raise ValueError("candidate_followup_binding_invalid")
             return packet
         dispatch = dispatch_for(trace)
-        if not unmerged:
+        if not unmerged and not rejected_correction:
             accepted_path = Path(audits[0]["Trace path"])
             if accepted_path.parent.resolve() != artifact_root.resolve():
                 raise ValueError("candidate_followup_trace_unverified")
@@ -994,6 +1017,8 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
         result["base_candidate"] = base
     if candidate.get("unmerged_parent_failure") is True:
         result["unmerged_parent_failure"] = True
+    if candidate.get("rejected_correction") is True:
+        result["rejected_correction"] = True
     return result
 
 
@@ -1220,7 +1245,8 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
 
 
 def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closure: dict,
-                                         source_checkout: Path, *, rejected: bool = False) -> dict:
+                                         source_checkout: Path, *, rejected: bool = False,
+                                         check_checkout: bool = True) -> dict:
     """Preserve an unchanged candidate after terminal, unaccepted worker attempts."""
     try:
         from planning_contracts import terminal_closure_dispatch_errors
@@ -1284,7 +1310,7 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                 and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")):
             raise ValueError("remediation_recovery_evidence_unverified")
         _verified_recovery_planning(artifact_root, prior)
-        return _recover_preserved_candidate(artifact_root, prior, source_checkout)
+        return _recover_preserved_candidate(artifact_root, prior, source_checkout, check_checkout=check_checkout)
     except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
@@ -1296,7 +1322,88 @@ def _recover_rejected_candidate(artifact_root: Path, prior: dict, closure: dict,
     except ValueError as error:
         if not str(error).startswith(("candidate_content_changed:", "candidate_changed_paths_mismatch")):
             raise
+        if prior.get("activation_repairs", {}).get("implementer"):
+            return _recover_rejected_correction(artifact_root, prior, closure, source_checkout)
         return _recover_failed_remediation(artifact_root, prior, closure, source_checkout=source_checkout)
+
+
+def _corrected_rejection_errors(prior: dict, failure: dict, ledger: dict, closure: dict,
+                                trace: dict, first_trace_sha: str) -> bool:
+    """Verify that a rejected correction belongs to the recorded terminal attempt."""
+    run_id = prior["identity"]["Run ID"]
+    repair = prior.get("activation_repairs", {}).get("implementer", {})
+    receipt = ledger.get("rejected_results", {}).get("implementer", {})
+    handle = trace.get("spawn", {}).get("provider_handle")
+    observations = closure.get("terminal_observations", [])
+    errors = failure.get("errors", [])
+    return bool(
+        failure.get("status") == "failed" and failure.get("stage") == "workflow"
+        and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+        and failure.get("run_id") == run_id and len(errors) == 1
+        and str(errors[0]).startswith("implementer_corrected_result_rejected:")
+        and repair.get("Attempt") == 1 and first_trace_sha
+        and repair.get("Rejected trace SHA256") == first_trace_sha == receipt.get("sha256")
+        and receipt.get("run_id") == run_id and receipt.get("Provider handle") == repair.get("Provider handle")
+        and receipt.get("Last dispatch at") == repair.get("Last dispatch at")
+        and trace.get("run_id") == run_id and trace.get("worker") == "implementer"
+        and trace.get("audit", {}).get("status") == "rejected"
+        and repair.get("Corrected dispatch SHA256")
+        and trace.get("spawn", {}).get("dispatch_file_sha256") == repair.get("Corrected dispatch SHA256")
+        and handle and trace.get("thread_id") and trace.get("last_dispatch_at")
+        and handle != receipt.get("Provider handle") and ledger.get("thread_mappings", {}).get(handle) == trace.get("thread_id")
+        and ledger.get("timing", {}).get("open_worker_intervals") == 0
+        and any(row.get("Provider handle") == handle and row.get("Thread ID") == trace.get("thread_id")
+                and row.get("Last dispatch at") == trace.get("last_dispatch_at")
+                and row.get("Provider status") == "completed" for row in observations))
+
+
+def _recover_rejected_correction(artifact_root: Path, prior: dict, closure: dict, source_checkout: Path) -> dict:
+    """Replay a guarded rejected correction over the previously authenticated candidate."""
+    try:
+        from recovery_candidate import replay_followup_candidate, verify_checkout_snapshot, verify_edit_authorization
+        from runtime_checks import _verified_dispatch_content
+    except ModuleNotFoundError:
+        from scripts.recovery_candidate import replay_followup_candidate, verify_checkout_snapshot, verify_edit_authorization
+        from scripts.runtime_checks import _verified_dispatch_content
+    original = _recover_stopped_bootstrap_candidate(artifact_root, prior, closure, source_checkout,
+                                                     rejected=True, check_checkout=False)
+    bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+    candidate = bindings["recovered_candidate"]
+    failure = json.loads((artifact_root / "finalization_failure.json").read_text())
+    ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+    receipt = ledger["rejected_results"]["implementer"]
+    matches = []
+    for path in artifact_root.glob("trace*.json"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            trace = json.loads(path.read_text())
+            if _corrected_rejection_errors(prior, failure, ledger, closure, trace, receipt["sha256"]):
+                matches.append((path, trace))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    if len(matches) != 1:
+        raise ValueError("candidate_followup_trace_unverified")
+    path, trace = matches[0]
+    content = _verified_dispatch_content(trace)
+    if not content:
+        raise ValueError("candidate_followup_trace_unverified")
+    dispatch = json.loads(content.split("\n", 2)[1])
+    if (dispatch.get("worker_contract", {}).get("recovered_candidate") != candidate
+            or Path(dispatch["coordinator_execution"]["source_checkout"]).resolve() != source_checkout.resolve()):
+        raise ValueError("candidate_followup_binding_invalid")
+    session = Path(trace["trace_retrieval"])
+    contents, touched = replay_followup_candidate(source_checkout, session, trace["thread_id"], original["_contents"])
+    parent = bindings["parent_context"]
+    verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
+        bindings["runtime_evidence"]["run_started_at"], Path(dispatch["worker_contract"]["before_source_change_guard"]),
+        artifact_root / "finalization_packet.json", trace["spawn"]["provider_handle"], source_checkout, touched)
+    hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+    verify_checkout_snapshot(source_checkout, candidate["baseline_revision"], hashes)
+    return {"prior_run_id": prior["identity"]["Run ID"], "status": "unaccepted",
+            "trace_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "baseline_revision": candidate["baseline_revision"],
+            "files": hashes, "source_already_present": True, "base_candidate": candidate,
+            "rejected_correction": True, "_contents": contents}
 
 
 def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict, source_checkout: Path) -> dict:
