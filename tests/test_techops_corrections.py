@@ -596,6 +596,9 @@ class TechOpsCorrections(unittest.TestCase):
                 failure["errors"] = ["forbidden_context_reference:memory_path"]
                 (root / "finalization_failure.json").write_text(json.dumps(failure))
                 self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                failure["errors"] = ["parent_context_nonconformant:parent_unassigned_thread_discovery"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
                 failure["errors"] = ["forbidden_context_reference:unrelated"]
                 (root / "finalization_failure.json").write_text(json.dumps(failure))
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):

@@ -255,6 +255,15 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    uses `Evidence mode: supplied_occurrence` in its
    input row. Preserve every `Observed releases` value with its Input ID in normalized evidence, compare named source
    revisions for the inspected paths, and keep receiver deployment mapping distinct from client release identity.
+5d. For an explicit continuation or remediation reentry, after the applicable source-access gate and before repository
+   discovery, artifact-tree searches, manifest creation, or provider status calls, run the `--status-projection`
+   helper and execute its complete emitted projection exactly as described in the current-task rule below. Use exact
+   current artifact paths; never recursively list the artifact root or search its `runs/` archives. Do not issue a
+   direct `list_threads` call. If the helper or projection blocks, stop without preparing a new run. When reentering
+   a terminal run from a different chat, do not run the old parent's live evidence collector from the new chat;
+   remediation reentry verifies the saved native ledger and terminal closure against their original parent.
+   For an approved remediation reentry from a terminal run, prepare with both `--continuation` and
+   `--remediation-reentry` plus the recorded `--approval-reference`; `--continuation` alone resumes an existing run.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other

@@ -1195,8 +1195,9 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
         errors = failure.get("errors", [])
         reentry = prior["reentry"]
         plan = artifact_root / "implementation_plan.md"
-        pattern = (r"(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
-                   r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?")
+        pattern = (r"(?:(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
+                   r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?"
+                   r"|parent_context_nonconformant:parent_unassigned_thread_discovery)")
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
                 and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation"
@@ -1625,7 +1626,8 @@ def _reentry_source(
             predispatch_context = (not prior.get("workers") and not prior.get("worker_results")
                                    and not json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("thread_mappings")
                                    and any(str(error).startswith(("parent_context_nonconformant:forbidden_context_reference:",
-                                                                  "forbidden_context_reference:"))
+                                                                  "forbidden_context_reference:",
+                                                                  "parent_context_nonconformant:parent_unassigned_thread_discovery"))
                                            for error in failure.get("errors", [])))
             stopped_bootstrap = (not prior.get("workers") and not prior.get("worker_results")
                                  and any("bootstrap" in str(error).lower() and "before reading" in str(error).lower()
