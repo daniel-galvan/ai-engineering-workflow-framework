@@ -1342,7 +1342,7 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
 
 def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, closure: dict,
                                            source_checkout: Path) -> dict:
-    """Start a fresh run after a terminal context failure before any worker dispatch."""
+    """Recover a preserved candidate after a terminal failure before worker dispatch."""
     try:
         from planning_contracts import terminal_closure_dispatch_errors
         from worker_runtime_evidence import dispatch_audit_errors
@@ -1360,7 +1360,7 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
         plan = artifact_root / "implementation_plan.md"
         pattern = (r"(?:(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
                    r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?"
-                   r"|parent_context_nonconformant:parent_unassigned_thread_discovery)")
+                   r"|parent_context_nonconformant:parent_unassigned_thread_discovery|remediation_not_activated)")
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
                 and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation"
@@ -1904,7 +1904,8 @@ def _reentry_source(
                                    and not json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("thread_mappings")
                                    and any(str(error).startswith(("parent_context_nonconformant:forbidden_context_reference:",
                                                                   "forbidden_context_reference:",
-                                                                  "parent_context_nonconformant:parent_unassigned_thread_discovery"))
+                                                                  "parent_context_nonconformant:parent_unassigned_thread_discovery",
+                                                                  "remediation_not_activated"))
                                            for error in failure.get("errors", [])))
             stopped_bootstrap = (not prior.get("workers") and not prior.get("worker_results")
                                  and any("bootstrap" in str(error).lower() and "before reading" in str(error).lower()

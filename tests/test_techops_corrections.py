@@ -705,6 +705,13 @@ class TechOpsCorrections(unittest.TestCase):
                 failure["errors"] = ["parent_context_nonconformant:parent_unassigned_thread_discovery"]
                 (root / "finalization_failure.json").write_text(json.dumps(failure))
                 self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                failure["errors"] = ["remediation_not_activated"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                ledger_path.write_text(json.dumps({**ledger, "events": [{"Operation": "spawn_agent"}]}))
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
+                ledger_path.write_text(json.dumps(ledger))
                 failure["errors"] = ["forbidden_context_reference:unrelated"]
                 (root / "finalization_failure.json").write_text(json.dumps(failure))
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
