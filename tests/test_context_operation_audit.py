@@ -188,6 +188,16 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact",
                       runtime.context_trace_errors(trace, artifact_root=self.root))
 
+    def test_reading_detector_definition_does_not_hide_a_real_memory_citation(self):
+        call = 'await tools.exec_command({cmd:"sed -n 1,85p runtime_checks.py"})'
+        definition = '("memory_citation", re.compile(r"(?i)<' + 'oai-mem-citation>")),'
+        trace = {"tool_trace": self.paired(call, definition)}
+        self.assertNotIn("forbidden_context_reference:memory_citation",
+                         runtime.context_trace_errors(trace, artifact_root=self.root))
+        trace["tool_trace"][-1]["output"] += "\n<oai-mem-citation>\n<citation_entries>"
+        self.assertIn("forbidden_context_reference:memory_citation",
+                      runtime.context_trace_errors(trace, artifact_root=self.root))
+
     def test_current_input_exclusion_text_in_read_chains_is_not_archive_access(self):
         manifest = self.root / "run_inputs.json"
         content = "All run files stay inside .thoughts/ITEM-1. Do not inspect .thoughts/2806_v1; names only."

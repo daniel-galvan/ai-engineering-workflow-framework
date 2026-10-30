@@ -1875,6 +1875,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                                     and str(path[1]).isdigit() and int(path[1]) in empty_memory_probes) else value
             if label == "archived_artifact" and listing:
                 continue
+            if label == "memory_citation" and output:
+                definition = '("memory_citation", re.compile(r"(?i)<' + 'oai-mem-citation>")),'
+                checked = checked.replace(definition, "")
             match = pattern.search(checked)
             if match:
                 errors.append(f"forbidden_context_reference:{label}")
