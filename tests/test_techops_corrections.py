@@ -566,6 +566,41 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
 
+    def test_predispatch_context_recovery_requires_no_workers_and_proven_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            plan = root / "implementation_plan.md"
+            plan.write_text("approved plan")
+            packet = {"identity": {"Run ID": "delivery", "Lifecycle": "remediation"},
+                      "reentry": {"Approval reference": "approved", "Approved plan": str(plan),
+                                  "Approved plan SHA256": hashlib.sha256(plan.read_bytes()).hexdigest()},
+                      "workers": [], "worker_results": [], "runtime_audits": []}
+            snapshot = root / "snapshot.json"
+            frozen = json.dumps(packet).encode()
+            snapshot.write_bytes(frozen)
+            digest = hashlib.sha256(frozen).hexdigest()
+            failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator", "runtime_closure": "terminal",
+                       "run_id": "delivery", "packet_snapshot": str(snapshot), "snapshot_sha256": digest, "packet_sha256": digest,
+                       "errors": ["parent_context_nonconformant:forbidden_context_reference:archived_artifact;"
+                                  "parent_context_turn_mismatch:expected=abc-1;received=def-2;prepare the current continuation"]}
+            (root / "finalization_failure.json").write_text(json.dumps(failure))
+            ledger = {"thread_mappings": {}, "events": [], "failed_dispatches": [], "timing": {"open_worker_intervals": 0}}
+            ledger_path = root / "runtime_dispatches.json"
+            ledger_path.write_text(json.dumps(ledger))
+            candidate = {"status": "unaccepted", "files": {"test.py": "hash"}}
+            with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
+                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch.object(prepare, "_verified_recovery_planning", return_value={}), \
+                 patch.object(prepare, "_recover_preserved_candidate", return_value=candidate):
+                self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                ledger_path.write_text(json.dumps({**ledger, "events": [{"Operation": "spawn_agent"}]}))
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
+                ledger_path.write_text(json.dumps(ledger))
+                snapshot.write_text("tampered")
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
+
     def test_preserve_old_failure_and_closure_before_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

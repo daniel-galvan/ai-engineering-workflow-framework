@@ -1046,6 +1046,51 @@ def _recover_current_accepted_candidate(artifact_root: Path, prior: dict, source
             "base_candidate": candidate, "_contents": contents}
 
 
+
+def _verified_recovery_planning(artifact_root: Path, prior: dict) -> dict:
+    """Find the preserved approved planning records through authenticated run archives."""
+    reentry = prior["reentry"]
+    planning = prior
+    visited = set()
+    while True:
+        link = planning["reentry"]
+        run_id = link["Prior run ID"]
+        if not isinstance(run_id, str) or not run_id or Path(run_id).name != run_id or run_id in visited:
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        visited.add(run_id)
+        archive = (artifact_root / "runs" / run_id).resolve()
+        if Path(link["Prior artifacts"]).resolve() != archive:
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        manifest = json.loads((archive / "archive_manifest.json").read_text())
+        rows = [row for row in manifest["files"] if row.get("path") == "finalization_packet.json"]
+        if manifest.get("run_id") != run_id or len(rows) != 1:
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        saved = (archive / rows[0]["snapshot"]).resolve()
+        if not saved.is_relative_to((artifact_root / "runs").resolve()):
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        data = saved.read_bytes()
+        if hashlib.sha256(data).hexdigest() != rows[0]["sha256"]:
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        planning = json.loads(data)
+        if (planning["identity"]["Run ID"] != run_id or planning["reentry"]["Approved plan SHA256"] != reentry["Approved plan SHA256"]
+                or planning["reentry"]["Approval reference"] != reentry["Approval reference"]):
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        if not planning.get("worker_results"):
+            break
+    for table, key in (("claims", "Claim ID"), ("actions", "Action ID"), ("decisions", "Decision ID"), ("evidence", "Evidence ID")):
+        old = {row[key]: row for row in planning.get(table, [])}
+        current = {row[key]: row for row in prior.get(table, [])}
+        if (len(old) != len(planning.get(table, [])) or len(current) != len(prior.get(table, []))
+                or any(current.get(key) != value for key, value in old.items())):
+            raise ValueError("remediation_recovery_accepted_evidence_changed")
+    for field in ("techops_checks", "reproduction", "integration_decision", "playbook_selection"):
+        if planning.get(field) != prior.get(field):
+            raise ValueError("remediation_recovery_accepted_evidence_changed")
+    if ({k: v for k, v in prior.get("work_item", {}).items() if k != "Last Updated"}
+            != {k: v for k, v in planning.get("work_item", {}).items() if k != "Last Updated"}):
+        raise ValueError("remediation_recovery_accepted_evidence_changed")
+    return planning
+
 def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure: dict,
                                        source_checkout: Path) -> tuple[dict, dict]:
     """Preserve guarded edits and approved planning after a terminal reviewer audit failure."""
@@ -1097,45 +1142,50 @@ def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure
         if (not reentry.get("Approval reference") or reentry.get("Approved plan") != str(plan.resolve())
                 or hashlib.sha256(plan.read_bytes()).hexdigest() != reentry.get("Approved plan SHA256")):
             raise ValueError("remediation_recovery_plan_changed")
-        planning = prior
-        visited = set()
-        while planning.get("worker_results"):
-            link = planning["reentry"]
-            run_id = link["Prior run ID"]
-            if not isinstance(run_id, str) or not run_id or Path(run_id).name != run_id or run_id in visited:
-                raise ValueError("remediation_recovery_prior_archive_invalid")
-            visited.add(run_id)
-            archive = (artifact_root / "runs" / run_id).resolve()
-            if Path(link["Prior artifacts"]).resolve() != archive:
-                raise ValueError("remediation_recovery_prior_archive_invalid")
-            manifest = json.loads((archive / "archive_manifest.json").read_text())
-            rows = [row for row in manifest["files"] if row.get("path") == "finalization_packet.json"]
-            if manifest.get("run_id") != run_id or len(rows) != 1:
-                raise ValueError("remediation_recovery_prior_archive_invalid")
-            saved = (archive / rows[0]["snapshot"]).resolve()
-            if not saved.is_relative_to((artifact_root / "runs").resolve()):
-                raise ValueError("remediation_recovery_prior_archive_invalid")
-            data = saved.read_bytes()
-            if hashlib.sha256(data).hexdigest() != rows[0]["sha256"]:
-                raise ValueError("remediation_recovery_prior_archive_invalid")
-            planning = json.loads(data)
-            if (planning["identity"]["Run ID"] != run_id or planning["reentry"]["Approved plan SHA256"] != reentry["Approved plan SHA256"]
-                    or planning["reentry"]["Approval reference"] != reentry["Approval reference"]):
-                raise ValueError("remediation_recovery_prior_archive_invalid")
-        for table, key in (("claims", "Claim ID"), ("actions", "Action ID"), ("decisions", "Decision ID"), ("evidence", "Evidence ID")):
-            old = {row[key]: row for row in planning.get(table, [])}
-            current = {row[key]: row for row in prior.get(table, [])}
-            if (len(old) != len(planning.get(table, [])) or len(current) != len(prior.get(table, []))
-                    or any(current.get(key) != value for key, value in old.items())):
-                raise ValueError("remediation_recovery_accepted_evidence_changed")
-        for field in ("techops_checks", "reproduction", "integration_decision", "playbook_selection"):
-            if planning.get(field) != prior.get(field):
-                raise ValueError("remediation_recovery_accepted_evidence_changed")
-        if ({k: v for k, v in prior.get("work_item", {}).items() if k != "Last Updated"}
-                != {k: v for k, v in planning.get("work_item", {}).items() if k != "Last Updated"}):
-            raise ValueError("remediation_recovery_accepted_evidence_changed")
+        planning = _verified_recovery_planning(artifact_root, prior)
         return _recover_current_accepted_candidate(artifact_root, prior, source_checkout), planning
     except (OSError, KeyError, TypeError, AttributeError, StopIteration, json.JSONDecodeError) as error:
+        raise ValueError("remediation_recovery_evidence_unverified") from error
+
+
+
+def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, closure: dict,
+                                           source_checkout: Path) -> dict:
+    """Start a fresh run after a terminal context failure before any worker dispatch."""
+    try:
+        from planning_contracts import terminal_closure_dispatch_errors
+        from worker_runtime_evidence import dispatch_audit_errors
+    except ModuleNotFoundError:
+        from scripts.planning_contracts import terminal_closure_dispatch_errors
+        from scripts.worker_runtime_evidence import dispatch_audit_errors
+    try:
+        packet_path = artifact_root / "finalization_packet.json"
+        failure = json.loads((artifact_root / "finalization_failure.json").read_text())
+        ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+        snapshot = Path(failure["packet_snapshot"]).resolve()
+        frozen = snapshot.read_bytes()
+        errors = failure.get("errors", [])
+        reentry = prior["reentry"]
+        plan = artifact_root / "implementation_plan.md"
+        pattern = (r"parent_context_nonconformant:forbidden_context_reference:(?:archived_artifact|memory_path)"
+                   r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?")
+        if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
+                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+                and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation"
+                and len(errors) == 1 and isinstance(errors[0], str) and re.fullmatch(pattern, errors[0])
+                and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
+                and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+                and not prior.get("workers") and not prior.get("worker_results") and not prior.get("runtime_audits")
+                and not ledger.get("thread_mappings") and not ledger.get("events") and not ledger.get("failed_dispatches")
+                and ledger.get("timing", {}).get("open_worker_intervals") == 0 and closure.get("terminal_observations") == []
+                and not terminal_closure_dispatch_errors(packet_path, [])
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and reentry.get("Approval reference") and reentry.get("Approved plan") == str(plan.resolve())
+                and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")):
+            raise ValueError("remediation_recovery_evidence_unverified")
+        _verified_recovery_planning(artifact_root, prior)
+        return _recover_preserved_candidate(artifact_root, prior, source_checkout)
+    except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
@@ -1389,7 +1439,14 @@ def _reentry_source(
             blocked_reviewer = any("delivery_dependency_unverified:reviewer" in str(error)
                                    and "forbidden_context_reference:memory_path" in str(error)
                                    for error in failure.get("errors", []))
-            if blocked_reviewer:
+            predispatch_context = (not prior.get("workers") and not prior.get("worker_results")
+                                   and any(str(error).startswith("parent_context_nonconformant:forbidden_context_reference:")
+                                           for error in failure.get("errors", [])))
+            if predispatch_context and json.loads((artifact_root / "role_bindings.json").read_text()).get("recovered_candidate"):
+                if source_checkout is None:
+                    raise ValueError("candidate_recovery_source_checkout_invalid")
+                candidate = _recover_predispatch_context_candidate(artifact_root, prior, closure, source_checkout)
+            elif blocked_reviewer:
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate, planning_source = _recover_terminal_reviewer_failure(
