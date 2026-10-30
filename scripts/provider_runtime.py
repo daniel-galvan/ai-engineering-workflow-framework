@@ -87,6 +87,9 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
                 if thread_id is not None:
                     add(thread_id, required=True)
                     failed_without_workers = False
+                elif row.get("Operation") in {"send_message", "followup_task"} and row.get("Status") == "failed":
+                    add(mappings.get(row.get("Provider handle")), required=True)
+                    failed_without_workers = False
                 elif row.get("Operation") != "spawn_agent" or row.get("Status") != "failed":
                     raise ValueError("stale_run_thread_identity_invalid")
             timing = ledger.get("timing")

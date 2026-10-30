@@ -552,6 +552,17 @@ class ParentContext(unittest.TestCase):
                                    "Status": "failed"}]}))
         self.assertEqual(prior_run_status_thread_ids(artifact_root, PARENT), ())
 
+        for operation in ("send_message", "followup_task"):
+            failed = {"Operation": operation, "Provider handle": "/root/worker", "Status": "failed"}
+            ledger.write_text(json.dumps({"thread_mappings": {"/root/worker": CHILD}, "events": [],
+                                          "failed_dispatches": [failed]}))
+            self.assertEqual(prior_run_status_thread_ids(artifact_root, PARENT), (CHILD,))
+            for invalid in ({**failed, "Provider handle": "/root/unknown"}, {**failed, "Status": "running"}):
+                ledger.write_text(json.dumps({"thread_mappings": {"/root/worker": CHILD}, "events": [],
+                                              "failed_dispatches": [invalid]}))
+                with self.assertRaisesRegex(ValueError, "stale_run_thread_identity_invalid"):
+                    prior_run_status_thread_ids(artifact_root, PARENT)
+
         ledger.write_text('{"thread_mappings":{"/root/worker":"' + CHILD + '","/root/worker":"' +
                           PARENT + '"},"events":[],"failed_dispatches":[]}')
         with self.assertRaisesRegex(ValueError, "stale_run_thread_identity_invalid"):
