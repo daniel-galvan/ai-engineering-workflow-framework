@@ -770,6 +770,17 @@ class ContextOperationAudit(unittest.TestCase):
                 'fi; done; cat .thoughts/OTHER/notes.md')
             self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
 
+    def test_bash_ancestor_probe_keeps_archive_restrictions(self):
+        trace = self.instruction_read_trace()
+        command = ('for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+                   'do if [[ -f "$f" ]]; then printf \'%s\\n\' "$f"; fi; done')
+        call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
+        trace["tool_trace"].extend(self.paired(call, ""))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace["tool_trace"][-2]["input"] = call.replace('fi; done',
+            'fi; done; cat .thoughts/ITEM-1/runs/prior/notes.md')
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
             'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
