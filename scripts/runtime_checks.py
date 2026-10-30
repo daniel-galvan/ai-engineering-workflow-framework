@@ -1355,6 +1355,50 @@ def _python_packet_projection(tokens: list[str], root: Path, cwd: Path) -> set[s
         return None
 
 
+def _labeled_packet_outputs(trace: dict, root: Path | None) -> dict[str, tuple[str, str]]:
+    """Recognize a literal projection of current packet fields, including reentry metadata."""
+    if root is None:
+        return {}
+    result = {}
+    for row in trace.get("tool_trace", []):
+        if not isinstance(row, dict) or not row.get("call_id"):
+            continue
+        operations = _tool_operations(row)
+        if len(operations) != 1 or operations[0][0] != "exec_command":
+            continue
+        try:
+            args = operations[0][1]
+            tokens = shlex.split(args["cmd"])
+            if len(tokens) != 3 or Path(tokens[0]).name not in {"python", "python3"} or tokens[1] != "-c":
+                continue
+            body = ast.parse(tokens[2]).body
+            if len(body) != 3 or not isinstance(body[1], ast.Assign) or len(body[1].targets) != 1:
+                continue
+            variable = body[1].targets[0].id
+            locator = body[1].value.args[0].args[0].value
+            fields = [item.value for item in body[2].value.generators[0].iter.elts]
+            if not fields or "reentry" not in fields or len(fields) != len(set(fields)) or not all(
+                    isinstance(field, str) and field.isidentifier() for field in fields):
+                continue
+            expected = (f"import json; {variable}=json.load(open({locator!r})); "
+                        f"[print(k+':', json.dumps({variable}.get(k), indent=2)) for k in {tuple(fields)!r}]")
+            if ast.dump(ast.parse(tokens[2])) != ast.dump(ast.parse(expected)):
+                continue
+            path = Path(locator)
+            path = path if path.is_absolute() else Path(args.get("workdir", root.parent.parent)) / path
+            if path.is_symlink() or path.resolve() != root / "finalization_packet.json":
+                continue
+            packet = json.loads(path.read_text())
+            reference = packet.get("reentry", {}).get("Prior artifacts")
+            if not isinstance(reference, str) or not reference:
+                continue
+            output = "".join(f"{field}: {json.dumps(packet.get(field), indent=2)}\n" for field in fields)
+            result[row["call_id"]] = (output, json.dumps(reference))
+        except (OSError, ValueError, KeyError, AttributeError, IndexError, TypeError, SyntaxError):
+            continue
+    return result
+
+
 def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -> set[tuple[str, ...]]:
     if root is None:
         return set()
@@ -1656,6 +1700,8 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                     for condition in (["[", "-f", argument, "]"], ["[[", "-f", argument, "]]"],
                                       ["test", "-f", argument])
                     for output in (["printf", "%s\\n", argument], ["echo", argument]))
+                valid = valid or include_probes and tail == [
+                    "do", "test", "!", "-f", variable, "||", "printf", "%s\\n", variable, "done"]
                 for condition in conditions:
                     prefix = ["do", "if", *condition, "then"]
                     if tail[:len(prefix)] == prefix and tail[-len(suffix):] == suffix:
@@ -1822,6 +1868,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     listing_reads = {}
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
+    labeled_outputs = _labeled_packet_outputs(trace, root) if dispatch_content else {}
     empty_memory_probes = _empty_worker_memory_probes(trace) if trace.get("trace_retrieval") else {}
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
     framework_searches = _framework_searches(trace, root) if root else {}
@@ -1851,6 +1898,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:
+            labeled = labeled_outputs.get(row.get("call_id"))
+            if labeled and candidate == labeled[0]:
+                candidate = candidate.replace(labeled[1], '"[current packet archive reference]"', 1)
             source = call_sources.get(row.get("call_id"), "")
             candidate = "".join(line[:-4] + "\n" if line.startswith("---") and line.endswith("---\n")
                                 and json.dumps(line[3:-4], ensure_ascii=False) in source else line

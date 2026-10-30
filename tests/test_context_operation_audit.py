@@ -543,6 +543,25 @@ class ContextOperationAudit(unittest.TestCase):
         trace = self.instruction_read_trace()
         self.assertEqual(runtime.trace_errors(trace), [])
 
+    def test_labeled_current_packet_projection_does_not_exempt_archive_reads(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["reentry"] = {"Prior artifacts": str(self.root / "runs" / "old")}
+        packet_path.write_text(json.dumps(packet))
+        code = ("import json; p=json.load(open('.thoughts/ITEM-1/finalization_packet.json')); "
+                "[print(k+':', json.dumps(p.get(k), indent=2)) for k in ('identity', 'reentry')]")
+        command = "python3 -c " + shlex.quote(code)
+        call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
+        output = "".join(f"{key}: {json.dumps(packet.get(key), indent=2)}\n" for key in ("identity", "reentry"))
+        trace["tool_trace"].extend(self.paired(call, output))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace["tool_trace"][-1]["output"] = output + str(self.root / "runs" / "old" / "private.md")
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+        trace["tool_trace"][-1]["output"] = output
+        trace["tool_trace"][-2]["input"] += ' await tools.exec_command({cmd:"cat .thoughts/ITEM-1/runs/old/private.md"});'
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
     def test_instruction_proof_rejects_missing_output_wrong_hash_and_wrong_run(self):
         import copy
         base = self.instruction_read_trace()
@@ -779,6 +798,16 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertEqual(runtime.trace_errors(trace), [])
         trace["tool_trace"][-2]["input"] = call.replace('fi; done',
             'fi; done; cat .thoughts/ITEM-1/runs/prior/notes.md')
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+
+    def test_negated_instruction_probe_keeps_archive_restrictions(self):
+        trace = self.instruction_read_trace()
+        command = ('for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+                   'do test ! -f "$f" || printf \'%s\\n\' "$f"; done')
+        call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
+        trace["tool_trace"].extend(self.paired(call, ""))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace["tool_trace"][-2]["input"] = call.replace('done', 'done; cat .thoughts/ITEM-1/runs/prior/notes.md')
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
 
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
