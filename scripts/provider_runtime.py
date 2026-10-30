@@ -750,10 +750,14 @@ def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
         return ["parent_context_evidence_invalid:" + str(error)]
 
 
-def validate_prepared_provider_source(bindings: dict, source: Path, parent_thread_id: str, started_at: str) -> None:
+def validate_prepared_provider_source(bindings: dict, source: Path, parent_thread_id: str, started_at: str, *,
+                                      historical_recovery: bool = False) -> None:
     """Keep trace and failure-closure collection on the same prepared parent and run interval."""
-    current_parent_session(source)
+    if not historical_recovery:
+        current_parent_session(source)
     parent = bindings.get("parent_context")
+    if historical_recovery and (not isinstance(parent, dict) or not bindings.get("runtime_evidence", {}).get("run_started_at")):
+        raise ValueError("runtime_dispatch_historical_binding_required")
     if parent:
         if parent_thread_id != parent["parent_thread_id"]:
             raise ValueError("runtime_dispatch_parent_mismatch")

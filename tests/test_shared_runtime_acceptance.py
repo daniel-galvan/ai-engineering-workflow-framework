@@ -1358,6 +1358,33 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             self.assertEqual(ledger["failed_dispatches"][0]["Provider handle"], "/root/worker")
             self.assertEqual(ledger["thread_mappings"]["/root/worker"], CHILD)
 
+    def test_historical_recovery_verifies_original_parent_without_allowing_live_acceptance(self):
+        from scripts.worker_runtime_evidence import dispatch_audit_errors
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, *_ = fixture
+            _, ledger = self.export(fixture)
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            packet_path = root / "finalization_packet.json"
+            bindings_path = root / "role_bindings.json"
+            bindings = json.loads(bindings_path.read_text())
+            bindings["parent_context"] = {"parent_thread_id": PARENT, "provider_session": str(root / "parent.jsonl")}
+            bindings_path.write_text(json.dumps(bindings))
+            with patch.dict("os.environ", {"CODEX_THREAD_ID": "00000000-0000-0000-0000-000000000099"}):
+                self.assertTrue(dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True))
+                self.assertEqual(dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True,
+                                                       historical_recovery=True), [])
+                self.assertIn("historical_recovery_requires_closure_only", " ".join(
+                    dispatch_audit_errors({"runtime_audits": []}, packet_path, historical_recovery=True)))
+                source = root / "parent.jsonl"
+                lines = source.read_text().splitlines()
+                header = json.loads(lines[0])
+                header["payload"]["id"] = CHILD
+                source.write_text(json.dumps(header) + "\n" + "\n".join(lines[1:]) + "\n")
+                self.assertIn("provider_session_parent_mismatch", " ".join(
+                    dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True,
+                                          historical_recovery=True)))
+
     def test_failed_required_followup_blocks_export_and_finalizer(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(directory)

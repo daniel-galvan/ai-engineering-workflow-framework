@@ -1358,7 +1358,7 @@ def _worker_runtime_audit_errors(
 
 
 def terminal_closure_dispatch_errors(packet_path: Path, observations: object,
-                                     audits: object = None) -> list[str]:
+                                     audits: object = None, *, historical_recovery: bool = False) -> list[str]:
     """Require closure observations to cover the current dispatch ledger and latest dispatches."""
     if not isinstance(observations, list):
         return ["terminal_observations_required"]
@@ -1385,7 +1385,7 @@ def terminal_closure_dispatch_errors(packet_path: Path, observations: object,
                     or (audits is not None and (not isinstance(audits, list) or audits))):
                 return ["terminal_zero_dispatch_evidence_invalid"]
             freshness_errors = dispatch_audit_errors(
-                {"runtime_audits": []}, packet_path, closure_only=True)
+                {"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=historical_recovery)
             return freshness_errors
         if not observations:
             return ["terminal_observations_required"]

@@ -593,6 +593,15 @@ class TechOpsCorrections(unittest.TestCase):
                  patch.object(prepare, "_verified_recovery_planning", return_value={}), \
                  patch.object(prepare, "_recover_preserved_candidate", return_value=candidate):
                 self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                failure["errors"] = ["forbidden_context_reference:memory_path"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                failure["errors"] = ["forbidden_context_reference:unrelated"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
+                failure["errors"] = ["forbidden_context_reference:memory_path"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
                 ledger_path.write_text(json.dumps({**ledger, "events": [{"Operation": "spawn_agent"}]}))
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)

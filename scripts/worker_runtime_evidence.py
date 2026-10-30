@@ -288,11 +288,14 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     return result
 
 
-def dispatch_audit_errors(packet: dict, packet_path: Path, *, closure_only: bool = False) -> list[str]:
+def dispatch_audit_errors(packet: dict, packet_path: Path, *, closure_only: bool = False,
+                          historical_recovery: bool = False) -> list[str]:
     bindings = packet_path.parent / "role_bindings.json"
     if not bindings.is_file():
         return []
     try:
+        if historical_recovery and not closure_only:
+            raise ValueError("historical_recovery_requires_closure_only")
         manifest = json.loads(bindings.read_text())
         contract = manifest.get("runtime_evidence")
         if not contract:
@@ -302,7 +305,7 @@ def dispatch_audit_errors(packet: dict, packet_path: Path, *, closure_only: bool
             raise ValueError("runtime_dispatch_ledger_outside_current_run")
         saved = json.loads(ledger.read_text())
         validate_prepared_provider_source(manifest, Path(saved["provider_session"]), saved["parent_thread_id"],
-                                          saved["run_started_at"])
+                                          saved["run_started_at"], historical_recovery=historical_recovery)
         current = read_runtime_events(Path(saved["provider_session"]), saved["parent_thread_id"],
                                       saved["run_started_at"], tuple(Path(value) for value in saved.get("identity_sessions", [])))
         if (saved["events"] != current["events"] or saved["thread_mappings"] != current["thread_mappings"]

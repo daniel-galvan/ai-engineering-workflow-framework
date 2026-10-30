@@ -1161,8 +1161,8 @@ def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure
                 and any(row.get("Provider handle") == pending["Provider handle"] and row.get("Provider status") == "completed"
                         and row.get("Last dispatch at") == pending["Last dispatch at"]
                         and row.get("Thread ID") == trace.get("thread_id") for row in observations)
-                and len(observations) == len(handles) and not terminal_closure_dispatch_errors(packet_path, observations)
-                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and len(observations) == len(handles) and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
             raise ValueError("remediation_recovery_evidence_unverified")
         reentry = prior["reentry"]
@@ -1195,7 +1195,7 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
         errors = failure.get("errors", [])
         reentry = prior["reentry"]
         plan = artifact_root / "implementation_plan.md"
-        pattern = (r"parent_context_nonconformant:forbidden_context_reference:(?:archived_artifact|memory_path)"
+        pattern = (r"(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
                    r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?")
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
@@ -1206,8 +1206,8 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
                 and not prior.get("workers") and not prior.get("worker_results") and not prior.get("runtime_audits")
                 and not ledger.get("thread_mappings") and not ledger.get("events") and not ledger.get("failed_dispatches")
                 and ledger.get("timing", {}).get("open_worker_intervals") == 0 and closure.get("terminal_observations") == []
-                and not terminal_closure_dispatch_errors(packet_path, [])
-                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and not terminal_closure_dispatch_errors(packet_path, [], historical_recovery=True)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and reentry.get("Approval reference") and reentry.get("Approved plan") == str(plan.resolve())
                 and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")):
             raise ValueError("remediation_recovery_evidence_unverified")
@@ -1276,8 +1276,8 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                 and isinstance(observations, list) and len(observations) == len(handles)
                 and all(row.get("Provider status") in ({"completed", "interrupted", "stopped", "cancelled", "failed"}
                          if rejected else {"interrupted", "stopped", "cancelled", "failed"}) for row in observations)
-                and not terminal_closure_dispatch_errors(packet_path, observations)
-                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations
                 and reentry.get("Approval reference") and reentry.get("Approved plan") == str(plan.resolve())
                 and hashlib.sha256(plan.read_bytes()).hexdigest() == reentry.get("Approved plan SHA256")):
@@ -1331,8 +1331,8 @@ def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict,
                 and len(handles) == 1
                 and ledger.get("timing", {}).get("open_worker_intervals") == 0
                 and len(observations) == 1 and observations[0].get("Provider status") == "completed"
-                and not terminal_closure_dispatch_errors(packet_path, observations)
-                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
             raise ValueError("remediation_recovery_evidence_unverified")
         _verified_recovery_planning(artifact_root, prior)
@@ -1407,8 +1407,8 @@ def _recover_terminal_accepted_remediation(artifact_root: Path, prior: dict, clo
                 and isinstance(pending, dict) and _defer_downstream_rejection(artifact_root, "implementer", "tester", pending)
                 and ledger.get("timing", {}).get("open_worker_intervals") == 0 and handles
                 and isinstance(observations, list) and len(observations) == len(handles)
-                and not terminal_closure_dispatch_errors(packet_path, observations)
-                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+                and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
+                and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
             raise ValueError("remediation_recovery_evidence_unverified")
         reentry = prior["reentry"]
@@ -1540,8 +1540,8 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
             and (handles or (context_recovery or predispatch_candidate) and not ledger.get("events") and not ledger.get("failed_dispatches"))
             and ledger.get("timing", {}).get("open_worker_intervals") == 0
             and isinstance(observations, list) and len(observations) == len(handles)
-            and not terminal_closure_dispatch_errors(packet_path, observations)
-            and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)
+            and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
+            and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
             and (not handles or _native_terminal_observations(ledger, handles, require_terminal=False) == observations)):
         raise ValueError("remediation_recovery_evidence_unverified")
     repositories = [row for row in prior.get("repositories", []) if row.get("Repository role") == "Execution repository"]
@@ -1624,7 +1624,8 @@ def _reentry_source(
                                    for error in failure.get("errors", []))
             predispatch_context = (not prior.get("workers") and not prior.get("worker_results")
                                    and not json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("thread_mappings")
-                                   and any(str(error).startswith("parent_context_nonconformant:forbidden_context_reference:")
+                                   and any(str(error).startswith(("parent_context_nonconformant:forbidden_context_reference:",
+                                                                  "forbidden_context_reference:"))
                                            for error in failure.get("errors", [])))
             stopped_bootstrap = (not prior.get("workers") and not prior.get("worker_results")
                                  and any("bootstrap" in str(error).lower() and "before reading" in str(error).lower()
@@ -1708,8 +1709,8 @@ def _reentry_source(
             except ModuleNotFoundError:
                 from scripts.worker_runtime_evidence import dispatch_audit_errors
             packet_path = artifact_root / "finalization_packet.json"
-            if (terminal_closure_dispatch_errors(packet_path, closure["terminal_observations"])
-                    or dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True)):
+            if (terminal_closure_dispatch_errors(packet_path, closure["terminal_observations"], historical_recovery=True)
+                    or dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)):
                 raise ValueError("prior_worker_runtime_closure_required")
         if planning_source is not None:
             for field in ("work_item", "decisions", "claims", "actions", "evidence", "techops_checks",
