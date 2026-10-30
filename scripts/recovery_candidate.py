@@ -329,6 +329,34 @@ def verify_checkout_snapshot(repository: Path, revision: str, hashes: dict[str, 
         raise ValueError("candidate_evidence_unavailable") from error
 
 
+def verify_existing_snapshot(destination: Path, hashes: dict[str, str]) -> None:
+    """Reuse only an exact, intact snapshot left by interrupted preparation."""
+    if destination.is_symlink() or not destination.is_dir() or not hashes:
+        raise ValueError("candidate_snapshot_destination_invalid")
+    expected_files, expected_dirs = set(), set()
+    for name in hashes:
+        path = Path(name)
+        if not name or path.is_absolute() or ".." in path.parts or path.as_posix() != name:
+            raise ValueError("candidate_path_invalid:" + name)
+        expected_files.add(path)
+        expected_dirs.update(parent for parent in path.parents if parent != Path('.'))
+    try:
+        for item in destination.rglob('*'):
+            relative = item.relative_to(destination)
+            if item.is_symlink() or (item.is_dir() and relative not in expected_dirs):
+                raise ValueError("candidate_snapshot_destination_invalid")
+            if not item.is_dir():
+                if not item.is_file() or relative not in expected_files:
+                    raise ValueError("candidate_snapshot_destination_invalid")
+                if hashlib.sha256(item.read_bytes()).hexdigest() != hashes[relative.as_posix()]:
+                    raise ValueError("candidate_snapshot_destination_invalid")
+                expected_files.remove(relative)
+        if expected_files:
+            raise ValueError("candidate_snapshot_destination_invalid")
+    except OSError as error:
+        raise ValueError("candidate_snapshot_destination_invalid") from error
+
+
 def snapshot_candidate(repository: Path, destination: Path, hashes: dict[str, str]) -> None:
     """Preserve verified bytes as unaccepted input without editing source files."""
     repository = repository.resolve()

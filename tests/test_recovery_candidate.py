@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from scripts.recovery_candidate import (replay_candidate, replay_followup_candidate, snapshot_candidate, snapshot_replayed_candidate,
                                         verify_candidate, verify_edit_authorization)
-from scripts import prepare_run as prepare
+from scripts import prepare_run as prepare, recovery_candidate as recovery
 from scripts.prepare_run import _verify_rejected_delivery_candidate
 from scripts.runtime_checks import activation_message
 
@@ -318,6 +318,18 @@ class CandidateRecoveryTest(unittest.TestCase):
         self.assertEqual((destination / "new.txt").read_bytes(), (self.repo / "new.txt").read_bytes())
         with self.assertRaisesRegex(ValueError, "candidate_snapshot_destination_invalid"):
             snapshot_candidate(self.repo, destination, hashes)
+        recovery.verify_existing_snapshot(destination, hashes)
+        (destination / "extra").write_text("unexpected")
+        with self.assertRaisesRegex(ValueError, "candidate_snapshot_destination_invalid"):
+            recovery.verify_existing_snapshot(destination, hashes)
+        (destination / "extra").unlink()
+        (destination / "new.txt").write_text("tampered")
+        with self.assertRaisesRegex(ValueError, "candidate_snapshot_destination_invalid"):
+            recovery.verify_existing_snapshot(destination, hashes)
+        (destination / "new.txt").unlink()
+        (destination / "new.txt").symlink_to(self.repo / "new.txt")
+        with self.assertRaisesRegex(ValueError, "candidate_snapshot_destination_invalid"):
+            recovery.verify_existing_snapshot(destination, hashes)
 
     def test_preserved_candidate_revalidates_binding_archive_and_snapshot(self):
         root = self.root / "artifacts"

@@ -2527,12 +2527,14 @@ def prepare_run(
     recovered_candidate = prior.get("_recovered_candidate") if prior else continued_candidate
     if recovered_candidate and prior:
         try:
-            from recovery_candidate import snapshot_candidate
+            from recovery_candidate import snapshot_candidate, verify_existing_snapshot
         except ModuleNotFoundError:
-            from scripts.recovery_candidate import snapshot_candidate
+            from scripts.recovery_candidate import snapshot_candidate, verify_existing_snapshot
         destination = artifact_root / ("recovery_candidate." + re.sub(r"[^A-Za-z0-9._-]", "_", prior["identity"]["Run ID"]))
         contents = recovered_candidate.pop("_contents", None)
-        if contents is None:
+        if destination.exists() or destination.is_symlink():
+            verify_existing_snapshot(destination, recovered_candidate["files"])
+        elif contents is None:
             snapshot_candidate(resolved_execution_repository, destination, recovered_candidate["files"])
         else:
             try:
