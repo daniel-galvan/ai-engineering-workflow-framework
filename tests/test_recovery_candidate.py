@@ -703,6 +703,15 @@ class CandidateRecoveryTest(unittest.TestCase):
                                              guard, packet, "/root/worker", self.repo, ["tracked.txt", "new.txt"])
         write_parent(action)
         self.assertIsNone(check())
+        malformed = {"type": "event_msg", "timestamp": "2026-01-01T00:00:01.5Z", "payload": {
+            "type": "item_completed", "item": {"type": "CommandExecution",
+                "command": ["bash", "-lc", "printf 'unclosed"], "status": "completed"}}}
+        write_parent(action, malformed)
+        self.assertIsNone(check())
+        malformed["payload"]["item"]["command"][2] = f"python3 {guard} 'unclosed"
+        write_parent(action, malformed)
+        with self.assertRaisesRegex(ValueError, "candidate_source_guard_missing"):
+            check()
         warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
                    "Operation not permitted (os error 1)\n")
         action["payload"]["item"]["aggregated_output"] = warning + '{"status":"allowed"}'

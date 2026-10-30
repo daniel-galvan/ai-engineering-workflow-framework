@@ -38,7 +38,14 @@ def verify_edit_authorization(parent_session: Path, parent_id: str, worker_sessi
             command = item.get("command", [])
             if not isinstance(command, list) or len(command) != 3 or command[1] not in {"-c", "-lc"}:
                 continue
-            tokens = shlex.split(command[2])
+            try:
+                tokens = shlex.split(command[2])
+            except ValueError:
+                # Unrelated shell syntax must not prevent evidence collection. A
+                # malformed possible guard cannot authorize any later edit.
+                if str(guard) in command[2] and timestamp(row["timestamp"]) >= start:
+                    observations.append((timestamp(row["timestamp"]), False))
+                continue
             if (len(tokens) != 8 or Path(tokens[0]).name not in {"python", "python3"}
                     or Path(tokens[1]) != guard or tokens[2:4] != ["--before-source-change", str(packet)]
                     or tokens[4:6] != ["--implementer-handle", handle]
