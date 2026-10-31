@@ -3168,7 +3168,7 @@ def status_projection(execution_repository: Path, work_item: str, provider_sessi
     ids = prior_run_status_thread_ids(root, parent)
     bindings_path = root / "role_bindings.json"
     packet_path = root / "finalization_packet.json"
-    if not ids and bindings_path.is_file() and packet_path.is_file() and not (root / "finalization_failure.json").exists():
+    if not ids and bindings_path.is_file() and packet_path.is_file():
         bindings = json.loads(bindings_path.read_text())
         identity = json.loads(packet_path.read_text()).get("identity", {})
         saved_parent = bindings.get("parent_context", {})
