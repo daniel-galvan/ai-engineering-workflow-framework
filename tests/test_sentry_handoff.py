@@ -106,6 +106,31 @@ class V8SentryHandoff(unittest.TestCase):
         report = finalizer.failure_handoff(self.packet_path, "Failed")
         self.assertIn("Provisional artifact statement (not verified worker output): HTTP rejection observed", report)
 
+    def test_failure_inventory_preserves_files_without_listing_other_runs(self):
+        current = self.packet["identity"]["Run ID"]
+        files = {
+            "trace_previous.json": {"run_id": "previous"},
+            "trace_invalid.json": "invalid JSON",
+            "trace_current_rejected.json": {"run_id": current, "audit": {"status": "rejected"}},
+            "result.rejected.previous.json": {"run_id": "previous"},
+            "result.rejected.current.json": {"run_id": current},
+            "packet.rejected.current.json": {"identity": {"Run ID": current}},
+            "output.rejected.unattributed.md": "Retain this unbound historical file unchanged.",
+        }
+        for name, content in files.items():
+            (self.root / name).write_text(json.dumps(content) if isinstance(content, dict) else content)
+        before = {name: (self.root / name).read_bytes() for name in files}
+        report = finalizer.failure_handoff(self.packet_path, "Later stage failed")
+        for name in files:
+            with self.subTest(name=name):
+                self.assertEqual((self.root / name).read_bytes(), before[name])
+                if "current" in name:
+                    self.assertIn(str(self.root / name), report)
+                else:
+                    self.assertNotIn(str(self.root / name), report)
+        self.assertIn(str(self.path), report)
+        self.assertIn(str(self.evidence), report)
+
     def test_external_trace_path_and_missing_bindings_cannot_establish_acceptance(self):
         outside = self.root.parent / "external-trace.json"
         self.path.rename(outside)

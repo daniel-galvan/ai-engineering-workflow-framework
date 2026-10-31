@@ -1236,17 +1236,29 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
     return verified if cursor == len(content) and verified else {}
 
 
-def _python_read_targets(source: str) -> list[str]:
+def _python_read_targets(source: str, *, pretty: bool = False) -> list[str]:
     """Recognize the recorded JSON inspection form; other Python remains unaudited."""
     tree = ast.parse(source)
     targets, constants = [], {}
+    builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted"}
+    protected = builtins | {"open", "json", "pprint"} if pretty else {"open", "json", "print"}
+    called_attributes = {id(node.func) for node in ast.walk(tree)
+                         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import) and any(item.name != "json" or item.asname for item in node.names):
+        if pretty and (isinstance(node, (ast.AugAssign, ast.AnnAssign, ast.NamedExpr, ast.With, ast.AsyncWith,
+                                        ast.Delete, ast.Try, ast.AsyncFor, ast.AsyncFunctionDef))
+                       or isinstance(node, ast.Attribute) and id(node) not in called_attributes):
+            return []
+        if pretty and isinstance(node, (ast.For, ast.comprehension)) and (
+                not isinstance(node.target, ast.Name) or node.target.id in protected):
+            return []
+        if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json"})
+                                                or item.asname for item in node.names):
             return []
         if isinstance(node, (ast.ImportFrom, ast.FunctionDef, ast.ClassDef, ast.Lambda)):
             return []
         if isinstance(node, ast.Assign) and any(not isinstance(target, ast.Name)
-                or target.id in {"open", "json", "print"} for target in node.targets):
+                or target.id in protected for target in node.targets):
             return []
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
             for target in node.targets:
@@ -1259,24 +1271,112 @@ def _python_read_targets(source: str) -> list[str]:
                 if len(node.args) != 1 or node.keywords:
                     return []
                 argument = node.args[0]
+                if pretty and not isinstance(argument, ast.Constant):
+                    return []
                 path = argument.value if isinstance(argument, ast.Constant) else constants.get(
                     argument.id if isinstance(argument, ast.Name) else "")
                 if not isinstance(path, str):
                     return []
                 targets.append(path)
-            elif node.func.id not in {"print", "len", "isinstance", "str", "list", "type", "sorted"}:
+            elif node.func.id not in builtins:
                 return []
+            elif pretty:
+                allowed_keywords = {"sep", "end", "flush"} if node.func.id == "print" else (
+                    {"reverse"} if node.func.id == "sorted" else set())
+                if (any(keyword.arg not in allowed_keywords or not isinstance(keyword.value, ast.Constant)
+                        for keyword in node.keywords) or node.func.id != "print" and
+                        len(node.args) != (2 if node.func.id == "isinstance" else 1)):
+                    return []
         elif isinstance(node.func, ast.Attribute):
             json_load = (isinstance(node.func.value, ast.Name) and node.func.value.id == "json"
                          and node.func.attr in {"load", "dumps"})
+            pretty_print = (pretty and isinstance(node.func.value, ast.Name) and node.func.value.id == "pprint"
+                            and node.func.attr in {"pp", "pprint", "pformat"})
             if json_load and any(keyword.arg not in {"indent", "sort_keys", "ensure_ascii"}
                                  or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords):
                 return []
-            if not json_load and node.func.attr not in {"keys", "items", "values", "get"}:
+            if pretty_print and (len(node.args) != 1 or any(
+                    keyword.arg not in {"indent", "width", "depth", "compact", "sort_dicts"}
+                    or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords)):
+                return []
+            if not json_load and not pretty_print and node.func.attr not in (
+                    {"keys", "items", "values", "get", "lower"} if pretty else {"keys", "items", "values", "get"}):
                 return []
         else:
             return []
     return targets
+
+
+def _pretty_packet_reads(trace: dict, root: Path | None) -> dict[str, dict]:
+    """Bind read-only pretty-printed metadata to the one literal current packet input."""
+    result = {}
+    if root is None:
+        return result
+    for row in trace.get("tool_trace", []):
+        if not isinstance(row, dict):
+            continue
+        operations = _tool_operations(row)
+        if not row.get("call_id") or len(operations) != 1 or operations[0][0] != "exec_command":
+            continue
+        try:
+            args = operations[0][1]
+            tokens = shlex.split(args.get("cmd", ""))
+            if (len(tokens) != 3 or tokens[1] != "-c" or tokens[0] != "python3" and
+                    (not Path(tokens[0]).is_absolute() or Path(tokens[0]).resolve() != Path(sys.executable).resolve())):
+                continue
+            targets = _python_read_targets(tokens[2], pretty=True)
+            if len(targets) != 1:
+                continue
+            path = Path(targets[0])
+            path = path if path.is_absolute() else Path(args.get("workdir", root.parent.parent)) / path
+            if path.is_symlink() or path.resolve() != root / "finalization_packet.json":
+                continue
+            reentry = json.loads(path.read_text()).get("reentry")
+            if isinstance(reentry, dict) and isinstance(reentry.get("Prior artifacts"), str):
+                result[row["call_id"]] = reentry
+        except (OSError, ValueError, TypeError, SyntaxError):
+            continue
+    return result
+
+
+def _without_pretty_reentry_reference(text: str, expected: dict) -> str:
+    """Mask only the archive-pointer value in a matching current reentry dictionary."""
+    stack, replacements = [], []
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type != tokenize.OP:
+                continue
+            if token.string in "{[(":
+                stack.append((token.string, token.start))
+                continue
+            if token.string not in "}])" or not stack:
+                continue
+            opening, start = stack.pop()
+            if opening != "{" or token.string != "}":
+                continue
+            begin = offsets[start[0] - 1] + start[1]
+            end = offsets[token.end[0] - 1] + token.end[1]
+            literal = text[begin:end]
+            if "Prior artifacts" not in literal or ast.literal_eval(literal) != expected:
+                continue
+            tree = ast.parse(literal, mode="eval").body
+            value = next(value for key, value in zip(tree.keys, tree.values)
+                         if isinstance(key, ast.Constant) and key.value == "Prior artifacts")
+            encoded = literal.encode()
+            fragment_lines = literal.splitlines(keepends=True)
+            first = sum(len(line.encode()) for line in fragment_lines[:value.lineno - 1]) + value.col_offset
+            last = sum(len(line.encode()) for line in fragment_lines[:value.end_lineno - 1]) + value.end_col_offset
+            replacement = (encoded[:first] + b"'[current packet archive reference]'" + encoded[last:]).decode()
+            replacements.append((begin, end, replacement))
+    except (ValueError, SyntaxError, TypeError, AttributeError, StopIteration, tokenize.TokenError):
+        return text
+    for begin, end, replacement in sorted(replacements, reverse=True):
+        text = text[:begin] + replacement + text[end:]
+    return text
 
 
 def _read_targets(command: str) -> list[str]:
@@ -1808,13 +1908,13 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
             continue
         python_targets = _python_instruction_reads(command)
         try:
-            lexer = shlex.shlex(command, posix=True, punctuation_chars=";\n")
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&\n")
             lexer.whitespace_split = True
             lexer.whitespace = " \t\r"
             lexer.commenters = ""
             statements, current = [], []
             for token in lexer:
-                if token and all(char in ";\n" for char in token):
+                if token == "&&" or token and all(char in ";\n" for char in token):
                     if current:
                         statements.append(current)
                         current = []
@@ -1825,7 +1925,7 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
         except ValueError:
             continue
         targets, index = python_targets, len(statements) if python_targets else 0
-        # Unknown shell syntax remains audited; consume only literal reads and instruction loops.
+        # Recognize independent instruction reads; other statements remain fully audited.
         while index < len(statements):
             statement = statements[index]
             if len(statement) >= 4 and statement[0] == "for" and statement[2] == "in":
@@ -1880,7 +1980,17 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                         statement = statement[:-len(redirect)]
                         break
                 selected = _read_targets(shlex.join(statement))
-                if not selected:
+                if (not selected and len(statement) == 3 and statement[0] == "python3" and statement[1] == "-c"):
+                    try:
+                        selected = _python_read_targets(statement[2], pretty=True)
+                    except (ValueError, TypeError, SyntaxError):
+                        pass
+                probe_prefix = include_probes and (
+                    len(statement) == 4 and statement[:3] in (["test", "!", "-e"], ["test", "!", "-f"])
+                    and not any(char in statement[3] for char in "$`<>|&")
+                    or len(statement) == 2 and statement[0] == "printf"
+                    and not statement[1].startswith("-") and not any(char in statement[1] for char in "$`%<>|&"))
+                if not selected and not probe_prefix:
                     break
                 targets.extend(selected)
                 index += 1
@@ -2081,6 +2191,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
     labeled_outputs = _labeled_packet_outputs(trace, root) if dispatch_content else {}
+    pretty_outputs = _pretty_packet_reads(trace, root)
     empty_memory_probes = _empty_worker_memory_probes(trace) if trace.get("trace_retrieval") else {}
     host_memory_reads, host_memory_outputs = _host_worker_memory_reads(trace) if trace.get("trace_retrieval") else ({}, {})
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
@@ -2122,6 +2233,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
             if labeled and candidate == labeled[0]:
                 candidate = candidate.replace(labeled[1], '"[current packet archive reference]"', 1)
             source = call_sources.get(row.get("call_id"), "")
+            if row.get("call_id") in pretty_outputs:
+                candidate = _without_pretty_reentry_reference(candidate, pretty_outputs[row["call_id"]])
             candidate = "".join(line[:-4] + "\n" if line.startswith("---") and line.endswith("---\n")
                                 and json.dumps(line[3:-4], ensure_ascii=False) in source else line
                                 for line in candidate.splitlines(keepends=True))

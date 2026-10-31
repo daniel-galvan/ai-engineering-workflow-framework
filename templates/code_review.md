@@ -47,6 +47,8 @@ Reviewer must independently verify completeness and each exclusion, recording `R
 For excluded targets, record non-impact proof and `Not executed: reviewed exclusion` as execution evidence. A source
 review may use deferred with its planned command and Tester owner; final validation cannot defer runnable work.
 Results: pass, fail, blocked, deferred, excluded. Pass requires exact execution receipt; compilation is not execution.
+Honor user test-scope limits. Record supported file/case selectors in the command, or a concrete Reviewer reason for
+broader execution. Report actual file/case counts when available and distinguish cached results from executed tests.
 
 | Changed behavior / contract | Caller / existing tests | Test target / command | Discovery evidence | Result | Execution evidence | Reason / reviewer |
 | --- | --- | --- | --- | --- | --- | --- |

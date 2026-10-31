@@ -1,6 +1,7 @@
 """Recorded provider call shapes: historical data is not current tool activity."""
 
 import json
+import pprint
 import hashlib
 import shlex
 import subprocess
@@ -840,6 +841,69 @@ class ContextOperationAudit(unittest.TestCase):
         changed["tool_trace"][-2]["input"] = changed["tool_trace"][-2]["input"].replace("import json;", "import json; open('/tmp/secret').read();")
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
 
+    def test_pretty_current_packet_metadata_keeps_actual_archive_reads_blocked(self):
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        reference = str(self.root / "runs" / "prior")
+        packet.update({"reentry": {"Prior run ID": "prior", "Prior artifacts": reference},
+                       "integration_decision": {}, "handoff": {},
+                       "claims": [{"Claim ID": "review-result", "Claim": "review accepted"}]})
+        packet_path.write_text(json.dumps(packet))
+        program = (f"import json,pprint; p=json.load(open({str(packet_path)!r}));\n"
+                   "for k in ['integration_decision','reentry','handoff']: print('\\n'+k+':'); pprint.pp(p[k]);\n"
+                   "for k in ['claims']:\n print('\\n'+k+' relevant:');\n for x in p[k]:\n"
+                   "  s=str(x)\n  if 'review' in s.lower(): pprint.pp(x)\n")
+        command = "python3 -c " + shlex.quote(program)
+        call = 'const r = await tools.exec_command(' + json.dumps({"cmd": command,
+            "workdir": str(self.repository)}) + '); text(r.output);'
+        output = "".join("\n" + field + ":\n" + pprint.pformat(packet[field], sort_dicts=False) + "\n"
+                         for field in ("integration_decision", "reentry", "handoff"))
+        output += "\nclaims relevant:\n" + pprint.pformat(packet["claims"][0], sort_dicts=False) + "\n"
+        trace = self.instruction_read_trace()
+        trace["tool_trace"].extend(self.paired(call, [{"type": "input_text", "text":
+            "Script completed\nWall time 0.3 seconds\nOutput:\n"}, {"type": "input_text", "text": output}]))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        self.assertEqual(runtime.context_trace_errors({"tool_trace": trace["tool_trace"][-2:]},
+                                                      artifact_root=self.root), [])
+        secret = str(self.root / "runs" / "secret")
+        for change in ("forged", "extra_output", "archive_read", "indirect_read", "extra_read", "write", "mixed",
+                       "interpreter", "shadow", "callback", "attribute", "class"):
+            changed = json.loads(json.dumps(trace))
+            if change == "forged": changed["tool_trace"][-1]["output"][1]["text"] = output.replace(reference, secret)
+            elif change == "extra_output": changed["tool_trace"][-1]["output"][1]["text"] += "\n" + secret
+            elif change == "mixed": changed["tool_trace"][-2]["input"] += ' await tools.exec_command({"cmd":"cat ' + secret + '"});'
+            else:
+                bad = program
+                if change == "archive_read": bad = bad.replace(str(packet_path), secret)
+                elif change == "indirect_read": bad += "json.load(open(p['reentry']['Prior artifacts']))\n"
+                elif change == "extra_read": bad += "json.load(open('/tmp/unassigned.json'))\n"
+                elif change == "write": bad += "open('/tmp/side-effect','w').write('x')\n"
+                elif change == "shadow": bad += "for json.dumps in [eval]: json.dumps('payload')\n"
+                elif change == "callback": bad += "sorted(['payload'], key=eval)\n"
+                elif change == "attribute": bad += "pprint.pp.__globals__.get('secret')\n"
+                elif change == "class": bad += "type('Proxy',(),{})\n"
+                cmd = ("/tmp/python3" if change == "interpreter" else "python3") + " -c " + shlex.quote(bad)
+                changed["tool_trace"][-2]["input"] = 'const r = await tools.exec_command(' + json.dumps({
+                    "cmd": cmd, "workdir": str(self.repository)}) + '); text(r.output);'
+            with self.subTest(change=change):
+                self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+                self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
+                    {"tool_trace": changed["tool_trace"][-2:]}, artifact_root=self.root))
+
+    def test_pretty_reentry_mask_preserves_wrapping_unicode_and_other_references(self):
+        from scripts.runtime_checks import _without_pretty_reentry_reference
+        reentry = {"Prior artifacts": str(self.root / "runs" / "priór with spaces"), "Approval reference": "approved"}
+        text = "reentry:\n" + pprint.pformat(reentry, width=30) + "\n"
+        masked = _without_pretty_reentry_reference(text, reentry)
+        self.assertIn("[current packet archive reference]", masked)
+        self.assertNotIn("priór", masked)
+        self.assertNotIn("priór", _without_pretty_reentry_reference(pprint.pformat(reentry), reentry))
+        nested = pprint.pformat({"identity": {"State": "in_progress"}, "reentry": reentry})
+        self.assertNotIn("priór", _without_pretty_reentry_reference(nested, reentry))
+        extra = str(self.root / "runs" / "another")
+        self.assertTrue(_without_pretty_reentry_reference(text + extra, reentry).endswith(extra))
+        self.assertEqual(_without_pretty_reentry_reference(text, {**reentry, "Approval reference": "changed"}), text)
+
     def test_bounded_current_packet_reads_keep_archive_access_guard(self):
         packet_path = self.root / "finalization_packet.json"
         packet = json.loads(packet_path.read_text())
@@ -937,6 +1001,28 @@ class ContextOperationAudit(unittest.TestCase):
             self.assertTrue(runtime._ancestor_instruction_reads(rows[0], self.root, include_probes=True))
             trace["tool_trace"].extend(rows)
             self.assertEqual(runtime.trace_errors(trace), [])
+
+    def test_ancestor_probe_after_other_commands_keeps_archive_restrictions(self):
+        probe = ('for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+                 'do if test -f "$f"; then printf \'%s\\n\' "$f"; fi; done')
+        prefix = ('python3 -c \'import json; p=json.load(open(".thoughts/ITEM-1/finalization_packet.json")); '
+                  'print(json.dumps({"state":"current"}))\' '
+                  '&& test ! -e .thoughts/ITEM-1/documenter_assignment.json '
+                  '&& printf \'assignment path unused\\n\' ')
+        for separator in ('&& ', '; ', '\n'):
+            command = prefix + separator + probe
+            rows = self.paired('await tools.exec_command(' + json.dumps({
+                'cmd': command, 'workdir': str(self.repository)}) + ')', '.thoughts/AGENTS.md')
+            self.assertEqual(runtime.context_trace_errors({'tool_trace': rows}, artifact_root=self.root), [])
+            for bad in (command + '; cat .thoughts/ITEM-1/runs/prior/notes.md',
+                        'cat .thoughts/OTHER/notes.md; ' + command,
+                        'cd other; ' + command,
+                        'eval "cd other"; ' + command,
+                        command.replace('.thoughts/AGENTS.md', '.thoughts/OTHER/AGENTS.md')):
+                rejected = self.paired('await tools.exec_command(' + json.dumps({
+                    'cmd': bad, 'workdir': str(self.repository)}) + ')', '')
+                self.assertIn('forbidden_context_reference:archived_artifact',
+                              runtime.context_trace_errors({'tool_trace': rejected}, artifact_root=self.root))
 
     def test_echo_ancestor_probe_with_literal_quotes_is_not_an_archive_read(self):
         for condition, output in (("test -f $p", "echo $p"),

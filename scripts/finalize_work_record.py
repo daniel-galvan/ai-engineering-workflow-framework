@@ -1806,7 +1806,19 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
     audits = audits if isinstance(audits, list) else []
     traces = [Path(row["Trace path"]) for row in audits
               if isinstance(row, dict) and isinstance(row.get("Trace path"), str)]
-    traces.extend(sorted(root.glob("*trace*.json")))
+    def current_run_artifact(path: Path) -> bool:
+        try:
+            if path.is_symlink() or path.resolve().parent != root or not identity.get("Run ID"):
+                return False
+            saved = json.loads(path.read_text())
+            return isinstance(saved, dict) and (
+                saved.get("run_id") == identity["Run ID"]
+                or isinstance(saved.get("identity"), dict)
+                and saved["identity"].get("Run ID") == identity["Run ID"])
+        except (OSError, ValueError, TypeError):
+            return False
+    # Directory discovery must not present a prior invocation's leftovers as current evidence.
+    traces.extend(path for path in sorted(root.glob("*trace*.json")) if current_run_artifact(path))
     for source in dict.fromkeys(traces):
         source = source if source.is_absolute() else root / source
         try:
@@ -1907,7 +1919,7 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
         if saved.is_file() and saved.resolve().parent == root.resolve():
             saved_paths.append(str(saved))
     for saved in root.glob("*.rejected.*"):
-        if saved.is_file() and saved.resolve().parent == root.resolve():
+        if current_run_artifact(saved):
             saved_paths.append(str(saved))
             established.append("Rejected artifact retained for audit only: " + str(saved))
     for row in packet.get("durable_artifacts", []) if isinstance(packet.get("durable_artifacts"), list) else []:

@@ -1115,6 +1115,12 @@ evidence of urgency, not a substitute for this disposition.
 
 ## Delivery Test Completion
 
+Honor user limits on test scope in the actual command. When a target includes unrelated tests and supports file or
+case selection, the Reviewer MUST record the selectors for affected behaviors and callers in Affected Tests; the
+Tester MUST use those selectors. Broader execution requires a concrete dependency or regression reason recorded by
+the Reviewer. Report the actual target, file/case counts when available, and whether results were cached; one passing
+target is not evidence that only one case ran or that any case executed in the current run.
+
 Required regression coverage is implementation work. The Implementer MUST add missing tests/assertions within the
 approved scope; the Tester MUST reconcile each approved criterion and material behavior with objective proof. A green
 suite alone does not establish missing assertions. Runnable coverage gaps and failures return through Coordinator to
