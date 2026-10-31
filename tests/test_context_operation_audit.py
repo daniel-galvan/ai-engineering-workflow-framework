@@ -875,7 +875,17 @@ class ContextOperationAudit(unittest.TestCase):
         call = lambda cmd: 'await tools.exec_command(' + json.dumps({"cmd": cmd, "workdir": str(self.repository)}) + ')'
         trace = {"tool_trace": self.paired(call(command), output)}
         self.assertEqual(runtime.context_trace_errors(trace, artifact_root=self.root), [])
+        mixed = command.replace("from pathlib import Path\n", "import json\nfrom pathlib import Path\nprint('current bindings')\n")
+        mixed = mixed.replace("--- {p}", "AGENTS_CHECK {p}").replace(
+            "if p.is_file():", f"if p.is_file() and p != Path({str(paths[0])!r}):")
+        self.assertEqual(runtime.context_trace_errors(
+            {"tool_trace": self.paired(call(mixed), output)}, artifact_root=self.root), [])
         for unsafe in (command + "\ncat .thoughts/ITEM-1/runs/prior/notes.md",
+                       mixed.replace("\nPY", "\nprint(open('.thoughts/ITEM-1/runs/prior/notes.md').read())\nPY"),
+                       mixed.replace("for p in", "Path = other_reader\nfor p in"),
+                       mixed.replace("for p in", "import evil as Path\nfor p in"),
+                       mixed.replace("for p in", "exec('Path = other_reader')\nfor p in"),
+                       mixed.replace("for p in", "Path.read_text = other_reader\nfor p in"),
                        command.replace("p.read_text()", "p.write_text('changed')"),
                        command.replace(str(paths[1]), str(self.root / "runs/prior/AGENTS.md")),
                        command.replace(str(paths[1]), str(self.root.parent / "OTHER/AGENTS.md")),

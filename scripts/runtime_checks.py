@@ -1741,17 +1741,47 @@ def _python_instruction_reads(command: str) -> list[str]:
         return []
     try:
         tree = ast.parse(match[2])
-        loop = tree.body[1]
-        variable = loop.target.id
-        targets = [ast.literal_eval(node.args[0]) for node in loop.iter.elts]
-        if not targets or not all(isinstance(target, str) for target in targets):
+        imports = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+        if (len(imports) != 1 or ast.dump(imports[0]) != ast.dump(ast.parse('from pathlib import Path').body[0])
+                or any(isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+                       and node.id in {'Path', 'print'} for node in ast.walk(tree))
+                or any(isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.Lambda, ast.Delete)) for node in ast.walk(tree))
+                or any(isinstance(node, ast.Import) and any(alias.name != 'json' or alias.asname
+                       for alias in node.names) for node in ast.walk(tree))
+                or any(isinstance(node, ast.Attribute) and (isinstance(node.ctx, ast.Store)
+                       or node.attr.startswith('__')) for node in ast.walk(tree))
+                or any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                       and node.func.id not in {'Path', 'print', 'len', 'str', 'list', 'sorted', 'isinstance', 'type'}
+                       for node in ast.walk(tree))):
             return []
-        paths = ", ".join(f"Path({target!r})" for target in targets)
-        expected = (f"from pathlib import Path\nfor {variable} in [{paths}]:\n"
-                    f"    print(f'--- {{{variable}}} exists={{{variable}.is_file()}}')\n"
-                    f"    if {variable}.is_file(): print({variable}.read_text())")
-        if ast.dump(tree) == ast.dump(ast.parse(expected)):
-            return targets
+        targets = []
+        for loop in tree.body:
+            if not isinstance(loop, ast.For):
+                continue
+            variable = loop.target.id
+            selected = [ast.literal_eval(node.args[0]) for node in loop.iter.elts]
+            if not selected or not all(isinstance(target, str) for target in selected):
+                continue
+            paths = ", ".join(f"Path({target!r})" for target in selected)
+            marker = loop.body[0].value
+            # Permit literal marker text and only the loop path/existence in formatted fields.
+            expressions = {ast.dump(ast.parse(value, mode='eval').body)
+                           for value in (variable, variable + '.is_file()')}
+            if (not isinstance(marker, ast.Call) or ast.unparse(marker.func) != 'print' or marker.keywords
+                    or len(marker.args) != 1 or not isinstance(marker.args[0], ast.JoinedStr)
+                    or any(not isinstance(part, ast.Constant) and not (
+                        isinstance(part, ast.FormattedValue) and part.format_spec is None
+                        and ast.dump(part.value) in expressions) for part in marker.args[0].values)):
+                continue
+            conditions = [variable + '.is_file()'] + [
+                f'{variable}.is_file() and {variable} != Path({target!r})' for target in selected]
+            for condition in conditions:
+                expected = (f'for {variable} in [{paths}]:\n    {ast.unparse(marker)}\n'
+                            f'    if {condition}: print({variable}.read_text())')
+                if ast.dump(loop) == ast.dump(ast.parse(expected).body[0]):
+                    targets.extend(selected)
+                    break
+        return targets
     except (SyntaxError, AttributeError, IndexError, TypeError, ValueError):
         pass
     return []
