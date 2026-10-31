@@ -259,7 +259,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    discovery, artifact-tree searches, manifest creation, or provider status calls, run the `--status-projection`
    helper and execute its complete emitted projection exactly as described in the current-task rule below. Use exact
    current artifact paths; never recursively list the artifact root or search its `runs/` archives. Do not issue a
-   direct `list_threads` call. If the helper or projection blocks, stop without preparing a new run. When reentering
+   direct `list_threads` call. If the status-projection helper or its provider status projection blocks, stop before
+   preparation. This does not mean stopping on the separate preparation result `existing_run_not_terminal`: for a
+   fresh-run request with terminal-status proof, apply the one-time `--archive-stale-run` retry below. When reentering
    a terminal run from a different chat, do not run the old parent's live evidence collector from the new chat;
    remediation reentry verifies the saved native ledger and terminal closure against their original parent.
    For an approved remediation reentry from a terminal run, prepare with both `--continuation` and
@@ -307,6 +309,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
+   For a fresh-run request, if preparation returns `existing_run_not_terminal`, use the already-required status
+   projection to verify the prior parent is idle, every child is terminal, and no writer remains. Then rerun the same
+   preparation once with `--archive-stale-run`; preserve the input manifest and all prior evidence. Stop on missing
+   closure proof or a blocked retry. This preparation recovery is distinct from a blocked status projection.
    Before preparation, try to open each declared file, folder, URL, or attachment and confirm its contents can be
    passed to the assigned worker. Keep the original locator in `Source or path` and record the access result in that
    input row's `Status`; do not leave an inaccessible artifact marked only `Registered`. If unavailable, record the
