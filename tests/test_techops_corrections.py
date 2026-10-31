@@ -476,6 +476,15 @@ class TechOpsCorrections(unittest.TestCase):
             with patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]):
                 self.assertEqual(prepare._recover_unactivated_remediation(root, bindings),
                                  (failure_path, failure_path.read_bytes(), (root / "runtime_closure.json").read_bytes()))
+                wrapped = ("remediation_not_activated: parent_context_nonconformant:"
+                           "forbidden_context_reference:archived_artifact; audit mentioned sentence punctuation")
+                failure_path.write_text(json.dumps({**failure, "errors": [wrapped]}))
+                self.assertIsNotNone(prepare._recover_unactivated_remediation(root, bindings))
+                for invalid in (wrapped + "; delivery_dependency_not_accepted:tester",
+                                wrapped.replace("archived_artifact", "archived_artifact_extra")):
+                    failure_path.write_text(json.dumps({**failure, "errors": [invalid]}))
+                    self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
+                failure_path.write_text(json.dumps({**failure, "errors": [wrapped]}))
                 for changed in ({**ledger, "events": [{"Operation": "spawn_agent"}]},
                                 {**ledger, "failed_dispatches": [{}]}, {**ledger, "thread_mappings": {"x": "y"}}):
                     ledger_path.write_text(json.dumps(changed))

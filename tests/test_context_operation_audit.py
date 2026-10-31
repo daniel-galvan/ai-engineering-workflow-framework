@@ -189,6 +189,56 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact",
                       runtime.context_trace_errors(trace, artifact_root=self.root))
 
+    def test_serialized_objective_punctuation_does_not_hide_executable_artifact_paths(self):
+        objective = "Keep café artifacts inside " + str(self.root) + ". Do not read prior runs."
+        body = ("import json\nfrom pathlib import Path\nr=Path(" + repr(str(self.root)) + ")\n"
+                "a={'objective':" + repr(objective) + ", 'input_paths': []}\n"
+                "(r/'assignment.json').write_text(json.dumps(a,indent=2))\n")
+        command = "python3 - <<'PY'\n" + body + "PY"
+        trace = {"tool_trace": self.paired('await tools.exec_command(' + json.dumps({"cmd": command}) + ')', "")}
+        self.assertEqual(runtime.context_trace_errors(trace, artifact_root=self.root), [])
+        native = {"tool_trace": [{"type": "function_call", "name": "exec_command", "call_id": "native",
+                                  "arguments": {"cmd": command}}]}
+        self.assertEqual(runtime.context_trace_errors(native, artifact_root=self.root), [])
+        for extra in ("Path(" + repr(str(self.root) + ".") + ").read_text()\n",
+                      "Path(" + repr(str(self.root) + ".") + ").write_text('bad')\n",
+                      "exec(a['objective'])\n", "alias=a\n",
+                      "json.dumps=lambda value: value\n",
+                      "Path(" + repr(objective) + ").read_text()\n",
+                      "sorted([a],key=eval)\n"):
+            changed = {"tool_trace": self.paired('await tools.exec_command(' + json.dumps({
+                "cmd": "python3 - <<'PY'\n" + body + extra + "PY"}) + ')', "")}
+            with self.subTest(extra=extra):
+                self.assertIn("forbidden_context_reference:archived_artifact",
+                              runtime.context_trace_errors(changed, artifact_root=self.root))
+        expanded = command.replace("<<'PY'", "<<PY").replace("Do not read prior runs.",
+                   "$(cat " + str(self.root) + ". )")
+        changed = {"tool_trace": self.paired('await tools.exec_command(' + json.dumps({"cmd": expanded}) + ')', "")}
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      runtime.context_trace_errors(changed, artifact_root=self.root))
+        for forbidden in (str(self.root.parent / "OTHER") + ".", str(self.root) + "/runs/prior/notes.md"):
+            changed = {"tool_trace": self.paired('await tools.exec_command(' + json.dumps({
+                "cmd": command.replace(str(self.root) + ".", forbidden)}) + ')', "")}
+            self.assertIn("forbidden_context_reference:archived_artifact",
+                          runtime.context_trace_errors(changed, artifact_root=self.root))
+
+    def test_bound_failure_reason_punctuation_is_not_an_artifact_operation(self):
+        package = self.repository / "package"
+        (self.root / "role_bindings.json").write_text(json.dumps({"framework_package": {"root": str(package)}}))
+        reason = "Audit mentioned " + str(self.root) + ". No archive was read."
+        command = shlex.join(["python3", str(package / "scripts/finalize_work_record.py"), "--packet",
+                              str(self.root / "finalization_packet.json"), "--workflow-failure", reason])
+        def trace(cmd):
+            return {"tool_trace": self.paired('await tools.exec_command(' + json.dumps({"cmd": cmd}) + ')', "")}
+        self.assertEqual(runtime.context_trace_errors(trace(command), artifact_root=self.root), [])
+        for invalid in (command + "; cat " + str(self.root) + ".",
+                        command[:command.index("--workflow-failure")] + '--workflow-failure "$(cat ' + str(self.root) + '. )"',
+                        command.replace(str(package), str(self.repository / "other-package")),
+                        command.replace(str(self.root / "finalization_packet.json"), str(self.root) + "."),
+                        command.replace(str(self.root) + ". No", str(self.root) + "/runs/old. No")):
+            self.assertIn("forbidden_context_reference:archived_artifact",
+                          runtime.context_trace_errors(trace(invalid), artifact_root=self.root))
+
     def test_reading_detector_definition_does_not_hide_a_real_memory_citation(self):
         call = 'await tools.exec_command({cmd:"sed -n 1,85p runtime_checks.py"})'
         definition = '("memory_citation", re.compile(r"(?i)<' + 'oai-mem-citation>")),'

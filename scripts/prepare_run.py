@@ -1408,8 +1408,9 @@ def _predispatch_context_failure(errors: list) -> bool:
     pattern = (r"(?:(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
                r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?"
                r"|parent_context_nonconformant:parent_unassigned_thread_discovery|remediation_not_activated)")
-    match = re.search(r"(?<![\w:])" + pattern + r"(?![\w:;])", errors[0])
-    remainder = errors[0][:match.start()] + errors[0][match.end():] if match else errors[0]
+    message = re.sub(r"^remediation_not_activated:\s*", "", errors[0])
+    match = re.search(r"(?<![\w:])" + pattern + r"(?![\w:])", message)
+    remainder = message[:match.start()] + message[match.end():] if match else message
     return bool(match) and not re.search(r"[a-z_]+:[a-z_]", remainder)
 
 
@@ -2215,7 +2216,7 @@ def _recover_unactivated_remediation(artifact_root: Path, bindings: dict) -> tup
             from worker_runtime_evidence import dispatch_audit_errors
         except ModuleNotFoundError:
             from scripts.worker_runtime_evidence import dispatch_audit_errors
-        recoverable_error = (failure.get("errors") == ["remediation_not_activated"] or
+        recoverable_error = (_predispatch_context_failure(failure.get("errors", [])) or
                              (failure.get("errors") == ["worker_activation_requires_planning_recovery"]
                               and failure.get("historical_errors") == ["remediation_not_activated"]))
         if not (bindings.get("playbook") == "techops_issue_remediation"

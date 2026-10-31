@@ -2244,6 +2244,99 @@ def _host_worker_memory_reads(trace: dict) -> tuple[dict[int, list[str]], dict[s
         return {}, {}
 
 
+def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
+    """Recognize root punctuation only in serialized objectives and bound failure-reason text."""
+    if str(root) + "." not in text and ".thoughts/" + root.name + "." not in text:
+        return text
+    punctuation = re.compile(r"(" + re.escape(str(root)) + "|" + re.escape(".thoughts/" + root.name)
+                             + r")\.(?=\s|$)")
+    for tool, arguments in _tool_operations(row):
+        command = arguments.get("cmd") if tool == "exec_command" else None
+        if not isinstance(command, str):
+            continue
+        try:
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+            lexer.whitespace_split = True
+            tokens = list(lexer)
+            package = Path(json.loads((root / "role_bindings.json").read_text())["framework_package"]["root"])
+            if ("\n" not in command and len(tokens) == 6 and Path(tokens[0]).name in {"python", "python3"}
+                    and Path(tokens[1]).resolve() == (package / "scripts/finalize_work_record.py").resolve()
+                    and tokens[2] == "--packet" and Path(tokens[3]).resolve() == (root / "finalization_packet.json").resolve()
+                    and tokens[4] == "--workflow-failure"):
+                for quote in (shlex.quote, lambda value: json.dumps(value, ensure_ascii=False)):
+                    quoted = quote(tokens[5])
+                    if command.endswith(quoted):
+                        if quote is not shlex.quote and any(char in quoted for char in "$`"):
+                            continue
+                        replacement = command[:-len(quoted)] + quote(punctuation.sub(r"\1", tokens[5]))
+                        text = text.replace(command, replacement)
+                        for ascii_only in (False, True):
+                            text = text.replace(json.dumps(command, ensure_ascii=ascii_only)[1:-1],
+                                                json.dumps(replacement, ensure_ascii=ascii_only)[1:-1])
+                        break
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        match = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*",
+                             command or "", re.S)
+        if not match or (not re.match(r"python3 - <<['\"]", command)
+                         and any(char in match[2] for char in "$`")):
+            continue
+        try:
+            tree = ast.parse(match[2])
+            parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+            names = {"Path", "print", "str", "len", "list", "sorted"}
+            bound = names | {"json"} | {node.id for node in ast.walk(tree)
+                                      if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
+            replacements = []
+            if any(isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.Lambda, ast.Delete))
+                   or isinstance(node, ast.Import) and any(a.name != "json" or a.asname for a in node.names)
+                   or isinstance(node, ast.ImportFrom) and ast.dump(node) != ast.dump(
+                       ast.parse("from pathlib import Path").body[0])
+                   or isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, ast.Store)
+                   or isinstance(node, ast.Name) and (isinstance(node.ctx, ast.Store) and node.id in names | {"json"}
+                                                     or isinstance(node.ctx, ast.Load) and node.id not in bound)
+                   or isinstance(node, ast.Call) and not (
+                       isinstance(node.func, ast.Name) and node.func.id in names
+                       or isinstance(node.func, ast.Attribute) and node.func.attr in {
+                           "loads", "dumps", "read_text", "write_text", "get", "keys", "items", "values"})
+                   for node in ast.walk(tree)):
+                continue
+            for assignment in tree.body:
+                if (not isinstance(assignment, ast.Assign) or len(assignment.targets) != 1
+                        or not isinstance(assignment.targets[0], ast.Name) or not isinstance(assignment.value, ast.Dict)):
+                    continue
+                variable = assignment.targets[0]
+                uses = [node for node in ast.walk(tree) if isinstance(node, ast.Name)
+                        and node.id == variable.id and node is not variable]
+                if not uses or any(not (isinstance(node.ctx, ast.Load) and isinstance(parents[node], ast.Call)
+                        and isinstance(parents[node].func, ast.Attribute) and parents[node].func.attr == "dumps"
+                        and isinstance(parents[node].func.value, ast.Name) and parents[node].func.value.id == "json"
+                        and parents[node].args and parents[node].args[0] is node)
+                        for node in uses):
+                    continue
+                for key, value in zip(assignment.value.keys, assignment.value.values):
+                    if not (isinstance(key, ast.Constant) and key.value == "objective"
+                            and isinstance(value, ast.Constant) and isinstance(value.value, str)):
+                        continue
+                    normalized = punctuation.sub(r"\1", value.value)
+                    if normalized != value.value:
+                        lines = match[2].encode().splitlines(keepends=True)
+                        start = sum(map(len, lines[:value.lineno - 1])) + value.col_offset
+                        end = sum(map(len, lines[:value.end_lineno - 1])) + value.end_col_offset
+                        replacements.append((start, end, json.dumps(normalized, ensure_ascii=False).encode()))
+            body = match[2].encode()
+            for start, end, replacement in sorted(replacements, reverse=True):
+                body = body[:start] + replacement + body[end:]
+            replacement = command[:match.start(2)] + body.decode() + command[match.end(2):]
+            text = text.replace(command, replacement)
+            for ascii_only in (False, True):
+                text = text.replace(json.dumps(command, ensure_ascii=ascii_only)[1:-1],
+                                    json.dumps(replacement, ensure_ascii=ascii_only)[1:-1])
+        except (SyntaxError, TypeError, ValueError):
+            continue
+    return text
+
+
 def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
                          input_paths: tuple[str, ...] = (), artifact_root: Path | None = None) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
@@ -2301,6 +2394,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                 break
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
         row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
+        if root and not output:
+            candidate = _without_prose_root_punctuation(candidate, row, root)
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:
