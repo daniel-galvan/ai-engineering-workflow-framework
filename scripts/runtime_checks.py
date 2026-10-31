@@ -1027,16 +1027,28 @@ def _literal_templates(source: str) -> str:
 
 
 def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
-    """Read a finite literal command list and a sequential print-only loop without execution."""
+    """Read a finite literal command list with complete output printed in array order."""
     match = re.fullmatch(
         r"\s*const\s+(?P<commands>[A-Za-z_]\w*)\s*=\s*(?P<values>\[.*\])\s*;"
         r"\s*for\s*\(\s*const\s+(?P<command>[A-Za-z_]\w*)\s+of\s+(?P=commands)\s*\)\s*\{"
         r"\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+tools\.exec_command\((?P<arguments>\{.*\})\)\s*;"
         r"\s*text\((?P=result)\.output\)\s*;\s*\}\s*;?\s*", source, re.S)
     if not match:
+        match = re.fullmatch(
+            r"\s*const\s+(?P<commands>[A-Za-z_]\w*)\s*=\s*(?P<values>\[.*\])\s*;"
+            r"\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+Promise\.all\("
+            r"(?P=commands)\.map\(\s*(?P<command>[A-Za-z_]\w*)\s*=>\s*tools\.exec_command"
+            r"\((?P<arguments>\{.*\})\)\)\)\s*;"
+            r"\s*for\s*\(\s*let\s+(?P<index>[A-Za-z_]\w*)\s*=\s*0\s*;\s*(?P=index)\s*<\s*"
+            r"(?P=result)\.length\s*;\s*(?P=index)\+\+\s*\)\s*\{\s*text\("
+            r"`COMMAND \$\{(?P=index)\s*\+\s*1\}\\n\$\{(?P=result)\[(?P=index)\]\.output\}`"
+            r"\)\s*;\s*\}\s*;?\s*", source, re.S)
+    if not match:
         return None
     names = [match[key] for key in ("commands", "command", "result")]
-    if len(set(names)) != 3 or set(names) & {"tools", "text"}:
+    if "index" in match.groupdict():
+        names.append(match["index"])
+    if len(set(names)) != len(names) or set(names) & {"tools", "text", "Promise"}:
         return None
     try:
         commands = _literal_argument(ast.parse(match["values"], mode="eval").body)

@@ -367,6 +367,40 @@ class ActivationDelivery(unittest.TestCase):
         trace["tool_trace"][1]["output"].append({"type": "input_text", "text": ARCHIVE})
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
 
+    def test_parallel_literal_command_batch_requires_complete_ordered_output(self):
+        trace = self.instruction_trace()
+        path = trace["spawn"]["dispatch_file"]
+        content = Path(path).read_text()
+        commands, output = [], []
+        for index, start in enumerate(range(0, len(content), 900)):
+            end = min(start + 900, len(content))
+            commands.append(shlex.join(["python3", "-c", f"print(open({path!r}).read()[{start}:{end}],end='')"]))
+            output.append({"type": "input_text", "text": f"COMMAND {index + 1}\n{content[start:end]}"})
+        source = ("const cmds = " + json.dumps(commands) + ";\n"
+                  "const rs = await Promise.all(cmds.map(cmd => tools.exec_command({cmd,workdir:"
+                  + json.dumps(str(self.root)) + ",max_output_tokens:2500,yield_time_ms:10000})));\n"
+                  "for (let i=0;i<rs.length;i++) { text(`COMMAND ${i+1}\\n${rs[i].output}`); }\n")
+        trace["tool_trace"] = [
+            {"type": "custom_tool_call", "name": "exec", "call_id": "batch", "input": source},
+            {"type": "custom_tool_call_output", "call_id": "batch", "output": output}]
+        self.assertEqual([args["cmd"] for _, args in runtime_checks._tool_operations(trace["tool_trace"][0])], commands)
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        for change in ("missing", "reordered", "truncated", "wrong_pair", "mutation", "extra", "shadow", "wrong_output"):
+            changed = json.loads(json.dumps(trace))
+            if change == "missing": changed["tool_trace"][1]["output"].pop()
+            elif change == "reordered": changed["tool_trace"][1]["output"][:2] = output[1::-1]
+            elif change == "truncated": changed["tool_trace"][1]["output"][0]["text"] = "Warning: truncated output"
+            elif change == "wrong_pair": changed["tool_trace"][1]["call_id"] = "other"
+            elif change == "mutation": changed["tool_trace"][0]["input"] = source.replace("const rs", "cmds.reverse(); const rs")
+            elif change == "extra": changed["tool_trace"][0]["input"] += 'await tools.exec_command({cmd:"cat ' + ARCHIVE + '"});'
+            elif change == "shadow": changed["tool_trace"][0]["input"] = source.replace("const cmds", "const Promise").replace("cmds.map", "Promise.map")
+            elif change == "wrong_output": changed["tool_trace"][0]["input"] = source.replace("rs[i].output", "rs[0].output")
+            with self.subTest(change=change):
+                self.assertEqual(runtime.observed_dispatch_binding(changed, self.artifacts), {})
+        trace["tool_trace"][1]["output"].append({"type": "input_text", "text": ARCHIVE})
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
     def test_filename_filter_end_anchor_is_not_shell_expansion_or_archive_content(self):
         command = "rg --files -g 'AGENTS.md' -g '*.md' .thoughts/ITEM-1 . | rg '(^|/)(AGENTS\\.md|plan\\.md)$'"
         trace = self.trace(command, ARCHIVE)
