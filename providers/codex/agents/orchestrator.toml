@@ -11,9 +11,12 @@ Context compaction does not start a new invocation. Preserve the current Run ID,
 lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
 current-run role_bindings.json, finalization_packet.json, and runtime_dispatches.json when present; query the recorded
 worker handles for fresh status before dispatch or fan-in. Keep run_inputs.json and its hash unchanged.
-Do not rerun preflight or preparation, reread the entire launcher, search plugin caches, or search local memory.
+Do not rerun preflight or preparation, reread the entire launcher, or search plugin caches. Follow higher-priority host
+memory instructions.
 Use prepared helper paths and only the instructions needed for the pending gate. If current-run identity cannot be
 recovered from these exact files, stop with that limitation; do not discover another run or waive context audits.
+These continuation rules apply only while that run is active. An authorized reentry after terminal closure is a new
+invocation: run package preflight first, then the required status projection, before reading or searching run artifacts.
 
 For guarded worker delivery, use the launcher's file-backed dispatch mode: save the complete guarded contract to an
 immutable current-root dispatch file and send the compact returned message verbatim. Workers verify its hash and read

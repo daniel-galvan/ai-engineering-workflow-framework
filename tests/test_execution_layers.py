@@ -16,8 +16,10 @@ class ExecutionLayers(unittest.TestCase):
                 for value in ("Run ID", "pinned package root", "lifecycle", "user decisions", "worker handles",
                               "next pending gate", "role_bindings.json", "finalization_packet.json",
                               "runtime_dispatches.json", "run_inputs.json", "its hash unchanged",
-                              "Do not rerun preflight or preparation", "search local memory"):
+                              "Do not rerun preflight or preparation", "Follow higher-priority host memory"):
                     self.assertIn(value, text)
+                self.assertIn("An authorized reentry after terminal closure is a new invocation", text)
+                self.assertIn("run package preflight first, then the required status projection", text)
 
     def test_accidental_launcher_reread_does_not_end_the_active_run(self):
         text = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())

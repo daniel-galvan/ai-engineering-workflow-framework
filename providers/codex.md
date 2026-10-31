@@ -23,13 +23,16 @@ Context compaction does not start a new invocation. Preserve the current Run ID,
 lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
 current-run `role_bindings.json`, `finalization_packet.json`, and `runtime_dispatches.json` when present; query the
 recorded worker handles for fresh status before dispatch or fan-in. Keep `run_inputs.json` and its hash unchanged.
-Do not rerun preflight or preparation, reread the entire launcher, search plugin caches, or search local memory.
+Do not rerun preflight or preparation, reread the entire launcher, or search plugin caches. Follow higher-priority host
+memory instructions.
 Use the prepared helper paths and only the instructions needed for the pending gate. If current-run identity cannot
 be recovered from these exact files, stop with that limitation; do not discover another run or waive context audits.
+These continuation rules apply only while that run is active. An authorized reentry after terminal closure is a new
+invocation: run package preflight first, then the required status projection, before reading or searching run artifacts.
 
 Before initialization, a plugin-backed launcher MUST make package and framework preflight its first framework tool call.
 It MUST derive the package root from the active installed skill, verify its catalog and manifest, compare any declared
-framework revision, and check framework clean status before loading memory, cache directories, the selected playbook,
+framework revision, and check framework clean status before loading cache directories, the selected playbook,
 contracts, provider definitions, templates, or sibling artifacts. A stale plugin path or an unavailable, dirty, or
 mismatched framework stops the run with the corresponding preflight reason; the launcher MUST NOT search another cache
 version, silently substitute a checkout, activate workers, query external systems, or load the complete framework to
@@ -273,7 +276,7 @@ use thread-read tools only with a provider-returned or verified mapped UUID. Whe
 that specific capability absence once rather than repeatedly passing a task path to read_thread.
 For prepared Sentry, TechOps, and Feature Delivery runs that declare `runtime_evidence`, use
 `runtime_evidence.collector` to extract this run's provider events into
-`runtime_evidence.ledger`. Read only the verified current parent session, never memory or prior runs:
+`runtime_evidence.ledger`. For this collector, read only the verified current parent session, not prior run sessions:
 
 Preflight and preparation resolve this record from `CODEX_THREAD_ID` (or `CODEX_SESSION_ID`) and native turn metadata.
 Use their `parent_context.provider_session` and `parent_context.parent_thread_id`; an explicit source must match.

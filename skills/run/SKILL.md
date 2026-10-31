@@ -24,6 +24,9 @@ this run and continue from its pending gate; do not report a workflow failure fo
 context audit and its guards still apply, and an actual forbidden-context or guard rejection requires truthful
 failure handling.
 
+These continuation rules apply only while that run is active. An authorized reentry after terminal closure is a new
+invocation: run package preflight first, then the required status projection, before reading or searching run artifacts.
+
 ## New invocation
 
 1. Treat the active installed `SKILL.md` location as authoritative. Derive the package root from that file
