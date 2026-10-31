@@ -42,11 +42,14 @@ flowchart TB
 
 A terminal work record MUST form a complete reasoning chain:
 
-- every action references an existing decision;
+- every action references an existing decision, with exactly one authorizing decision per action;
 - every decision references one or more existing claims;
 - every claim references one or more existing evidence records;
 - every evidence record names a source; and
 - no evidence, claim, or decision record is orphaned from the chain that reaches an action.
+
+Normalization MUST preserve the IDs and content of accepted evidence, including user-supplied reports, decisions,
+and constraints. Validate its reasoning links; do not silently delete it based on source wording.
 
 The framework validator checks these relationships for populated work records. Draft records may be incomplete while a
 run is active, but they MUST pass before terminal handoff.

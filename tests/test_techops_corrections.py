@@ -271,6 +271,25 @@ class TechOpsCorrections(unittest.TestCase):
                     rows[table][field] = {"claims": "E-ISS-1", "decisions": "CL-ISS-1",
                                           "actions": "DE-ISS-1"}[table]
 
+            result["decisions"].append({**rows["decisions"], "Decision ID": "DE-ISS-2"})
+            for references in ("", "DE-ISS-1 DE-ISS-2"):
+                with self.subTest(action_decisions=references):
+                    rows["actions"]["Decision ref"] = references
+                    with self.assertRaisesRegex(ValueError, "worker_result_action_requires_one_decision:A-ISS-1"):
+                        validated_result(packet, result, bindings, "current_state_investigator")
+
+    def test_normalization_preserves_user_evidence_and_its_reasoning_links(self):
+        evidence = [{"Evidence ID": f"E-SCOPE-{index}", "Source": source,
+                     "Summary": "User-reported behavior or authoritative scope", "Status": "supplied"}
+                    for index, source in enumerate(("Current user decision", "Current user clarification",
+                                                    "User request: reported failure", "Clean-run constraint"), 1)]
+        packet = {"evidence": copy.deepcopy(evidence),
+                  "claims": [{"Claim ID": "CL-SCOPE-1", "Evidence refs": "E-SCOPE-1 E-SCOPE-2 E-SCOPE-3"}]}
+        original = copy.deepcopy(packet)
+        finalizer._normalize_packet(packet, {"runtime_closure": []})
+        self.assertEqual(packet["evidence"], evidence)
+        self.assertEqual(packet["claims"], original["claims"])
+
     def test_merger_rejects_edits_after_result_audit(self):
         from scripts.merge_techops_result import merge_result
         with tempfile.TemporaryDirectory() as directory:

@@ -168,7 +168,7 @@ def self_test() -> None:
     }
     _normalize_packet(context_packet, {"runtime_closure": []})
     assert context_packet["identity"]["Coordinator model/effort"] == UNAVAILABLE_COORDINATOR_MODEL_EFFORT
-    assert context_packet["evidence"] == []
+    assert context_packet["evidence"] == [{"Evidence ID": "E-001", "Source": "current user clean-run constraint"}]
 
     execution_packet = json.loads(json.dumps(packet))
     execution_packet["handoff"]["execution"] = "Planning is read-only; Runtime closure is pending Coordinator."

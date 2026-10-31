@@ -151,6 +151,12 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
     if not summary_errors:
         packet["worker_results"] = [row for row in packet.get("worker_results", [])
                                     if row.get("Worker") and row["Worker"] != worker] + [summary]
+    if "actions" in valid_tables:
+        for row in result.get("actions", []):
+            references = set(re.findall(r"\b[A-Za-z][A-Za-z0-9_]*-[A-Za-z0-9][A-Za-z0-9_-]*\b",
+                                        row.get("Decision ref", "")))
+            if len(references) != 1:
+                errors.append("worker_result_action_requires_one_decision:" + row["Action ID"])
     known_ids = {row[key] for table, key in TABLES.items() for row in packet.get(table, [])}
     known_ids.update(row[key] for table, key in TABLES.items() if isinstance(result.get(table), list)
                      for row in result[table] if isinstance(row, dict) and isinstance(row.get(key), str))

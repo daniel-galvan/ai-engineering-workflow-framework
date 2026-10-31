@@ -361,16 +361,6 @@ def _normalize_coordinator_model_effort(value: object) -> object:
     return _normalize_model_effort(value)
 
 
-def _is_run_context_evidence(row: object) -> bool:
-    if not isinstance(row, dict):
-        return False
-    source = str(row.get("Source", "")).strip().lower()
-    return any(
-        marker in source
-        for marker in ("current user", "user request", "run constraint", "clean-run constraint")
-    )
-
-
 def _normalize_playbook_identity(value: object) -> object:
     parts = str(value).split(" / ", 1)
     if len(parts) != 2 or parts[0].endswith(".md"):
@@ -517,9 +507,6 @@ def _normalize_packet(
                 if Path(str(row.get("Path", ""))).name == "spike_report.md" and report.is_file():
                     row["Status"] = "Published"
         packet["durable_artifacts"] = normalized_artifacts
-    evidence = packet.get("evidence")
-    if isinstance(evidence, list):
-        packet["evidence"] = [row for row in evidence if not _is_run_context_evidence(row)]
     normalize_runtime_closure(closure)
     handoff = packet.get("handoff")
     if isinstance(handoff, dict):
