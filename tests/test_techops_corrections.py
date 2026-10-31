@@ -1247,6 +1247,47 @@ class TechOpsCorrections(unittest.TestCase):
             errors = runtime.activation_packet_errors(Path(bundle["path"]), "solution_architect", bundle["sha256"])
             self.assertIn("techops_design_prerequisites_incomplete", errors)
 
+    def test_fix_design_followup_checks_upstream_proofs_without_removing_accepted_design(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare.prepare_run(Path(directory), "DESIGN-FOLLOWUP", "techops_issue_remediation", None, False)
+            packet_path = Path(run["finalization_packet"])
+            packet = json.loads(packet_path.read_text())
+            names = ["issue-evidence", "failure-path", "repository-integration", "fix-design", "handoff"]
+            packet["worker_results"] = [{"Worker": name, "Outcome": "complete"} for name in names]
+            packet["runtime_audits"] = [{"Worker": name} for name in names]
+            packet["terminal_observations"] = [{"Provider handle": "/root/design"}]
+            packet["evidence"] = [{"Evidence ID": "E-ISS-1"}]
+            packet["integration_decision"] = {"decision": "required", "reason": "Service boundary",
+                                              "evidence_refs": "E-ISS-1"}
+            bundle = run["activation_packet_bundle"]
+            required = set(names[:3])
+            def merged(value, bindings, root):
+                self.assertEqual({row["Worker"] for row in value["worker_results"]}, required)
+                return []
+            def audit(value, path, completed):
+                self.assertEqual(completed, required)
+                self.assertEqual({row["Worker"] for row in value["runtime_audits"]}, required)
+                self.assertEqual(value["terminal_observations"], [])
+                return []
+            packet_path.write_text(json.dumps(packet))
+            original = packet_path.read_bytes()
+            with patch("merge_techops_result.merged_result_errors", side_effect=merged), \
+                 patch.object(planning_contracts, "_worker_runtime_audit_errors", side_effect=audit) as checked:
+                errors = runtime.activation_packet_errors(Path(bundle["path"]), "solution_architect", bundle["sha256"])
+                checked.assert_called_once()
+                self.assertNotIn("worker_runtime_audits_incomplete", errors)
+            self.assertEqual(packet_path.read_bytes(), original)
+            with patch("merge_techops_result.merged_result_errors", return_value=[]), \
+                 patch.object(planning_contracts, "_worker_runtime_audit_errors",
+                              return_value=["worker_trace_stale:failure-path"]):
+                self.assertIn("worker_trace_stale:failure-path", runtime.activation_packet_errors(
+                    Path(bundle["path"]), "solution_architect", bundle["sha256"]))
+            packet["runtime_audits"] = [row for row in packet["runtime_audits"] if row["Worker"] != "failure-path"]
+            packet_path.write_text(json.dumps(packet))
+            with patch("merge_techops_result.merged_result_errors", return_value=[]):
+                self.assertIn("worker_runtime_audits_incomplete", runtime.activation_packet_errors(
+                    Path(bundle["path"]), "solution_architect", bundle["sha256"]))
+
     def test_reproduction_record_distinguishes_results_and_requires_evidence(self):
         from scripts.runtime_checks import techops_reproduction_errors
         record = {"status": "unable_to_attempt", "expected": "Saved values persist",

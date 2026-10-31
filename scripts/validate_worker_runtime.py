@@ -387,8 +387,15 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                     if (current["integration_decision"]["decision"] == "required"
                             or current["identity"].get("Requested profile") == "deep"):
                         required.add("repository-integration")
-                    errors.extend(merged_result_errors(current, bindings, path.parent))
-                    errors.extend(_worker_runtime_audit_errors(current, path.parent / "finalization_packet.json", required))
+                    dependencies = {**current,
+                                    "worker_results": [row for row in current.get("worker_results", [])
+                                                       if row.get("Worker") in required],
+                                    "runtime_audits": [row for row in current.get("runtime_audits", [])
+                                                       if row.get("Worker") in required],
+                                    "terminal_observations": []}
+                    errors.extend(merged_result_errors(dependencies, bindings, path.parent))
+                    errors.extend(_worker_runtime_audit_errors(
+                        dependencies, path.parent / "finalization_packet.json", required))
         except (OSError, ValueError, TypeError, AttributeError):
             errors.append("techops_design_gate_invalid")
     if expected_agent == "documenter" and bindings_path.is_file():
