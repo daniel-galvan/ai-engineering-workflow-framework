@@ -262,6 +262,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    remediation reentry verifies the saved native ledger and terminal closure against their original parent.
    For an approved remediation reentry from a terminal run, prepare with both `--continuation` and
    `--remediation-reentry` plus the recorded `--approval-reference`; `--continuation` alone resumes an existing run.
+   A finalized, published TechOps remediation run can reenter with the same approved plan and verified candidate.
+   A blocked engineering result does not require a workflow-failure receipt. Preparation verifies the unchanged
+   finalized record, original successful finalizer output, delivery, candidate, planning history, and terminal closure
+   before archiving anything. Carry accepted planning inputs forward; create fresh review and validation inputs.
 6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
    or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
    launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other

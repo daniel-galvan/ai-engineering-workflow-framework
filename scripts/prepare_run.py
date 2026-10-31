@@ -1933,6 +1933,36 @@ def _recover_failed_remediation(artifact_root: Path, prior: dict, closure: dict,
         raise ValueError("remediation_recovery_checkout_changed")
 
 
+def _recover_finalized_remediation(artifact_root: Path, prior: dict, source_checkout: Path | None) -> tuple[dict, dict]:
+    """Preserve a published terminal run without requiring a workflow-failure receipt."""
+    try:
+        from finalize_work_record import publication_recovery_context, recovery_canonical_report, verify_presentation
+    except ModuleNotFoundError:
+        from scripts.finalize_work_record import publication_recovery_context, recovery_canonical_report, verify_presentation
+    if source_checkout is None or prior["identity"].get("State") not in {"blocked", "completed"}:
+        raise ValueError("remediation_finalized_run_unverified")
+    record = artifact_root / "work_record.md"
+    with tempfile.TemporaryDirectory(prefix="workflow-reentry-package-") as workspace:
+        proof = publication_recovery_context(artifact_root / "finalization_packet.json", record,
+                                             package_workspace=Path(workspace))
+    delivery = json.loads((artifact_root / "handoff_delivery.json").read_text())
+    response = Path(delivery["proposed_response"])
+    reentry = prior["reentry"]
+    plan = artifact_root / "implementation_plan.md"
+    if (delivery.get("status") != "verified" or delivery.get("run_id") != prior["identity"]["Run ID"]
+            or delivery.get("record_sha256") != proof["record_sha256"]
+            or delivery.get("canonical_sha256") != proof["canonical_sha256"]
+            or response.is_symlink() or response.resolve().parent != artifact_root.resolve()
+            or hashlib.sha256(response.read_bytes()).hexdigest() != delivery.get("proposed_sha256")
+            or not reentry.get("Approval reference") or reentry.get("Approved plan") != str(plan.resolve())
+            or hashlib.sha256(plan.read_bytes()).hexdigest() != reentry.get("Approved plan SHA256")):
+        raise ValueError("remediation_finalized_run_unverified")
+    verify_presentation(recovery_canonical_report(record), response.read_bytes(),
+                        delivery.get("presentation_prefix", "").encode(), delivery.get("presentation_suffix", "").encode())
+    return (_recover_current_accepted_candidate(artifact_root, prior, source_checkout),
+            _verified_recovery_planning(artifact_root, prior))
+
+
 def _reentry_source(
     artifact_root: Path, approval_reference: str | None, *, planning_recovery: bool = False,
     expected_playbook: str = "feature_delivery", source_checkout: Path | None = None,
@@ -1975,7 +2005,10 @@ def _reentry_source(
         failed_delivery = (not planning_recovery and expected_playbook == "techops_issue_remediation"
                            and prior["identity"].get("Lifecycle") == "remediation")
         planning_source = None
-        if failed_delivery:
+        finalized_delivery = failed_delivery and not (artifact_root / "finalization_failure.json").exists()
+        if finalized_delivery:
+            candidate, planning_source = _recover_finalized_remediation(artifact_root, prior, source_checkout)
+        if failed_delivery and not finalized_delivery:
             failure = json.loads((artifact_root / "finalization_failure.json").read_text())
             blocked_tester = any("worker_activation_rejected_result_pending:tester" in str(error)
                                  for error in failure.get("errors", []))
@@ -2044,10 +2077,10 @@ def _reentry_source(
                     artifact_root, prior, closure, source_checkout)
             else:
                 candidate = _recover_failed_remediation(artifact_root, prior, closure, source_checkout=source_checkout)
-            if candidate:
-                if approval_reference != prior["reentry"]["Approval reference"]:
-                    raise ValueError("candidate_recovery_approval_mismatch")
-                prior["_recovered_candidate"] = candidate
+        if failed_delivery and candidate:
+            if approval_reference != prior["reentry"]["Approval reference"]:
+                raise ValueError("candidate_recovery_approval_mismatch")
+            prior["_recovered_candidate"] = candidate
         if not planning_recovery and not failed_delivery and prior["identity"].get("State") != "ready_for_implementation":
             raise ValueError("remediation_requires_ready_plan")
         if planning_recovery and prior["identity"].get("State") not in {
