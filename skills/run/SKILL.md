@@ -58,10 +58,11 @@ invocation: run package preflight first, then the required status projection, be
    unassigned `.thoughts` run archive merely because a memory note references it.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
-   Read local `AGENTS.md` only in the source-code target directory and its ancestors up to the execution repository
-   root. If the code subdirectory is not yet known, use the execution repository root as the target. The
-   `.thoughts/<WORK-ITEM-ID>` directory is only the artifact root; do not check it or its `.thoughts` parent for
-   `AGENTS.md`. Do not search parent directory trees. Instruction files are optional: check existence, read those
+   Before editing or planning changes, check local `AGENTS.md` in the actual target directory and its ancestors up
+   to the execution repository root. Include the current `.thoughts/<WORK-ITEM-ID>` artifact directory and its
+   `.thoughts` parent when editing current run artifacts. These exact ancestor checks do not authorize searching
+   the artifact tree or opening prior run content. Do not search parent directory trees.
+   Instruction files are optional: check existence, read those
    present, and continue when absent. Never promote a missing instruction-file probe into a required worker input.
    Run filename discovery in a separate tool result from content reads or searches; mixed outputs may not prove which
    references are names only. Run gates separately, or use fail-fast command chaining;

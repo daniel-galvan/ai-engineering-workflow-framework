@@ -1401,6 +1401,18 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
+def _predispatch_context_failure(errors: list) -> bool:
+    """Recognize one known failure code, including a coordinator's surrounding explanation."""
+    if len(errors) != 1 or not isinstance(errors[0], str):
+        return False
+    pattern = (r"(?:(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
+               r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?"
+               r"|parent_context_nonconformant:parent_unassigned_thread_discovery|remediation_not_activated)")
+    match = re.search(r"(?<![\w:])" + pattern + r"(?![\w:;])", errors[0])
+    remainder = errors[0][:match.start()] + errors[0][match.end():] if match else errors[0]
+    return bool(match) and not re.search(r"[a-z_]+:[a-z_]", remainder)
+
+
 def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, closure: dict,
                                            source_checkout: Path) -> dict:
     """Recover a preserved candidate after a terminal failure before worker dispatch."""
@@ -1419,10 +1431,7 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
         errors = failure.get("errors", [])
         reentry = prior["reentry"]
         plan = artifact_root / "implementation_plan.md"
-        pattern = (r"(?:(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
-                   r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?"
-                   r"|parent_context_nonconformant:parent_unassigned_thread_discovery|remediation_not_activated)")
-        failure_verified = len(errors) == 1 and isinstance(errors[0], str) and bool(re.fullmatch(pattern, errors[0]))
+        failure_verified = _predispatch_context_failure(errors)
         combined_errors = ["parent_context_nonconformant:forbidden_context_reference:memory_path",
                            "delivery_dependency_not_accepted:tester"]
         if len(errors) == 1 and isinstance(errors[0], str) and all(error in errors[0] for error in combined_errors):
@@ -1980,12 +1989,9 @@ def _reentry_source(
                         for row in prior.get("worker_results", [])))
             predispatch_context = (not prior.get("workers") and not prior.get("worker_results")
                                    and not json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("thread_mappings")
-                                   and any(str(error).startswith(("parent_context_nonconformant:forbidden_context_reference:",
-                                                                  "forbidden_context_reference:",
-                                                                  "parent_context_nonconformant:parent_unassigned_thread_discovery",
-                                                                  "remediation_not_activated")) or
+                                   and (_predispatch_context_failure(failure.get("errors", [])) or any(
                                            "parent_context_nonconformant:forbidden_context_reference:memory_path" in str(error)
-                                           for error in failure.get("errors", [])))
+                                           for error in failure.get("errors", []))))
             stopped_bootstrap = (not prior.get("workers") and not prior.get("worker_results")
                                  and any(("bootstrap" in str(error).lower() and "before reading" in str(error).lower())
                                          or str(error).startswith("remediation_not_activated:")

@@ -760,6 +760,11 @@ class TechOpsCorrections(unittest.TestCase):
                  patch.object(prepare, "_verified_recovery_planning", return_value={}), \
                  patch.object(prepare, "_recover_preserved_candidate", return_value=candidate):
                 self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                failure["errors"] = ["The activation guard blocked with parent_context_nonconformant:forbidden_context_reference:archived_artifact after the required AGENTS.md check. No worker was activated."]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                self.assertFalse(prepare._predispatch_context_failure([failure["errors"][0] + " delivery_dependency_not_accepted:tester"]))
+                self.assertFalse(prepare._predispatch_context_failure(["forbidden_context_reference:archived_artifact_extra"]))
                 failure["errors"] = ["forbidden_context_reference:memory_path"]
                 (root / "finalization_failure.json").write_text(json.dumps(failure))
                 self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)

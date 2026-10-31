@@ -864,6 +864,33 @@ class ContextOperationAudit(unittest.TestCase):
         altered["tool_trace"][-2]["input"] += ' text(await tools.exec_command({"cmd":"cat .thoughts/ITEM-1/runs/prior/secret.md"}));'
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(altered))
 
+    def test_python_ancestor_checks_allow_only_literal_instruction_reads(self):
+        paths = [self.repository / "AGENTS.md", self.root.parent / "AGENTS.md", self.root / "AGENTS.md"]
+        policy = "Do not read .thoughts/ITEM-1/runs/prior/notes.md.\n"
+        paths[1].write_text(policy)
+        program = ("from pathlib import Path\nfor p in [" + ", ".join(f"Path({str(p)!r})" for p in paths) + "]:\n"
+                   "    print(f'--- {p} exists={p.is_file()}')\n    if p.is_file(): print(p.read_text())")
+        command = "python3 - <<'PY'\n" + program + "\nPY"
+        output = "".join(f"--- {p} exists={p.is_file()}\n" + (p.read_text() + "\n" if p.is_file() else "") for p in paths)
+        call = lambda cmd: 'await tools.exec_command(' + json.dumps({"cmd": cmd, "workdir": str(self.repository)}) + ')'
+        trace = {"tool_trace": self.paired(call(command), output)}
+        self.assertEqual(runtime.context_trace_errors(trace, artifact_root=self.root), [])
+        for unsafe in (command + "\ncat .thoughts/ITEM-1/runs/prior/notes.md",
+                       command.replace("p.read_text()", "p.write_text('changed')"),
+                       command.replace(str(paths[1]), str(self.root / "runs/prior/AGENTS.md")),
+                       command.replace(str(paths[1]), str(self.root.parent / "OTHER/AGENTS.md")),
+                       command.replace("\nPY", "\nprint(open('.thoughts/ITEM-1/runs/prior/notes.md').read())\nPY")):
+            with self.subTest(command=unsafe):
+                errors = runtime.context_trace_errors({"tool_trace": self.paired(call(unsafe), "")}, artifact_root=self.root)
+                self.assertIn("forbidden_context_reference:archived_artifact", errors)
+        paths[1].unlink()
+        archived = self.root / "runs/prior/notes.md"
+        archived.parent.mkdir(parents=True)
+        archived.write_text("old analysis")
+        paths[1].symlink_to(archived)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
+            {"tool_trace": self.paired(call(command), "")}, artifact_root=self.root))
+
     def test_ancestor_filename_probe_is_not_an_archive_read(self):
         for directory in ("", str(self.repository) + "/"):
             trace = self.instruction_read_trace()

@@ -1734,6 +1734,29 @@ def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -
     return contents
 
 
+def _python_instruction_reads(command: str) -> list[str]:
+    """Recognize a literal optional-instruction loop without executing provider code."""
+    match = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*", command, re.S)
+    if not match:
+        return []
+    try:
+        tree = ast.parse(match[2])
+        loop = tree.body[1]
+        variable = loop.target.id
+        targets = [ast.literal_eval(node.args[0]) for node in loop.iter.elts]
+        if not targets or not all(isinstance(target, str) for target in targets):
+            return []
+        paths = ", ".join(f"Path({target!r})" for target in targets)
+        expected = (f"from pathlib import Path\nfor {variable} in [{paths}]:\n"
+                    f"    print(f'--- {{{variable}}} exists={{{variable}.is_file()}}')\n"
+                    f"    if {variable}.is_file(): print({variable}.read_text())")
+        if ast.dump(tree) == ast.dump(ast.parse(expected)):
+            return targets
+    except (SyntaxError, AttributeError, IndexError, TypeError, ValueError):
+        pass
+    return []
+
+
 def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool = False,
                                 input_paths: list[str] | None = None) -> list[str]:
     allowed = _allowed_instruction_paths(root, input_paths or [])
@@ -1744,6 +1767,7 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
         command = arguments.get("cmd", "")
         if not isinstance(command, str):
             continue
+        python_targets = _python_instruction_reads(command)
         try:
             lexer = shlex.shlex(command, posix=True, punctuation_chars=";\n")
             lexer.whitespace_split = True
@@ -1761,7 +1785,7 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                 statements.append(current)
         except ValueError:
             continue
-        targets, index = [], 0
+        targets, index = python_targets, len(statements) if python_targets else 0
         # Unknown shell syntax remains audited; consume only literal reads and instruction loops.
         while index < len(statements):
             statement = statements[index]
