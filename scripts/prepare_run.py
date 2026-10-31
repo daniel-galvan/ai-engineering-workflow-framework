@@ -1459,9 +1459,11 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                             and row.get("Last dispatch at") == closure_dispatch for row in observations)):
                 raise ValueError("candidate_rejected_trace_unverified")
         else:
-            if (len(errors) != 1 or not isinstance(errors[0], str) or "bootstrap" not in errors[0].lower()
-                    or "before reading" not in errors[0].lower() or ledger.get("rejected_results")
-                    or ledger.get("failed_dispatches")):
+            unactivated = (len(errors) == 1 and isinstance(errors[0], str)
+                           and errors[0].startswith("remediation_not_activated:"))
+            bootstrap = (len(errors) == 1 and isinstance(errors[0], str)
+                         and "bootstrap" in errors[0].lower() and "before reading" in errors[0].lower())
+            if (not (unactivated or bootstrap) or ledger.get("rejected_results") or ledger.get("failed_dispatches")):
                 raise ValueError("remediation_recovery_evidence_unverified")
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
@@ -1474,7 +1476,7 @@ def _recover_stopped_bootstrap_candidate(artifact_root: Path, prior: dict, closu
                 and ledger.get("timing", {}).get("open_worker_intervals") == 0
                 and isinstance(observations, list) and len(observations) == len(handles)
                 and all(row.get("Provider status") in ({"completed", "idle", "interrupted", "stopped", "cancelled", "failed"}
-                         if rejected else {"interrupted", "stopped", "cancelled", "failed"}) for row in observations)
+                         if rejected or unactivated else {"interrupted", "stopped", "cancelled", "failed"}) for row in observations)
                 and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
                 and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations
@@ -1915,7 +1917,8 @@ def _reentry_source(
                                                                   "remediation_not_activated"))
                                            for error in failure.get("errors", [])))
             stopped_bootstrap = (not prior.get("workers") and not prior.get("worker_results")
-                                 and any("bootstrap" in str(error).lower() and "before reading" in str(error).lower()
+                                 and any(("bootstrap" in str(error).lower() and "before reading" in str(error).lower())
+                                         or str(error).startswith("remediation_not_activated:")
                                          for error in failure.get("errors", [])))
             unmerged_context = (not prior.get("workers") and not prior.get("worker_results")
                                 and any("parent_context_nonconformant:" in str(error)

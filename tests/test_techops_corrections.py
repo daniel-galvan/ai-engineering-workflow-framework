@@ -772,6 +772,16 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "candidate_content_changed"):
                     prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root)
                 verify.side_effect = None
+                failure["errors"] = ["remediation_not_activated: stopped before source changes"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                observations[0]["Provider status"] = "idle"
+                self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root), candidate)
+                observations[0]["Provider status"] = "running"
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root)
+                failure["errors"] = ["The bootstrap attempts stopped before reading the assignment."]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                observations[0]["Provider status"] = "interrupted"
                 trace = {"run_id": "delivery", "worker": "implementer", "audit": {"status": "rejected"},
                          "thread_id": "thread", "last_dispatch_at": "time", "spawn": {"provider_handle": "/root/worker"}}
                 trace_path = root / "trace_implementer.json"
