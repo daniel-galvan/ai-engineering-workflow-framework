@@ -1923,7 +1923,7 @@ def _empty_worker_memory_probes(trace: dict) -> dict[int, str]:
     return probes
 
 
-def _host_worker_memory_reads(trace: dict) -> tuple[dict[int, str], dict[str, list[str]]]:
+def _host_worker_memory_reads(trace: dict) -> tuple[dict[int, list[str]], dict[str, list[str]]]:
     """Bind permitted host-memory reads to native worker command records."""
     if not any(any(marker in value for marker in ("MEMORY.md", "memories", "rollout_summaries"))
                for _, value in _trace_strings({"tool_trace": trace.get("tool_trace", [])})):
@@ -1956,19 +1956,26 @@ def _host_worker_memory_reads(trace: dict) -> tuple[dict[int, str], dict[str, li
             if not isinstance(row, dict) or not row.get("call_id"):
                 continue
             operations = _tool_operations(row)
-            if len(operations) != 1 or operations[0][0] != "exec_command":
-                continue
-            command = operations[0][1].get("cmd")
-            target = host_memory_target(command, root, linked_sessions)
-            observations = [item for item in native if isinstance(item.get("command"), list)
-                            and item["command"] and item["command"][-1] == command
-                            and (item.get("status"), item.get("exit_code")) in {("completed", 0), ("failed", 1)}]
-            if target and observations:
-                reads[index] = target
-                outputs[row["call_id"]] = [item.get("aggregated_output", "") for item in observations
-                                           if isinstance(item.get("aggregated_output"), str)]
+            approved = []
+            for name, arguments in operations:
+                command = arguments.get("cmd") if name == "exec_command" else None
+                target = host_memory_target(command, root, linked_sessions)
+                observations = [item for item in native if isinstance(item.get("command"), list)
+                                and item["command"] and item["command"][-1] == command
+                                and (item.get("status"), item.get("exit_code")) in {("completed", 0), ("failed", 1)}]
+                if target and observations:
+                    approved.append((command, target, observations))
+            source = row.get("input") if row.get("type") == "custom_tool_call" else row.get("arguments")
+            source = source if isinstance(source, str) else json.dumps(source)
+            for command, target, observations in approved:
+                if source.count(target) != sum(value.count(target) for value, _, _ in approved):
+                    continue
+                reads.setdefault(index, []).append(target)
+                matched = [item.get("aggregated_output", "") for item in observations
+                           if isinstance(item.get("aggregated_output"), str)]
+                outputs.setdefault(row["call_id"], []).extend(matched)
                 if Path(target).resolve().is_relative_to(root):
-                    for output in outputs[row["call_id"]]:
+                    for output in matched:
                         linked_sessions.update(host_memory_rollouts(output, root))
         return reads, outputs
     except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration):
@@ -2022,7 +2029,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
             candidate = candidate.replace(empty_memory_probes[int(path[1])], "[empty host memory probe]", 1)
         if (path[:1] == ("tool_trace",) and len(path) > 2 and str(path[1]).isdigit()
                 and path[2] in {"input", "arguments"} and int(path[1]) in host_memory_reads):
-            candidate = candidate.replace(host_memory_reads[int(path[1])], "[host memory read]", 1)
+            for target in host_memory_reads[int(path[1])]:
+                candidate = candidate.replace(target, "[host memory read]", 1)
         for prefix, content in listing_reads.items():
             if path[:len(prefix)] == prefix and candidate.startswith(content):
                 candidate = content + "\n".join(line for line in candidate[len(content):].splitlines()

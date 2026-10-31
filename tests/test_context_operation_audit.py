@@ -422,6 +422,16 @@ class ContextOperationAudit(unittest.TestCase):
         with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
             save()
             self.assertEqual(runtime.context_trace_errors(trace), [])
+            batch = ('const rs = await Promise.allSettled(['
+                     'tools.exec_command({cmd:"cat /tmp/skill.md"}),'
+                     'tools.exec_command(' + json.dumps({"cmd": command}) + ')'
+                     ']); for (const r of rs) text(r.status === "fulfilled" ? r.value.output : String(r.reason));')
+            batched = {**trace, "tool_trace": self.paired(batch, "skill contents\n" + memory.read_text())}
+            self.assertEqual(runtime.context_trace_errors(batched), [])
+            batched["tool_trace"][0]["input"] = batch.replace(
+                'tools.exec_command({cmd:"cat /tmp/skill.md"})',
+                'tools.exec_command(' + json.dumps({"cmd": "cat " + str(memory) + " > /tmp/copy"}) + ')')
+            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(batched))
             trace["tool_trace"][1]["output"] += ".thoughts/OTHER/runs/old/extra\n"
             self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
             trace["tool_trace"][1]["output"] = memory.read_text()
