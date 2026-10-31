@@ -407,7 +407,7 @@ class ContextOperationAudit(unittest.TestCase):
         memory = codex / "memories" / "MEMORY.md"
         memory.parent.mkdir(parents=True)
         memory.write_text("historical .thoughts/OTHER/runs/old/file\n")
-        command = "cat " + str(memory)
+        command = "rg -n -C 2 'historical|service' " + str(memory)
         header = {"type": "session_meta", "payload": {"id": SOURCE}}
         directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
                      "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}

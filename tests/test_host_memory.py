@@ -32,13 +32,18 @@ class HostMemoryTest(unittest.TestCase):
                 trusted = host_memory_root(session)
                 self.assertEqual(trusted, root.resolve())
                 for command in (f"rg -n -F ITEM '{registry}'", f"sed -n '1,20p' '{notes / 'prior.md'}'",
-                                f"nl -ba '{registry}' | sed -n '1,20p'", f"rg -n ITEM '{registry}' | head -25"):
+                                f"nl -ba '{registry}' | sed -n '1,20p'", f"rg -n ITEM '{registry}' | head -25",
+                                f"rg -n -C 2 'ITEM|service' '{registry}'",
+                                f"rg --no-config -S -A2 -B 0 --context=3 -m 5 ITEM '{registry}'"):
                     with self.subTest(command=command):
                         self.assertTrue(host_memory_read(command, trusted))
                 for command in (f"cat '{notes / 'escape.md'}'", f"cat '{outside}'",
                                 f"cat '{registry}' ; cat '{outside}'", f"cat '{registry}' > '{outside}'",
                                 f"rg -n '$(whoami)' '{registry}'", f"cat '{registry}' | head -n 3 | cat",
-                                f"cat '{root / 'other.md'}'"):
+                                f"cat '{root / 'other.md'}'", f"rg -C -1 ITEM '{registry}'",
+                                f"rg -C 2 --pre whoami ITEM '{registry}'",
+                                f"rg -C 2 -f '{outside}' '{registry}'",
+                                f"rg --context=2 ITEM '{registry}' '{outside}'"):
                     with self.subTest(command=command):
                         self.assertFalse(host_memory_read(command, trusted))
                 sessions = codex / "sessions"

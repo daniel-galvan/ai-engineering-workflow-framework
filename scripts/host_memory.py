@@ -63,8 +63,18 @@ def host_memory_target(command: str, root: Path | None, linked_sessions: set[Pat
             target = argv[3]
         elif argv and argv[0] == "rg":
             args = argv[1:]
-            while args and args[0] in {"-n", "--line-number", "-i", "--ignore-case", "-F", "--fixed-strings"}:
-                args.pop(0)
+            flags = {"-n", "--line-number", "-i", "--ignore-case", "-F", "--fixed-strings",
+                     "-S", "--smart-case", "--no-heading", "--no-config"}
+            counts = {"-A", "--after-context", "-B", "--before-context", "-C", "--context", "-m", "--max-count"}
+            while args:
+                if args[0] in flags:
+                    args.pop(0)
+                elif args[0] in counts and len(args) > 1 and re.fullmatch(r"[0-9]+", args[1]):
+                    del args[:2]
+                elif re.fullmatch(r"(?:-[ABCm]|--(?:after-context|before-context|context|max-count)=)[0-9]+", args[0]):
+                    args.pop(0)
+                else:
+                    break
             if len(args) != 2 or not args[0] or args[0].startswith("-"):
                 return None
             target = args[1]
