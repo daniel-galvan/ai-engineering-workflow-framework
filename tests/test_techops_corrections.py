@@ -821,7 +821,7 @@ class TechOpsCorrections(unittest.TestCase):
                      "spawn": {"provider_handle": "/root/worker"}, "thread_id": "thread",
                      "last_dispatch_at": "time", "trace_retrieval": str(root / "session")}
             (root / "implementer_trace.reconciled.json").write_text(json.dumps(trace))
-            observation = [{"Provider status": "completed", "Last dispatch at": "time"}]
+            observation = [{"Provider handle": "/root/worker", "Provider status": "completed", "Last dispatch at": "time"}]
             original = {"files": {"file": "hash"}, "_contents": {"file": b"content"}}
             dispatch = {"worker_contract": {"recovered_candidate": candidate},
                         "coordinator_execution": {"source_checkout": str(root)}}
@@ -835,9 +835,14 @@ class TechOpsCorrections(unittest.TestCase):
                  patch.object(recovery_candidate, "verify_checkout_snapshot") as verify:
                 self.assertEqual(prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observation}, root), original)
                 verify.assert_called_once_with(root, "base", original["files"])
+                ledger["thread_mappings"]["/root/other"] = "other"
+                (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+                observations = [{"Provider handle": "/root/other", "Provider status": "completed", "Last dispatch at": "earlier"}] + observation
+                native.return_value = observations
+                self.assertEqual(prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observations}, root), original)
                 native.return_value = []
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
-                    prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observation}, root)
+                    prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observations}, root)
 
     def test_stopped_bootstrap_recovery_requires_terminal_workers_and_unchanged_candidate(self):
         with tempfile.TemporaryDirectory() as directory:

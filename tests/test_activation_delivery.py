@@ -224,6 +224,7 @@ class ActivationDelivery(unittest.TestCase):
         self.assertEqual([runtime_checks._dispatch_segment(command)[1:] for command in commands],
                          [(0, 6000), (6000, 12000), (12000, 13001)])
         self.assertTrue(all(runtime_checks._read_targets(command) == [str(path.resolve())] for command in commands))
+        self.assertTrue(all("'\"'\"'" not in command for command in commands))
 
     def test_live_opaque_dispatch_requires_paired_instruction_read_before_inventory(self):
         trace = self.instruction_trace()

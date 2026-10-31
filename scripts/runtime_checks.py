@@ -257,7 +257,8 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     if len(message) > 12000:
         commands = []
         for start in range(0, len(message), 6000):
-            code = f"print(open({str(path.resolve())!r}).read()[{start}:{min(start + 6000, len(message))}],end='')"
+            literal_path = json.dumps(str(path.resolve()), ensure_ascii=False)
+            code = f'print(open({literal_path}).read()[{start}:{min(start + 6000, len(message))}],end="")'
             commands.append(shlex.join(["python3", "-c", code]))
         reading = ("Read the complete file in order with each separate literal command below; "
                    "do not omit or change any part:\n" + "\n".join(commands) + "\n")

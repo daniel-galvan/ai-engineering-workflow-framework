@@ -1670,9 +1670,9 @@ def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict,
                 and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
                 and not prior.get("workers") and not prior.get("worker_results") and not prior.get("runtime_audits")
-                and len(handles) == 1
+                and handles
                 and ledger.get("timing", {}).get("open_worker_intervals") == 0
-                and len(observations) == 1 and observations[0].get("Provider status") == "completed"
+                and len(observations) == len(handles)
                 and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
                 and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
@@ -1680,15 +1680,15 @@ def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict,
         _verified_recovery_planning(artifact_root, prior)
         candidate = bindings["recovered_candidate"]
         original = _recover_preserved_candidate(artifact_root, prior, source_checkout, check_checkout=False)
-        paths = [path for pattern in ("trace*.json", "implementer_trace*.json")
-                 for path in artifact_root.glob(pattern) if path.is_file() and not path.is_symlink()]
+        paths = [path for path in artifact_root.glob("*trace*.json") if path.is_file() and not path.is_symlink()]
         traces = [(path, json.loads(path.read_text())) for path in paths]
         matches = [(path, trace) for path, trace in traces if trace.get("run_id") == prior["identity"]["Run ID"]
                    and trace.get("worker") == "implementer" and trace.get("audit", {}).get("status") == "passed"
-                   and trace.get("spawn", {}).get("provider_handle") == handles[0]
-                   and trace.get("thread_id") == ledger["thread_mappings"][handles[0]]
+                   and trace.get("spawn", {}).get("provider_handle") in handles
+                   and trace.get("thread_id") == ledger["thread_mappings"].get(trace.get("spawn", {}).get("provider_handle"))
                    and bool(trace.get("last_dispatch_at"))
-                   and trace.get("last_dispatch_at") == observations[0].get("Last dispatch at")]
+                   and any(row.get("Provider handle") == trace.get("spawn", {}).get("provider_handle")
+                           and row.get("Last dispatch at") == trace.get("last_dispatch_at") for row in observations)]
         if len(matches) != 1:
             raise ValueError("candidate_followup_trace_unverified")
         path, trace = matches[0]
@@ -1712,7 +1712,7 @@ def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict,
         parent = bindings["parent_context"]
         verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
             bindings["runtime_evidence"]["run_started_at"], Path(dispatch["worker_contract"]["before_source_change_guard"]),
-            packet_path, handles[0], source_checkout, touched)
+            packet_path, trace["spawn"]["provider_handle"], source_checkout, touched)
         hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
         verify_checkout_snapshot(source_checkout, candidate["baseline_revision"], hashes)
         return {"prior_run_id": prior["identity"]["Run ID"], "status": "unaccepted",
