@@ -953,6 +953,7 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
         for command in (
+            'for file in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$file" ]; then printf \'%s\\n\' "--- $file"; cat "$file"; else printf \'%s\\n\' "absent: $file"; fi; done',
             'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
             'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then echo "Checking $p"; cat "$p"; fi; done',
             'cat AGENTS.md; for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; python3 normalizer.py --help',
@@ -978,6 +979,9 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_instruction_exception_does_not_allow_writes_or_other_work_items(self):
         for command in (
+            'for f in .thoughts/AGENTS.md; do if [ -f "$f" ]; then cat "$f"; else echo changed > "$f"; fi; done',
+            'for f in .thoughts/AGENTS.md; do if [ -f "$f" ]; then cat "$f"; else printf "%n" f; fi; done',
+            'for f in .thoughts/AGENTS.md; do if [ -f "$f" ]; then cat "$f"; else cat .thoughts/ITEM-1/runs/prior/notes.md; fi; done',
             'for f in .thoughts/AGENTS.md; do if [ -f "$f" ]; then printf "%n" "$f"; fi; done',
             'for f in .thoughts/OTHER/AGENTS.md; do if [ -f "$f" ]; then printf "%s\\n" "$f"; fi; done',
             'for f in .thoughts/AGENTS.md; do if [ -f "$f" ]; then printf "%s\\n" "$f"; fi; done; cat .thoughts/ITEM-1/runs/prior/notes.md',

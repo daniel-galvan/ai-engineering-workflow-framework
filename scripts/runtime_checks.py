@@ -1837,8 +1837,19 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                     "do", "test", "!", "-f", variable, "||", "printf", "%s\\n", variable, "done"]
                 for condition in conditions:
                     prefix = ["do", "if", *condition, "then"]
-                    if tail[:len(prefix)] == prefix and tail[-len(suffix):] == suffix:
-                        marker = tail[len(prefix):-len(suffix)]
+                    branch_tail = tail
+                    if "else" in tail:
+                        absent = tail.index("else")
+                        notice = tail[absent + 1:-2]
+                        safe_notice = (len(notice) >= 2 and notice[0] in {"echo", "printf"}
+                            and (notice[0] != "printf" or not notice[1].startswith("-") and "%n" not in notice[1])
+                            and any(part in (notice, ["else", *notice]) for part in statements[index + 1:end])
+                            and not any(token in {"&", "&&", "|", "||", "<", ">"}
+                                or any(char in token for char in "`<>")
+                                or "$" in token.replace(variable, "") for token in notice))
+                        branch_tail = tail[:absent] + tail[-2:] if safe_notice else []
+                    if branch_tail[:len(prefix)] == prefix and branch_tail[-len(suffix):] == suffix:
+                        marker = branch_tail[len(prefix):-len(suffix)]
                         valid = (not marker or marker[0] in {"echo", "printf"}
                                  and any(part in (marker, ["then", *marker])
                                          for part in statements[index + 1:end])
