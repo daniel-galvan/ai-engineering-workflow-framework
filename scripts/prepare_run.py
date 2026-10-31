@@ -1283,11 +1283,13 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
         from planning_contracts import _worker_runtime_audit_errors, terminal_closure_dispatch_errors
         from merge_techops_result import merged_result_errors
         from provider_runtime import parent_context_audit
+        from validate_worker_runtime import _defer_downstream_rejection
         from worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
     except ModuleNotFoundError:
         from scripts.planning_contracts import _worker_runtime_audit_errors, terminal_closure_dispatch_errors
         from scripts.merge_techops_result import merged_result_errors
         from scripts.provider_runtime import parent_context_audit
+        from scripts.validate_worker_runtime import _defer_downstream_rejection
         from scripts.worker_runtime_evidence import dispatch_audit_errors, _native_terminal_observations
     try:
         packet_path = artifact_root / "finalization_packet.json"
@@ -1308,9 +1310,14 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
         errors = failure.get("errors", [])
         has_context_failure = (len(errors) == 1 and isinstance(errors[0], str) and
             ("parent_context_nonconformant:" in errors[0] or
+             "parent_unassigned_thread_read:" in errors[0] or
              "parent context" in errors[0].lower() and "nonconformant" in errors[0].lower()))
+        pending = ledger.get("rejected_results", {})
+        pending_verified = (not pending or isinstance(pending, dict) and set(pending) == {"tester"}
+            and results.get("validate") == "blocked"
+            and _defer_downstream_rejection(artifact_root, "implementer", "tester", pending["tester"]))
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") in {"terminal", "unverified"}
                 and failure.get("run_id") == prior["identity"]["Run ID"]
                 and prior["identity"].get("Lifecycle") == "remediation" and has_context_failure
                 and context.get("status") == "rejected" and context.get("errors")
@@ -1322,7 +1329,7 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
                 and results.get("implement") == results.get("review") == "complete"
                 and (set(results) == {"implement", "review"} or
                      set(results) == {"implement", "review", "validate"} and results["validate"] in {"complete", "blocked"})
-                and not ledger.get("rejected_results") and ledger.get("timing", {}).get("open_worker_intervals") == 0
+                and pending_verified and ledger.get("timing", {}).get("open_worker_intervals") == 0
                 and handles and len(observations) == len(handles)
                 and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)
                 and not dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)
@@ -1936,7 +1943,7 @@ def _reentry_source(
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate, planning_source = _recover_terminal_reviewer_failure(
                     artifact_root, prior, closure, source_checkout)
-            elif (any("parent_context_nonconformant:" in str(error) or
+            elif (any("parent_context_nonconformant:" in str(error) or "parent_unassigned_thread_read:" in str(error) or
                       "parent context" in str(error).lower() and "nonconformant" in str(error).lower()
                       for error in failure.get("errors", []))
                   and any(row.get("Worker") == "review" and row.get("Outcome") == "complete"

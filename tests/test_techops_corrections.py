@@ -87,6 +87,14 @@ class TechOpsCorrections(unittest.TestCase):
                 ledger_path.write_text(json.dumps(ledger))
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+                failure.update(runtime_closure="unverified", errors=["parent_unassigned_thread_read:unknown"])
+                failure_path.write_text(json.dumps(failure))
+                audit.return_value = {"status": "rejected", "errors": ["parent_unassigned_thread_read:unknown"], "turn_id": "turn"}
+                with patch.object(runtime, "_defer_downstream_rejection", return_value=True):
+                    self.assertEqual(prepare._recover_post_delivery_context_failure(root, prior, closure, root), (candidate, planning))
+                with patch.object(runtime, "_defer_downstream_rejection", return_value=False):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_post_delivery_context_failure(root, prior, closure, root)
                 ledger_path.write_text(json.dumps({"thread_mappings": {"/root/worker": "worker"}, "timing": {"open_worker_intervals": 0}}))
                 plan.write_text("changed")
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_plan_changed"):
