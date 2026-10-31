@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -417,7 +418,7 @@ def _prepared_manifest(packet_path: Path | None) -> tuple[dict[str, object], Pat
 
 def _normalize_packet(
     packet: dict[str, object], closure: dict[str, object], packet_path: Path | None = None,
-    budget_status: str | None = None,
+    budget_status: str | None = None, *, producer_root: Path | None = None,
 ) -> None:
     packet["terminal_observations"] = closure.get("terminal_observations", [])
     manifest, manifest_path = _prepared_manifest(packet_path)
@@ -426,9 +427,11 @@ def _normalize_packet(
     if isinstance(identity, dict):
         playbook = str(manifest.get("playbook", ""))
         if playbook:
-            playbook_path = ROOT / "playbooks" / f"{playbook}.md"
-            prompt_path = ROOT / "templates" / PROMPT_TEMPLATES[playbook]
-            plugin = json.loads(PLUGIN_MANIFEST.read_text())
+            package_root = producer_root or ROOT
+            playbook_path = package_root / "playbooks" / f"{playbook}.md"
+            prompt_path = package_root / "templates" / PROMPT_TEMPLATES[playbook]
+            plugin_manifest = package_root / ".codex-plugin/plugin.json" if producer_root else PLUGIN_MANIFEST
+            plugin = json.loads(plugin_manifest.read_text())
             conformance = str(identity.get("Prompt template / revision / conformance", "")).split(" / ")[-1]
             identity.update({
                 "Playbook / version": f"playbooks/{playbook}.md / {_frontmatter_version(playbook_path)}",
@@ -2030,6 +2033,91 @@ def verify_presentation(canonical: bytes, proposed: bytes, prefix: bytes = b"", 
         raise ValueError("handoff_response_mismatch: preserve the canonical report and declared surrounding text exactly")
 
 
+def verify_recovery_record(packet_path: Path, record: Path, packet: dict, closure: dict, producer_root: Path) -> None:
+    """Require the record to be the deterministic projection of the passed packet and closure."""
+    text = record.read_text()
+    expand_work_record(text, record.parent)
+    match = re.search(r"<!-- workflow-state: (finalization_snapshot\.[0-9a-f]{64}\.json) -->", text)
+    if not match:
+        raise ValueError("publication_recovery_requires_compact_record")
+    snapshot = json.loads((record.parent / match[1]).read_text())
+    derived = json.loads(json.dumps(packet))
+    _normalize_packet(derived, closure, packet_path, producer_root=producer_root)
+    _reconcile_runtime_state(derived, closure["runtime_closure"])
+    # Finalization time is presentation metadata; all engineering fields must derive from the passed packet.
+    derived["runtime_receipt"] = "runtime_closure.json"
+    if isinstance(derived.get("work_item"), dict):
+        derived["work_item"]["Last Updated"] = snapshot["work_item"]["Last Updated"]
+    if render_compact(derived) != text:
+        raise ValueError("publication_recovery_record_not_derived_from_passed_packet")
+
+
+def publication_recovery_context(packet_path: Path, record: Path) -> dict:
+    """Verify an existing finalized run before a newer publisher compares its response bytes."""
+    try:
+        from framework_manifest import manifest_errors
+        from run_preflight import preflight
+        from provider_runtime import parent_context_audit, native_preflight_observed
+        from planning_contracts import terminal_closure_dispatch_errors
+    except ModuleNotFoundError:
+        from scripts.framework_manifest import manifest_errors
+        from scripts.run_preflight import preflight
+        from scripts.provider_runtime import parent_context_audit, native_preflight_observed
+        from scripts.planning_contracts import terminal_closure_dispatch_errors
+    root = packet_path.resolve().parent
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    packet = json.loads(packet_path.read_text())
+    prepared_root = Path(bindings["framework_package"]["root"]).resolve()
+    errors = prepared_package_errors(root, check_parent_context=False, expected_package_root=prepared_root)
+    errors.extend(manifest_errors(prepared_root))
+    prepared_plugin = json.loads((prepared_root / ".codex-plugin/plugin.json").read_text())
+    publisher_plugin = json.loads((ROOT / ".codex-plugin/plugin.json").read_text())
+    if (prepared_plugin["name"] != publisher_plugin["name"] or
+            prepared_plugin["version"].split("+", 1)[0] != publisher_plugin["version"].split("+", 1)[0]):
+        errors.append("publication_recovery_requires_same_plugin_release")
+    revision = re.fullmatch(r"([0-9a-fA-F]{40}) / Clean", packet["identity"].get("Framework commit / status", ""))
+    precheck = json.loads((root / "pre_release_check.json").read_text())
+    _, status = _finalization_status(packet_path)
+    if (status.get("status") == "failed" or precheck.get("status") != "passed"
+            or precheck.get("packet_sha256") != hashlib.sha256(packet_path.read_bytes()).hexdigest()
+            or bindings.get("run_id") != packet["identity"]["Run ID"]
+            or record.is_symlink() or record.resolve().parent != root or not record.is_file()):
+        errors.append("publication_recovery_requires_finalized_unchanged_record")
+    closure = json.loads((root / "runtime_closure.json").read_text())
+    errors.extend(terminal_closure_dispatch_errors(packet_path, closure.get("terminal_observations", []),
+                                                  historical_recovery=True))
+    if not closure.get("runtime_closure") or any(row.get("Runtime status") not in {"Terminal", "Released"}
+           or str(row.get("Remaining active handles")) != "0" for row in closure.get("runtime_closure", [])):
+        errors.append("publication_recovery_requires_terminal_closure")
+    parent = bindings["parent_context"]
+    if parent.get("run_id") != bindings.get("run_id"):
+        errors.append("publication_recovery_parent_run_mismatch")
+    native_sessions = (Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions").resolve()
+    source = Path(parent["provider_session"])
+    if source.is_symlink() or not source.resolve().is_relative_to(native_sessions) or not source.is_file():
+        raise ValueError("publication_recovery_requires_native_parent_session")
+    context = parent_context_audit(Path(parent["provider_session"]), artifact_root=root,
+        input_paths=tuple(parent["input_paths"]), expected_thread_id=parent["parent_thread_id"],
+        expected_turn_id=parent["turn_id"], runtime_evidence=bindings["runtime_evidence"],
+        related_run_thread_ids=tuple(parent.get("related_run_thread_ids", [])),
+        prior_dispatch_ledger_present=parent.get("prior_run_dispatch_ledger_present", False))
+    if context.get("status") != "passed":
+        errors.extend(context.get("errors") or ["publication_recovery_parent_context_unverified"])
+    if errors:
+        raise ValueError("publication_recovery_rejected:" + ";".join(errors))
+    # Authenticate the native package selection before executing any validator from that package.
+    if not revision or not native_preflight_observed(source, parent["turn_id"], prepared_root,
+                                                    revision[1], prepared_plugin["version"]):
+        raise ValueError("publication_recovery_native_package_selection_unverified")
+    origin = preflight(prepared_root, declared_framework_revision=revision[1]) if revision else {}
+    if origin.get("status") != "passed" or origin.get("framework_status") != "clean":
+        raise ValueError("publication_recovery_original_package_unverified")
+    verify_recovery_record(packet_path, record, packet, closure, prepared_root)
+    return {"prepared_package_root": str(prepared_root), "publisher_package_root": str(ROOT),
+            "parent_turn_id": parent["turn_id"], "packet_sha256": precheck["packet_sha256"],
+            "record_sha256": hashlib.sha256(record.read_bytes()).hexdigest()}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path)
@@ -2053,6 +2141,8 @@ def main() -> int:
     parser.add_argument("--publish-response", type=Path, help="Verify and emit the prepared response without rewriting it")
     parser.add_argument("--presentation-prefix", type=Path, help="UTF-8 text required before the canonical report")
     parser.add_argument("--presentation-suffix", type=Path, help="UTF-8 text required after the canonical report")
+    parser.add_argument("--recover-presentation", action="store_true",
+                        help="Verify publication of an unchanged finalized run using its prepared package")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if (args.provider_session or args.parent_thread_id) and not (
@@ -2064,10 +2154,12 @@ def main() -> int:
         args.verify_response = args.publish_response
     if (args.presentation_prefix or args.presentation_suffix) and not args.verify_response:
         parser.error("presentation text requires --verify-response or --publish-response")
+    if args.recover_presentation and (not args.verify_response or not args.packet):
+        parser.error("--recover-presentation requires --packet and response verification or publication")
     if args.self_test:
         self_test()
         return 0
-    if args.packet and (args.workflow_failure or args.verify_response):
+    if args.packet and (args.workflow_failure or args.verify_response) and not args.recover_presentation:
         _, status = _finalization_status(args.packet.resolve())
         failure_report = args.workflow_failure or args.verify_response and status.get("status") == "failed"
         package_errors = prepared_package_errors(args.packet.resolve().parent, check_parent_context=not failure_report)
@@ -2082,6 +2174,8 @@ def main() -> int:
             parser.error("--verify-response requires --packet and cannot be combined with another mode")
         try:
             packet_path = args.packet.resolve()
+            recovery = (publication_recovery_context(packet_path, args.record or packet_path.parent / "work_record.md")
+                        if args.recover_presentation else None)
             _, status = _finalization_status(packet_path)
             if status.get("status") == "failed":
                 source = packet_path.parent / "handoff_failure.md"
@@ -2106,7 +2200,15 @@ def main() -> int:
                 if ("sentry_issue_remediation" in str(identity.get("Playbook / version", ""))
                         and identity.get("Workflow outcome") == "completed"):
                     checked(validate_sentry_artifacts, packet_path.parent)
-                canonical = record_validation_output(record).split("Workflow-framework validation: passed\n", 1)[1].encode()
+                if recovery:
+                    validated = subprocess.run([sys.executable, str(Path(recovery["prepared_package_root"]) /
+                        "scripts/validate_library.py"), "--emit-handoff", str(record)],
+                        check=True, capture_output=True, text=True).stdout
+                else:
+                    validated = record_validation_output(record)
+                canonical = validated.split("Workflow-framework validation: passed\n", 1)[1].encode()
+                if not canonical.strip():
+                    raise ValueError("handoff_canonical_report_unavailable")
             proposed = args.verify_response.read_bytes()
             prefix = args.presentation_prefix.read_bytes() if args.presentation_prefix else b""
             suffix = args.presentation_suffix.read_bytes() if args.presentation_suffix else b""
@@ -2123,12 +2225,14 @@ def main() -> int:
                            (record := packet_path.parent / "work_record.md").is_file() else None,
                        "comparison_policy": "Exact UTF-8 canonical report plus declared prefix/suffix with one optional terminal LF; internal whitespace is significant",
                        "scope": "prepared response bytes; actual chat delivery is not observable by this CLI"}
+            if recovery:
+                receipt["publication_recovery"] = recovery
             (packet_path.parent / "handoff_delivery.json").write_text(json.dumps(receipt, indent=2) + "\n")
             if args.publish_response:
                 print(proposed.decode(), end="")
             else:
                 print(json.dumps(receipt, sort_keys=True))
-        except (OSError, ValueError, KeyError, TypeError, IndexError, subprocess.CalledProcessError) as error:
+        except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError, subprocess.CalledProcessError) as error:
             (args.packet.parent / "handoff_delivery.json").unlink(missing_ok=True)
             print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
             return 2

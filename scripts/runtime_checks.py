@@ -47,13 +47,15 @@ except ModuleNotFoundError:
                                           latest_worker_dispatch, timestamp)
 
 
-def prepared_package_errors(root: Path, *, check_parent_context: bool = True) -> list[str]:
+def prepared_package_errors(root: Path, *, check_parent_context: bool = True,
+                            expected_package_root: Path | None = None) -> list[str]:
     """Reject package, lifecycle, profile or parent-context drift from the prepared run."""
     try:
         manifest = json.loads((root / "role_bindings.json").read_text())
         package = manifest.get("framework_package")
-        if package is not None and (Path(package["root"]).resolve() != ROOT
-                or package["plugin_sha256"] != hashlib.sha256((ROOT / ".codex-plugin/plugin.json").read_bytes()).hexdigest()):
+        expected_root = expected_package_root.resolve() if expected_package_root is not None else ROOT
+        if package is not None and (Path(package["root"]).resolve() != expected_root
+                or package["plugin_sha256"] != hashlib.sha256((expected_root / ".codex-plugin/plugin.json").read_bytes()).hexdigest()):
             return ["prepared_framework_package_mismatch: prepare recovery from the selected package"]
         if manifest.get("lifecycle"):
             lifecycle = json.loads((root / "finalization_packet.json").read_text())["identity"].get("Lifecycle")
@@ -1353,6 +1355,11 @@ def _read_targets(command: str) -> list[str]:
             return []
         if tokens[0] == "cat" and len(tokens) > 1 and all(not arg.startswith("-") for arg in tokens[1:]):
             return tokens[1:]
+        if tokens[0] in {"head", "tail"}:
+            if len(tokens) == 4 and tokens[1] == "-n" and re.fullmatch(r"[1-9][0-9]*", tokens[2]):
+                return [tokens[3]] if not tokens[3].startswith("-") else []
+            if len(tokens) == 3 and re.fullmatch(r"-[1-9][0-9]*|--lines=[1-9][0-9]*", tokens[1]):
+                return [tokens[2]] if not tokens[2].startswith("-") else []
         if (len(tokens) > 3 and tokens[:2] == ["sed", "-n"]
                 and re.fullmatch(r"[0-9]+(?:,[0-9]+)?p", tokens[2])):
             return tokens[3:]

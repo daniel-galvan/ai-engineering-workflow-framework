@@ -1197,6 +1197,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    composition and records the surrounding text in the delivery receipt. Do not add discretionary summaries, change
    outcomes, or claim surrounding text is canonical. Missing access, evidence, authorization, or closure still blocks
    the corresponding workflow gate; presentation requirements alone do not.
+   If an older checkpoint finalized the record but its publisher rejects required host presentation, preserve the
+   finalized run. A refreshed publisher from the same plugin release may use `--recover-presentation` with
+   `--publish-response` and the declared presentation files. This mode verifies the original prepared package,
+   unchanged pre-release packet, bound native parent turn, terminal closure, and existing record; it uses the
+   original package's validator to produce the canonical bytes and records both package roots in the delivery
+   receipt. It does not rebind the run, rerun workers, or permit changed engineering evidence. Use normal recovery
+   if any of those checks fail. A presentation-only continuation does not start another execution invocation.
    Do not end the run with a pending delivery receipt. The preceding `Workflow-framework validation: passed` line is
    a validation diagnostic, not part of the canonical report; do not prepend it to the published response.
    Include the first `Workflow-framework handoff:` line when emitted, even on failure; it is part of the report.

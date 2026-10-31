@@ -1,12 +1,61 @@
-"""Recognize read-only host memory access authorized by native host instructions."""
+"""Recognize host-authorized memory reads and citation presentation."""
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
 import shlex
+import sys
 from pathlib import Path
+
+
+def valid_host_memory_citation(text: str) -> bool:
+    match = re.fullmatch(
+        r"<oai-mem-citation>\s*<citation_entries>\s*([^<]+?)\s*</citation_entries>\s*"
+        r"<rollout_ids>\s*([^<]*?)\s*</rollout_ids>\s*</oai-mem-citation>\s*", text)
+    if not match or not match[1].strip():
+        return False
+    for entry in match[1].strip().splitlines():
+        parsed = re.fullmatch(r"([^:\n]+):([1-9][0-9]*)-([1-9][0-9]*)\|note=\[([^\]\n]*)\]", entry)
+        if (not parsed or Path(parsed[1]).is_absolute() or ".." in Path(parsed[1]).parts
+                or int(parsed[2]) > int(parsed[3])):
+            return False
+    return all(re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", value)
+               for value in match[2].split())
+
+
+def host_memory_presentation_write(command: str, host_root: Path | None, artifact_root: Path | None) -> bool:
+    """Recognize a literal citation write to the current run, never execute provider code."""
+    if host_root is None or artifact_root is None or any(char in command for char in "$`"):
+        return False
+    match = re.fullmatch(r"([^\n]+) - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\2\s*", command, re.S)
+    if not match:
+        return False
+    try:
+        executable = shlex.split(match[1])
+        if (len(executable) != 1 or executable[0] != "python3" and
+                (not Path(executable[0]).is_absolute() or Path(executable[0]).resolve() != Path(sys.executable).resolve())):
+            return False
+        tree = ast.parse(match[3])
+        variable = tree.body[1].targets[0].id
+        target = ast.literal_eval(tree.body[1].value.args[0])
+        citation = ast.literal_eval(tree.body[2].value.args[0])
+        if not isinstance(target, str) or not isinstance(citation, str) or not valid_host_memory_citation(citation):
+            return False
+        path = Path(target)
+        if not path.is_absolute() or path.is_symlink() or path.resolve().parent != artifact_root.resolve():
+            return False
+        for encoding in ("", ", encoding='utf-8'"):
+            expected = (f"from pathlib import Path\n{variable}=Path({target!r})\n"
+                        f"{variable}.write_text({citation!r}{encoding})")
+            for output in ("", f"\nprint({variable})", f"\nprint({variable})\nprint({variable}.read_text())"):
+                if ast.dump(tree) == ast.dump(ast.parse(expected + output)):
+                    return path.is_file() and path.read_text() == citation
+    except (OSError, ValueError, SyntaxError, TypeError, AttributeError, IndexError):
+        pass
+    return False
 
 
 def host_memory_root(session: Path) -> Path | None:

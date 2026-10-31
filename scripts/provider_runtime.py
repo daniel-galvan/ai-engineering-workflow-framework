@@ -6,13 +6,14 @@ import json
 import os
 import re
 import shlex
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from host_memory import host_memory_rollouts, host_memory_root, host_memory_target
+    from host_memory import host_memory_rollouts, host_memory_root, host_memory_target, host_memory_presentation_write
 except ModuleNotFoundError:
-    from scripts.host_memory import host_memory_rollouts, host_memory_root, host_memory_target
+    from scripts.host_memory import host_memory_rollouts, host_memory_root, host_memory_target, host_memory_presentation_write
 
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
@@ -674,6 +675,13 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
     linked_sessions: set[Path] = set()
     for command, indexes in operation_indexes.items():
         observations = command_observations.get(command, [])
+        if (host_memory_presentation_write(command, host_root, artifact_root)
+                and len(indexes) == len(observations) and observations
+                and all(item.get("status") == "completed" and item.get("exit_code") == 0
+                        and isinstance(item.get("command"), list) and item["command"]
+                        and item["command"][-1] == command for item in observations)):
+            exempt.update(indexes)
+            continue
         target = host_memory_target(command, host_root, linked_sessions)
         if (target and len(indexes) == len(observations)
                 and all(isinstance(item.get("command"), list) and item["command"]
@@ -878,6 +886,50 @@ def provider_json_value(value):
     return value
 
 
+def native_preflight_observed(source: Path, turn_id: str, root: Path, revision: str, plugin_version: str) -> bool:
+    """Authenticate package selection from a completed command in the bound native turn."""
+    try:
+        with source.open() as stream:
+            return _native_preflight_rows(stream, turn_id, root, revision, plugin_version)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def _native_preflight_rows(stream, turn_id: str, root: Path, revision: str, plugin_version: str) -> bool:
+    turn = None
+    try:
+        for line in stream:
+            row = json.loads(line)
+            payload = row.get("payload", {})
+            if row.get("type") == "turn_context":
+                turn = payload.get("turn_id")
+            item = payload.get("item", {})
+            if (turn != turn_id or row.get("type") != "event_msg" or item.get("type") != "CommandExecution"
+                    or item.get("status") != "completed" or item.get("exit_code") != 0):
+                continue
+            command = item.get("command", [])
+            if not isinstance(command, list) or not command or not isinstance(command[-1], str):
+                continue
+            if any(char in command[-1] for char in "$`;&<>|"):
+                continue
+            args = shlex.split(command[-1])
+            if (len(args) < 2 or args[0] != "python3" and (not Path(args[0]).is_absolute()
+                    or Path(args[0]).resolve() != Path(sys.executable).resolve())
+                    or Path(args[1]).resolve() != root / "scripts/run_preflight.py"):
+                continue
+            try:
+                result = json.loads(item.get("aggregated_output", ""))
+            except (ValueError, TypeError):
+                continue
+            if (isinstance(result, dict) and result.get("status") == "passed"
+                    and result.get("framework_revision") == revision and result.get("framework_status") == "clean"
+                    and result.get("plugin_version") == plugin_version and result.get("framework_root") == str(root)):
+                return True
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return False
+
+
 def _provider_status_time(value: object) -> str | None:
     if isinstance(value, bool):
         return None
@@ -903,15 +955,22 @@ def targeted_thread_observation(raw: object, handle: str, thread_id: str, dispat
         return None
     if operation == "wait_threads":
         wake, polls = raw.get("wake"), raw.get("polls")
-        if (not isinstance(wake, dict) or wake.get("threadId") != thread_id
-                or wake.get("reason") not in {"inactiveStatus", "turnCompleted"}
-                or not isinstance(polls, list) or len(polls) != 1 or not isinstance(polls[0], dict)):
+        if (not isinstance(polls, list) or len(polls) != 1 or not isinstance(polls[0], dict)
+                or raw.get("errors") or raw.get("isError") or raw.get("error")):
             return None
         poll = polls[0]
         thread, latest = poll.get("thread"), poll.get("latestTurn")
+        idle_snapshot = (wake is None and isinstance(thread, dict)
+                         and isinstance(thread.get("status"), dict)
+                         and thread["status"].get("type") == "idle"
+                         and not thread["status"].get("activeFlags"))
+        valid_wake = (isinstance(wake, dict) and wake.get("threadId") == thread_id
+                      and wake.get("reason") in {"inactiveStatus", "turnCompleted"})
+        if not (idle_snapshot or valid_wake):
+            return None
         if (not isinstance(thread, dict) or thread.get("id") != thread_id
                 or not isinstance(latest, dict) or not latest.get("completedAt")
-                or wake.get("reason") == "turnCompleted" and wake.get("turnId") != latest.get("id")):
+                or valid_wake and wake.get("reason") == "turnCompleted" and wake.get("turnId") != latest.get("id")):
             return None
         completed_at = _provider_status_time(latest.get("completedAt"))
         started_at = _provider_status_time(latest.get("startedAt"))

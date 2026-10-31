@@ -48,25 +48,12 @@ def worker_response_value(response: str, session: Path) -> dict:
         return strict_json_loads(response)
     except (ValueError, json.JSONDecodeError):
         try:
-            from host_memory import host_memory_root
+            from host_memory import host_memory_root, valid_host_memory_citation
         except ModuleNotFoundError:
-            from scripts.host_memory import host_memory_root
+            from scripts.host_memory import host_memory_root, valid_host_memory_citation
         body, separator, citation = response.partition("<oai-mem-citation>")
         suffix = separator + citation
-        match = re.fullmatch(
-            r"<oai-mem-citation>\s*<citation_entries>\s*([^<]+?)\s*</citation_entries>\s*"
-            r"<rollout_ids>\s*([^<]*?)\s*</rollout_ids>\s*</oai-mem-citation>\s*", suffix)
-        if not separator or host_memory_root(session) is None or not match:
-            raise ValueError("worker_final_response_json_invalid")
-        entries = match[1].strip().splitlines()
-        if not entries:
-            raise ValueError("worker_final_response_json_invalid")
-        for entry in entries:
-            parsed = re.fullmatch(r"([^:\n]+):([1-9][0-9]*)-([1-9][0-9]*)\|note=\[([^\]\n]*)\]", entry)
-            if (not parsed or Path(parsed[1]).is_absolute() or ".." in Path(parsed[1]).parts
-                    or int(parsed[2]) > int(parsed[3])):
-                raise ValueError("worker_final_response_json_invalid")
-        if any(not UUID.fullmatch(value) for value in match[2].split()):
+        if not separator or host_memory_root(session) is None or not valid_host_memory_citation(suffix):
             raise ValueError("worker_final_response_json_invalid")
         try:
             return strict_json_loads(body)

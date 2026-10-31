@@ -840,6 +840,29 @@ class ContextOperationAudit(unittest.TestCase):
         changed["tool_trace"][-2]["input"] = changed["tool_trace"][-2]["input"].replace("import json;", "import json; open('/tmp/secret').read();")
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
 
+    def test_bounded_current_packet_reads_keep_archive_access_guard(self):
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["reentry"] = {"Prior artifacts": str(self.root / "runs" / "prior")}
+        packet_path.write_text(json.dumps(packet, indent=2) + "\n")
+        for tool in ("head -n 90", "tail -n 90", "head -90", "tail --lines=90"):
+            trace = self.instruction_read_trace()
+            call = 'const r = await tools.exec_command(' + json.dumps({
+                "cmd": tool + " .thoughts/ITEM-1/finalization_packet.json", "workdir": str(self.repository)}) + '); text(r.output);'
+            lines = packet_path.read_text().splitlines(keepends=True)
+            output = "".join(lines[:90] if tool.startswith("head") else lines[-90:])
+            trace["tool_trace"].extend(self.paired(call, output))
+            self.assertEqual(runtime.trace_errors(trace), [])
+            trace["tool_trace"][-2]["input"] = call.replace(
+                '.thoughts/ITEM-1/finalization_packet.json', '.thoughts/ITEM-1/runs/prior/finalization_packet.json')
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+            trace["tool_trace"][-2]["input"] = call.replace(
+                '.thoughts/ITEM-1/finalization_packet.json', '.thoughts/ITEM-1/finalization_packet.json; cat .thoughts/ITEM-1/runs/prior/notes.md')
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
+        for command in ("tail -f packet.json", "tail -n $COUNT packet.json", "tail -n 2 packet.json > copy",
+                        "tail --lines=2 --follow packet.json"):
+            self.assertEqual(runtime._read_targets(command), [])
+
     def test_exact_current_packet_output_in_mixed_call_keeps_archive_access_guard(self):
         trace = self.instruction_read_trace()
         packet_path = self.root / "finalization_packet.json"

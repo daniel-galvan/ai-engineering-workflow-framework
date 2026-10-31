@@ -28,6 +28,25 @@ CASES = {
 
 
 class SharedRuntimeAcceptance(unittest.TestCase):
+    def test_idle_wait_snapshot_does_not_require_an_event_wake(self):
+        from scripts.provider_runtime import targeted_thread_observation
+        raw = {"wake": None, "polls": [{"thread": {"id": CHILD, "status": {"type": "idle", "activeFlags": []}},
+            "latestTurn": {"id": "turn", "status": "completed", "startedAt": "2026-10-01T00:00:01Z",
+                           "completedAt": "2026-10-01T00:00:02Z"}}]}
+        def observe(value):
+            return targeted_thread_observation(value, "worker", CHILD, "2026-10-01T00:00:00Z",
+                                               "2026-10-01T00:00:03Z", "wait_threads")
+        self.assertEqual(observe(raw)["Provider status"], "idle")
+        for change in ("not_loaded", "pending", "wrong_thread", "future_completion", "wrong_wake", "provider_error"):
+            value = json.loads(json.dumps(raw))
+            if change == "not_loaded": value["polls"][0]["thread"]["status"]["type"] = "notLoaded"
+            elif change == "pending": value["polls"][0]["thread"]["status"]["activeFlags"] = ["waiting"]
+            elif change == "wrong_thread": value["polls"][0]["thread"]["id"] = PARENT
+            elif change == "future_completion": value["polls"][0]["latestTurn"]["completedAt"] = "2026-10-01T00:00:04Z"
+            elif change == "wrong_wake": value["wake"] = {"reason": "turnCompleted", "threadId": PARENT}
+            else: value["errors"] = [{"threadId": CHILD}]
+            with self.subTest(change=change): self.assertIsNone(observe(value))
+
     def test_wrapped_targeted_status_closes_workers_omitted_from_inventory(self):
         from scripts.worker_runtime_evidence import terminal_closure
         for wrapped in (False, True):
@@ -90,13 +109,20 @@ class SharedRuntimeAcceptance(unittest.TestCase):
 
     def test_targeted_wait_certifies_only_matching_inactive_terminal_turn(self):
         from scripts.worker_runtime_evidence import terminal_closure
-        for state in ("completed", "turn_completed", "wrong_wake", "wrong_thread", "wrong_turn", "running",
+        for state in ("completed", "turn_completed", "idle_snapshot", "idle_pending", "unloaded_snapshot",
+                      "wrong_wake", "wrong_thread", "wrong_turn", "running",
                       "active_thread", "missing_completion", "future_completion", "extra_poll"):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
                 run, root, _, time, event, parent, *_ = self.fixture(directory)
                 turn = {"id": CHILD, "status": "completed", "startedAt": time(5), "completedAt": time(10)}
                 response = {"wake": {"reason": "inactiveStatus", "threadId": CHILD}, "polls": [{
                     "thread": {"id": CHILD, "status": {"type": "notLoaded"}}, "latestTurn": turn}]}
+                if state in {"idle_snapshot", "idle_pending", "unloaded_snapshot"}:
+                    response["wake"] = None
+                    if state != "unloaded_snapshot":
+                        response["polls"][0]["thread"]["status"] = {"type": "idle", "activeFlags": []}
+                    if state == "idle_pending":
+                        response["polls"][0]["thread"]["status"]["activeFlags"] = ["pending"]
                 if state in {"turn_completed", "wrong_turn"}:
                     response["wake"] = {"reason": "turnCompleted", "threadId": CHILD,
                                         "turnId": CHILD if state == "turn_completed" else PARENT}
@@ -120,7 +146,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 source = root / "parent.jsonl"
                 source.write_text("\n".join(json.dumps(row) for row in parent) + "\n")
                 ledger = read_runtime_events(source, PARENT, run["runtime_evidence"]["run_started_at"])
-                if state in {"completed", "turn_completed"}:
+                if state in {"completed", "turn_completed", "idle_snapshot"}:
                     self.assertEqual(terminal_closure(ledger)["runtime_closure"][0]["Runtime status"], "Terminal")
                 else:
                     with self.assertRaises(ValueError):

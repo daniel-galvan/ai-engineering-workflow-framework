@@ -1,6 +1,7 @@
 """Native parent context boundaries before preparation and worker activation."""
 
 import json
+import sys
 import os
 import shlex
 import shutil
@@ -60,6 +61,64 @@ class ParentContext(unittest.TestCase):
     def audit(self, **kwargs):
         self.source.write_text("".join(json.dumps(row) + "\n" for row in self.rows))
         return parent_context_audit(self.source, **kwargs)
+
+    def test_native_preflight_proves_only_the_bound_package_selection(self):
+        from scripts.provider_runtime import native_preflight_observed
+        root = self.root.resolve() / "framework"
+        command = "python3 " + str(root / "scripts/run_preflight.py")
+        result = {"status": "passed", "framework_revision": "a" * 40, "framework_root": str(root),
+                  "framework_status": "clean", "plugin_version": "0.5.33+fixture"}
+        for change in ("valid", "turn", "revision", "version", "root", "script", "shell", "interpreter", "failed", "output"):
+            rows = json.loads(json.dumps(self.rows))
+            item = {"type": "CommandExecution", "command": ["bash", "-lc", command],
+                    "status": "completed", "exit_code": 0, "aggregated_output": json.dumps(result)}
+            if change == "turn": rows[-1]["payload"]["turn_id"] = CHILD
+            elif change in {"revision", "version", "root"}:
+                fields = {"revision": "framework_revision", "version": "plugin_version", "root": "framework_root"}
+                altered = dict(result); altered[fields[change]] = "other"
+                item["aggregated_output"] = json.dumps(altered)
+            elif change == "script": item["command"][-1] = "python3 /tmp/run_preflight.py"
+            elif change == "shell": item["command"][-1] += "; cat /tmp/extra"
+            elif change == "interpreter": item["command"][-1] = command.replace("python3", "/tmp/python3", 1)
+            elif change == "failed": item["exit_code"] = 2
+            elif change == "output": item["aggregated_output"] = "No structured observation"
+            rows.append({"type": "event_msg", "payload": {"type": "item_completed", "item": item}})
+            self.source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            with self.subTest(change=change):
+                self.assertEqual(native_preflight_observed(self.source, TURN, root, "a" * 40, "0.5.33+fixture"), change == "valid")
+
+    def test_host_required_presentation_write_is_not_a_historical_read(self):
+        codex = self.root / "codex"
+        memory = codex / "memories" / "MEMORY.md"
+        directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
+            "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
+        artifact = self.root / "repo" / ".thoughts" / "ITEM-1"
+        artifact.mkdir(parents=True)
+        target = artifact / "handoff_presentation_suffix.md"
+        citation = "<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[historical context]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>"
+        target.write_text(citation)
+        command = ("python3 - <<'PY'\nfrom pathlib import Path\n"
+                   f"p=Path({str(target)!r})\np.write_text({citation!r})\nprint(p)\nprint(p.read_text())\nPY")
+        observation = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "CommandExecution", "command": ["bash", "-lc", command], "status": "completed", "exit_code": 0}}}
+        self.rows.extend([directive, self.call("exec_command", cmd=command), observation])
+        with patch.dict(os.environ, {"CODEX_HOME": str(codex)}):
+            self.assertEqual(self.audit(artifact_root=artifact)["status"], "passed")
+            from scripts.host_memory import host_memory_presentation_write
+            self.assertTrue(host_memory_presentation_write(command.replace("python3", shlex.quote(sys.executable), 1), codex / "memories", artifact))
+            self.assertTrue(host_memory_presentation_write(command.replace(f"write_text({citation!r})", f"write_text({citation!r}, encoding='utf-8')"), codex / "memories", artifact))
+            self.assertFalse(host_memory_presentation_write(command.replace("python3", "/tmp/other-python", 1), codex / "memories", artifact))
+            for unsafe in (command.replace(str(target), str(self.root / "outside.md")),
+                           command.replace("\nPY", "\nopen('.thoughts/OTHER/runs/prior/notes.md').read()\nPY"),
+                           command.replace("MEMORY.md:1-2", "MEMORY.md:2-1")):
+                self.rows[-2] = self.call("exec_command", cmd=unsafe)
+                self.assertEqual(self.audit(artifact_root=artifact)["status"], "rejected")
+            self.rows[-2] = self.call("exec_command", cmd=command)
+            directive["payload"]["role"] = "user"
+            self.assertIn("forbidden_context_reference:memory_citation", self.audit(artifact_root=artifact)["errors"])
+            directive["payload"]["role"] = "developer"
+            self.rows.pop()
+            self.assertIn("forbidden_context_reference:memory_citation", self.audit(artifact_root=artifact)["errors"])
 
     def test_host_memory_instructions_allow_native_read_only_memory_access(self):
         codex = self.root / "codex"
