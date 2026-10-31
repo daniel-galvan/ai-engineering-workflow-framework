@@ -143,6 +143,15 @@ class TechOpsCorrections(unittest.TestCase):
                 elif change == "output": item["aggregated_output"] = '{"status":"blocked","errors":["other"]}'
                 else: item["status"] = "completed"
                 with self.subTest(change=change): self.assertFalse(verify(rows))
+            combined = ["parent_context_nonconformant:forbidden_context_reference:memory_path",
+                        "delivery_dependency_not_accepted:tester"]
+            rows = copy.deepcopy(events)
+            item = rows[2]["payload"]["item"]
+            item["command"][2] = command.replace(f" --dispatch-file {root}/dispatch", "")
+            item["aggregated_output"] = json.dumps({"status": "blocked", "errors": combined})
+            session.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            self.assertTrue(prepare._verified_historical_tester_guard_rejection(root, bindings, combined))
+            self.assertFalse(prepare._verified_historical_tester_guard_rejection(root, bindings, combined[:1]))
 
     def test_invalid_techops_goal_provenance_stops_before_creating_run_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -760,6 +769,16 @@ class TechOpsCorrections(unittest.TestCase):
                 failure["errors"] = ["remediation_not_activated"]
                 (root / "finalization_failure.json").write_text(json.dumps(failure))
                 self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                (root / "role_bindings.json").write_text("{}")
+                failure["errors"] = ["blocked: parent_context_nonconformant:forbidden_context_reference:memory_path; delivery_dependency_not_accepted:tester"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
+                with patch.object(prepare, "_verified_historical_tester_guard_rejection", return_value=True):
+                    self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
+                with patch.object(prepare, "_verified_historical_tester_guard_rejection", return_value=False):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
+                failure["errors"] = ["remediation_not_activated"]
+                (root / "finalization_failure.json").write_text(json.dumps(failure))
                 ledger_path.write_text(json.dumps({**ledger, "events": [{"Operation": "spawn_agent"}]}))
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)

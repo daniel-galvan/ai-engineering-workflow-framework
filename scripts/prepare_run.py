@@ -867,7 +867,7 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
     files, revision = candidate["files"], candidate["baseline_revision"]
     repository = Path(original.get("source_checkout", original["execution_repository"])).resolve()
     common = _git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    if (trace.get("run_id") != run_id or trace.get("worker") != "implementer"
+    if (trace.get("run_id") != run_id or trace.get("worker") not in {"implementer", "implement"}
             or trace.get("audit", {}).get("status") not in ({"rejected", "passed"} if candidate.get("base_candidate") else {"rejected"})
             or original_packet.get("identity", {}).get("Run ID") != run_id
             or original_packet.get("reentry", {}).get("Approved plan SHA256") != prior["reentry"]["Approved plan SHA256"]
@@ -969,7 +969,7 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
             if accepted_path.parent.resolve() != artifact_root.resolve():
                 raise ValueError("candidate_followup_trace_unverified")
             accepted = json.loads(archived(accepted_path.name))
-            if (accepted.get("run_id") != run_id or accepted.get("worker") != "implementer"
+            if (accepted.get("run_id") != run_id or accepted.get("worker") not in {"implementer", "implement"}
                     or accepted.get("audit", {}).get("status") != "passed"
                     or (accepted_edit and (accepted != trace or audits[0].get("Provider handle") != trace["spawn"]["provider_handle"]
                         or audits[0].get("Thread ID") != trace.get("thread_id")
@@ -1277,8 +1277,8 @@ def _recover_terminal_unmerged_review(artifact_root: Path, prior: dict, closure:
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
-def _verified_historical_tester_guard_parser_rejection(artifact_root: Path, bindings: dict) -> bool:
-    """Verify the original guard rejected a literal call under the previous parser."""
+def _verified_historical_tester_guard_rejection(artifact_root: Path, bindings: dict, expected_errors: list[str]) -> bool:
+    """Verify the native guard output for the original run and activation bundle."""
     try:
         parent = bindings["parent_context"]
         session = Path(parent["provider_session"])
@@ -1305,19 +1305,25 @@ def _verified_historical_tester_guard_parser_rejection(artifact_root: Path, bind
                         output = json.loads(item.get("aggregated_output", ""))
                     except (ValueError, TypeError):
                         continue
-                    if (len(args) != 12 or Path(args[0]).name not in {"python", "python3"}
+                    if (len(args) not in {10, 12} or Path(args[0]).name not in {"python", "python3"}
                             or args[1] != bindings["worker_runtime_guard"]):
                         continue
                     options = dict(zip(args[2::2], args[3::2]))
-                    if (len(options) == 5 and options.get("--activation-packet-bundle") == str(artifact_root / "worker_activation_packets.json")
+                    required = {"--activation-packet-bundle", "--expected-agent", "--expected-bundle-sha256", "--assignment"}
+                    if (len(options) == (len(args) - 2) // 2 and options.get("--activation-packet-bundle") == str(artifact_root / "worker_activation_packets.json")
                             and options.get("--expected-agent") == "tester"
                             and options.get("--expected-bundle-sha256") == expected_hash
-                            and set(options) == {"--activation-packet-bundle", "--expected-agent", "--expected-bundle-sha256", "--assignment", "--dispatch-file"}
-                            and output == {"errors": ["parent_context_nonconformant:parent_tool_arguments_unavailable"], "status": "blocked"}):
+                            and set(options) in (required, required | {"--dispatch-file"})
+                            and output == {"errors": expected_errors, "status": "blocked"}):
                         return True
     except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
         return False
     return False
+
+
+def _verified_historical_tester_guard_parser_rejection(artifact_root: Path, bindings: dict) -> bool:
+    return _verified_historical_tester_guard_rejection(artifact_root, bindings,
+        ["parent_context_nonconformant:parent_tool_arguments_unavailable"])
 
 
 def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, closure: dict,
@@ -1416,10 +1422,16 @@ def _recover_predispatch_context_candidate(artifact_root: Path, prior: dict, clo
         pattern = (r"(?:(?:parent_context_nonconformant:)?forbidden_context_reference:(?:archived_artifact|memory_path)"
                    r"(?:;parent_context_turn_mismatch:expected=[0-9a-f-]+;received=[0-9a-f-]+;prepare the current continuation)?"
                    r"|parent_context_nonconformant:parent_unassigned_thread_discovery|remediation_not_activated)")
+        failure_verified = len(errors) == 1 and isinstance(errors[0], str) and bool(re.fullmatch(pattern, errors[0]))
+        combined_errors = ["parent_context_nonconformant:forbidden_context_reference:memory_path",
+                           "delivery_dependency_not_accepted:tester"]
+        if len(errors) == 1 and isinstance(errors[0], str) and all(error in errors[0] for error in combined_errors):
+            bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+            failure_verified = _verified_historical_tester_guard_rejection(artifact_root, bindings, combined_errors)
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
                 and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation"
-                and len(errors) == 1 and isinstance(errors[0], str) and re.fullmatch(pattern, errors[0])
+                and failure_verified
                 and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
                 and not prior.get("workers") and not prior.get("worker_results") and not prior.get("runtime_audits")
@@ -1962,7 +1974,8 @@ def _reentry_source(
                                    and any(str(error).startswith(("parent_context_nonconformant:forbidden_context_reference:",
                                                                   "forbidden_context_reference:",
                                                                   "parent_context_nonconformant:parent_unassigned_thread_discovery",
-                                                                  "remediation_not_activated"))
+                                                                  "remediation_not_activated")) or
+                                           "parent_context_nonconformant:forbidden_context_reference:memory_path" in str(error)
                                            for error in failure.get("errors", [])))
             stopped_bootstrap = (not prior.get("workers") and not prior.get("worker_results")
                                  and any(("bootstrap" in str(error).lower() and "before reading" in str(error).lower())

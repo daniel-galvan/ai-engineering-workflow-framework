@@ -471,7 +471,7 @@ class CandidateRecoveryTest(unittest.TestCase):
         with patch.object(recovery, "verify_edit_authorization"), patch.object(recovery, "verify_candidate", return_value=hashes(before)):
             result = prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
             self.assertEqual(result["_contents"], after)
-            accepted_trace = {**trace, "audit": {"status": "passed"}}
+            accepted_trace = {**trace, "worker": "implement", "audit": {"status": "passed"}}
             accepted_sha = hashlib.sha256(json.dumps(accepted_trace).encode()).hexdigest()
             accepted_packet = {**archived_packet, "worker_results": [{"Worker": "implement", "Outcome": "complete"}],
                 "runtime_audits": [{"Worker": "implement", "Trace path": str(root / "trace_accepted.json"),
