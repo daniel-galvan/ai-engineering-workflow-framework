@@ -42,8 +42,8 @@ def validate_run_prompt_basics() -> None:
         if "Additional supplied context (preserve and classify):" not in text:
             fail(f"{path.relative_to(ROOT)} is missing the additional-context section")
         for phrase in (
-            "Do not search for or add memory-derived facts",
-            "`.thoughts` paths",
+            "Follow higher-priority host memory instructions",
+            "`.thoughts`",
             "Use `None` for unused optional fields",
         ):
             if phrase not in text:
@@ -218,7 +218,7 @@ def validate_sentry_prompt_and_isolation() -> None:
         "applied model, effort, and fresh-context metadata",
         "The native dispatch record must prove the exact explicit launch arguments",
         "`runs/` archives",
-        "Memory isolation is mandatory",
+        "Follow higher-priority host memory instructions",
         "implementation_plan_action",
         "concurrent-run decision",
         "without its value is not a delivered input",
@@ -291,7 +291,7 @@ def validate_evaluation_and_provenance() -> None:
         "local-source answerability",
         "nonconformant prompt",
         "undeclared feature branch",
-        "unassigned memory material",
+        "historical memory was presented as verified current evidence",
         "successful Documenter activation",
         "Invalid metrics must still report",
     ):

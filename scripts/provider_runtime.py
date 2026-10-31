@@ -9,6 +9,11 @@ import shlex
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    from host_memory import host_memory_rollouts, host_memory_root, host_memory_target
+except ModuleNotFoundError:
+    from scripts.host_memory import host_memory_rollouts, host_memory_root, host_memory_target
+
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
@@ -655,8 +660,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             raise ValueError("provider_current_turn_unavailable")
         if expected_turn_id and turn != expected_turn_id:
             raise ValueError("provider_bound_turn_unavailable")
-    # A query-only memory probe is harmless only when the provider's native execution record
-    # proves one exact rg search returned no matches. Keep all other memory references blocked.
+    # Host instructions may require memory access; identify that authority in the native session.
     operation_indexes: dict[str, list[int]] = {}
     for index, operation in enumerate(operations):
         arguments = operation.get("arguments", {})
@@ -665,8 +669,24 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             operation_indexes.setdefault(command, []).append(index)
     empty_memory_probes = 0
     preflight_memory_probes = set()
+    host_root = host_memory_root(source)
+    host_memory_reads = 0
+    linked_sessions: set[Path] = set()
     for command, indexes in operation_indexes.items():
         observations = command_observations.get(command, [])
+        target = host_memory_target(command, host_root, linked_sessions)
+        if (target and len(indexes) == len(observations)
+                and all(isinstance(item.get("command"), list) and item["command"]
+                        and item["command"][-1] == command
+                        and (item.get("status"), item.get("exit_code")) in {("completed", 0), ("failed", 1)}
+                        for item in observations)):
+            exempt.update(indexes)
+            host_memory_reads += len(indexes)
+            preflight_memory_probes.add(command)
+            for item in observations:
+                if Path(target).resolve().is_relative_to(host_root) and isinstance(item.get("aggregated_output"), str):
+                    linked_sessions.update(host_memory_rollouts(item["aggregated_output"], host_root))
+            continue
         if (len(indexes) == 1 and len(observations) == 1
                 and _verified_empty_memory_search(command, observations[0], framework_root)):
             exempt.add(indexes[0])
@@ -677,7 +697,6 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 preflight_memory_probes.add(command)
     audited_operations = [operation for index, operation in enumerate(operations) if index not in exempt]
     if require_preflight_order and framework_root is not None:
-        # Only the separately verified, standalone no-match host probe may precede preflight.
         errors.extend(_preflight_order_errors(sequenced_operations, framework_root, command_observations,
                                               preflight_memory_probes))
     details = []
@@ -685,7 +704,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                       input_paths=input_paths, artifact_root=artifact_root))
     return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
             "parent_thread_id": thread, "turn_id": turn, "errors": list(dict.fromkeys(errors)),
-            "context_violations": details, "empty_memory_probes": empty_memory_probes,
+            "context_violations": details, "empty_memory_probes": empty_memory_probes, "host_memory_reads": host_memory_reads,
             "verified_related_run_status_probes": verified_related_run_status_probes,
             "related_run_status_probe_attempts": related_run_probe_attempts,
             "related_run_status_rows": related_run_status_rows,

@@ -11,6 +11,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 import tokenize
 from datetime import datetime
@@ -114,9 +115,9 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
     try:
         root = root.resolve()
         try:
-            from worker_runtime_evidence import worker_final_response, strict_json_loads
+            from worker_runtime_evidence import worker_final_response, worker_response_value
         except ModuleNotFoundError:
-            from scripts.worker_runtime_evidence import worker_final_response, strict_json_loads
+            from scripts.worker_runtime_evidence import worker_final_response, worker_response_value
         response = worker_final_response(Path(trace["trace_retrieval"]), trace["last_dispatch_at"],
                                          trace["status_observation"]["Observed at"],
                                          trace["status_observation"].get("Latest turn started at"),
@@ -143,7 +144,7 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
             paths[field] = path
         if paths["response_path"].read_text() != response:
             return ["worker_result_artifact_changed:" + role]
-        envelope = strict_json_loads(response)
+        envelope = worker_response_value(response, Path(trace["trace_retrieval"]))
         if (paths["output_path"].read_text() != envelope["output"]
                 or json.loads(paths["path"].read_text()) != envelope["result"]):
             return ["worker_result_artifact_changed:" + role]
@@ -259,7 +260,7 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
         for start in range(0, len(message), 6000):
             literal_path = json.dumps(str(path.resolve()), ensure_ascii=False)
             code = f'print(open({literal_path}).read()[{start}:{min(start + 6000, len(message))}],end="")'
-            commands.append(shlex.join(["python3", "-c", code]))
+            commands.append(shlex.join([sys.executable, "-c", code]))
         reading = ("Read the complete file in order with each separate literal command below; "
                    "do not omit or change any part:\n" + "\n".join(commands) + "\n")
     else:
@@ -267,10 +268,9 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     file_identity = (f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
                      if len(message) > 12000 else "")
     return (packet["required_prefix"] + "\n"
-            + "First step: verify and read the file; this bootstrap is self-contained. Before reading, "
-              "do not search memory unless required by the host. If required, use a separate `rg -n -F` "
-              "search for this work-item ID only in the host memory index (normally ~/.codex/memories/MEMORY.md); "
-              "only a verified no-match passes. Do not search the artifact directory, previous chats or archives.\n"
+            + "First step: verify and read the file; this bootstrap is self-contained. Follow higher-priority host "
+              "memory instructions when applicable, and verify current claims against current evidence. "
+              "Do not search the artifact directory, previous chats or archives.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
             + file_identity
@@ -1184,7 +1184,9 @@ def _dispatch_segment(command: str) -> tuple[str, int, int] | None:
     """Recognize only an exact literal slice read, without evaluating provider code."""
     try:
         tokens = shlex.split(command)
-        if len(tokens) != 3 or tokens[:2] != ["python3", "-c"]:
+        if (len(tokens) != 3 or tokens[1] != "-c" or
+                (tokens[0] != "python3" and (not Path(tokens[0]).is_absolute()
+                 or Path(tokens[0]).resolve() != Path(sys.executable).resolve()))):
             return None
         tree = ast.parse(tokens[2])
         part = tree.body[0].value.args[0]
@@ -1196,7 +1198,7 @@ def _dispatch_segment(command: str) -> tuple[str, int, int] | None:
         expected = f"print(open({target!r}).read()[{start}:{end}],end='')"
         if ast.dump(tree) == ast.dump(ast.parse(expected)):
             return target, start, end
-    except (ValueError, SyntaxError, TypeError, AttributeError, IndexError):
+    except (OSError, ValueError, SyntaxError, TypeError, AttributeError, IndexError):
         pass
     return None
 
@@ -1921,6 +1923,58 @@ def _empty_worker_memory_probes(trace: dict) -> dict[int, str]:
     return probes
 
 
+def _host_worker_memory_reads(trace: dict) -> tuple[dict[int, str], dict[str, list[str]]]:
+    """Bind permitted host-memory reads to native worker command records."""
+    if not any(any(marker in value for marker in ("MEMORY.md", "memories", "rollout_summaries"))
+               for _, value in _trace_strings({"tool_trace": trace.get("tool_trace", [])})):
+        return {}, {}
+    try:
+        from host_memory import host_memory_rollouts, host_memory_root, host_memory_target
+    except ModuleNotFoundError:
+        from scripts.host_memory import host_memory_rollouts, host_memory_root, host_memory_target
+    try:
+        session = Path(trace["trace_retrieval"])
+        session_roots = {Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions",
+                         Path.home() / ".codex" / "sessions"}
+        if session.is_symlink() or not any(session.resolve().is_relative_to(root.resolve()) for root in session_roots):
+            return {}, {}
+        root = host_memory_root(session)
+        if root is None:
+            return {}, {}
+        started = timestamp(trace["last_dispatch_at"])
+        observed = timestamp(trace["status_observation"]["Observed at"])
+        with session.open() as stream:
+            header = json.loads(next(stream))
+            if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != trace.get("thread_id"):
+                return {}, {}
+            native = [item for line in stream if (event := json.loads(line)).get("type") == "event_msg"
+                      and started <= timestamp(event["timestamp"]) <= observed
+                      and event.get("payload", {}).get("type") == "item_completed"
+                      and (item := event.get("payload", {}).get("item", {})).get("type") == "CommandExecution"]
+        reads, outputs, linked_sessions = {}, {}, set()
+        for index, row in enumerate(trace.get("tool_trace", [])):
+            if not isinstance(row, dict) or not row.get("call_id"):
+                continue
+            operations = _tool_operations(row)
+            if len(operations) != 1 or operations[0][0] != "exec_command":
+                continue
+            command = operations[0][1].get("cmd")
+            target = host_memory_target(command, root, linked_sessions)
+            observations = [item for item in native if isinstance(item.get("command"), list)
+                            and item["command"] and item["command"][-1] == command
+                            and (item.get("status"), item.get("exit_code")) in {("completed", 0), ("failed", 1)}]
+            if target and observations:
+                reads[index] = target
+                outputs[row["call_id"]] = [item.get("aggregated_output", "") for item in observations
+                                           if isinstance(item.get("aggregated_output"), str)]
+                if Path(target).resolve().is_relative_to(root):
+                    for output in outputs[row["call_id"]]:
+                        linked_sessions.update(host_memory_rollouts(output, root))
+        return reads, outputs
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration):
+        return {}, {}
+
+
 def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
                          input_paths: tuple[str, ...] = (), artifact_root: Path | None = None) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
@@ -1947,6 +2001,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
     labeled_outputs = _labeled_packet_outputs(trace, root) if dispatch_content else {}
     empty_memory_probes = _empty_worker_memory_probes(trace) if trace.get("trace_retrieval") else {}
+    host_memory_reads, host_memory_outputs = _host_worker_memory_reads(trace) if trace.get("trace_retrieval") else ({}, {})
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
     framework_searches = _framework_searches(trace, root) if root else {}
     call_sources = {row.get("call_id"): row.get("input", "") for row in trace.get("tool_trace", [])
@@ -1965,6 +2020,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         if (path[:1] == ("tool_trace",) and len(path) > 2 and str(path[1]).isdigit()
                 and path[2] in {"input", "arguments"} and int(path[1]) in empty_memory_probes):
             candidate = candidate.replace(empty_memory_probes[int(path[1])], "[empty host memory probe]", 1)
+        if (path[:1] == ("tool_trace",) and len(path) > 2 and str(path[1]).isdigit()
+                and path[2] in {"input", "arguments"} and int(path[1]) in host_memory_reads):
+            candidate = candidate.replace(host_memory_reads[int(path[1])], "[host memory read]", 1)
         for prefix, content in listing_reads.items():
             if path[:len(prefix)] == prefix and candidate.startswith(content):
                 candidate = content + "\n".join(line for line in candidate[len(content):].splitlines()
@@ -1975,6 +2033,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:
+            for content in host_memory_outputs.get(row.get("call_id"), []):
+                if content:
+                    candidate = candidate.replace(content, "").replace(json.dumps(content, ensure_ascii=False)[1:-1], "")
             labeled = labeled_outputs.get(row.get("call_id"))
             if labeled and candidate == labeled[0]:
                 candidate = candidate.replace(labeled[1], '"[current packet archive reference]"', 1)
@@ -2000,7 +2061,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                                     or (output and row.get("call_id") in framework_searches)
                                     or candidate != value and path[:1] == ("tool_trace",)
                                     and len(path) > 2 and path[2] in {"input", "arguments"}
-                                    and str(path[1]).isdigit() and int(path[1]) in empty_memory_probes) else value
+                                    and str(path[1]).isdigit() and int(path[1]) in (empty_memory_probes.keys() | host_memory_reads.keys())
+                                    or output and row.get("call_id") in host_memory_outputs) else value
             if label == "archived_artifact" and listing:
                 continue
             if label == "memory_citation" and output:

@@ -42,6 +42,38 @@ except ModuleNotFoundError:
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
+def worker_response_value(response: str, session: Path) -> dict:
+    """Parse the worker envelope and preserve a host-required citation suffix."""
+    try:
+        return strict_json_loads(response)
+    except (ValueError, json.JSONDecodeError):
+        try:
+            from host_memory import host_memory_root
+        except ModuleNotFoundError:
+            from scripts.host_memory import host_memory_root
+        body, separator, citation = response.partition("<oai-mem-citation>")
+        suffix = separator + citation
+        match = re.fullmatch(
+            r"<oai-mem-citation>\s*<citation_entries>\s*([^<]+?)\s*</citation_entries>\s*"
+            r"<rollout_ids>\s*([^<]*?)\s*</rollout_ids>\s*</oai-mem-citation>\s*", suffix)
+        if not separator or host_memory_root(session) is None or not match:
+            raise ValueError("worker_final_response_json_invalid")
+        entries = match[1].strip().splitlines()
+        if not entries:
+            raise ValueError("worker_final_response_json_invalid")
+        for entry in entries:
+            parsed = re.fullmatch(r"([^:\n]+):([1-9][0-9]*)-([1-9][0-9]*)\|note=\[([^\]\n]*)\]", entry)
+            if (not parsed or Path(parsed[1]).is_absolute() or ".." in Path(parsed[1]).parts
+                    or int(parsed[2]) > int(parsed[3])):
+                raise ValueError("worker_final_response_json_invalid")
+        if any(not UUID.fullmatch(value) for value in match[2].split()):
+            raise ValueError("worker_final_response_json_invalid")
+        try:
+            return strict_json_loads(body)
+        except (ValueError, json.JSONDecodeError) as error:
+            raise ValueError("worker_final_response_json_invalid") from error
+
+
 def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
                           turn_started_at: str | None = None, *, turn_id: str | None = None) -> str:
     """Read the latest assistant final answer from the dispatched worker turn."""
@@ -87,10 +119,10 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
 
 
 def _materialize_worker_response(root: Path, role: str, dispatch_at: str, response: str,
-                                 contract: dict) -> dict:
+                                 contract: dict, session: Path) -> dict:
     """Save one immutable, dispatch-scoped response snapshot for acceptance."""
     try:
-        value = strict_json_loads(response)
+        value = worker_response_value(response, session)
     except (json.JSONDecodeError, ValueError) as error:
         raise ValueError("worker_final_response_json_invalid") from error
     allowed = {"output", "result"} | ({"asset_manifest"} if contract.get("asset_inventory") else set())
@@ -270,7 +302,7 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
                                                  observation.get("Latest turn started at"),
                                                  turn_id=observation.get("Latest turn ID"))
                 result["result_artifact"] = _materialize_worker_response(
-                    artifact_root, worker_binding(bindings, agent), dispatch["Last dispatch at"], response, contract)
+                    artifact_root, worker_binding(bindings, agent), dispatch["Last dispatch at"], response, contract, source)
             except (OSError, ValueError, KeyError, TypeError) as error:
                 message = str(error)
                 if message.startswith("worker_final_response") or message.startswith("worker_asset_manifest_response"):

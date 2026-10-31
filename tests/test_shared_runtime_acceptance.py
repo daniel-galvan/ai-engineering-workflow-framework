@@ -612,6 +612,33 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             merge_result(packet_path, role, trace=path)
             self.assertEqual(len(json.loads(packet_path.read_text())["runtime_audits"]), 1)
 
+    def test_host_memory_citation_survives_worker_collection_and_merge(self):
+        from scripts.merge_techops_result import merge_result
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation", "current_state_investigator")
+            run, root, role, _, _, _, child, _ = fixture
+            template = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())
+            self.set_worker_response(fixture, {"run_id": run["run_id"], "worker_result": {
+                **dict.fromkeys(template["worker_results"][0], "Current evidence"),
+                "Worker": "issue-evidence", "Outcome": "complete"},
+                "evidence": [{**dict.fromkeys(template["evidence"][0], "Current evidence"), "Evidence ID": "E-ISS-1"}],
+                "integration_decision": {"decision": "not_required", "reason": "Single component", "evidence_refs": "E-ISS-1"}})
+            codex = Path(directory) / "codex"
+            memory = codex / "memories" / "MEMORY.md"
+            child.insert(1, {"type": "response_item", "timestamp": child[0]["timestamp"], "payload": {"type": "message", "role": "developer",
+                "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}})
+            final = next(row for row in child if row.get("payload", {}).get("phase") == "final_answer")
+            suffix = "\n<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[context]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>"
+            final["payload"]["content"][0]["text"] += suffix
+            with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
+                trace, ledger = self.export(fixture)
+                self.assertEqual(trace["audit"]["status"], "passed", trace["audit"])
+                Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+                trace_path = root / "citation.trace.json"
+                trace_path.write_text(json.dumps(trace))
+                merge_result(root / "finalization_packet.json", role, trace=trace_path)
+                self.assertEqual(json.loads((root / "finalization_packet.json").read_text())["worker_results"][0]["Outcome"], "complete")
+
     def test_wrong_worker_session_is_a_collector_error_and_correct_session_can_be_collected(self):
         from scripts import worker_runtime_evidence as collector
         with tempfile.TemporaryDirectory() as directory:

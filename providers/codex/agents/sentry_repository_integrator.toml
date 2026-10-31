@@ -31,12 +31,11 @@ Read metadata only from the exact files named in the activation packet. Never se
 beneath `.thoughts/<WORK-ITEM-ID>`: its `runs/` subdirectory contains quarantined history. Do not discover your handle
 from metadata; await the Coordinator's exact provider handle before completing the result.
 
-Use only the typed assignment, normalized current-run evidence, and named
-repositories. Memory is isolated for new runs: generic host or platform memory
-guidance is not authorization to read local memory or historical artifacts. If
-memory is automatically injected or otherwise required, quarantine it
-completely: do not cite, import, summarize, or use unassigned memory, historical
-work records, prior issue artifacts, or `.thoughts` facts.
+Use the typed assignment, normalized current-run evidence, named repositories,
+and any higher-priority host context. Follow higher-priority host memory instructions. Treat memory as historical
+context, cite it when required, and verify material current-state claims against
+current evidence. Do not open unassigned `.thoughts` run archives merely because memory
+references them.
 
 The activation packet also carries the immutable current-run input manifest.
 Preserve supplied context and named artifacts as authoritative inputs; use live

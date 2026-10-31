@@ -74,11 +74,9 @@ and do not substitute Coordinator analysis for the required graph.
 
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
-section or template needed to resolve an ambiguity in their assigned stage. New runs are memory-isolated: workers MUST
-NOT search local memory or historical work records unless the user explicitly requests continuation, recovery, or an
-evaluation and names those historical inputs. Generic host or provider memory guidance is not authorization. Any
-automatically injected or otherwise required memory remains quarantined: no memory-derived fact, citation, ticket, path,
-hypothesis, or conclusion may enter run evidence or influence a decision.
+section or template needed to resolve an ambiguity in their assigned stage. Follow higher-priority host memory
+instructions. Treat memory as historical context, cite it when required, and verify material current-state claims
+against current evidence. Do not open unassigned `.thoughts` run archives merely because memory references them.
 
 For every delegated activation, the Coordinator MUST pass the exact manifest
 `model`, reasoning effort, and fresh-context setting to the provider primitive.
@@ -332,8 +330,8 @@ or `context_conformance_failed` result as contaminated evidence. A trace that ca
 `context-unverified`; do not report the result as independently audited. For Pilot Standard Sentry and TechOps planning,
 a result may continue as context-unverified after a recorded retrieval attempt fails or the operation is absent, when
 every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation. The trace audit
-covers unassigned memory paths, rollout summaries, memory citations, and archived `.thoughts/<WORK-ITEM-ID>/runs/`
-artifacts.
+covers unauthorized memory reads and archived `.thoughts/<WORK-ITEM-ID>/runs/` artifacts; host-authorized read-only
+memory access and required citations are permitted.
 
 Every activation packet MUST include a compact input manifest for each assigned Input ID: the short value or fact, its
 source, its authority classification, and the expected use or disposition. Assigning an ID without passing its value is

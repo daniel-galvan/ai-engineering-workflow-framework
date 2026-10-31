@@ -91,14 +91,10 @@ Pass every explicit current-run skill or plugin enable/disable directive to
 every worker packet. A disabled skill or plugin must not be loaded, invoked, or
 reactivated by a worker. These directives remain authoritative across fresh
 worker contexts and correction turns.
-Memory isolation is mandatory for new runs. Generic host or platform memory
-guidance is not authorization to read local memory or historical artifacts. If
-memory is automatically injected or otherwise required, quarantine it
-completely: do not use, cite, summarize, or pass it to workers. Reject a result
-when unassigned or injected memory or historical material appears in its
-artifact, citation, claim, hypothesis, decision, or conclusion. Worker
-self-attestation is insufficient: reconcile those outputs against assigned
-current-run evidence before setting `context_conformance: pass`.
+Follow higher-priority host memory instructions. Treat memory as historical
+context, cite it when required, and verify material current-state claims against
+current evidence. Do not open unassigned `.thoughts` run archives merely because memory
+references them.
 
 Execute the requested profile and lifecycle exactly. Activate each required
 worker, preserve dependencies, collect terminal result envelopes, complete

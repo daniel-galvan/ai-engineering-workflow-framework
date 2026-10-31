@@ -29,8 +29,8 @@ def validate_activation_roles(agent_configs: dict) -> None:
         ):
             if phrase not in instructions:
                 fail(f"{agent_name}.toml is missing remediation barrier rule: {phrase}")
-        if "Memory isolation is mandatory for new runs" not in instructions:
-            fail(f"{agent_name}.toml is missing memory isolation")
+        if "Follow higher-priority host memory instructions" not in instructions:
+            fail(f"{agent_name}.toml is missing host memory precedence")
 
     for agent_name, phrases in {
         "implementer": (
@@ -323,7 +323,7 @@ def validate_technical_roles() -> None:
         "decision_expected_to_change: true",
         "concrete question",
         "expected disposition",
-        "quarantine it",
+        "Follow higher-priority host memory instructions",
         "Check runner availability",
         "decision_changed",
         "low-value integration check",

@@ -17,8 +17,8 @@ These fields define run-specific plugin inputs. Invoke `$ai-engineering-workflow
 context. The shared contract and selected playbook own execution behavior. Preserve supplied context and place explicit
 decisions in the authoritative confirmed-input section.
 Populate the prompt only from the current user request, references explicitly named for this run, and facts retrieved
-from those references. Do not search for or add memory-derived facts, related tickets, past plans, historical work
-records, or `.thoughts` paths unless the user explicitly asks to include them. Use `None` for unused optional fields.
+from those references. Follow higher-priority host memory instructions; verify current claims against current evidence.
+Do not open unassigned `.thoughts` run archives. Use `None` for unused optional fields.
 
 ```text
 Run the Feature Delivery playbook.

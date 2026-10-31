@@ -123,7 +123,7 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn(receipt["dispatch_file_sha256"], receipt["activation_message"])
         self.assertIn(packet["run_id"], receipt["activation_message"])
         self.assertIn("this bootstrap is self-contained", receipt["activation_message"])
-        self.assertLess(receipt["activation_message"].index("do not search memory"),
+        self.assertLess(receipt["activation_message"].index("Follow higher-priority host memory instructions"),
                         receipt["activation_message"].index(packet["run_id"]))
         outbound = self.root / "outbound.txt"
         outbound.write_text(receipt["activation_message"])
@@ -213,7 +213,7 @@ class ActivationDelivery(unittest.TestCase):
             "instructions", path)
         command = notice.split("Read it with this separate literal command: ", 1)[1].split("\n", 1)[0]
         self.assertEqual(runtime_checks._read_targets(command), [str(path.resolve())])
-        self.assertIn("only in the host memory index", notice)
+        self.assertIn("Follow higher-priority host memory instructions", notice)
         self.assertIn("Do not search the artifact directory", notice)
         self.assertIn("Use separate tool calls for verification and the complete instruction read", notice)
         self.assertIn("max_output_tokens to at least 12; truncated output is not delivery", notice)
@@ -225,6 +225,13 @@ class ActivationDelivery(unittest.TestCase):
                          [(0, 6000), (6000, 12000), (12000, 13001)])
         self.assertTrue(all(runtime_checks._read_targets(command) == [str(path.resolve())] for command in commands))
         self.assertTrue(all("'\"'\"'" not in command for command in commands))
+        path.write_text("x" * 13001)
+        actual = "".join(subprocess.run(shlex.split(command), check=True, capture_output=True, text=True).stdout
+                         for command in commands)
+        self.assertEqual(actual, path.read_text())
+        forged = shlex.split(commands[0])
+        forged[0] = "/tmp/python3"
+        self.assertIsNone(runtime_checks._dispatch_segment(shlex.join(forged)))
 
     def test_live_opaque_dispatch_requires_paired_instruction_read_before_inventory(self):
         trace = self.instruction_trace()

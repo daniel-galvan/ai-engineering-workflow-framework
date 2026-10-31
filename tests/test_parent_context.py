@@ -1,6 +1,7 @@
 """Native parent context boundaries before preparation and worker activation."""
 
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -59,6 +60,59 @@ class ParentContext(unittest.TestCase):
     def audit(self, **kwargs):
         self.source.write_text("".join(json.dumps(row) + "\n" for row in self.rows))
         return parent_context_audit(self.source, **kwargs)
+
+    def test_host_memory_instructions_allow_native_read_only_memory_access(self):
+        codex = self.root / "codex"
+        memory = codex / "memories" / "MEMORY.md"
+        memory.parent.mkdir(parents=True)
+        memory.write_text("relevant historical note\n")
+        directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
+            "content": [{"type": "input_text", "text": "## Memory\nDecision boundary\nMEMORY_SUMMARY\n" + str(memory)}]}}
+        search = "rg -n -i 'ITEM-1|workflow' " + str(memory)
+        read = "nl -ba " + str(memory) + " | sed -n '1,20p'"
+        def observation(command):
+            return {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+                "type": "CommandExecution", "command": ["/bin/bash", "-lc", command],
+                "status": "completed", "exit_code": 0, "aggregated_output": "historical note"}}}
+        self.rows[1:1] = [directive]
+        self.rows.extend([self.call("exec_command", cmd=search), observation(search),
+                          self.call("exec_command", cmd=read), observation(read)])
+        with patch.dict(os.environ, {"CODEX_HOME": str(codex)}):
+            result = self.audit(framework_root=self.root / "framework", require_preflight_order=True)
+            self.assertEqual(result["status"], "passed", result)
+            self.assertEqual(result["host_memory_reads"], 2)
+            directive["payload"]["role"] = "user"
+            self.assertIn("forbidden_context_reference:memory_path", self.audit()["errors"])
+            directive["payload"]["role"] = "developer"
+            observed = self.rows.pop()
+            self.assertIn("forbidden_context_reference:memory_path", self.audit()["errors"])
+            self.rows.append(observed)
+            self.rows[-2] = self.call("exec_command", cmd=read + " ; cat /secret")
+            self.assertIn("forbidden_context_reference:memory_path", self.audit()["errors"])
+
+    def test_host_memory_rollout_read_requires_a_prior_native_reference(self):
+        codex = self.root / "codex"
+        memory = codex / "memories" / "MEMORY.md"
+        memory.parent.mkdir(parents=True)
+        session = codex / "sessions" / "prior.jsonl"
+        session.parent.mkdir()
+        session.write_text("{}\n")
+        marker = {"type": "response_item", "payload": {"type": "message", "role": "developer",
+            "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
+        search = "rg -n ITEM " + str(memory)
+        read = "cat " + str(session)
+        def observation(command, output):
+            return {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+                "type": "CommandExecution", "command": ["bash", "-lc", command],
+                "status": "completed", "exit_code": 0, "aggregated_output": output}}}
+        self.rows[1:1] = [marker]
+        with patch.dict(os.environ, {"CODEX_HOME": str(codex)}):
+            self.rows.extend([self.call("exec_command", cmd=search), observation(search, "rollout_path=" + str(session)),
+                              self.call("exec_command", cmd=read), observation(read, "{}")])
+            self.assertEqual(self.audit(framework_root=self.root / "framework", require_preflight_order=True)["status"], "passed")
+            self.rows[-3] = observation(search, "no rollout reference")
+            self.assertIn("parent_framework_content_before_preflight",
+                          self.audit(framework_root=self.root / "framework", require_preflight_order=True)["errors"])
 
     def test_actual_memory_read_is_rejected_but_quotes_and_prior_turn_are_ignored(self):
         memory = "/repo/.codex/memories/MEMORY.md"

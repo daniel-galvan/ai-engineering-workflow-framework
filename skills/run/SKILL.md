@@ -14,9 +14,8 @@ lifecycle, user decisions, worker handles, and next pending gate in the continua
 current-run `role_bindings.json`, `finalization_packet.json`, and `runtime_dispatches.json` when present; query the
 recorded worker handles for fresh status before dispatch or fan-in. Keep `run_inputs.json` and its hash unchanged.
 Do not rerun preflight or preparation, reread this entire launcher, or search plugin caches. Preserve the work-item ID
-in the continuation summary. If higher-priority host instructions require a memory check, use a separate
-`rg -n -F <work-item-ID> <host-memory-index>` search only; the runtime accepts it only when the provider proves no
-matches. A matching memory read remains a context violation and must be reported, not imported as current-run evidence.
+in the continuation summary. Follow higher-priority host memory instructions. Treat memory as historical context,
+cite it when required, and verify material current-state claims against current evidence.
 Use helper paths from the prepared role bindings and read only the section needed for the pending gate. Compaction
 does not authorize another worker, restart, lifecycle change, or import of historical evidence. If the current-run
 identity cannot be recovered from these exact files, stop with that limitation instead of discovering another run.
@@ -31,17 +30,16 @@ failure handling.
    (`Path(active_SKILL.md).parents[2]`); do not open or search a user-supplied cache path. A versioned path in the
    prompt is only a declared identity to compare, never an instruction to `sed`, `find`, `rg`, or search another cache
    version. Do not ask the user for a framework checkout path.
-2. Invocation gate: do not begin with repository discovery, status checks, `AGENTS.md`, memory, or playbook reads.
+2. Invocation gate: do not begin with repository discovery, status checks, `AGENTS.md`, or playbook reads.
    If the host has not already provided this active skill's contents, read only the active installed `SKILL.md`.
    The first framework tool call after this skill is loaded MUST be the package preflight command by itself. A
-   host-mandated no-match memory probe is the only permitted non-framework operation before that call; it must satisfy
-   the exact native checks below. Never combine the skill read with repository guidance, a playbook, or another
-   command. After preflight, never call `list_threads` directly: its raw output includes unassigned chat content.
+   host-required read-only memory check may precede it. Never combine the skill read with repository guidance, a
+   playbook, or another command. After preflight, never call `list_threads` directly: its raw output includes
+   unassigned chat content.
    For the related-run check, execute only step 7's exact status-only JavaScript projection through `functions.exec`.
    A direct inventory call makes preparation reject this turn with `parent_unassigned_thread_discovery`.
-   Before preflight, do not read memory contents,
-   `PLAYBOOK_CATALOG.md`, any playbook, contract, provider definition, template, validator, sibling `.thoughts` root,
-   or plugin cache directory. Run:
+   Before preflight, do not read `PLAYBOOK_CATALOG.md`, any playbook, contract, provider definition, template,
+   validator, sibling `.thoughts` root, or plugin cache directory. Run:
    `python3 <framework-root>/scripts/run_preflight.py`. The script derives the package root from its own location; do
    not construct or pass a separate framework-root argument. Preflight also validates the shipped static library.
    Mandatory presentation text from other active instructions does not block preflight or investigation. Preserve
@@ -50,14 +48,11 @@ failure handling.
    An optional `--provider-session <path>` must match that resolved record; it cannot select an older fragment.
    This audits executed calls in the latest native turn, not quoted instructions or returned text. A rejected parent
    context is an early terminal block; do not activate workers or continue after acknowledging contamination. A
-   host-required targeted search of `.codex/memories/MEMORY.md` remains nonconformant unless native execution
-   metadata proves one `rg -n` search (optionally case-insensitive and/or fixed-string) against that absolute path
-   exited 1 with empty output, with one parsed search matching the query and target. The parser may shorten the path to
-   `MEMORY.md` only when the native command record confirms the absolute target. A verified standalone no-match probe
-   may be the only host-required operation before preflight; it is recorded as empty and does not count as framework
-   discovery. Do not combine it with skill, repository, or playbook reads. Any match/output and all file reads remain
-   blocked. Limit any host-required probe to the exact current work-item ID; do not add framework vocabulary,
-   helper names, or previous-run concepts that can retrieve unrelated historical guidance.
+   host-required memory reads must be read-only, target the host memory catalog, referenced host notes, or an exact
+   native rollout path exposed by an earlier host memory read, and have native execution evidence. Use separate
+   literal `rg`, `cat`, `sed -n`, or `nl -ba` reads; `head` or `sed -n`
+   may limit their output. Do not combine them with skill, repository, or playbook reads. Do not open an
+   unassigned `.thoughts` run archive merely because a memory note references it.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Read local `AGENTS.md` only in the source-code target directory and its ancestors up to the execution repository
@@ -144,10 +139,9 @@ failure handling.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
    Treat every new framework run as current-run-only unless the user explicitly requests continuation, recovery, or an
-   evaluation that names historical inputs. Memory isolation is mandatory: generic host or platform memory guidance is
-   not authorization to read local memory or historical artifacts. If memory is automatically injected or otherwise
-   required, quarantine it completely; do not use, cite, summarize, or pass it to workers, and mark context conformance
-   failed if it influences a result.
+   evaluation that names historical inputs. Follow higher-priority host memory instructions. Treat memory as historical
+   context, cite it when required, and verify material current-state claims against current evidence. Do not open an
+   unassigned `.thoughts` run archive merely because a memory note references it.
    Before analytical fan-in for Sentry, TechOps, or Feature Delivery, use the prepared `runtime_evidence.collector` and
    `runtime_evidence.ledger` when declared. Extract dispatches from the verified current parent session and export the
    exact child session with its fresh provider status observation. Use the canonical binding key as `--agent`, not a
@@ -672,8 +666,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    durable artifact validates the supplied handle.
 8. Keep the prepared `work_record.md` skeleton unchanged until deterministic finalization on every path. Populate
    `finalization_packet.json` from supplied and discoverable context; only `finalize_work_record.py` writes the
-   terminal record. When the prompt requires current-run-only evidence, do not read memory, historical `.thoughts`
-   artifacts, or prior-run citations at any later stage. The execution repository's `.codex/agents/` runtime view is
+   terminal record. When the prompt requires current-run-only evidence, do not use memory as current proof or read
+   unassigned historical `.thoughts` artifacts. The execution repository's `.codex/agents/` runtime view is
    optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
    binding; record the source and status, and never inherit unverified Coordinator settings. Active artifacts are direct
    children of the current `.thoughts/<WORK-ITEM-ID>/` root; do not search or reuse `runs/` archives unless the user
@@ -723,6 +717,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
 8a. For TechOps planning and Feature Delivery planning or remediation, prepared worker contracts are operative
    instructions. Include the complete `worker_contract` with each fresh assignment. Each analytical worker returns
    exactly one strict JSON final answer with `output` (narrative string) and `result` (the prepared JSON envelope).
+   Append a memory citation block after the JSON when required by higher-priority host instructions.
    Feature `feature-context` also returns `asset_manifest` using its prepared contract. The runtime exporter stores
    immutable per-dispatch response artifacts; workers do not write assigned paths. The merger publishes them only after
    acceptance. Preserve the prepared ID namespace and upstream IDs.

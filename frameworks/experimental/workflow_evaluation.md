@@ -132,7 +132,7 @@ ran after provider configuration could not be resolved or bound, the Documenter 
 and a decision-changing question.
 
 Process quality cannot be rated `met` when a versioned run used a nonconformant prompt, an undeclared feature branch
-established baseline/production/current-main behavior, unassigned memory material entered an artifact or citation, a
+established baseline/production/current-main behavior, historical memory was presented as verified current evidence, a
 successful Documenter activation was omitted from activation attempts, or the Coordinator edited an artifact after
 Documenter terminal. Invalid metrics must still report every authoritative measurement that is available.
 

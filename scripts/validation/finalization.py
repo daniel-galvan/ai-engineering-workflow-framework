@@ -363,8 +363,8 @@ def validate_final_documenter_rules() -> None:
         "solution_architect.toml",
     ):
         text = (CODEX_AGENT_DIR / name).read_text()
-        if "Memory is isolated for new runs" not in text or "do not cite, import, summarize, or use" not in text:
-            fail(f"providers/codex/agents/{name} is missing assigned-context isolation")
+        if "Follow higher-priority host memory instructions" not in text or "verify material current-state claims" not in text:
+            fail(f"providers/codex/agents/{name} is missing host memory precedence or current-evidence verification")
 
     for name in (
         "sentry_current_state_investigator.toml",
@@ -373,8 +373,8 @@ def validate_final_documenter_rules() -> None:
         "documenter.toml",
     ):
         text = (CODEX_AGENT_DIR / name).read_text()
-        if "Memory is isolated for new runs" not in text or "do not" not in text:
-            fail(f"providers/codex/agents/{name} is missing memory isolation")
+        if "Follow higher-priority host memory instructions" not in text or "verify material current-state claims" not in text:
+            fail(f"providers/codex/agents/{name} is missing host memory precedence or current-evidence verification")
 
     for path in (
         RUN_SKILL,

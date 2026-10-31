@@ -145,7 +145,7 @@ def validate_runtime_mapping() -> None:
     for phrase in (
         "scripts/run_preflight.py",
         "first framework tool call",
-        "do not read memory",
+        "Follow higher-priority host memory instructions",
         "plugin_revision_mismatch",
         "framework_revision_mismatch",
         "preflight_elapsed_ms",

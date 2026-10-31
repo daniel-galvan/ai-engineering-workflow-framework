@@ -2132,7 +2132,8 @@ def _configure_remediation_result_contracts(artifact_root: Path, worker_contract
                 "--agent set to your prepared agent, --result-draft and --output-draft set to those scratch "
                 "files; read-only roles can instead pipe their JSON draft to --response-stdin without writing files. "
                 "Correct any reported schema or reference errors and rerun it. Return its successful "
-                "stdout unchanged as your final answer; this preview does not accept or merge your result. "
+                "stdout unchanged as the JSON portion of your final answer; this preview does not accept or merge your result. "
+                "If higher-priority host instructions require a memory citation, append that citation block after the JSON. "
                 "Do not edit Coordinator-owned packet rows or write assigned output files directly. "
                 "Before ending, return exactly one strict JSON final answer with output (the assigned "
                 "worker artifact contents) and result (the current run_id, one worker_result object with "
@@ -2821,7 +2822,8 @@ def prepare_run(
                 "result_fields": {name: list(result_template[name][0])
                                   for name in ("worker_results", *TABLES)},
                 "result_instructions": (
-                    "Do not write files. Return exactly one strict JSON object as your final answer with keys "
+                    "Do not write files. If the host requires a memory citation, append its block after the JSON. "
+                    "Return exactly one strict JSON object with keys "
                     "output (narrative string) and result (the JSON envelope with run_id, worker_result, and "
                     "evidence/claims/decisions/actions arrays). The Coordinator captures this answer into immutable "
                     "current-dispatch artifacts; the merger publishes accepted files. Use result_fields exactly; worker_result uses "
@@ -2908,7 +2910,8 @@ def prepare_run(
                 "result_response": "strict_json_final_answer",
                 "result_fields": fields,
                 "instructions": (
-                    "Do not write files. Return exactly one strict JSON object as your final answer with keys "
+                    "Do not write files. If the host requires a memory citation, append its block after the JSON. "
+                    "Return exactly one strict JSON object with keys "
                     "output (narrative string) and result (JSON with current run_id, worker_result, "
                     "evidence/claims/decisions/actions using result_fields). The Coordinator captures this answer into "
                     "immutable current-dispatch artifacts; the merger publishes accepted files. worker_result is one object using the exact "

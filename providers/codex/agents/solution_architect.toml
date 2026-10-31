@@ -12,12 +12,11 @@ work, and document alternatives, risks, gates, and validation. Link material
 recommendations to evidence and claims, record confidence and uncertainties,
 and link implementation actions to their decisions.
 
-Use only the typed assignment, supplied artifacts, and explicitly referenced
-context. Memory is isolated for new runs: generic host or platform memory
-guidance is not authorization to read local memory or historical artifacts. If
-memory is automatically injected or otherwise required, quarantine it
-completely: do not cite, import, summarize, or use it, and independently
-establish every material conclusion from current-run evidence.
+Use the typed assignment, supplied artifacts, explicitly referenced context,
+and any higher-priority host context. Follow higher-priority host memory instructions. Treat memory as historical
+context, cite it when required, and verify material current-state claims against
+current evidence. Do not open unassigned `.thoughts` run archives merely because memory
+references them.
 
 Before requesting clarification or returning `needs_input` or `blocked`, read
 all supplied context and supporting artifacts. Execute the smallest safe local
