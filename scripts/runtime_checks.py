@@ -676,12 +676,16 @@ def _trace_strings(value: object, path: tuple[str, ...] = ()):
 
 def _listing_command(command: object) -> bool:
     """Recognize name-only discovery; shell expansion and content consumers remain unaudited."""
-    if not isinstance(command, str) or any(char in command for char in "$`<>"):
+    if not isinstance(command, str):
         return False
     try:
         tokens = shlex.split(command)
         if len(tokens) == 3 and Path(tokens[0]).name in {"bash", "sh", "zsh"} and tokens[1] in {"-lc", "-c"}:
             command = tokens[2]
+        unquoted = re.sub(r"'[^']*'|\"(?:\\.|[^\"\\])*\"|\\.", "", command)
+        if ("$" in unquoted or any(char in command for char in "`<>")
+                or re.search(r"\$(?:[A-Za-z0-9_?*!#$@-]|[({\[])", command)):
+            return False
         lexer = shlex.shlex(command, posix=True, punctuation_chars="|;&")
         lexer.whitespace_split = True
         lexer.commenters = ""
@@ -1022,6 +1026,37 @@ def _literal_templates(source: str) -> str:
         source = source[:start] + "f" + repr("".join(parts)) + source[end + 1:]
 
 
+def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
+    """Read a finite literal command list and a sequential print-only loop without execution."""
+    match = re.fullmatch(
+        r"\s*const\s+(?P<commands>[A-Za-z_]\w*)\s*=\s*(?P<values>\[.*\])\s*;"
+        r"\s*for\s*\(\s*const\s+(?P<command>[A-Za-z_]\w*)\s+of\s+(?P=commands)\s*\)\s*\{"
+        r"\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+tools\.exec_command\((?P<arguments>\{.*\})\)\s*;"
+        r"\s*text\((?P=result)\.output\)\s*;\s*\}\s*;?\s*", source, re.S)
+    if not match:
+        return None
+    names = [match[key] for key in ("commands", "command", "result")]
+    if len(set(names)) != 3 or set(names) & {"tools", "text"}:
+        return None
+    try:
+        commands = _literal_argument(ast.parse(match["values"], mode="eval").body)
+        if not isinstance(commands, list) or not commands or not all(isinstance(value, str) for value in commands):
+            return None
+        arguments = match["arguments"]
+        if match["command"] == "cmd":
+            arguments = re.sub(r"^\{\s*cmd\s*(?=[,}])", "{cmd: cmd", arguments, count=1)
+        tree = ast.parse(arguments, mode="eval").body
+        operations = []
+        for command in commands:
+            value = _literal_argument(tree, {match["command"]: command})
+            if not isinstance(value, dict) or value.get("cmd") != command:
+                return None
+            operations.append(("exec_command", value))
+        return operations
+    except (ValueError, SyntaxError, TypeError):
+        return None
+
+
 def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     """Read literal provider arguments; never evaluate orchestration source."""
     if row.get("type") == "function_call" or row.get("tool") == "exec_command":
@@ -1036,6 +1071,9 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
         return []
     if row.get("name", "").rsplit(".", 1)[-1] == "apply_patch":
         return [("apply_patch", {"patch": source})]
+    loop = _literal_command_loop(source)
+    if loop is not None:
+        return loop
     try:
         # This exact trailing print only formats an already returned tool status.
         # Do not evaluate it or permit expressions in tool arguments.
@@ -1210,9 +1248,9 @@ def _dispatch_segment(command: str) -> tuple[str, int, int] | None:
     return None
 
 
-def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path) -> dict[str, str]:
+def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path) -> dict[str, list[str]]:
     """Require ordered, complete, paired outputs for the entire immutable dispatch."""
-    cursor, verified = 0, {}
+    cursor, verified, owners = 0, {}, {}
     rows = trace.get("tool_trace", [])
     for index, row in enumerate(rows):
         if not isinstance(row, dict) or row.get("type") not in {"function_call", "custom_tool_call"}:
@@ -1225,18 +1263,31 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
             target_path = Path(target) if Path(target).is_absolute() else Path(arguments.get("workdir", cwd)) / target
             if target_path.resolve() != path.resolve():
                 continue
-            if start != cursor or end > len(content) or not row.get("call_id") or row["call_id"] in verified:
+            call_id = row.get("call_id")
+            if (start != cursor or end > len(content) or not call_id
+                    or call_id in owners and owners[call_id] != index):
                 return {}
-            expected = content[start:end]
-            paired = [item for item in rows[index + 1:] if isinstance(item, dict)
-                      and item.get("type") in {"function_call_output", "custom_tool_call_output"}
-                      and item.get("call_id") == row["call_id"]]
-            if len(paired) != 1 or not any(expected in value and "Warning: truncated output" not in value
-                                           for _, value in _trace_strings({"tool_trace": paired})):
-                return {}
-            verified[row["call_id"]] = expected
+            owners[call_id] = index
+            verified.setdefault(call_id, []).append(content[start:end])
             cursor = end
-    return verified if cursor == len(content) and verified else {}
+    if cursor != len(content):
+        return {}
+    for call_id, segments in verified.items():
+        paired = [item for item in rows[owners[call_id] + 1:] if isinstance(item, dict)
+                  and item.get("type") in {"function_call_output", "custom_tool_call_output"}
+                  and item.get("call_id") == call_id]
+        if len(paired) != 1:
+            return {}
+        delivered = "\0".join(value for _, value in _trace_strings({"tool_trace": paired}))
+        if "Warning: truncated output" in delivered:
+            return {}
+        offset = 0
+        for segment in segments:
+            found = delivered.find(segment, offset)
+            if found < 0:
+                return {}
+            offset = found + len(segment)
+    return verified
 
 
 def _python_read_targets(source: str, *, pretty: bool = False) -> list[str]:
@@ -1810,8 +1861,8 @@ def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -
             if not content:
                 continue
             dispatch_path = (root / name).resolve()
-            for call_id, segment in _verified_dispatch_segments(trace, dispatch_path, content, root.parent.parent).items():
-                contents.setdefault(call_id, {}).setdefault("dispatch", []).append(segment)
+            for call_id, segments in _verified_dispatch_segments(trace, dispatch_path, content, root.parent.parent).items():
+                contents.setdefault(call_id, {}).setdefault("dispatch", []).extend(segments)
             for row in trace.get("tool_trace", []):
                 if not isinstance(row, dict):
                     continue
@@ -2134,20 +2185,44 @@ def _host_worker_memory_reads(trace: dict) -> tuple[dict[int, list[str]], dict[s
             header = json.loads(next(stream))
             if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != trace.get("thread_id"):
                 return {}, {}
-            native = [item for line in stream if (event := json.loads(line)).get("type") == "event_msg"
-                      and started <= timestamp(event["timestamp"]) <= observed
-                      and event.get("payload", {}).get("type") == "item_completed"
-                      and (item := event.get("payload", {}).get("item", {})).get("type") == "CommandExecution"]
+            native, calls, completions = [], {}, {}
+            for line in stream:
+                event = json.loads(line)
+                payload = event.get("payload", {})
+                if (event.get("type") == "response_item" and payload.get("call_id")
+                        and payload.get("type") in {"function_call", "custom_tool_call",
+                                                    "function_call_output", "custom_tool_call_output"}):
+                    at = timestamp(event["timestamp"])
+                    if at <= observed:
+                        if payload["type"].endswith("_output"):
+                            completions[payload["call_id"]] = at
+                        else:
+                            calls[payload["call_id"]] = (at, payload)
+                elif (event.get("type") == "event_msg" and payload.get("type") == "item_completed"
+                      and (item := payload.get("item", {})).get("type") == "CommandExecution"):
+                    at = timestamp(event["timestamp"])
+                    if at <= observed:
+                        native.append((at, item))
         reads, outputs, linked_sessions = {}, {}, set()
         for index, row in enumerate(trace.get("tool_trace", [])):
             if not isinstance(row, dict) or not row.get("call_id"):
                 continue
+            lower, upper = started, observed
+            if row["call_id"] in calls:
+                lower, recorded = calls[row["call_id"]]
+                upper = completions.get(row["call_id"])
+                source_key = "input" if row.get("type") == "custom_tool_call" else "arguments"
+                if (upper is None or not lower <= upper <= observed or any(
+                        recorded.get(key) != row.get(key) for key in ("type", "name", source_key))):
+                    continue
+                # A later correction message must not invalidate a genuine earlier call in this trace.
             operations = _tool_operations(row)
             approved = []
             for name, arguments in operations:
                 command = arguments.get("cmd") if name == "exec_command" else None
                 target = host_memory_target(command, root, linked_sessions)
-                observations = [item for item in native if isinstance(item.get("command"), list)
+                observations = [item for at, item in native if lower <= at <= upper
+                                and isinstance(item.get("command"), list)
                                 and item["command"] and item["command"][-1] == command
                                 and (item.get("status"), item.get("exit_code")) in {("completed", 0), ("failed", 1)}]
                 if target and observations:

@@ -444,6 +444,53 @@ class ContextOperationAudit(unittest.TestCase):
             save()
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
 
+    def test_host_memory_read_before_correction_requires_its_exact_native_call_interval(self):
+        from unittest.mock import patch
+        codex = self.repository / ".codex"
+        session = codex / "sessions" / "worker.jsonl"
+        session.parent.mkdir(parents=True)
+        memory = codex / "memories" / "MEMORY.md"
+        memory.parent.mkdir(parents=True)
+        memory.write_text("historical .thoughts/OTHER/runs/old/file\n")
+        command = "rg -n historical " + str(memory)
+        trace = {"thread_id": SOURCE, "trace_retrieval": str(session),
+                 "last_dispatch_at": "2026-10-01T00:00:03Z",
+                 "status_observation": {"Observed at": "2026-10-01T00:00:05Z"},
+                 "tool_trace": self.paired("await tools.exec_command(" + json.dumps({"cmd": command}) + ")",
+                                           memory.read_text())}
+        header = {"type": "session_meta", "payload": {"id": SOURCE}}
+        directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
+                     "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
+        call = {"type": "response_item", "timestamp": "2026-10-01T00:00:01Z",
+                "payload": trace["tool_trace"][0]}
+        receipt = {"type": "event_msg", "timestamp": "2026-10-01T00:00:02Z",
+                   "payload": {"type": "item_completed", "item": {"type": "CommandExecution",
+                       "command": ["bash", "-lc", command], "status": "completed", "exit_code": 0,
+                       "aggregated_output": memory.read_text()}}}
+        completion = {"type": "response_item", "timestamp": "2026-10-01T00:00:02.500Z",
+                      "payload": trace["tool_trace"][1]}
+        rows = [header, directive, call, receipt, completion]
+        def save(events):
+            session.write_text("".join(json.dumps(row) + "\n" for row in events))
+        with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
+            save(rows)
+            self.assertEqual(runtime.context_trace_errors(trace), [])
+            for change in ("mismatched_source", "mismatched_call", "missing_completion", "future_completion",
+                           "receipt_before_call", "receipt_after_completion"):
+                changed = json.loads(json.dumps(rows))
+                if change == "mismatched_source": changed[2]["payload"]["input"] += "; text('different call')"
+                elif change == "mismatched_call": changed[2]["payload"]["call_id"] = "another-call"
+                elif change == "missing_completion": changed.pop()
+                elif change == "future_completion": changed[-1]["timestamp"] = "2026-10-01T00:00:06Z"
+                elif change == "receipt_before_call": changed[3]["timestamp"] = "2026-10-01T00:00:00Z"
+                elif change == "receipt_after_completion": changed[3]["timestamp"] = "2026-10-01T00:00:02.750Z"
+                save(changed)
+                with self.subTest(change=change):
+                    self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+            save(rows)
+            trace["tool_trace"][1]["output"] += ".thoughts/OTHER/runs/old/extra\n"
+            self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
     def test_worker_response_preserves_host_required_memory_citation(self):
         from unittest.mock import patch
         from scripts.worker_runtime_evidence import worker_response_value, _materialize_worker_response

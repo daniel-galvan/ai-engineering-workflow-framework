@@ -535,6 +535,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    handle cannot be verified terminal from permitted status evidence, stop with `run_already_active`. When the prior
    task is idle, every visible child worker is terminal, and no artifact writer remains, rerun once with
    `--archive-stale-run`. This preserves every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run.
+   Apply this supported retry to `existing_run_not_terminal` when the required terminal-status proof is present.
+   The first transactional block is not, by itself, a reason to end the fresh-run request. Dispatch remains prohibited
+   until preparation succeeds; a failed retry or missing terminal proof still blocks the run.
    An unavailable old release receipt keeps the old run blocked but does not by itself prove an active worker or bar a
    separate read-only planning run. Such a run must use a separate execution repository and artifact root; it does not
    authorize deleting, resetting, or reusing the blocked work-item root. For a run that reuses that root, preserve the

@@ -332,6 +332,54 @@ class ActivationDelivery(unittest.TestCase):
         trace["tool_trace"][1]["output"][0]["text"] += "\n" + ARCHIVE
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
 
+    def test_literal_command_loop_requires_complete_ordered_instruction_delivery(self):
+        trace = self.instruction_trace()
+        path = trace["spawn"]["dispatch_file"]
+        content = Path(path).read_text()
+        commands, output = [], []
+        for start in range(0, len(content), 900):
+            end = min(start + 900, len(content))
+            commands.append(shlex.join(["python3", "-c", f"print(open({path!r}).read()[{start}:{end}],end='')"]))
+            output.append({"type": "input_text", "text": content[start:end]})
+        source = ("const cmds = " + json.dumps(commands) + ";\nfor (const cmd of cmds) {\n"
+                  "const r = await tools.exec_command({cmd,workdir:" + json.dumps(str(self.root)) + "});\n"
+                  "text(r.output);\n}\n")
+        trace["tool_trace"] = [
+            {"type": "custom_tool_call", "name": "exec", "call_id": "loop", "input": source},
+            {"type": "custom_tool_call_output", "call_id": "loop", "output": output}]
+        self.assertEqual([args["cmd"] for _, args in runtime_checks._tool_operations(trace["tool_trace"][0])], commands)
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        for change in ("missing_output", "reordered_output", "truncated_output", "wrong_pair", "mutable_list",
+                       "mutated_command", "shadowed_tool", "extra_operation", "missing_command"):
+            changed = json.loads(json.dumps(trace))
+            if change == "missing_output": changed["tool_trace"][1]["output"].pop()
+            elif change == "reordered_output": changed["tool_trace"][1]["output"][:2] = output[1::-1]
+            elif change == "truncated_output": changed["tool_trace"][1]["output"][0]["text"] = "Warning: truncated output"
+            elif change == "wrong_pair": changed["tool_trace"][1]["call_id"] = "another"
+            elif change == "mutable_list": changed["tool_trace"][0]["input"] = source.replace("const cmds", "let cmds")
+            elif change == "mutated_command": changed["tool_trace"][0]["input"] = source.replace("const r =", "cmd = 'other'; const r =")
+            elif change == "shadowed_tool": changed["tool_trace"][0]["input"] = source.replace("const cmd of", "const tools of")
+            elif change == "extra_operation": changed["tool_trace"][0]["input"] += 'await tools.exec_command({cmd:"cat ' + ARCHIVE + '"});'
+            elif change == "missing_command": changed["tool_trace"][0]["input"] = source.replace(json.dumps(commands), json.dumps(commands[1:]))
+            with self.subTest(change=change):
+                self.assertEqual(runtime.observed_dispatch_binding(changed, self.artifacts), {})
+        trace["tool_trace"][1]["output"].append({"type": "input_text", "text": ARCHIVE})
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_filename_filter_end_anchor_is_not_shell_expansion_or_archive_content(self):
+        command = "rg --files -g 'AGENTS.md' -g '*.md' .thoughts/ITEM-1 . | rg '(^|/)(AGENTS\\.md|plan\\.md)$'"
+        trace = self.trace(command, ARCHIVE)
+        self.assertTrue(runtime._listing_command(command))
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        for suffix in ("HOME", "{ROOT}", "(cat secret)", "?"):
+            self.assertFalse(runtime._listing_command(command.replace("$", "$" + suffix)))
+        for unsafe in ("find . $'-exec' cat secret ';'", "find . $'\\x2dexec' cat secret ';'"):
+            self.assertFalse(runtime._listing_command(unsafe))
+            self.assertFalse(runtime._listing_command("bash -c " + shlex.quote(unsafe)))
+        trace = self.trace(command + "; cat " + ARCHIVE, ARCHIVE)
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
     def test_file_count_and_listing_do_not_count_as_archive_reads(self):
         command = "wc -l -c .thoughts/ITEM-1/activation.txt && rg --files .thoughts/ITEM-1"
         trace = self.trace(command, "3 120 .thoughts/ITEM-1/activation.txt\n" + ARCHIVE)
