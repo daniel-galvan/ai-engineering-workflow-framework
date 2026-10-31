@@ -56,6 +56,8 @@ invocation: run package preflight first, then the required status projection, be
    literal `rg`, `cat`, `sed -n`, or `nl -ba` reads; `head` or `sed -n`
    may limit their output. Do not combine them with skill, repository, or playbook reads. Do not open an
    unassigned `.thoughts` run archive merely because a memory note references it.
+   Run each required host-memory lookup in a separate `exec_command` containing only that lookup; keep source and
+   artifact reads in other commands. Independent calls may share `functions.exec`.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
    Before editing or planning changes, check local `AGENTS.md` in the actual target directory and its ancestors up

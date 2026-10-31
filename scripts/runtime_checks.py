@@ -275,6 +275,9 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
             + "First step: verify and read the file; this bootstrap is self-contained. Follow higher-priority host "
               "memory instructions when applicable, and verify current claims against current evidence. "
               "Do not search the artifact directory, previous chats or archives.\n"
+            + "Run each required host-memory lookup in a separate shell-tool call (exec_command on Codex) "
+              "containing only that lookup; keep source and artifact reads in other calls. "
+              "Independent exec_command calls may share functions.exec.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
             + file_identity

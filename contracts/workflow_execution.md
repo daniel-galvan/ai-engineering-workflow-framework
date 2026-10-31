@@ -77,6 +77,9 @@ the complete playbook or core contracts by default; they load only their provide
 section or template needed to resolve an ambiguity in their assigned stage. Follow higher-priority host memory
 instructions. Treat memory as historical context, cite it when required, and verify material current-state claims
 against current evidence. Do not open unassigned `.thoughts` run archives merely because memory references them.
+Run each required host-memory lookup in a separate shell-tool call containing only that lookup. Keep source and
+artifact reads in other calls so each lookup and its output can be audited. Independent calls may be batched when
+their operation and output records remain separate.
 
 For every delegated activation, the Coordinator MUST pass the exact manifest
 `model`, reasoning effort, and fresh-context setting to the provider primitive.

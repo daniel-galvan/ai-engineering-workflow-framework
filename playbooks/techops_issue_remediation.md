@@ -165,6 +165,15 @@ first concrete divergence from expected behavior is identified or explicitly unk
 The Failure Path result records reproduction status, expected and observed behavior, the check, environment,
 revision, limitation, and evidence references. The Coordinator preserves this record in the terminal work record.
 
+- `reproduced`: the executed check produced the reported symptom.
+- `verified_by_evidence`: supplied runtime evidence confirms the reported symptom; state its environment and revision
+  limits.
+- `not_reproduced`: an executed check did not show the reported symptom, including a passing check of expected behavior.
+- `unable_to_attempt`: no executable check ran; record why and preserve indirect signals.
+
+A passing check of expected behavior does not confirm the reported failure. Source inspection alone is not an
+executable reproduction.
+
 Before returning `needs_input` or `blocked`, execute the smallest safe
 reproduction or source check and record its command, symbol, inputs, and result
 in `checks_performed`. For an original rule, text, and reachable Python path,
