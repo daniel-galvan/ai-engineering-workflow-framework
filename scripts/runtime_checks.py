@@ -1029,6 +1029,12 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     if row.get("name", "").rsplit(".", 1)[-1] == "apply_patch":
         return [("apply_patch", {"patch": source})]
     try:
+        # This exact trailing print only formats an already returned tool status.
+        # Do not evaluate it or permit expressions in tool arguments.
+        source = re.sub(
+            r'(?<![\w.])text\(\s*`exit_code=\$\{(?P<r>[A-Za-z_]\w*)\.exit_code\s*\?\?\s*"running"\}'
+            r'\$\{(?P=r)\.session_id\s*\?\s*` session_id=\$\{(?P=r)\.session_id\}`\s*:\s*""\}`\s*\)\s*;?\s*$',
+            'text("status");', source)
         source = _literal_templates(source)
         tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
         operations, constants, declared, index, brace_depth = [], {}, set(), 0, 0

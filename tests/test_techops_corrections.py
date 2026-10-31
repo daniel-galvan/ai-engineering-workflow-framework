@@ -78,6 +78,15 @@ class TechOpsCorrections(unittest.TestCase):
                 audit.return_value = {"status": "passed", "errors": [], "turn_id": "turn"}
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+                failure["errors"] = ["parent_context_nonconformant:parent_tool_arguments_unavailable"]
+                failure_path.write_text(json.dumps(failure))
+                with patch.object(prepare, "_verified_historical_tester_guard_parser_rejection", return_value=True):
+                    self.assertEqual(prepare._recover_post_delivery_context_failure(root, prior, closure, root), (candidate, planning))
+                with patch.object(prepare, "_verified_historical_tester_guard_parser_rejection", return_value=False):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+                failure["errors"] = ["final work record blocked: parent context is nonconformant: memory_path"]
+                failure_path.write_text(json.dumps(failure))
                 audit.return_value = context
                 worker_audit.return_value = ["tampered trace"]
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
@@ -99,6 +108,41 @@ class TechOpsCorrections(unittest.TestCase):
                 plan.write_text("changed")
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_plan_changed"):
                     prepare._recover_post_delivery_context_failure(root, prior, closure, root)
+
+    def test_historical_parser_rejection_requires_exact_native_guard_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            bundle = root / "worker_activation_packets.json"
+            bundle.write_text("bundle")
+            digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+            session = root / "session.jsonl"
+            guard = "/framework/scripts/validate_worker_runtime.py"
+            bindings = {"worker_runtime_guard": guard, "parent_context": {"provider_session": str(session),
+                        "parent_thread_id": "parent", "turn_id": "turn"}}
+            command = (f"python3 {guard} --activation-packet-bundle {bundle} --expected-agent tester "
+                       f"--expected-bundle-sha256 {digest} --assignment {root}/assignment --dispatch-file {root}/dispatch")
+            events = [{"type": "session_meta", "payload": {"id": "parent"}},
+                      {"type": "turn_context", "payload": {"turn_id": "turn"}},
+                      {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+                          "type": "CommandExecution", "status": "failed", "exit_code": 2,
+                          "command": ["/bin/bash", "-lc", command],
+                          "aggregated_output": json.dumps({"status": "blocked", "errors": [
+                              "parent_context_nonconformant:parent_tool_arguments_unavailable"]})}}}]
+            def verify(rows):
+                session.write_text("".join(json.dumps(row) + "\n" for row in rows))
+                return prepare._verified_historical_tester_guard_parser_rejection(root, bindings)
+            self.assertTrue(verify(events))
+            for change in ("thread", "turn", "guard", "role", "hash", "output", "status"):
+                rows = copy.deepcopy(events)
+                item = rows[2]["payload"]["item"]
+                if change == "thread": rows[0]["payload"]["id"] = "other"
+                elif change == "turn": rows[1]["payload"]["turn_id"] = "other"
+                elif change == "guard": item["command"][2] = command.replace(guard, "/other/guard")
+                elif change == "role": item["command"][2] = command.replace("--expected-agent tester", "--expected-agent reviewer")
+                elif change == "hash": item["command"][2] = command.replace(digest, "0" * 64)
+                elif change == "output": item["aggregated_output"] = '{"status":"blocked","errors":["other"]}'
+                else: item["status"] = "completed"
+                with self.subTest(change=change): self.assertFalse(verify(rows))
 
     def test_invalid_techops_goal_provenance_stops_before_creating_run_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:

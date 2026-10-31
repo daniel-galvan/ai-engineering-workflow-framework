@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -1276,6 +1277,49 @@ def _recover_terminal_unmerged_review(artifact_root: Path, prior: dict, closure:
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
 
+def _verified_historical_tester_guard_parser_rejection(artifact_root: Path, bindings: dict) -> bool:
+    """Verify the original guard rejected a literal call under the previous parser."""
+    try:
+        parent = bindings["parent_context"]
+        session = Path(parent["provider_session"])
+        expected_hash = hashlib.sha256((artifact_root / "worker_activation_packets.json").read_bytes()).hexdigest()
+        session_verified = active_turn = False
+        with session.open() as stream:
+            for line in stream:
+                event = json.loads(line)
+                payload = event.get("payload", {})
+                if event.get("type") == "session_meta":
+                    session_verified = payload.get("id") == parent["parent_thread_id"]
+                elif event.get("type") == "turn_context":
+                    active_turn = payload.get("turn_id") == parent["turn_id"]
+                elif session_verified and active_turn and event.get("type") == "event_msg" and payload.get("type") == "item_completed":
+                    item = payload.get("item", {})
+                    command = item.get("command", [])
+                    if (item.get("type") != "CommandExecution" or item.get("status") != "failed"
+                            or item.get("exit_code") != 2 or len(command) != 3
+                            or Path(command[0]).name not in {"bash", "sh", "zsh"}
+                            or command[1] not in {"-c", "-lc"}):
+                        continue
+                    try:
+                        args = shlex.split(command[2])
+                        output = json.loads(item.get("aggregated_output", ""))
+                    except (ValueError, TypeError):
+                        continue
+                    if (len(args) != 12 or Path(args[0]).name not in {"python", "python3"}
+                            or args[1] != bindings["worker_runtime_guard"]):
+                        continue
+                    options = dict(zip(args[2::2], args[3::2]))
+                    if (len(options) == 5 and options.get("--activation-packet-bundle") == str(artifact_root / "worker_activation_packets.json")
+                            and options.get("--expected-agent") == "tester"
+                            and options.get("--expected-bundle-sha256") == expected_hash
+                            and set(options) == {"--activation-packet-bundle", "--expected-agent", "--expected-bundle-sha256", "--assignment", "--dispatch-file"}
+                            and output == {"errors": ["parent_context_nonconformant:parent_tool_arguments_unavailable"], "status": "blocked"}):
+                        return True
+    except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
+        return False
+    return False
+
+
 def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, closure: dict,
                                            source_checkout: Path) -> tuple[dict, dict]:
     """Preserve approved planning and the candidate after a verified late parent-context failure."""
@@ -1312,6 +1356,11 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
             ("parent_context_nonconformant:" in errors[0] or
              "parent_unassigned_thread_read:" in errors[0] or
              "parent context" in errors[0].lower() and "nonconformant" in errors[0].lower()))
+        context_verified = (has_context_failure and context.get("status") == "rejected" and context.get("errors")
+            and all(error in errors[0] or error.rsplit(":", 1)[-1] in errors[0] for error in context["errors"]))
+        if (has_context_failure and context.get("status") == "passed" and not context.get("errors")
+                and "parent_tool_arguments_unavailable" in errors[0]):
+            context_verified = _verified_historical_tester_guard_parser_rejection(artifact_root, bindings)
         pending = ledger.get("rejected_results", {})
         pending_verified = (not pending or isinstance(pending, dict) and set(pending) == {"tester"}
             and results.get("validate") == "blocked"
@@ -1320,8 +1369,7 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") in {"terminal", "unverified"}
                 and failure.get("run_id") == prior["identity"]["Run ID"]
                 and prior["identity"].get("Lifecycle") == "remediation" and has_context_failure
-                and context.get("status") == "rejected" and context.get("errors")
-                and all(error in errors[0] or error.rsplit(":", 1)[-1] in errors[0] for error in context["errors"])
+                and context_verified
                 and context.get("turn_id") == parent["turn_id"]
                 and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")

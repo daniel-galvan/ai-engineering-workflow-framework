@@ -950,6 +950,10 @@ class ParentContext(unittest.TestCase):
                 self.assertEqual(_tool_operations({**row, "input": invalid}), [])
         logged = source + " text(`exit_code=${result.exit_code}`);"
         self.assertEqual(_tool_operations({**row, "input": logged}), _tool_operations(row))
+        nested = source + ' text(`exit_code=${result.exit_code ?? "running"}${result.session_id ? ` session_id=${result.session_id}` : ""}`);'
+        self.assertEqual(_tool_operations({**row, "input": nested}), _tool_operations(row))
+        self.assertEqual(_tool_operations({**row, "input": nested.replace('cmd:`python3 ${base}', 'cmd:`python3 ${resolve()}')}), [])
+        self.assertEqual(_tool_operations({**row, "input": nested.replace('result.session_id ? ` session_id=${result.session_id}`', 'tools.exec_command({cmd:"bad"}) ? ` session_id=${result.session_id}`')}), [])
         native_shape = source.replace(" --ledger", " --parent-thread-id 00000000-0000-0000-0000-000000000001 "
                                       "--started-at 2026-10-22T03:49:11.414904Z --ledger")
         self.assertEqual(len(_tool_operations({**row, "input": native_shape})), 1)
