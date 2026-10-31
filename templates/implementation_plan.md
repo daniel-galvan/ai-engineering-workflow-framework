@@ -170,14 +170,17 @@ record any decision-changing focused check already run as existing evidence.
 
 # 5. Ordered Execution Plan
 
+Implementer development checks may precede Code Review. Accepted Tester validation follows Reviewer acceptance.
+Review findings return to the Implementer for correction and another review before Tester validation.
+
 | Step | Activity | Owner | Dependency or approval gate | Status |
 | --- | --- | --- | --- | --- |
 | 1 | Reconfirm repository, revision, scope, and worktree state | Implementer | Approved plan and implementation gate | Pending |
 | 2 | Add or update a focused regression that reproduces the verified failure | Implementer | Step 1 complete | Pending |
 | 3 | Apply the smallest source change described above | Implementer | Step 2 reproduces the failure, or records why it cannot | Pending |
-| 4 | Run the focused regression and relevant focused suite | Tester | Step 3 complete | Pending |
+| 4 | Run the focused regression and relevant development checks | Implementer | Step 3 complete | Pending |
 | 5 | Strict Code Review: happy paths, alternate and edge paths, callers, compatibility, scope, and coverage | Reviewer | Step 4 complete | Pending |
-| 6 | Run broader validation and preserve results | Tester | Review findings resolved or accepted | Pending |
+| 6 | Validate the approved candidate with affected checks and any justified broader validation; preserve results | Tester | Reviewer acceptance; review findings resolved or accepted | Pending |
 | 7 | Prepare rollout, rollback, monitoring, and post-release checks | Orchestrator / Documenter | Validation result recorded | Pending |
 | 8 | Record ownership, residual risk, next action, and handoff | Documenter | Stabilization evidence complete | Pending |
 
