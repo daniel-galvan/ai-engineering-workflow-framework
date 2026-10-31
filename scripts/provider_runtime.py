@@ -397,6 +397,31 @@ def current_parent_session(source: Path | None = None) -> Path | None:
     return selected[0]
 
 
+def _literal_worker_status_observation(source: str) -> list[tuple[str, dict]] | None:
+    """Recognize a complete literal status read plus local output formatting."""
+    prefix = re.match(r'^\s*const r = await tools\.mcp__codex_app__read_thread\(\{threadId:"([0-9a-fA-F-]+)",turnLimit:1,includeOutputs:false\}\);', source)
+    if not prefix or not UUID.fullmatch(prefix[1]):
+        return None
+    body = '''
+const raw = r.content?.find(x=>x.type==="text")?.text || "";
+const data = JSON.parse(raw);
+const turn = data.turns?.[0];
+const observed = await tools.clock__curr_time({});
+text(JSON.stringify({
+  thread_id:data.thread?.id,
+  thread_status:data.thread?.status?.type,
+  latest_turn_id:turn?.id,
+  latest_turn_status:turn?.status,
+  latest_turn_started_at:new Date(turn.startedAt*1000).toISOString(),
+  latest_turn_completed_at:new Date(turn.completedAt*1000).toISOString(),
+  observed_at:observed.current_time.replace(" UTC","T").replace(" ","").replace(/(\\d{2}:\\d{2}:\\d{2})T/, "$1Z")
+}));'''
+    if source[prefix.end():].strip() != body.strip():
+        return None
+    return [("mcp__codex_app__read_thread", {"threadId": prefix[1], "turnLimit": 1, "includeOutputs": False}),
+            ("clock__curr_time", {})]
+
+
 def _literal_parent_thread_read_batch(source: str) -> list[tuple[str, dict]] | None:
     """Expand only the literal assigned-thread status loop used by coordinator closure."""
     wait_batch = re.fullmatch(r'\s*const ids\s*=\s*(\[[\s\S]*?\]);\s*(?P<body>[\s\S]*)', source)
@@ -582,7 +607,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     if exact_status_projection else _tool_operations(payload)
                 )
                 if not calls and payload.get("type") == "custom_tool_call":
-                    calls = (_literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source)
+                    calls = (_literal_worker_status_observation(raw_source) or _literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source)
                              or _incomplete_literal_command(raw_source) or [])
                 if (not calls and payload.get("type") == "custom_tool_call"
                         and "tools.mcp__codex_app__list_threads({limit: 50})" in str(raw_source or "")):

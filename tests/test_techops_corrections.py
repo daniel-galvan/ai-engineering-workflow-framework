@@ -797,6 +797,48 @@ class TechOpsCorrections(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                     prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
 
+    def test_unmerged_unchanged_candidate_requires_verified_terminal_trace(self):
+        import recovery_candidate
+        import runtime_checks
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            prior = {"identity": {"Run ID": "run", "Lifecycle": "remediation"},
+                     "workers": [], "worker_results": [], "runtime_audits": []}
+            frozen = json.dumps(prior).encode()
+            snapshot = root / "snapshot.json"
+            snapshot.write_bytes(frozen)
+            digest = hashlib.sha256(frozen).hexdigest()
+            failure = {"status": "failed", "stage": "workflow", "reported_by": "Coordinator",
+                       "runtime_closure": "unverified", "run_id": "run", "packet_snapshot": str(snapshot),
+                       "snapshot_sha256": digest, "packet_sha256": digest,
+                       "errors": ["parent_context_nonconformant:parent_tool_arguments_unavailable"]}
+            (root / "finalization_failure.json").write_text(json.dumps(failure))
+            ledger = {"thread_mappings": {"/root/worker": "thread"}, "timing": {"open_worker_intervals": 0}}
+            (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+            candidate = {"baseline_revision": "base", "files": {"file": "hash"}}
+            (root / "role_bindings.json").write_text(json.dumps({"recovered_candidate": candidate}))
+            trace = {"run_id": "run", "worker": "implementer", "audit": {"status": "passed"},
+                     "spawn": {"provider_handle": "/root/worker"}, "thread_id": "thread",
+                     "last_dispatch_at": "time", "trace_retrieval": str(root / "session")}
+            (root / "implementer_trace.reconciled.json").write_text(json.dumps(trace))
+            observation = [{"Provider status": "completed", "Last dispatch at": "time"}]
+            original = {"files": {"file": "hash"}, "_contents": {"file": b"content"}}
+            dispatch = {"worker_contract": {"recovered_candidate": candidate},
+                        "coordinator_execution": {"source_checkout": str(root)}}
+            with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
+                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observation) as native, \
+                 patch.object(prepare, "_verified_recovery_planning"), \
+                 patch.object(prepare, "_recover_preserved_candidate", return_value=original), \
+                 patch.object(runtime_checks, "_verified_dispatch_content", return_value="header\n" + json.dumps(dispatch)), \
+                 patch.object(recovery_candidate, "replay_followup_candidate", side_effect=ValueError("candidate_edit_records_missing")), \
+                 patch.object(recovery_candidate, "verify_checkout_snapshot") as verify:
+                self.assertEqual(prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observation}, root), original)
+                verify.assert_called_once_with(root, "base", original["files"])
+                native.return_value = []
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_unmerged_candidate(root, prior, {"terminal_observations": observation}, root)
+
     def test_stopped_bootstrap_recovery_requires_terminal_workers_and_unchanged_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

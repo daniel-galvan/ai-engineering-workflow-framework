@@ -788,6 +788,25 @@ class ParentContext(unittest.TestCase):
             payload["input"] = source
             self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_literal_worker_status_observation_is_bounded(self):
+        from scripts.provider_runtime import _literal_worker_status_observation
+        source = (f'const r = await tools.mcp__codex_app__read_thread({{threadId:"{CHILD}",turnLimit:1,includeOutputs:false}});\n'
+                  'const raw = r.content?.find(x=>x.type==="text")?.text || "";\n'
+                  'const data = JSON.parse(raw);\nconst turn = data.turns?.[0];\n'
+                  'const observed = await tools.clock__curr_time({});\ntext(JSON.stringify({\n'
+                  '  thread_id:data.thread?.id,\n  thread_status:data.thread?.status?.type,\n'
+                  '  latest_turn_id:turn?.id,\n  latest_turn_status:turn?.status,\n'
+                  '  latest_turn_started_at:new Date(turn.startedAt*1000).toISOString(),\n'
+                  '  latest_turn_completed_at:new Date(turn.completedAt*1000).toISOString(),\n'
+                  '  observed_at:observed.current_time.replace(" UTC","T").replace(" ","").replace(/(\\d{2}:\\d{2}:\\d{2})T/, "$1Z")\n}));')
+        self.assertEqual(_literal_worker_status_observation(source), [
+            ("mcp__codex_app__read_thread", {"threadId": CHILD, "turnLimit": 1, "includeOutputs": False}),
+            ("clock__curr_time", {})])
+        for changed in (source + ' await tools.exec_command({cmd:"cat /secret"});',
+                        source.replace('turnLimit:1', 'turnLimit:unknown'),
+                        source.replace('clock__curr_time({})', 'exec_command({cmd:"secret"})')):
+            self.assertIsNone(_literal_worker_status_observation(changed))
+
     def test_literal_command_batch_audits_each_command_and_rejects_extra_code(self):
         from scripts.provider_runtime import _literal_command_batch
         source = ('const cmds = [["first", "cat /repo/one"], ["second", "cat /repo/two"]];\n'

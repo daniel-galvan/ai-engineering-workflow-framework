@@ -1663,7 +1663,7 @@ def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict,
         observations = closure["terminal_observations"]
         errors = failure.get("errors", [])
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") in {"terminal", "unverified"}
                 and failure.get("run_id") == prior["identity"]["Run ID"]
                 and prior["identity"].get("Lifecycle") == "remediation"
                 and len(errors) == 1 and "parent_context_nonconformant:" in str(errors[0])
@@ -1680,7 +1680,8 @@ def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict,
         _verified_recovery_planning(artifact_root, prior)
         candidate = bindings["recovered_candidate"]
         original = _recover_preserved_candidate(artifact_root, prior, source_checkout, check_checkout=False)
-        paths = [path for path in artifact_root.glob("trace*.json") if path.is_file() and not path.is_symlink()]
+        paths = [path for pattern in ("trace*.json", "implementer_trace*.json")
+                 for path in artifact_root.glob(pattern) if path.is_file() and not path.is_symlink()]
         traces = [(path, json.loads(path.read_text())) for path in paths]
         matches = [(path, trace) for path, trace in traces if trace.get("run_id") == prior["identity"]["Run ID"]
                    and trace.get("worker") == "implementer" and trace.get("audit", {}).get("status") == "passed"
@@ -1699,7 +1700,15 @@ def _recover_unmerged_candidate(artifact_root: Path, prior: dict, closure: dict,
                 or Path(dispatch["coordinator_execution"]["source_checkout"]).resolve() != source_checkout.resolve()):
             raise ValueError("candidate_followup_binding_invalid")
         session = Path(trace["trace_retrieval"])
-        contents, touched = replay_followup_candidate(source_checkout, session, trace["thread_id"], original["_contents"])
+        try:
+            contents, touched = replay_followup_candidate(source_checkout, session, trace["thread_id"], original["_contents"])
+        except ValueError as error:
+            if str(error) != "candidate_edit_records_missing":
+                raise
+            verify_checkout_snapshot(source_checkout, candidate["baseline_revision"], original["files"])
+            return original
+        if failure.get("runtime_closure") != "terminal":
+            raise ValueError("remediation_recovery_evidence_unverified")
         parent = bindings["parent_context"]
         verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
             bindings["runtime_evidence"]["run_started_at"], Path(dispatch["worker_contract"]["before_source_change_guard"]),
