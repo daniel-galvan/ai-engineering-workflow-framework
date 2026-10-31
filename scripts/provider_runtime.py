@@ -895,6 +895,52 @@ def native_preflight_observed(source: Path, turn_id: str, root: Path, revision: 
         return False
 
 
+def native_finalization_observed(source: Path, turn_id: str, root: Path, packet: Path,
+                                 record: Path, revision: str, canonical: bytes) -> bool:
+    """Authenticate the original finalizer's successful canonical output, including after cache pruning."""
+    try:
+        with source.open() as stream:
+            return _native_finalization_rows(stream, turn_id, root, packet, record, revision, canonical)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def _native_finalization_rows(stream, turn_id: str, root: Path, packet: Path,
+                              record: Path, revision: str, canonical: bytes) -> bool:
+    turn = None
+    required = {"--packet": str(packet), "--record": str(record),
+                "--closure": str(packet.parent / "runtime_closure.json"),
+                "--framework-revision": revision, "--framework-status": "clean"}
+    try:
+        for line in stream:
+            row = json.loads(line)
+            payload = row.get("payload", {})
+            if row.get("type") == "turn_context":
+                turn = payload.get("turn_id")
+            item = payload.get("item", {})
+            command = item.get("command", [])
+            if (turn != turn_id or row.get("type") != "event_msg" or item.get("type") != "CommandExecution"
+                    or item.get("status") != "completed" or item.get("exit_code") != 0
+                    or not isinstance(command, list) or not command or not isinstance(command[-1], str)
+                    or any(char in command[-1] for char in "$`;&<>|")):
+                continue
+            args = shlex.split(command[-1])
+            if (len(args) < 2 or args[0] != "python3" and (not Path(args[0]).is_absolute()
+                    or Path(args[0]).resolve() != Path(sys.executable).resolve())
+                    or Path(args[1]).resolve() != root / "scripts/finalize_work_record.py" or len(args[2:]) % 2):
+                continue
+            flags = dict(zip(args[2::2], args[3::2]))
+            if (len(flags) != len(args[2:]) // 2 or set(flags) - set(required) - {"--coordinator-model-effort"}
+                    or any(flags.get(key) != value for key, value in required.items())):
+                continue
+            output = item.get("aggregated_output", "")
+            if isinstance(output, str) and output.partition("Workflow-framework validation: passed\n")[2].encode() == canonical:
+                return True
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return False
+
+
 def _native_preflight_rows(stream, turn_id: str, root: Path, revision: str, plugin_version: str) -> bool:
     turn = None
     try:

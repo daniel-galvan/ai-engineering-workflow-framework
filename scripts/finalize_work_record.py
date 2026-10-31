@@ -2052,30 +2052,50 @@ def verify_recovery_record(packet_path: Path, record: Path, packet: dict, closur
         raise ValueError("publication_recovery_record_not_derived_from_passed_packet")
 
 
-def publication_recovery_context(packet_path: Path, record: Path) -> dict:
+def recovery_canonical_report(record: Path) -> bytes:
+    try:
+        from validation.markdown import fenced_section
+    except ModuleNotFoundError:
+        from scripts.validation.markdown import fenced_section
+    handoff = fenced_section(expand_work_record(record.read_text(), record.parent), "# Final Handoff")
+    if not handoff.strip():
+        raise ValueError("handoff_canonical_report_unavailable")
+    return (handoff + "\n").encode()
+
+
+def publication_recovery_context(packet_path: Path, record: Path, *, package_workspace: Path | None = None) -> dict:
     """Verify an existing finalized run before a newer publisher compares its response bytes."""
     try:
         from framework_manifest import manifest_errors
         from run_preflight import preflight
-        from provider_runtime import parent_context_audit, native_preflight_observed
+        from provider_runtime import parent_context_audit, native_preflight_observed, native_finalization_observed
         from planning_contracts import terminal_closure_dispatch_errors
     except ModuleNotFoundError:
         from scripts.framework_manifest import manifest_errors
         from scripts.run_preflight import preflight
-        from scripts.provider_runtime import parent_context_audit, native_preflight_observed
+        from scripts.provider_runtime import parent_context_audit, native_preflight_observed, native_finalization_observed
         from scripts.planning_contracts import terminal_closure_dispatch_errors
     root = packet_path.resolve().parent
     bindings = json.loads((root / "role_bindings.json").read_text())
     packet = json.loads(packet_path.read_text())
     prepared_root = Path(bindings["framework_package"]["root"]).resolve()
-    errors = prepared_package_errors(root, check_parent_context=False, expected_package_root=prepared_root)
-    errors.extend(manifest_errors(prepared_root))
-    prepared_plugin = json.loads((prepared_root / ".codex-plugin/plugin.json").read_text())
+    revision = re.fullmatch(r"([0-9a-fA-F]{40}) / Clean", packet["identity"].get("Framework commit / status", ""))
+    if prepared_root.exists():
+        plugin_bytes = (prepared_root / ".codex-plugin/plugin.json").read_bytes()
+    elif revision and package_workspace is not None:
+        # Plugin refresh can prune the old cache; Git retains the exact authenticated package bytes.
+        plugin_bytes = subprocess.run(["git", "-C", str(ROOT), "show",
+            revision[1] + ":.codex-plugin/plugin.json"], check=True, capture_output=True).stdout
+    else:
+        raise ValueError("publication_recovery_original_package_unavailable")
+    errors = []
+    if hashlib.sha256(plugin_bytes).hexdigest() != bindings["framework_package"]["plugin_sha256"]:
+        errors.append("publication_recovery_original_plugin_changed")
+    prepared_plugin = json.loads(plugin_bytes)
     publisher_plugin = json.loads((ROOT / ".codex-plugin/plugin.json").read_text())
     if (prepared_plugin["name"] != publisher_plugin["name"] or
             prepared_plugin["version"].split("+", 1)[0] != publisher_plugin["version"].split("+", 1)[0]):
         errors.append("publication_recovery_requires_same_plugin_release")
-    revision = re.fullmatch(r"([0-9a-fA-F]{40}) / Clean", packet["identity"].get("Framework commit / status", ""))
     precheck = json.loads((root / "pre_release_check.json").read_text())
     _, status = _finalization_status(packet_path)
     if (status.get("status") == "failed" or precheck.get("status") != "passed"
@@ -2109,11 +2129,29 @@ def publication_recovery_context(packet_path: Path, record: Path) -> dict:
     if not revision or not native_preflight_observed(source, parent["turn_id"], prepared_root,
                                                     revision[1], prepared_plugin["version"]):
         raise ValueError("publication_recovery_native_package_selection_unverified")
-    origin = preflight(prepared_root, declared_framework_revision=revision[1]) if revision else {}
+    producer_root = prepared_root
+    if not prepared_root.exists():
+        producer_root = package_workspace / "prepared-package"
+        subprocess.run(["git", "clone", "--quiet", "--local", "--no-hardlinks", "--no-checkout", "--",
+                        str(ROOT), str(producer_root)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(producer_root), "-c", "core.hooksPath=/dev/null",
+                        "checkout", "--quiet", "--detach", revision[1]], check=True, capture_output=True)
+    errors = prepared_package_errors(root, check_parent_context=False, expected_package_root=prepared_root,
+                                     package_content_root=producer_root)
+    errors.extend(manifest_errors(producer_root))
+    if errors:
+        raise ValueError("publication_recovery_rejected:" + ";".join(errors))
+    origin = preflight(producer_root, declared_framework_revision=revision[1])
     if origin.get("status") != "passed" or origin.get("framework_status") != "clean":
         raise ValueError("publication_recovery_original_package_unverified")
-    verify_recovery_record(packet_path, record, packet, closure, prepared_root)
+    verify_recovery_record(packet_path, record, packet, closure, producer_root)
+    canonical = recovery_canonical_report(record)
+    if not native_finalization_observed(source, parent["turn_id"], prepared_root, packet_path, record, revision[1], canonical):
+        raise ValueError("publication_recovery_native_finalization_unverified")
     return {"prepared_package_root": str(prepared_root), "publisher_package_root": str(ROOT),
+            "canonical_package_root": str(producer_root), "framework_revision": revision[1],
+            "prepared_package_restored": producer_root != prepared_root,
+            "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
             "parent_turn_id": parent["turn_id"], "packet_sha256": precheck["packet_sha256"],
             "record_sha256": hashlib.sha256(record.read_bytes()).hexdigest()}
 
@@ -2172,9 +2210,11 @@ def main() -> int:
         if not args.packet or any((args.workflow_failure, args.analytical_failure, args.pre_release,
                                    args.check_packet, args.blocked_runtime_snapshot, args.publish_technical_spike_report)):
             parser.error("--verify-response requires --packet and cannot be combined with another mode")
+        workspace = tempfile.TemporaryDirectory(prefix="workflow-publication-package-") if args.recover_presentation else None
         try:
             packet_path = args.packet.resolve()
-            recovery = (publication_recovery_context(packet_path, args.record or packet_path.parent / "work_record.md")
+            recovery = (publication_recovery_context(packet_path, args.record or packet_path.parent / "work_record.md",
+                                                    package_workspace=Path(workspace.name))
                         if args.recover_presentation else None)
             _, status = _finalization_status(packet_path)
             if status.get("status") == "failed":
@@ -2201,12 +2241,11 @@ def main() -> int:
                         and identity.get("Workflow outcome") == "completed"):
                     checked(validate_sentry_artifacts, packet_path.parent)
                 if recovery:
-                    validated = subprocess.run([sys.executable, str(Path(recovery["prepared_package_root"]) /
-                        "scripts/validate_library.py"), "--emit-handoff", str(record)],
-                        check=True, capture_output=True, text=True).stdout
+                    canonical = recovery_canonical_report(record)
+                    if hashlib.sha256(canonical).hexdigest() != recovery["canonical_sha256"]:
+                        raise ValueError("handoff_canonical_content_changed")
                 else:
-                    validated = record_validation_output(record)
-                canonical = validated.split("Workflow-framework validation: passed\n", 1)[1].encode()
+                    canonical = record_validation_output(record).split("Workflow-framework validation: passed\n", 1)[1].encode()
                 if not canonical.strip():
                     raise ValueError("handoff_canonical_report_unavailable")
             proposed = args.verify_response.read_bytes()
@@ -2236,6 +2275,9 @@ def main() -> int:
             (args.packet.parent / "handoff_delivery.json").unlink(missing_ok=True)
             print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
             return 2
+        finally:
+            if workspace is not None:
+                workspace.cleanup()
         return 0
     if args.workflow_failure:
         if (not args.packet or args.pre_release or args.check_packet or args.blocked_runtime_snapshot

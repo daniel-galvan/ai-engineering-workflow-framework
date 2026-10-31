@@ -3,6 +3,8 @@
 import hashlib
 import io
 import json
+import shutil
+import subprocess
 import tempfile
 import unittest
 from contextlib import ExitStack, redirect_stdout
@@ -64,12 +66,16 @@ class PublicationRecovery(unittest.TestCase):
         self.audit = stack.enter_context(patch.object(providers, "parent_context_audit",
             return_value={"status": "passed", "errors": []}))
         self.selection = stack.enter_context(patch.object(providers, "native_preflight_observed", return_value=True))
+        self.finalization = stack.enter_context(patch.object(providers, "native_finalization_observed", return_value=True))
         stack.enter_context(patch.object(contracts, "terminal_closure_dispatch_errors", return_value=[]))
         stack.enter_context(patch.object(finalizer, "verify_recovery_record"))
+        stack.enter_context(patch.object(finalizer, "recovery_canonical_report", return_value=b"Canonical report\n"))
 
     def test_recovery_retains_identity_and_compares_original_canonical_bytes(self):
         self.assertIn("prepared_framework_package_mismatch", prepared_package_errors(self.root)[0])
         self.assertIn("prepared_framework_package_mismatch", prepared_package_errors(self.root, check_parent_context=False)[0])
+        self.assertIn("prepared_framework_package_mismatch", prepared_package_errors(
+            self.root, check_parent_context=False, package_content_root=self.origin)[0])
         preserved = {p: p.read_bytes() for p in self.root.glob("*.json")}
         preserved[self.record] = self.record.read_bytes()
         suffix = self.root / "suffix.md"
@@ -96,9 +102,61 @@ class PublicationRecovery(unittest.TestCase):
         with patch("sys.argv", args), patch.object(finalizer, "checked"), redirect_stdout(io.StringIO()):
             self.assertEqual(finalizer.main(), 2)
 
+    def test_pruned_cache_restores_exact_commit_without_rebinding(self):
+        source = self.root / "publisher-source"
+        shutil.copytree(self.origin, source)
+        for args in (["init", "-q"], ["add", "."], ["-c", "user.name=Fixture", "-c",
+                     "user.email=fixture@example.invalid", "commit", "-qm", "Original package"]):
+            subprocess.run(["git", "-C", str(source), *args], check=True, capture_output=True)
+        revision = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+        packet = json.loads(self.packet.read_text())
+        packet["identity"]["Framework commit / status"] = revision + " / Clean"
+        self.packet.write_text(json.dumps(packet))
+        (self.root / "pre_release_check.json").write_text(json.dumps({"status": "passed",
+            "packet_sha256": hashlib.sha256(self.packet.read_bytes()).hexdigest()}))
+        shutil.rmtree(self.origin)
+        preserved = {p: p.read_bytes() for p in self.root.glob("*.json")}
+        outgoing = self.root / "outgoing.md"
+        outgoing.write_text("Canonical report\n")
+        args = ["finalizer", "--packet", str(self.packet), "--publish-response", str(outgoing), "--recover-presentation"]
+        for invalid in ("history", "plugin_hash"):
+            if invalid == "history":
+                changed = json.loads(self.packet.read_text())
+                changed["identity"]["Framework commit / status"] = "f" * 40 + " / Clean"
+                self.packet.write_text(json.dumps(changed))
+                (self.root / "pre_release_check.json").write_text(json.dumps({"status": "passed",
+                    "packet_sha256": hashlib.sha256(self.packet.read_bytes()).hexdigest()}))
+            else:
+                changed = json.loads((self.root / "role_bindings.json").read_text())
+                changed["framework_package"]["plugin_sha256"] = "0" * 64
+                (self.root / "role_bindings.json").write_text(json.dumps(changed))
+            with patch.object(finalizer, "ROOT", source), patch("sys.argv", args), patch.object(finalizer, "checked"), \
+                    patch.object(finalizer.subprocess, "run", wraps=subprocess.run) as commands, redirect_stdout(io.StringIO()):
+                self.assertEqual(finalizer.main(), 2)
+            self.assertFalse(any(call.args[0][:2] == ["git", "clone"] for call in commands.call_args_list))
+            for p, contents in preserved.items(): p.write_bytes(contents)
+        for selection in (False, True):
+            self.selection.return_value = selection
+            output = io.StringIO()
+            with patch.object(finalizer, "ROOT", source), patch("sys.argv", args), patch.object(finalizer, "checked"), \
+                    patch.object(finalizer.subprocess, "run", wraps=subprocess.run) as commands, redirect_stdout(output):
+                self.assertEqual(finalizer.main(), 0 if selection else 2, output.getvalue())
+            clones = [call for call in commands.call_args_list if call.args[0][:2] == ["git", "clone"]]
+            self.assertEqual(len(clones), int(selection))
+            self.assertFalse(self.origin.exists())
+            if selection:
+                receipt = json.loads((self.root / "handoff_delivery.json").read_text())["publication_recovery"]
+                self.assertEqual(receipt["prepared_package_root"], str(self.origin))
+                self.assertTrue(receipt["prepared_package_restored"])
+                self.assertEqual(receipt["framework_revision"], revision)
+                self.assertFalse(Path(receipt["canonical_package_root"]).exists())
+                self.assertEqual(self.preflight.call_args.kwargs["declared_framework_revision"], revision)
+                self.assertEqual(output.getvalue(), outgoing.read_text())
+        self.assertTrue(all(p.read_bytes() == contents for p, contents in preserved.items()))
+
     def test_recovery_rejects_changed_packet_active_workers_and_failed_context(self):
         originals = {p: p.read_bytes() for p in self.root.glob("*.json")}
-        for change in ("packet", "closure", "package", "failure", "parent_run", "context", "origin_preflight", "selection", "fake_session"):
+        for change in ("packet", "closure", "package", "failure", "parent_run", "context", "origin_preflight", "selection", "finalization", "fake_session"):
             with self.subTest(change=change):
                 if change == "packet": self.packet.write_text(self.packet.read_text() + " ")
                 elif change == "closure":
@@ -114,6 +172,7 @@ class PublicationRecovery(unittest.TestCase):
                 elif change == "context": self.audit.return_value = {"status": "rejected", "errors": ["unassigned_read"]}
                 elif change == "origin_preflight": self.preflight.return_value = {"status": "blocked"}
                 elif change == "selection": self.selection.return_value = False
+                elif change == "finalization": self.finalization.return_value = False
                 else:
                     altered = json.loads(json.dumps(self.bindings))
                     altered["parent_context"]["provider_session"] = str(self.record)
@@ -130,6 +189,7 @@ class PublicationRecovery(unittest.TestCase):
                 self.preflight.return_value = {"status": "passed", "framework_status": "clean"}
                 self.preflight.reset_mock()
                 self.selection.return_value = True
+                self.finalization.return_value = True
 
 
 class PublicationRecordProjection(unittest.TestCase):

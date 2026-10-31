@@ -87,6 +87,36 @@ class ParentContext(unittest.TestCase):
             with self.subTest(change=change):
                 self.assertEqual(native_preflight_observed(self.source, TURN, root, "a" * 40, "0.5.33+fixture"), change == "valid")
 
+    def test_native_finalization_requires_exact_original_command_and_report(self):
+        from scripts.provider_runtime import native_finalization_observed
+        root = self.root.resolve() / "framework"
+        packet = self.root.resolve() / "finalization_packet.json"
+        record = packet.parent / "work_record.md"
+        canonical = b"Canonical report\n"
+        command = shlex.join(["python3", str(root / "scripts/finalize_work_record.py"),
+            "--packet", str(packet), "--closure", str(packet.parent / "runtime_closure.json"),
+            "--record", str(record), "--framework-revision", "a" * 40, "--framework-status", "clean"])
+        for change in ("valid", "turn", "packet", "record", "revision", "script", "interpreter", "shell",
+                       "precheck", "duplicate", "failed", "output"):
+            rows = json.loads(json.dumps(self.rows))
+            item = {"type": "CommandExecution", "command": ["bash", "-lc", command],
+                    "status": "completed", "exit_code": 0,
+                    "aggregated_output": "Delivery pending: fixture\nWorkflow-framework validation: passed\nCanonical report\n"}
+            if change == "turn": rows[-1]["payload"]["turn_id"] = CHILD
+            elif change in {"packet", "record", "script", "revision", "interpreter"}:
+                old = {"packet": str(packet), "record": str(record), "script": str(root / "scripts/finalize_work_record.py"),
+                       "revision": "a" * 40, "interpreter": "python3"}[change]
+                item["command"][-1] = command.replace(old, "/tmp/other", 1)
+            elif change == "shell": item["command"][-1] += "; cat /tmp/extra"
+            elif change == "precheck": item["command"][-1] += " --pre-release"
+            elif change == "duplicate": item["command"][-1] += " --record " + str(record)
+            elif change == "failed": item["exit_code"] = 2
+            elif change == "output": item["aggregated_output"] += "Changed report"
+            rows.append({"type": "event_msg", "payload": {"type": "item_completed", "item": item}})
+            self.source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            with self.subTest(change=change):
+                self.assertEqual(native_finalization_observed(self.source, TURN, root, packet, record, "a" * 40, canonical), change == "valid")
+
     def test_host_required_presentation_write_is_not_a_historical_read(self):
         codex = self.root / "codex"
         memory = codex / "memories" / "MEMORY.md"

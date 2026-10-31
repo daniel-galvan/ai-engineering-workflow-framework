@@ -48,14 +48,16 @@ except ModuleNotFoundError:
 
 
 def prepared_package_errors(root: Path, *, check_parent_context: bool = True,
-                            expected_package_root: Path | None = None) -> list[str]:
+                            expected_package_root: Path | None = None,
+                            package_content_root: Path | None = None) -> list[str]:
     """Reject package, lifecycle, profile or parent-context drift from the prepared run."""
     try:
         manifest = json.loads((root / "role_bindings.json").read_text())
         package = manifest.get("framework_package")
         expected_root = expected_package_root.resolve() if expected_package_root is not None else ROOT
+        content_root = package_content_root or expected_root
         if package is not None and (Path(package["root"]).resolve() != expected_root
-                or package["plugin_sha256"] != hashlib.sha256((expected_root / ".codex-plugin/plugin.json").read_bytes()).hexdigest()):
+                or package["plugin_sha256"] != hashlib.sha256((content_root / ".codex-plugin/plugin.json").read_bytes()).hexdigest()):
             return ["prepared_framework_package_mismatch: prepare recovery from the selected package"]
         if manifest.get("lifecycle"):
             lifecycle = json.loads((root / "finalization_packet.json").read_text())["identity"].get("Lifecycle")
