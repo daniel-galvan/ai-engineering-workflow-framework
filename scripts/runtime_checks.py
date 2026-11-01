@@ -2313,29 +2313,53 @@ def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
                            "loads", "dumps", "read_text", "write_text", "get", "keys", "items", "values"})
                    for node in ast.walk(tree)):
                 continue
-            for assignment in tree.body:
-                if (not isinstance(assignment, ast.Assign) or len(assignment.targets) != 1
-                        or not isinstance(assignment.targets[0], ast.Name) or not isinstance(assignment.value, ast.Dict)):
-                    continue
-                variable = assignment.targets[0]
-                uses = [node for node in ast.walk(tree) if isinstance(node, ast.Name)
-                        and node.id == variable.id and node is not variable]
-                if not uses or any(not (isinstance(node.ctx, ast.Load) and isinstance(parents[node], ast.Call)
-                        and isinstance(parents[node].func, ast.Attribute) and parents[node].func.attr == "dumps"
-                        and isinstance(parents[node].func.value, ast.Name) and parents[node].func.value.id == "json"
-                        and parents[node].args and parents[node].args[0] is node)
-                        for node in uses):
-                    continue
-                for key, value in zip(assignment.value.keys, assignment.value.values):
-                    if not (isinstance(key, ast.Constant) and key.value == "objective"
-                            and isinstance(value, ast.Constant) and isinstance(value.value, str)):
+            def serialized(node):
+                parent = parents.get(node)
+                return (isinstance(parent, ast.Call) and isinstance(parent.func, ast.Attribute)
+                        and isinstance(parent.func.value, ast.Name) and parent.func.value.id == "json"
+                        and parent.func.attr == "dumps" and parent.args and parent.args[0] is node)
+
+            objectives = []
+            for mapping in (node for node in ast.walk(tree) if isinstance(node, ast.Dict)):
+                if not serialized(mapping):
+                    assignment = parents.get(mapping)
+                    if (not isinstance(assignment, ast.Assign) or len(assignment.targets) != 1
+                            or not isinstance(assignment.targets[0], ast.Name)):
                         continue
-                    normalized = punctuation.sub(r"\1", value.value)
-                    if normalized != value.value:
-                        lines = match[2].encode().splitlines(keepends=True)
-                        start = sum(map(len, lines[:value.lineno - 1])) + value.col_offset
-                        end = sum(map(len, lines[:value.end_lineno - 1])) + value.end_col_offset
-                        replacements.append((start, end, json.dumps(normalized, ensure_ascii=False).encode()))
+                    variable = assignment.targets[0]
+                    uses = [node for node in ast.walk(tree) if isinstance(node, ast.Name)
+                            and node.id == variable.id and node is not variable]
+                    if not uses or any(not isinstance(node.ctx, ast.Load) or not serialized(node) for node in uses):
+                        continue
+                for key, value in zip(mapping.keys, mapping.values):
+                    if (isinstance(key, ast.Constant) and key.value == "objective"
+                            and all(isinstance(node, (ast.BinOp, ast.Add, ast.Name, ast.Load))
+                                    or isinstance(node, ast.Constant) and isinstance(node.value, str)
+                                    for node in ast.walk(value))):
+                        objectives.append(value)
+            objective_nodes = {node for value in objectives for node in ast.walk(value)}
+            literals = set()
+            for value in objectives:
+                values = {node for node in ast.walk(value) if isinstance(node, ast.Constant)}
+                for variable in (node for node in ast.walk(value) if isinstance(node, ast.Name)):
+                    assignments = [node for node in ast.walk(tree) if isinstance(node, ast.Name)
+                                   and node.id == variable.id and isinstance(node.ctx, ast.Store)]
+                    assignment = parents.get(assignments[0]) if len(assignments) == 1 else None
+                    if (not isinstance(assignment, ast.Assign) or len(assignment.targets) != 1
+                            or not isinstance(assignment.value, ast.Constant) or not isinstance(assignment.value.value, str)
+                            or any(node not in objective_nodes for node in ast.walk(tree) if isinstance(node, ast.Name)
+                                   and node.id == variable.id and isinstance(node.ctx, ast.Load))):
+                        break
+                    values.add(assignment.value)
+                else:
+                    literals.update(values)
+            for value in literals:
+                normalized = punctuation.sub(r"\1", value.value)
+                if normalized != value.value:
+                    lines = match[2].encode().splitlines(keepends=True)
+                    start = sum(map(len, lines[:value.lineno - 1])) + value.col_offset
+                    end = sum(map(len, lines[:value.end_lineno - 1])) + value.end_col_offset
+                    replacements.append((start, end, json.dumps(normalized, ensure_ascii=False).encode()))
             body = match[2].encode()
             for start, end, replacement in sorted(replacements, reverse=True):
                 body = body[:start] + replacement + body[end:]

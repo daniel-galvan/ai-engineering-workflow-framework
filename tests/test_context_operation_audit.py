@@ -222,6 +222,25 @@ class ContextOperationAudit(unittest.TestCase):
             self.assertIn("forbidden_context_reference:archived_artifact",
                           runtime.context_trace_errors(changed, artifact_root=self.root))
 
+    def test_shared_objective_prose_is_allowed_only_when_used_as_serialized_data(self):
+        prose = "Keep scratch inside " + str(self.root) + ". Use assigned inputs."
+        body = ("import json\nfrom pathlib import Path\nr=Path(" + repr(str(self.root)) + ")\n"
+                "common=" + repr(prose) + "\n"
+                "(r/'review.json').write_text(json.dumps({'objective':'Review.'+common}))\n"
+                "(r/'validate.json').write_text(json.dumps({'objective':common+' Validate.'}))\n")
+        def audit(source):
+            return runtime.context_trace_errors({"tool_trace": self.paired(
+                'await tools.exec_command(' + json.dumps({"cmd": "python3 - <<'PY'\n" + source + "PY"}) + ')', "")},
+                artifact_root=self.root)
+        self.assertEqual(audit(body), [])
+        for extra in ("Path(common).read_text()\n", "alias=common\n", "common='changed'\n",
+                      "(r/'bad.json').write_text(json.dumps({'input_paths':[common]}))\n",
+                      "(r/'bad.json').write_text(json.dumps({'objective':Path(common).read_text()}))\n"):
+            with self.subTest(extra=extra):
+                self.assertIn("forbidden_context_reference:archived_artifact", audit(body + extra))
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      audit(body.replace(str(self.root) + ".", str(self.root) + "/runs/prior/notes.md")))
+
     def test_bound_failure_reason_punctuation_is_not_an_artifact_operation(self):
         package = self.repository / "package"
         (self.root / "role_bindings.json").write_text(json.dumps({"framework_package": {"root": str(package)}}))
