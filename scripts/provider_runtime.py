@@ -525,10 +525,12 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 or expected_thread_id is not None and thread != expected_thread_id):
             raise ValueError("provider_session_parent_mismatch")
         known_children = set()
+        native_events = []
         if runtime_evidence:
             native = read_runtime_events(source, thread, runtime_evidence["run_started_at"],
                 tuple(Path(value) for value in runtime_evidence.get("identity_sessions", [])))
-            known_children = {native["thread_mappings"][row["Provider handle"]] for row in native["events"]}
+            native_events = native["events"]
+            known_children = {native["thread_mappings"][row["Provider handle"]] for row in native_events}
         identity_error = None
         try:
             if related_run_thread_ids is None:
@@ -601,10 +603,15 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 try:
                     ids_to_check = [prior_ids]
                     if known_children:
-                        ids_to_check.extend((tuple(sorted(known_children)), tuple(sorted(set(prior_ids) | known_children))))
+                        # Later dispatches cannot retroactively change an earlier exact status query.
+                        observed = timestamp(row["timestamp"])
+                        at_call = {event["Thread ID"] for event in native_events
+                                   if timestamp(event["Last dispatch at"]) <= observed}
+                        if at_call:
+                            ids_to_check.extend((tuple(sorted(at_call)), tuple(sorted(set(prior_ids) | at_call))))
                     expected_projections = ({related_run_status_projection_source(artifact_root.name, thread, ids)
                                              for ids in ids_to_check} if artifact_root is not None else set())
-                except ValueError:
+                except (ValueError, KeyError, TypeError):
                     expected_projections = set()
                 exact_status_projection = (isinstance(raw_source, str)
                                            and raw_source.strip() in expected_projections)

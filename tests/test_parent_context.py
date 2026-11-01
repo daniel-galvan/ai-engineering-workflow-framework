@@ -524,9 +524,11 @@ class ParentContext(unittest.TestCase):
                 "call_id": "status", "input": related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))}}
         output = {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "status",
                   "output": [{"type": "text", "text": json.dumps([{"id": CHILD, "status": "completed"}])}]}}
+        call["timestamp"] = "2026-10-01T00:00:02Z"
         self.rows.extend([call, output])
         runtime = {"run_started_at": "2026-10-01T00:00:00Z"}
-        native = {"thread_mappings": {"/root/worker": CHILD}, "events": [{"Provider handle": "/root/worker"}]}
+        native = {"thread_mappings": {"/root/worker": CHILD}, "events": [
+            {"Provider handle": "/root/worker", "Thread ID": CHILD, "Last dispatch at": "2026-10-01T00:00:00Z"}]}
         with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
             result = self.audit(artifact_root=artifact_root, related_run_thread_ids=(TURN,), runtime_evidence=runtime)
             self.assertEqual(result["status"], "passed", result)
@@ -542,6 +544,29 @@ class ParentContext(unittest.TestCase):
             call["payload"]["input"] = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,)) + '\ntext("extra");'
             self.assertIn("parent_unassigned_thread_discovery", self.audit(artifact_root=artifact_root,
                 related_run_thread_ids=(TURN,), runtime_evidence=runtime)["errors"])
+
+    def test_later_worker_dispatch_does_not_invalidate_earlier_status_projection(self):
+        root = self.root / ".thoughts" / "ECHO-2806"
+        future = "00000000-0000-0000-0000-000000000004"
+        projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
+        call = {"type": "response_item", "timestamp": "2026-10-01T00:00:02Z", "payload": {
+            "type": "custom_tool_call", "name": "exec", "call_id": "status", "input": projection}}
+        output = {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "status",
+            "output": [{"type": "text", "text": json.dumps([{"id": CHILD, "status": "completed"}])}]}}
+        self.rows.extend([call, output])
+        native = {"thread_mappings": {"/root/implement": CHILD, "/root/review": future}, "events": [
+            {"Provider handle": "/root/implement", "Thread ID": CHILD, "Last dispatch at": "2026-10-01T00:00:00Z"},
+            {"Provider handle": "/root/review", "Thread ID": future, "Last dispatch at": "2026-10-01T00:00:03Z"}]}
+        runtime = {"run_started_at": "2026-10-01T00:00:00Z"}
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
+            result = self.audit(artifact_root=root, related_run_thread_ids=(TURN,), runtime_evidence=runtime)
+            self.assertEqual(result["status"], "passed", result)
+            call["payload"]["input"] = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD, future))
+            self.assertIn("parent_unassigned_thread_discovery", self.audit(artifact_root=root,
+                related_run_thread_ids=(TURN,), runtime_evidence=runtime)["errors"])
+            call["timestamp"] = "2026-10-01T00:00:04Z"
+            self.assertEqual(self.audit(artifact_root=root, related_run_thread_ids=(TURN,),
+                runtime_evidence=runtime)["status"], "passed")
 
     def test_status_projection_helper_includes_prior_parent_and_worker_without_writing(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
