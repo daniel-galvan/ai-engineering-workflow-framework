@@ -377,6 +377,11 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
         except ModuleNotFoundError:
             from scripts.planning_contracts import worker_audit_record
         audit = worker_audit_record(packet_path, worker, trace_path)
+        try:
+            from accepted_result_recovery import verify_response
+        except ModuleNotFoundError:
+            from scripts.accepted_result_recovery import verify_response
+        verify_response(root, agent, json.loads(trace_path.read_text()))
         packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
                                     if row.get("Worker") != worker] + [audit]
         trace_value = json.loads(trace_path.read_text())

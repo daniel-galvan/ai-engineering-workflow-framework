@@ -1160,6 +1160,21 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    attempts and the one-repair limit still block dispatch. The guard preserves the packet and snapshots its rejected
    bytes, validates accepted upstream audits before Documenter, and requires the new handoff audit at finalization.
    A substantive handoff correction still requires its owning worker and invalidates the affected observations.
+   If an already accepted analytical worker received later status-only messages or follow-ups, do not ignore the
+   later dispatch or repeat the investigation. After a terminal workflow failure, use the same-run `--continuation`,
+   refresh the native ledger and terminal closure, and use the packaged worker guard's `--accepted-refresh-handle`
+   with that original handle and its terminal `--provider-status`. This is a single bounded attempt per role. Prepare
+   its typed assignment as JSON with `objective` copied exactly from `OBJECTIVE` in the packaged
+   `scripts/accepted_result_recovery.py` and `input_paths` containing, in order, that role's accepted `output` and
+   `result` paths from its prepared worker contract. Supply it with `--assignment` and a new `--dispatch-file`, along
+   with the usual activation bundle, role and bundle hash. Send only the resulting guarded activation message to the
+   original worker with `followup_task`; never spawn a replacement for this refresh. The owner must examine its own
+   intervening messages, attest that they were status or closure requests only, and return the unchanged structured
+   result and output with the required attestation. If the owner cannot attest, or the guard or collector rejects the
+   response, preserve the evidence and stop; do not treat it as accepted. Collect the new trace under a new filename,
+   merge it normally, and refresh terminal closure before another role's refresh. The collector and merger both check
+   the guarded dispatch and unchanged result. This path does not authorize substantive corrections, bypass pending
+   rejected results, or change the existing rejected-result repair limit.
    Return errors naming Fix
    Design technical content, worker identity, readiness, blockers, diagnosis, or remediation boundary to the owning
    Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.

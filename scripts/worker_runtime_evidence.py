@@ -590,6 +590,11 @@ def register_worker_audit(packet_path: Path, agent: str, trace_path: Path) -> No
     worker = contract.get("worker_id") or contract.get("worker") or next(
         (worker for worker, binding in DELIVERY_WORKERS.items() if binding == role), role)
     audit = worker_audit_record(packet_path, worker, trace_path)
+    try:
+        from accepted_result_recovery import verify_response
+    except ModuleNotFoundError:
+        from scripts.accepted_result_recovery import verify_response
+    verify_response(root, role, json.loads(trace_path.read_text()))
     packet = json.loads(packet_path.read_text())
     packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
                                 if row.get("Worker") != worker] + [audit]

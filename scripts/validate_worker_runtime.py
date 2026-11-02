@@ -244,7 +244,9 @@ def delivery_dependency_errors(root: Path, agent: str, bindings: dict) -> list[s
 
 def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: str,
                              *, rejected_trace_sha256: str | None = None,
-                             recovery_required: dict | None = None) -> list[str]:
+                             recovery_required: dict | None = None,
+                             accepted_refresh_handle: str | None = None,
+                             accepted_refresh_status: str | None = None) -> list[str]:
     if not path.is_file():
         return ["activation_packet_unavailable"]
     if hashlib.sha256(path.read_bytes()).hexdigest() != expected_sha256:
@@ -272,6 +274,16 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                             and current_identity.get("Lifecycle") == "planning"
                             and receipt.get("run_id") == failure.get("run_id") == packet.get("run_id")
                             and receipt.get("failure_sha256") == hashlib.sha256(failure_path.read_bytes()).hexdigest())
+            if accepted_refresh_handle:
+                try:
+                    from accepted_result_recovery import authorize
+                except ModuleNotFoundError:
+                    from scripts.accepted_result_recovery import authorize
+                try:
+                    authorize(path.parent, expected_agent, accepted_refresh_handle, accepted_refresh_status)
+                    recovery = True
+                except ValueError as error:
+                    errors.append(str(error))
             if failure.get("status") == "failed" and (
                     (failure.get("stage") == "workflow" and not recovery)
                     or int(failure.get("attempt_count", 0)) >= 2):
@@ -534,6 +546,7 @@ def main() -> int:
     parser.add_argument("--rejected-trace", type=Path)
     parser.add_argument("--provider-handle")
     parser.add_argument("--last-dispatch-at")
+    parser.add_argument("--accepted-refresh-handle", help="Bounded re-attestation of a previously accepted planning result")
     parser.add_argument("--trace", type=Path)
     parser.add_argument("--require-freshness", action="store_true")
     parser.add_argument("--assignment", type=Path)
@@ -560,6 +573,10 @@ def main() -> int:
         parser.error("--implementer-handle requires --before-source-change")
     if args.require_freshness and not args.trace:
         parser.error("--require-freshness requires --trace")
+    if args.accepted_refresh_handle and (not args.activation_packet_bundle or not args.assignment
+            or not args.dispatch_file or not args.provider_status or args.rejected_trace
+            or args.provider_handle or args.last_dispatch_at):
+        parser.error("accepted refresh requires activation, assignment, dispatch file and terminal provider status")
     if any((args.rejected_trace, args.provider_handle, args.last_dispatch_at)) and (
             not (args.transition == "replace" or args.activation_packet_bundle)
             or not all((args.rejected_trace, args.provider_handle, args.last_dispatch_at, args.provider_status))):
@@ -601,7 +618,8 @@ def main() -> int:
         if not errors:
             recovery_required = {}
             errors = activation_packet_errors(args.activation_packet_bundle.resolve(), args.expected_agent,
-                args.expected_bundle_sha256, rejected_trace_sha256=rejection_hash, recovery_required=recovery_required)
+                args.expected_bundle_sha256, rejected_trace_sha256=rejection_hash, recovery_required=recovery_required,
+                accepted_refresh_handle=args.accepted_refresh_handle, accepted_refresh_status=args.provider_status)
             if recovery_required:
                 result["recovery_required"] = recovery_required
         if not errors:
@@ -612,12 +630,37 @@ def main() -> int:
             }
             if args.assignment:
                 try:
-                    message = activation_message(packet, json.loads(args.assignment.read_text()))
+                    assignment = json.loads(args.assignment.read_text())
+                    refresh = None
+                    if args.accepted_refresh_handle:
+                        try:
+                            from accepted_result_recovery import authorize, OBJECTIVE
+                        except ModuleNotFoundError:
+                            from scripts.accepted_result_recovery import authorize, OBJECTIVE
+                        refresh = authorize(args.activation_packet_bundle.resolve().parent, args.expected_agent,
+                                            args.accepted_refresh_handle, args.provider_status)
+                        if assignment != {"objective": OBJECTIVE, "input_paths": [refresh["output"], refresh["result"]]}:
+                            raise ValueError("accepted_refresh_assignment_mismatch")
+                    message = activation_message(packet, assignment)
                     expected = dispatch_notice(packet, message, args.dispatch_file) if args.dispatch_file else message
                     if args.activation_message and args.activation_message.read_text() != expected:
                         raise ValueError("activation_message_mismatch")
                     if args.dispatch_file:
                         message = dispatch_message(packet, message, args.dispatch_file)
+                        if refresh:
+                            current_path = args.activation_packet_bundle.parent / "finalization_packet.json"
+                            current = json.loads(current_path.read_text())
+                            refresh["dispatch_sha256"] = hashlib.sha256(args.dispatch_file.read_bytes()).hexdigest()
+                            current.setdefault("accepted_result_refreshes", {})[args.expected_agent] = refresh
+                            with tempfile.NamedTemporaryFile("w", dir=current_path.parent, delete=False) as stream:
+                                temporary = Path(stream.name)
+                                json.dump(current, stream, indent=2)
+                                stream.write("\n")
+                            try:
+                                temporary.replace(current_path)
+                            finally:
+                                temporary.unlink(missing_ok=True)
+                            result["accepted_refresh_authorization"] = refresh
                         if rejection_hash:
                             quarantine = []
                             contract = packet.get("worker_contract", {})
