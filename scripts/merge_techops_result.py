@@ -385,6 +385,17 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
         packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
                                     if row.get("Worker") != worker] + [audit]
         trace_value = json.loads(trace_path.read_text())
+        if (agent == "reviewer" and bindings.get("lifecycle") == "remediation"
+                and bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}):
+            try:
+                from review_evidence import review_candidate_metadata_errors
+            except ModuleNotFoundError:
+                from scripts.review_evidence import review_candidate_metadata_errors
+            review_output = Path(trace_value["result_artifact"]["output_path"]).read_text()
+            if re.search(r"^Disposition:\s*accepted\s*$", review_output, re.M):
+                errors = review_candidate_metadata_errors(review_output, expected_repository=Path(bindings["source_checkout"]))
+                if errors:
+                    raise ValueError("worker_review_candidate_metadata_invalid:" + ";".join(errors))
         try:
             from runtime_checks import result_artifact_errors
         except ModuleNotFoundError:

@@ -246,6 +246,32 @@ def _candidate_fields(text: str) -> tuple[dict[str, str], list[str]]:
     return fields, errors
 
 
+def review_candidate_metadata_errors(text: str, *, expected_repository: Path | None = None) -> list[str]:
+    """Check candidate metadata before accepting a review for Tester activation."""
+    fields, errors = _candidate_fields(text)
+    if "Repository" in fields and not Path(fields["Repository"]).is_absolute():
+        errors.append("Repository must be an absolute path")
+    if "Untracked candidate files" in fields:
+        try:
+            paths = json.loads(fields["Untracked candidate files"])
+            if (not isinstance(paths, list) or any(not isinstance(name, str) or not name
+                    or Path(name).is_absolute() or ".." in Path(name).parts for name in paths)
+                    or len(paths) != len(set(paths))):
+                raise ValueError
+        except (ValueError, TypeError):
+            errors.append("Untracked candidate files must be a JSON array of unique repository-relative paths")
+    if not errors and expected_repository is not None:
+        try:
+            repository = Path(fields["Repository"])
+            if repository.resolve() != expected_repository.resolve():
+                errors.append("review repository must match the execution repository")
+            elif candidate_fingerprint(repository, fields["Base revision"], paths) != fields["Candidate SHA256"]:
+                errors.append("review candidate fingerprint does not match the current candidate")
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            errors.append("review candidate verification unavailable: " + str(error))
+    return errors
+
+
 def validation_report_errors(text: str, review_text: str, *, require_solved: bool = False,
                              expected_repository: Path | None = None, require_accepted: bool = True) -> list[str]:
     """Reconcile Tester coverage with review and independently inspect the current candidate."""

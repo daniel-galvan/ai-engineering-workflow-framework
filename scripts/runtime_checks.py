@@ -168,6 +168,16 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
             from scripts.merge_techops_result import validated_result
         validated_result(json.loads((root / "finalization_packet.json").read_text()),
                          envelope["result"], bindings, role)
+        if (role == "reviewer" and bindings.get("lifecycle") == "remediation"
+                and bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}
+                and re.search(r"^Disposition:\s*accepted\s*$", envelope["output"], re.M)):
+            try:
+                from review_evidence import review_candidate_metadata_errors
+            except ModuleNotFoundError:
+                from scripts.review_evidence import review_candidate_metadata_errors
+            errors = review_candidate_metadata_errors(envelope["output"])
+            if errors:
+                return ["worker_review_candidate_metadata_invalid:" + ";".join(errors)]
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         if str(error).startswith("worker_final_response"):
             return [str(error) + ":" + role]

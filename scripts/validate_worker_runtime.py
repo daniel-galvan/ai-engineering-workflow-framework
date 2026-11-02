@@ -193,11 +193,11 @@ def delivery_dependency_errors(root: Path, agent: str, bindings: dict) -> list[s
     try:
         from planning_contracts import _worker_runtime_audit_errors
         from merge_techops_result import merged_result_errors
-        from review_evidence import _candidate_fields, candidate_fingerprint, plan_review_coverage_errors, review_report_errors
+        from review_evidence import _candidate_fields, candidate_fingerprint, plan_review_coverage_errors, review_report_errors, review_candidate_metadata_errors
     except ModuleNotFoundError:
         from scripts.planning_contracts import _worker_runtime_audit_errors
         from scripts.merge_techops_result import merged_result_errors
-        from scripts.review_evidence import _candidate_fields, candidate_fingerprint, plan_review_coverage_errors, review_report_errors
+        from scripts.review_evidence import _candidate_fields, candidate_fingerprint, plan_review_coverage_errors, review_report_errors, review_candidate_metadata_errors
     try:
         packet_path = root / "finalization_packet.json"
         packet = json.loads(packet_path.read_text())
@@ -226,7 +226,7 @@ def delivery_dependency_errors(root: Path, agent: str, bindings: dict) -> list[s
             if hashlib.sha256(review.encode()).hexdigest() != trace["result_artifact"]["output_sha256"]:
                 return ["delivery_review_output_changed"]
             fields, field_errors = _candidate_fields(review)
-            errors = review_report_errors(review, require_accepted=True) + field_errors
+            errors = review_report_errors(review, require_accepted=True) + field_errors + review_candidate_metadata_errors(review)
             if bindings["playbook"] in {"feature_delivery", "techops_issue_remediation"}:
                 errors.extend(plan_review_coverage_errors((root / "implementation_plan.md").read_text(), review))
             if errors:

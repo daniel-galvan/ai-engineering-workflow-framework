@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts import prepare_run
+from scripts import runtime_checks
 from scripts.prepare_worker_response import prepare_response, validate_response
 from scripts.review_evidence import PLAN_FIXTURE, REVIEW_FIXTURE
 from scripts.merge_techops_result import WORKERS, merge_result
@@ -24,21 +26,61 @@ HANDLE = "/root/current_state_investigator"
 
 
 class WorkerResponseMaterialization(unittest.TestCase):
+    def test_review_collector_rejects_unstructured_candidate_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "finalization_packet.json").write_text('{}')
+            at = "2026-11-02T20:00:00Z"
+            stage = root / ".worker_responses" / "reviewer" / hashlib.sha256(at.encode()).hexdigest()[:16]
+            stage.mkdir(parents=True)
+            fields = f"Repository: {root}\nBase revision: abc1234\nCandidate SHA256: {'a' * 64}\nUntracked candidate files: two files\n"
+            response = json.dumps({"output": REVIEW_FIXTURE.replace("## Scope\n", "## Scope\n" + fields), "result": {}})
+            (stage / "result.json").write_text('{}')
+            (stage / "output.md").write_text(json.loads(response)["output"])
+            (stage / "response.json").write_text(response)
+            receipt = {"dispatch_at": at}
+            for field, name, hash_field in (("path", "result.json", "sha256"),
+                    ("output_path", "output.md", "output_sha256"), ("response_path", "response.json", "response_sha256")):
+                path = stage / name
+                receipt[field] = str(path)
+                receipt[hash_field] = hashlib.sha256(path.read_bytes()).hexdigest()
+            trace = {"trace_retrieval": str(root / "session.jsonl"), "last_dispatch_at": at,
+                     "status_observation": {"Observed at": "2026-11-02T20:05:00Z"}, "result_artifact": receipt}
+            bindings = {"playbook": "techops_issue_remediation", "lifecycle": "remediation",
+                        "worker_contracts": {"reviewer": {"result_hash_required": True}}}
+            with patch("scripts.worker_runtime_evidence.worker_final_response", return_value=response), \
+                 patch("scripts.merge_techops_result.validated_result"):
+                errors = runtime_checks.result_artifact_errors(trace, bindings, root, "reviewer")
+            self.assertTrue(any("Untracked candidate files must be a JSON array" in error for error in errors), errors)
+
     def test_accepted_remediation_review_checks_plan_coverage_before_handoff(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             packet = root / "finalization_packet.json"
             packet.write_text(json.dumps({"identity": {"Run ID": "run"}}))
             (root / "role_bindings.json").write_text(json.dumps({"run_id": "run", "lifecycle": "remediation",
-                "playbook": "techops_issue_remediation"}))
+                "playbook": "techops_issue_remediation", "source_checkout": str(root)}))
             (root / "implementation_plan.md").write_text(PLAN_FIXTURE)
-            response = {"result": {}, "output": REVIEW_FIXTURE}
-            with patch("scripts.prepare_worker_response.validated_result"):
+            fields = f"Repository: {root}\nBase revision: abc1234\nCandidate SHA256: {'a' * 64}\nUntracked candidate files: []\n"
+            valid_review = REVIEW_FIXTURE.replace("## Scope\n", "## Scope\n" + fields)
+            response = {"result": {}, "output": valid_review}
+            with patch("scripts.prepare_worker_response.validated_result"), \
+                 patch("scripts.review_evidence.candidate_fingerprint", return_value="a" * 64):
                 self.assertEqual(json.loads(validate_response(packet, "reviewer", response)), response)
-                response["output"] = REVIEW_FIXTURE.replace("Asset-only edit preserves publication", "Renamed behavior")
+                response["output"] = valid_review.replace("Candidate SHA256: " + "a" * 64, "Candidate SHA256: " + "b" * 64)
+                with self.assertRaisesRegex(ValueError, "fingerprint does not match"):
+                    validate_response(packet, "reviewer", response)
+                response["output"] = valid_review.replace("Untracked candidate files: []", "Untracked candidate files: two files")
+                with self.assertRaisesRegex(ValueError, "Untracked candidate files must be a JSON array"):
+                    validate_response(packet, "reviewer", response)
+                for invalid in ('["../outside"]', '["/absolute"]', '["a", "a"]', '[1]'):
+                    response["output"] = valid_review.replace("Untracked candidate files: []", "Untracked candidate files: " + invalid)
+                    with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "Untracked candidate files must be a JSON array"):
+                        validate_response(packet, "reviewer", response)
+                response["output"] = valid_review.replace("Asset-only edit preserves publication", "Renamed behavior")
                 with self.assertRaisesRegex(ValueError, "review_plan_coverage_invalid.*review omits"):
                     validate_response(packet, "reviewer", response)
-                response["output"] = REVIEW_FIXTURE.replace("| Source path trace | pass |", "| Source path trace | verified |")
+                response["output"] = valid_review.replace("| Source path trace | pass |", "| Source path trace | verified |")
                 with self.assertRaisesRegex(ValueError, "review_plan_coverage_invalid.*validation row 1 has invalid result"):
                     validate_response(packet, "reviewer", response)
                 response["output"] = REVIEW_FIXTURE.replace("Asset-only edit preserves publication", "Renamed behavior")

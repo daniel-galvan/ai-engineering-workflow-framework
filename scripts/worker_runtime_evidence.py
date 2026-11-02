@@ -595,6 +595,18 @@ def register_worker_audit(packet_path: Path, agent: str, trace_path: Path) -> No
     except ModuleNotFoundError:
         from scripts.accepted_result_recovery import verify_response
     verify_response(root, role, json.loads(trace_path.read_text()))
+    if (role == "reviewer" and bindings.get("lifecycle") == "remediation"
+            and bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}):
+        try:
+            from review_evidence import review_candidate_metadata_errors
+        except ModuleNotFoundError:
+            from scripts.review_evidence import review_candidate_metadata_errors
+        trace = json.loads(trace_path.read_text())
+        output = Path(trace["result_artifact"]["output_path"]).read_text()
+        if re.search(r"^Disposition:\s*accepted\s*$", output, re.M):
+            errors = review_candidate_metadata_errors(output, expected_repository=Path(bindings["source_checkout"]))
+            if errors:
+                raise ValueError("worker_review_candidate_metadata_invalid:" + ";".join(errors))
     packet = json.loads(packet_path.read_text())
     packet["runtime_audits"] = [row for row in packet.get("runtime_audits", [])
                                 if row.get("Worker") != worker] + [audit]

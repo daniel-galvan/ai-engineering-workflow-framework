@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from scripts.review_evidence import (
     PLAN_FIXTURE, REVIEW_FIXTURE, applicability_errors, plan_design_errors, plan_review_coverage_errors,
+    review_candidate_metadata_errors,
 )
 from scripts.validate_worker_runtime import _defer_downstream_rejection, delivery_dependency_errors, delivery_start_errors
 from scripts.review_evidence import delivery_evidence_fixture
@@ -74,6 +75,15 @@ class DeliveryDesignGuards(unittest.TestCase):
         deferred = PLAN_FIXTURE.replace("| required |", "| deferred |")
         self.assertEqual(plan_review_coverage_errors(deferred, REVIEW_FIXTURE.replace(
             "Asset-only edit preserves publication", "Different happy path")), [])
+
+    def test_review_candidate_binding_detects_changed_files_and_wrong_checkout(self):
+        repository, review, _ = delivery_evidence_fixture(self.root)
+        self.assertEqual(review_candidate_metadata_errors(review, expected_repository=repository), [])
+        self.assertIn("review repository must match the execution repository",
+                      review_candidate_metadata_errors(review, expected_repository=self.root))
+        (repository / "asset.py").write_text("version = 3\n")
+        self.assertIn("review candidate fingerprint does not match the current candidate",
+                      review_candidate_metadata_errors(review, expected_repository=repository))
 
     def test_pre_edit_requires_reentry_and_registered_independent_graph(self):
         self.assertEqual(self.errors(), [])
