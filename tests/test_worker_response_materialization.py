@@ -73,6 +73,11 @@ class WorkerResponseMaterialization(unittest.TestCase):
             checked = subprocess.run(command, input=json.dumps(response), text=True, capture_output=True)
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertEqual(json.loads(checked.stdout), response)
+            missing_decision = {**response, "result": dict(response["result"])}
+            del missing_decision["result"]["integration_decision"]
+            rejected = subprocess.run(command, input=json.dumps(missing_decision), text=True, capture_output=True)
+            self.assertEqual(rejected.returncode, 2)
+            self.assertIn("techops_integration_decision_required", json.loads(rejected.stdout)["reason"])
             malformed = subprocess.run(command, input='{broken', text=True, capture_output=True)
             self.assertEqual(malformed.returncode, 2)
             self.assertEqual(json.loads(malformed.stdout)["status"], "invalid")

@@ -2858,16 +2858,34 @@ def prepare_run(
         except ModuleNotFoundError:
             from scripts.merge_techops_result import WORKERS, TABLES
         result_template = json.loads((ROOT / "templates/finalization_packet.json").read_text())
+        role_result_fields = {
+            "current_state_investigator": (
+                "For a complete outcome, include result.integration_decision as an object with decision, reason "
+                "and evidence_refs, as specified in your instructions. "
+            ),
+            "dependency_analyst": (
+                "For a complete outcome, include result.reproduction as the object specified in your instructions. "
+            ),
+            "solution_architect": (
+                "Include result.techops_checks, result.plan_readiness and result.implementation_plan_action. "
+                "Use ready_for_implementation/create, awaiting_input/omit, or blocked/omit for the last two values. "
+            ),
+        }
         for agent, (worker, namespace) in WORKERS.items():
             manifest["worker_contracts"][agent].update({
                 "worker_id": worker, "id_namespace": namespace,
                 "result": str(artifact_root / f"{worker.replace('-', '_')}_result.json"),
                 "result_hash_required": True,
                 "result_response": "strict_json_final_answer",
+                "response_builder": str(ROOT / "scripts" / "prepare_worker_response.py"),
                 "result_fields": {name: list(result_template[name][0])
                                   for name in ("worker_results", *TABLES)},
                 "result_instructions": (
                     "Do not write files. If the host requires a memory citation, append its block after the JSON. "
+                    f"Before your final answer, pipe the complete draft JSON to response_builder with --packet "
+                    f"{artifact_root / 'finalization_packet.json'} --agent {agent} --response-stdin. "
+                    "Correct any validation errors and rerun it; return its successful stdout unchanged as the JSON. "
+                    "This read-only preview does not accept or merge the result. "
                     "Return exactly one strict JSON object with keys "
                     "output (narrative string) and result (the JSON envelope with run_id, worker_result, and "
                     "evidence/claims/decisions/actions arrays). The Coordinator captures this answer into immutable "
@@ -2881,8 +2899,7 @@ def prepare_run(
                     "Use E/CL/DE/A-<id_namespace>-<number> IDs and exact references. "
                     "Reference upstream IDs unchanged without copying their rows; emit only your namespace's rows. "
                     "Outcome is complete, failed or blocked, never completed. "
-                    "Fix Design also supplies the four techops_checks and plan_readiness with "
-                    "implementation_plan_action: ready_for_implementation/create, awaiting_input/omit, or blocked/omit. "
+                    + role_result_fields.get(agent, "") +
                     "Record unresolved decisions in the narrative and worker_result. Do not edit the Coordinator packet or audits."
                 ),
             })

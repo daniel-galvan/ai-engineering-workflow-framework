@@ -22,6 +22,23 @@ from tests.worker_response_support import stage_worker_response
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_prepared_planning_contracts_explain_and_validate_role_specific_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare.prepare_run(Path(directory), "FIELDS-1", "techops_issue_remediation", None, False)
+            bindings = json.loads(Path(run["role_binding_manifest"]).read_text())
+            for role, fields in {
+                "current_state_investigator": ("result.integration_decision",),
+                "dependency_analyst": ("result.reproduction",),
+                "solution_architect": ("result.techops_checks", "result.plan_readiness", "result.implementation_plan_action"),
+            }.items():
+                with self.subTest(role=role):
+                    contract = bindings["worker_contracts"][role]
+                    self.assertTrue(Path(contract["response_builder"]).is_file())
+                    for field in fields:
+                        self.assertIn(field, contract["result_instructions"])
+                    self.assertIn(f"--agent {role} --response-stdin", contract["result_instructions"])
+                    self.assertIn(run["finalization_packet"], contract["result_instructions"])
+
     def test_post_delivery_context_recovery_requires_verified_failure_and_unchanged_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
