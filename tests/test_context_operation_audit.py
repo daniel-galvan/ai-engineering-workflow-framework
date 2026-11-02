@@ -26,6 +26,21 @@ class ContextOperationAudit(unittest.TestCase):
     setUp = fixtures.FrameworkCorrections.setUp
     dispatch_trace = fixtures.FrameworkCorrections.dispatch_trace
 
+    def test_optional_single_instruction_probe_does_not_allow_archive_reads(self):
+        instruction = self.root.parent / "AGENTS.md"
+        safe = f"if test -f {instruction}; then cat {instruction}; else printf 'absent\\n'; fi"
+        def errors(command):
+            return runtime.context_trace_errors({"tool_trace": [{"type": "function_call", "name": "exec_command",
+                "arguments": {"cmd": command, "workdir": str(self.repository)}}]}, artifact_root=self.root)
+        self.assertEqual(errors(safe), [])
+        archive = self.root / "runs" / "prior" / "notes.md"
+        for command in (safe + "; cat " + str(archive),
+                        safe.replace("then cat " + str(instruction), "then cat " + str(archive)),
+                        safe.replace("printf 'absent\\n'", "printf '%n' x"),
+                        safe.replace("printf 'absent\\n'", "cat " + str(archive))):
+            with self.subTest(command=command):
+                self.assertIn("forbidden_context_reference:archived_artifact", errors(command))
+
     def test_parent_allows_explicit_continuity_reads_but_never_exempts_appended_operations(self):
         from scripts.provider_runtime import parent_context_audit
         source = self.repository / "parent.jsonl"

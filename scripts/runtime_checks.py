@@ -2028,7 +2028,15 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
         # Recognize independent instruction reads; other statements remain fully audited.
         while index < len(statements):
             statement = statements[index]
-            if len(statement) >= 4 and statement[0] == "for" and statement[2] == "in":
+            if (include_probes and len(statement) == 4 and statement[:3] == ["if", "test", "-f"]
+                    and index + 3 < len(statements)
+                    and statements[index + 1] == ["then", "cat", statement[3]]
+                    and statements[index + 2] == ["else", "printf", "absent\\n"]
+                    and statements[index + 3] == ["fi"]):
+                # The same literal appears in the existence check and read; both are inspected.
+                targets.extend([statement[3], statement[3]])
+                index += 4
+            elif len(statement) >= 4 and statement[0] == "for" and statement[2] == "in":
                 variable = "$" + statement[1]
                 end = next((i for i in range(index + 1, len(statements)) if statements[i] == ["done"]), None)
                 if end is None:
