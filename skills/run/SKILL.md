@@ -678,6 +678,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `send_message` only delivers a message; it does not start an idle worker. Use it for steering an active turn,
    then verify consumption. After an idle-worker correction, verify a new turn actually started before waiting
    for its result; keep the guarded activation message and refresh the dispatch ledger.
+   Do not ask an unguarded follow-up merely to compare a completed design with user approval; the Coordinator
+   compares the accepted design with the approval. If a substantive worker correction is necessary, its new final
+   answer must satisfy the prepared result contract in full, including the structured JSON envelope when required.
    Join each provider-returned handle to its ordinary result envelope during fan-in. Do not send a post-spawn message
    solely to supply that handle or request one from the worker. A missing worker-authored handle is not a correction
    condition. Every later message remains a dispatch requiring fresh consumption evidence; do not ignore it or roll

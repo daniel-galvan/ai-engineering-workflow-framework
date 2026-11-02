@@ -42,6 +42,61 @@ except ModuleNotFoundError:
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
+def native_in_turn_delivery(ledger: dict, source: Path, observation: dict) -> str | None:
+    """Match a sent message to its delivery in the observed native worker turn."""
+    try:
+        handle = observation["Provider handle"]
+        dispatch = latest_worker_dispatch(ledger, handle)
+        if dispatch["Operation"] != "send_message" or dispatch["Last dispatch at"] != observation["Last dispatch at"]:
+            return None
+        sent_at = timestamp(dispatch["Last dispatch at"])
+        completed = timestamp(observation["Latest turn completed at"])
+        observed = timestamp(observation["Observed at"])
+        if not sent_at <= completed <= observed:
+            return None
+        parent = [json.loads(line) for line in Path(ledger["provider_session"]).read_text().splitlines() if line.strip()]
+        if parent[0].get("payload", {}).get("id") != ledger["parent_thread_id"]:
+            return None
+        calls = [row for row in parent if row.get("timestamp") == dispatch["Last dispatch at"]
+                 and row.get("payload", {}).get("type") == "function_call"
+                 and row["payload"].get("namespace") == "collaboration"
+                 and row["payload"].get("name") == "send_message"]
+        if len(calls) != 1:
+            return None
+        args = json.loads(calls[0]["payload"]["arguments"])
+        if args.get("target") not in {handle, handle.removeprefix("/root/")} or not isinstance(args.get("message"), str) or not args["message"]:
+            return None
+        rows = [json.loads(line) for line in source.read_text().splitlines() if line.strip()]
+        if rows[0].get("payload", {}).get("id") != observation["Thread ID"]:
+            return None
+        turn = None
+        matches = []
+        finals = []
+        for row in rows:
+            payload = row.get("payload", {})
+            if row.get("type") == "turn_context":
+                turn = payload.get("turn_id")
+            if (turn == observation.get("Latest turn ID") and row.get("type") == "response_item"
+                    and payload.get("type") == "agent_message" and payload.get("author") == "/root"
+                    and payload.get("recipient") == handle and sent_at <= timestamp(row["timestamp"]) <= completed):
+                values = [part.get("encrypted_content", part.get("text")) for part in payload.get("content", [])
+                          if isinstance(part, dict)]
+                if args["message"] in values:
+                    matches.append(row)
+            if (turn == observation.get("Latest turn ID") and row.get("type") == "response_item"
+                    and payload.get("type") == "message" and payload.get("role") == "assistant"
+                    and payload.get("phase") in {"final", "final_answer"}):
+                finals.append(row)
+        if len(matches) != 1:
+            return None
+        delivered_at = timestamp(matches[0]["timestamp"])
+        if not any(delivered_at <= timestamp(row["timestamp"]) <= observed for row in finals):
+            return None
+        return "native-message:" + hashlib.sha256(args["message"].encode()).hexdigest()
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+        return None
+
+
 def worker_response_value(response: str, session: Path) -> dict:
     """Parse the worker envelope and preserve a host-required citation suffix."""
     try:
@@ -207,7 +262,7 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
         handles = [handle for handle, child in ledger["thread_mappings"].items() if child == thread]
         if len(handles) != 1:
             raise ValueError("worker_trace_thread_mismatch")
-        observation = _native_terminal_observations(ledger, handles)[0]
+        observation = _native_terminal_observations(ledger, handles, require_terminal=False)[0]
     thread = observation["Thread ID"]
     handle = observation["Provider handle"]
     if ledger["thread_mappings"].get(handle) != thread:
@@ -219,6 +274,9 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
     if observation.get("Last dispatch at") != dispatch["Last dispatch at"]:
         raise ValueError("worker_trace_dispatch_mismatch: received=" + str(observation.get("Last dispatch at"))
                          + "; expected=" + str(dispatch["Last dispatch at"]))
+    proof = native_in_turn_delivery(ledger, source, observation)
+    if proof:
+        observation = {**observation, "Dispatch consumed": True, "Dispatch consumption evidence": proof}
     errors = terminal_observation_errors([observation], [handle], require_completed=False)
     if errors:
         raise ValueError(";".join(errors))
@@ -267,6 +325,9 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
               "tool_trace": tool_trace,
               "events": [{"action": "fan_in", "provider_status": fan_in_status, "guard_result": "allowed"}],
               "trace_retrieval": str(source.resolve()), "status_observation": observation}
+    if proof and artifact_root is not None:
+        result["delivery_ledger"] = {key: ledger[key] for key in ("provider_session", "parent_thread_id", "run_started_at")}
+        result["delivery_ledger"]["identity_sessions"] = ledger.get("identity_sessions", [])
     if run_id is not None:
         result["run_id"] = run_id
     if artifact_root is not None and not result["spawn"].get("dispatch_file"):

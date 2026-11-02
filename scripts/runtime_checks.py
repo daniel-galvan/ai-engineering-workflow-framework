@@ -102,6 +102,14 @@ def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thr
         if (observation.get("Provider handle") != handle or observation.get("Thread ID") != trace.get("thread_id")
                 or observation.get("Last dispatch at") != trace.get("last_dispatch_at")):
             errors.append("worker_trace_observation_mismatch:" + worker)
+        if str(observation.get("Dispatch consumption evidence", "")).startswith("native-message:"):
+            saved = json.loads(Path(bindings["runtime_evidence"]["ledger"]).read_text())
+            origin = trace.get("delivery_ledger", {})
+            if (any(origin.get(key) != saved.get(key) for key in
+                    ("provider_session", "parent_thread_id", "run_started_at"))
+                    or origin.get("identity_sessions", []) != saved.get("identity_sessions", [])
+                    or saved.get("thread_mappings", {}).get(handle) != trace.get("thread_id")):
+                errors.append("worker_dispatch_consumption_origin_mismatch:" + worker)
         errors.extend(terminal_observation_errors([observation], [handle]))
         errors.extend(launch_binding_errors(trace, root, worker_binding(bindings, worker)))
         errors.extend(result_artifact_errors(trace, bindings, root, worker_binding(bindings, worker)))
@@ -2671,6 +2679,25 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
     if not isinstance(launch_errors, list) or any(not isinstance(error, str) for error in launch_errors):
         return ["worker_launch_errors_invalid"]
     errors: list[str] = list(launch_errors)
+    observation = trace.get("status_observation", {})
+    if isinstance(observation, dict) and str(observation.get("Dispatch consumption evidence", "")).startswith("native-message:"):
+        try:
+            try:
+                from worker_runtime_evidence import native_in_turn_delivery
+            except ModuleNotFoundError:
+                from scripts.worker_runtime_evidence import native_in_turn_delivery
+            try:
+                from provider_runtime import read_runtime_events
+            except ModuleNotFoundError:
+                from scripts.provider_runtime import read_runtime_events
+            origin = trace["delivery_ledger"]
+            ledger = read_runtime_events(Path(origin["provider_session"]), origin["parent_thread_id"],
+                                         origin["run_started_at"], tuple(Path(p) for p in origin["identity_sessions"]))
+            verified = native_in_turn_delivery(ledger, Path(trace["trace_retrieval"]), observation)
+            if verified != observation["Dispatch consumption evidence"]:
+                raise ValueError("delivery evidence does not match")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            errors.append("worker_dispatch_consumption_unverified")
     response_errors = trace.get("worker_response_errors", [])
     if not isinstance(response_errors, list) or any(not isinstance(error, str) for error in response_errors):
         return ["worker_response_errors_invalid"]

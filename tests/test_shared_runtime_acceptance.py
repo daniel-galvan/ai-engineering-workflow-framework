@@ -1211,6 +1211,44 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "terminal_observation_latest_turn_stale"):
                 self.export(fixture)
 
+    def test_native_delivery_allows_in_turn_message_only_with_matching_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory, "techops_issue_remediation")
+            run, root, role, time, event, parent, child, status = fixture
+            message = "A correction delivered while the worker is active"
+            parent[5]["payload"].update(name="send_message", arguments=json.dumps({
+                "target": "/root/worker", "message": message}))
+            status.update({"Latest turn started at": time(1),
+                           "Latest turn ID": "00000000-0000-0000-0000-000000000004"})
+            child[3]["timestamp"] = time(1)
+            delivered = event(6, "response_item", type="agent_message", author="/root",
+                              recipient="/root/worker", content=[{"type": "encrypted_content", "encrypted_content": message}])
+            child.insert(4, delivered)
+            trace, ledger = self.export(fixture)
+            self.assertEqual(trace["audit"], {"status": "passed", "errors": []})
+            self.assertTrue(trace["status_observation"]["Dispatch consumption evidence"].startswith("native-message:"))
+            Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
+            self.assertEqual(runtime.trace_identity_errors(trace, root, role, "/root/worker", CHILD), [])
+            forged = json.loads(json.dumps(trace))
+            forged["delivery_ledger"]["parent_thread_id"] = CHILD
+            self.assertIn("worker_dispatch_consumption_origin_mismatch:" + role,
+                          runtime.trace_identity_errors(forged, root, role, "/root/worker", CHILD))
+            for change in ("content", "recipient", "turn", "after_answer"):
+                with self.subTest(change=change):
+                    altered = json.loads(json.dumps(delivered))
+                    if change == "content": altered["payload"]["content"][0]["encrypted_content"] = "different"
+                    if change == "recipient": altered["payload"]["recipient"] = "/root/other"
+                    if change == "turn": altered["timestamp"] = time(11)
+                    if change == "after_answer": child[-1]["timestamp"] = time(5)
+                    child[4] = altered
+                    with self.assertRaisesRegex(ValueError, "terminal_observation_latest_turn_stale"):
+                        self.export(fixture)
+                    child[4] = delivered
+                    child[-1]["timestamp"] = time(9)
+            child[4]["payload"]["content"][0]["encrypted_content"] = "tampered"
+            fixture[1].joinpath("child.jsonl").write_text("\n".join(json.dumps(row) for row in child) + "\n")
+            self.assertIn("worker_dispatch_consumption_unverified", runtime.trace_errors(trace, require_freshness=True))
+
     def test_inactive_worker_after_in_turn_message_is_closable_but_not_accepted(self):
         from scripts.worker_runtime_evidence import terminal_closure
         with tempfile.TemporaryDirectory() as directory:
