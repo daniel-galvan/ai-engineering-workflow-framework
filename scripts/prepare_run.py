@@ -1210,6 +1210,61 @@ def _verified_recovery_planning(artifact_root: Path, prior: dict) -> dict:
         raise ValueError("remediation_recovery_accepted_evidence_changed")
     return planning
 
+_REVIEWER_REPLACEMENT_CONTEXT_FAILURE = (
+    "Reviewer fan-in was rejected: worker_fan_in_rejected; forbidden_context_reference:memory_path. "
+    "Guarded replacement was rejected: parent_context_nonconformant:parent_tool_arguments_unavailable. "
+    "No further worker retries."
+)
+
+
+def _verified_reviewer_replacement_context_failure(artifact_root: Path) -> bool:
+    """Recognize only the recorded, rejected-review case whose coordinator could not be audited."""
+    try:
+        failure = json.loads((artifact_root / "finalization_failure.json").read_text())
+        packet = json.loads((artifact_root / "finalization_packet.json").read_text())
+        ledger = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+        pending = ledger.get("rejected_results", {}).get("reviewer")
+        if not isinstance(pending, dict):
+            return False
+        trace_path = Path(pending["trace"]).resolve()
+        raw = trace_path.read_bytes()
+        trace = json.loads(raw)
+        snapshot = Path(failure["packet_snapshot"]).resolve()
+        frozen = snapshot.read_bytes()
+        return bool(
+            failure.get("status") == "failed" and failure.get("stage") == "workflow"
+            and failure.get("reported_by") == "Coordinator"
+            and failure.get("runtime_closure") == "unverified"
+            and failure.get("errors") == [_REVIEWER_REPLACEMENT_CONTEXT_FAILURE]
+            and failure.get("run_id") == packet.get("identity", {}).get("Run ID")
+            and packet.get("identity", {}).get("Lifecycle") == "remediation"
+            and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == packet
+            and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
+            and trace_path.parent == artifact_root.resolve()
+            and hashlib.sha256(raw).hexdigest() == pending.get("sha256")
+            and pending.get("run_id") == trace.get("run_id") == failure.get("run_id")
+            and trace.get("worker") == "reviewer"
+            and trace.get("spawn", {}).get("provider_handle") == pending.get("Provider handle")
+            and trace.get("last_dispatch_at") == pending.get("Last dispatch at")
+            and trace.get("audit", {}).get("status") == "rejected"
+            and set(trace.get("audit", {}).get("errors", [])) == {
+                "worker_fan_in_rejected", "forbidden_context_reference:memory_path"}
+            and ledger.get("timing", {}).get("open_worker_intervals") == 0
+            and any(row.get("Worker") == "implement" and row.get("Outcome") == "complete"
+                    for row in packet.get("worker_results", []))
+        )
+    except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
+        return False
+
+
+def _can_defer_reviewer_parent_audit(artifact_root: Path, previous_context: dict,
+                                    remediation_reentry: bool) -> bool:
+    """Defer only the prior uninspectable coordinator call covered by a verified rejected-review receipt."""
+    return bool(remediation_reentry and previous_context.get("status") == "rejected"
+                and previous_context.get("errors") == ["parent_tool_arguments_unavailable"]
+                and _verified_reviewer_replacement_context_failure(artifact_root))
+
+
 def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure: dict,
                                        source_checkout: Path) -> tuple[dict, dict]:
     """Preserve guarded edits and approved planning after a terminal reviewer audit failure."""
@@ -1245,10 +1300,18 @@ def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure
                           and trace.get("audit", {}).get("status") == "rejected"
                           and recorded_errors == {"worker_fan_in_rejected", "forbidden_context_reference:archived_artifact"}
                           and set(current_errors) == recorded_errors)
+        replacement_context_failure = (
+            errors == [_REVIEWER_REPLACEMENT_CONTEXT_FAILURE]
+            and _verified_reviewer_replacement_context_failure(artifact_root)
+            and trace.get("audit", {}).get("status") == "rejected"
+            and recorded_errors == {"worker_fan_in_rejected", "forbidden_context_reference:memory_path"}
+            and current_errors == ["worker_fan_in_rejected"])
+        closure_reverified = (failure.get("runtime_closure") == "terminal" or
+                              replacement_context_failure and failure.get("runtime_closure") == "unverified")
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
-                and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") == "terminal"
+                and failure.get("reported_by") == "Coordinator" and closure_reverified
                 and failure.get("run_id") == prior["identity"]["Run ID"] and prior["identity"].get("Lifecycle") == "remediation" and len(errors) == 1
-                and (reviewer_failure or parent_failure)
+                and (reviewer_failure or parent_failure or replacement_context_failure)
                 and frozen_path.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
                 and trace_path.parent == artifact_root.resolve() and hashlib.sha256(raw).hexdigest() == pending["sha256"]
@@ -2119,6 +2182,7 @@ def _reentry_source(
             blocked_reviewer = any("delivery_dependency_unverified:reviewer" in str(error)
                                    and "forbidden_context_reference:memory_path" in str(error)
                                    for error in failure.get("errors", []))
+            blocked_reviewer = blocked_reviewer or _verified_reviewer_replacement_context_failure(artifact_root)
             blocked_reviewer = blocked_reviewer or (any(str(error).startswith("parent_context_nonconformant:")
                                                         for error in failure.get("errors", []))
                 and "reviewer" in json.loads((artifact_root / "runtime_dispatches.json").read_text()).get("rejected_results", {})
@@ -2693,7 +2757,8 @@ def prepare_run(
                                         if "related_run_thread_ids" in previous_parent else None),
                 prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"))
             if previous_context["status"] != "passed":
-                raise ValueError("continuation_parent_context_nonconformant:" + ";".join(previous_context["errors"]))
+                if not _can_defer_reviewer_parent_audit(artifact_root, previous_context, remediation_reentry):
+                    raise ValueError("continuation_parent_context_nonconformant:" + ";".join(previous_context["errors"]))
     if playbook == "sentry_issue_remediation" and validated_supplied:
         retain_source_releases(validated_supplied, provider_session)
     prior = (_reentry_source(artifact_root, approval_reference, planning_recovery=planning_recovery,

@@ -814,6 +814,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    a delivery flag or prepared bundle alone does not prove delivery.
    The exporter checks parent/child identity, the latest dispatch and fresh status. It writes canonical
    `last_dispatch_at`, `tool_trace`, `spawn` and fan-in events.
+   It also snapshots the worker's authenticated final response under `.worker_responses`; pass the resulting trace to
+   `merge_techops_result.py` to validate and write the canonical result and report. Never copy a child response into
+   result files by hand, encode it into a shell command, or reconstruct it from a thread read. If a merge reports a
+   missing response, inspect the trace's `result_artifact` receipt and correct collection through the exporter.
    Run `--trace <path> --require-freshness` before acceptance. For prepared TechOps and Feature Delivery analytical
    results, the audit checks the same result contract as the merger, including schema and evidence references.
    A malformed result is an audited rejection eligible for the bounded correction below; a legitimate evidence

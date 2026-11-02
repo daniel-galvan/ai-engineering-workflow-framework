@@ -805,6 +805,7 @@ class TechOpsCorrections(unittest.TestCase):
             closure = {"terminal_observations": observations}
             def save(value):
                 frozen = json.dumps(value).encode()
+                (root / "finalization_packet.json").write_bytes(frozen)
                 snapshot = root / "snapshot.json"
                 snapshot.write_bytes(frozen)
                 h = hashlib.sha256(frozen).hexdigest()
@@ -822,6 +823,31 @@ class TechOpsCorrections(unittest.TestCase):
                  patch.object(prepare, "_recover_current_accepted_candidate", return_value=candidate):
                 result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
                 self.assertEqual((result, saved), (candidate, planning))
+                failure_path = root / "finalization_failure.json"
+                failure = json.loads(failure_path.read_text())
+                failure["runtime_closure"] = "unverified"
+                failure["errors"] = [prepare._REVIEWER_REPLACEMENT_CONTEXT_FAILURE]
+                failure_path.write_text(json.dumps(failure))
+                rejected = {**trace, "audit": {"status": "rejected", "errors": [
+                    "worker_fan_in_rejected", "forbidden_context_reference:memory_path"]}}
+                trace_path.write_text(json.dumps(rejected))
+                ledger["rejected_results"]["reviewer"]["sha256"] = hashlib.sha256(trace_path.read_bytes()).hexdigest()
+                (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+                self.assertTrue(prepare._verified_reviewer_replacement_context_failure(root))
+                self.assertTrue(prepare._can_defer_reviewer_parent_audit(
+                    root, {"status": "rejected", "errors": ["parent_tool_arguments_unavailable"]}, True))
+                with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=["stale"]):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+                failure["errors"] = [prepare._REVIEWER_REPLACEMENT_CONTEXT_FAILURE + " extra"]
+                failure_path.write_text(json.dumps(failure))
+                self.assertFalse(prepare._verified_reviewer_replacement_context_failure(root))
+                self.assertFalse(prepare._can_defer_reviewer_parent_audit(
+                    root, {"status": "rejected", "errors": ["parent_tool_arguments_unavailable"]}, True))
+                save(packet)
+                trace_path.write_text(json.dumps(trace))
+                ledger["rejected_results"]["reviewer"]["sha256"] = hashlib.sha256(trace_path.read_bytes()).hexdigest()
+                (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
                 changed = copy.deepcopy(packet)
                 changed["claims"][0]["value"] = "tampered"
                 save(changed)
