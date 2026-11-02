@@ -2252,6 +2252,12 @@ def main() -> int:
             suffix = args.presentation_suffix.read_bytes() if args.presentation_suffix else b""
             prefix.decode("utf-8")
             suffix.decode("utf-8")
+            composed = bool(args.publish_response and (prefix or suffix)
+                            and args.verify_response.resolve() == (packet_path.parent / "handoff_response.md").resolve())
+            if composed:
+                # The prepared file must still be canonical before composing declared presentation bytes.
+                verify_presentation(canonical, proposed)
+                proposed = prefix + canonical + suffix
             verify_presentation(canonical, proposed, prefix, suffix)
             receipt = {"status": "verified", "run_id": json.loads(packet_path.read_text())["identity"]["Run ID"],
                        "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
@@ -2263,6 +2269,9 @@ def main() -> int:
                            (record := packet_path.parent / "work_record.md").is_file() else None,
                        "comparison_policy": "Exact UTF-8 canonical report plus declared prefix/suffix with one optional terminal LF; internal whitespace is significant",
                        "scope": "prepared response bytes; actual chat delivery is not observable by this CLI"}
+            if composed:
+                receipt["presentation_composed"] = True
+                receipt["proposed_response"] = "generated from canonical response and declared presentation files"
             if recovery:
                 receipt["publication_recovery"] = recovery
             (packet_path.parent / "handoff_delivery.json").write_text(json.dumps(receipt, indent=2) + "\n")

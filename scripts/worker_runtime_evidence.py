@@ -42,6 +42,18 @@ except ModuleNotFoundError:
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
+def blocked_collector_result(error: Exception) -> dict:
+    result = {"status": "blocked", "reason": str(error)}
+    if str(error).startswith("terminal_inventory_unverified:"):
+        result["next_action"] = (
+            "Use the documented targeted status-only read_thread or wait_threads projection for each "
+            "unverified worker, then refresh the collector. Do not send workers status pings or no-op "
+            "follow-ups: those are new dispatches and may invalidate accepted results. If a later message "
+            "is already unconsumed, preserve the evidence and use only a supported guarded correction."
+        )
+    return result
+
+
 def native_in_turn_delivery(ledger: dict, source: Path, observation: dict) -> str | None:
     """Match a sent message to its delivery in the observed native worker turn."""
     try:
@@ -832,7 +844,7 @@ def main() -> int:
                 return 2
         profile_activation = activate_verified_remediation(packet_path, result) if packet_path.is_file() else None
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
-        print(json.dumps({"status": "blocked", "reason": str(error)}))
+        print(json.dumps(blocked_collector_result(error)))
         return 2
     output = {"status": "recorded", "ledger": str(args.ledger),
               "thread_mappings": result["thread_mappings"], "dispatch_count": len(result["events"])}

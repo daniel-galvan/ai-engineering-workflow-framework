@@ -170,6 +170,21 @@ class SentryFailureRegression(unittest.TestCase):
         self.assertEqual(self.command(*args).returncode, 2)
         self.assertFalse((self.root / "handoff_delivery.json").exists())
 
+    def test_publisher_composes_declared_suffix_from_canonical_response(self):
+        self.command(*self.arguments())
+        canonical = self.root / "handoff_response.md"
+        original = canonical.read_bytes()
+        suffix = self.root / "suffix.txt"
+        suffix.write_text("\nRequired citation\n")
+        args = ("--packet", self.packet, "--publish-response", canonical, "--presentation-suffix", suffix)
+        result = self.command(*args)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.encode(), original + suffix.read_bytes())
+        self.assertEqual(canonical.read_bytes(), original)
+        self.assertTrue(json.loads((self.root / "handoff_delivery.json").read_text())["presentation_composed"])
+        canonical.write_bytes(original.replace(b"Workflow result:", b"Changed result:"))
+        self.assertEqual(self.command(*args).returncode, 2)
+
     def test_response_verification_rejects_silent_evidence_identifier_correction(self):
         packet = json.loads(self.packet.read_text())
         packet["handoff"]["established"].append("Recorded evidence reference: DE-FD-1")

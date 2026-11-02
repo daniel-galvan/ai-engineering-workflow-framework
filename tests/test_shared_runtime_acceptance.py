@@ -28,6 +28,15 @@ CASES = {
 
 
 class SharedRuntimeAcceptance(unittest.TestCase):
+    def test_missing_worker_status_gives_safe_collection_guidance(self):
+        from scripts.worker_runtime_evidence import blocked_collector_result
+        reason = "terminal_inventory_unverified:terminal_observation_not_terminal:/root/worker"
+        result = blocked_collector_result(ValueError(reason))
+        self.assertEqual(result["reason"], reason)
+        self.assertIn("status-only", result["next_action"])
+        self.assertIn("Do not send workers status pings", result["next_action"])
+        self.assertNotIn("next_action", blocked_collector_result(ValueError("worker_trace_session_mismatch")))
+
     def test_idle_wait_snapshot_does_not_require_an_event_wake(self):
         from scripts.provider_runtime import targeted_thread_observation
         raw = {"wake": None, "polls": [{"thread": {"id": CHILD, "status": {"type": "idle", "activeFlags": []}},

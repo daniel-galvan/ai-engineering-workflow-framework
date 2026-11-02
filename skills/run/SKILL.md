@@ -1040,7 +1040,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    The snapshot may combine live inventory and targeted reads; one inventory call need not retain
    every completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its
    provider-observed thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess
-   an ID. Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events
+   an ID. Never send a worker a message, status ping, or no-op follow-up to refresh its status or closure: that is a
+   new dispatch, and an idle worker does not consume `send_message`. Use only the status-only reads below.
+   Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events
    before declaring child identity unavailable. Sync its ledger after dispatches and status reads, following
    `providers/codex.md#worker-identity-and-correction-observations`; derive audit times from actual events.
    A targeted `read_thread` closure read must show no active or pending thread and an inactive latest turn. If the
@@ -1209,9 +1211,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    After publication, the next assistant message is the final answer containing those emitted bytes. Do not perform
    another summary pass. Publisher instructions on stderr are control messages, not part of the canonical stdout.
    If higher-priority instructions require a preamble or footer, keep the canonical artifact unchanged. Save the exact
-   required UTF-8 prefix and/or suffix (including separating newlines) in current-run files. Create a separate outgoing
-   response containing prefix + complete canonical bytes + suffix. Publish that outgoing file using
-   `--presentation-prefix <prefix-file>` and/or `--presentation-suffix <suffix-file>`. The helper verifies exact
+   required UTF-8 prefix and/or suffix (including separating newlines) in current-run files. Publish the canonical
+   `handoff_response.md` with `--presentation-prefix <prefix-file>` and/or `--presentation-suffix <suffix-file>`;
+   the publisher verifies the canonical file and emits the exact composed response. Alternatively, create and publish
+   a separate outgoing file containing prefix + complete canonical bytes + suffix. The helper verifies exact
    composition and records the surrounding text in the delivery receipt. Do not add discretionary summaries, change
    outcomes, or claim surrounding text is canonical. Missing access, evidence, authorization, or closure still blocks
    the corresponding workflow gate; presentation requirements alone do not.
