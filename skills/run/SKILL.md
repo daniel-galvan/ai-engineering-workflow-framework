@@ -390,6 +390,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    verifies the ledger, approved plan, accepted evidence and source checkout; a preserved unaccepted candidate
    must match its original recorded edits and current bytes. It preserves the failed delivery and starts a new
    remediation identity. Never repeat the investigation or accept a rejected worker result.
+   If a Tester result was rejected after accepted implementation and review, and its one guarded replacement was
+   prepared but never dispatched, this re-entry is allowed only when the collector proves the rejected trace,
+   reservation, terminal handles, approved plan and unchanged reviewed checkout. The preserved candidate becomes
+   unaccepted input for the new delivery workers; retain the prior failure and do not claim the rejected validation.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
    An ordinary continuation cannot reopen a completed Feature Delivery planning execution or bypass exhausted
    finalization attempts. For explicitly authorized planning recovery, reconcile prior actual worker rows and fresh

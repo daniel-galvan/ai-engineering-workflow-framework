@@ -1106,6 +1106,52 @@ def _recover_current_accepted_candidate(artifact_root: Path, prior: dict, source
             "base_candidate": candidate, "_contents": contents}
 
 
+def _recover_reviewed_checkout_candidate(artifact_root: Path, prior: dict, source_checkout: Path) -> dict:
+    """Snapshot a first-run candidate only after its accepted review binds the whole checkout."""
+    try:
+        from recovery_candidate import verify_checkout_snapshot
+        from review_evidence import _candidate_fields, review_candidate_metadata_errors, review_report_errors, plan_review_coverage_errors
+    except ModuleNotFoundError:
+        from scripts.recovery_candidate import verify_checkout_snapshot
+        from scripts.review_evidence import _candidate_fields, review_candidate_metadata_errors, review_report_errors, plan_review_coverage_errors
+    bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+    source_checkout = source_checkout.resolve()
+    if Path(bindings["source_checkout"]).resolve() != source_checkout:
+        raise ValueError("candidate_recovery_source_checkout_invalid")
+    review = (artifact_root / "code_review.md").read_text()
+    if (review_candidate_metadata_errors(review, expected_repository=source_checkout)
+            or review_report_errors(review, require_accepted=True)
+            or plan_review_coverage_errors((artifact_root / "implementation_plan.md").read_text(), review)):
+        raise ValueError("candidate_review_fingerprint_invalid")
+    fields, errors = _candidate_fields(review)
+    if errors:
+        raise ValueError("candidate_review_fingerprint_invalid")
+    audit = next(row for row in prior["runtime_audits"] if row.get("Worker") == "review")
+    trace_path = Path(audit["Trace path"]).resolve()
+    if trace_path.parent != artifact_root.resolve() or trace_path.is_symlink():
+        raise ValueError("candidate_review_trace_invalid")
+    trace = json.loads(trace_path.read_text())
+    if hashlib.sha256(review.encode()).hexdigest() != trace["result_artifact"]["output_sha256"]:
+        raise ValueError("candidate_review_trace_invalid")
+    untracked = json.loads(fields["Untracked candidate files"])
+    try:
+        changed = subprocess.check_output(["git", "-C", str(source_checkout), "-c", "core.fsmonitor=false",
+            "diff", "--name-only", "-z", fields["Base revision"], "--"], timeout=30).decode().split("\0")
+        names = (set(changed) - {""}) | set(untracked)
+        contents = {name: (source_checkout / name).read_bytes() for name in names}
+        hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+        verify_checkout_snapshot(source_checkout, fields["Base revision"], hashes)
+        if review_candidate_metadata_errors(review, expected_repository=source_checkout):
+            raise ValueError("candidate_review_fingerprint_invalid")
+        verify_checkout_snapshot(source_checkout, fields["Base revision"], hashes)
+    except (OSError, subprocess.SubprocessError, UnicodeError) as error:
+        raise ValueError("candidate_evidence_unavailable") from error
+    return {"prior_run_id": prior["identity"]["Run ID"], "status": "unaccepted",
+            "trace_sha256": hashlib.sha256(trace_path.read_bytes()).hexdigest(),
+            "baseline_revision": fields["Base revision"], "files": hashes,
+            "source_already_present": True, "_contents": contents}
+
+
 
 def _verified_recovery_planning(artifact_root: Path, prior: dict) -> dict:
     """Find the preserved approved planning records through authenticated run archives."""
@@ -1132,7 +1178,20 @@ def _verified_recovery_planning(artifact_root: Path, prior: dict) -> dict:
         if hashlib.sha256(data).hexdigest() != rows[0]["sha256"]:
             raise ValueError("remediation_recovery_prior_archive_invalid")
         planning = json.loads(data)
-        if (planning["identity"]["Run ID"] != run_id or planning["reentry"]["Approved plan SHA256"] != reentry["Approved plan SHA256"]
+        if planning["identity"]["Run ID"] != run_id:
+            raise ValueError("remediation_recovery_prior_archive_invalid")
+        if planning["identity"].get("Lifecycle") == "planning":
+            plans = [row for row in manifest["files"] if row.get("path") == "implementation_plan.md"]
+            if (planning["identity"].get("State") != "ready_for_implementation"
+                    or planning["identity"].get("Workflow outcome") != "completed" or len(plans) != 1):
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+            saved_plan = (archive / plans[0]["snapshot"]).resolve()
+            if (not saved_plan.is_relative_to((artifact_root / "runs").resolve())
+                    or hashlib.sha256(saved_plan.read_bytes()).hexdigest() != plans[0]["sha256"]
+                    or plans[0]["sha256"] != reentry["Approved plan SHA256"]):
+                raise ValueError("remediation_recovery_prior_archive_invalid")
+            break
+        if (planning["reentry"]["Approved plan SHA256"] != reentry["Approved plan SHA256"]
                 or planning["reentry"]["Approval reference"] != reentry["Approval reference"]):
             raise ValueError("remediation_recovery_prior_archive_invalid")
         if not planning.get("worker_results"):
@@ -1326,9 +1385,49 @@ def _verified_historical_tester_guard_parser_rejection(artifact_root: Path, bind
         ["parent_context_nonconformant:parent_tool_arguments_unavailable"])
 
 
+def _undispatched_tester_recovery(artifact_root: Path, prior: dict, ledger: dict, errors: list) -> bool:
+    """Prove a rejected Tester and an authorized replacement that never started."""
+    try:
+        from validate_worker_runtime import _defer_downstream_rejection
+        from provider_runtime import latest_worker_dispatch
+    except ModuleNotFoundError:
+        from scripts.validate_worker_runtime import _defer_downstream_rejection
+        from scripts.provider_runtime import latest_worker_dispatch
+    try:
+        if (len(errors) != 1 or not isinstance(errors[0], str)
+                or "tester" not in errors[0].lower() or "reject" not in errors[0].lower()):
+            return False
+        pending = ledger.get("rejected_results", {})
+        if set(pending) != {"tester"}:
+            return False
+        receipt = pending["tester"]
+        repair = prior.get("activation_repairs", {}).get("tester", {})
+        if (repair.get("Attempt") != 1 or repair.get("Rejected trace SHA256") != receipt["sha256"]
+                or repair.get("Provider handle") != receipt["Provider handle"]
+                or repair.get("Last dispatch at") != receipt["Last dispatch at"]
+                or not _defer_downstream_rejection(artifact_root, "implementer", "tester", receipt)):
+            return False
+        handle = receipt["Provider handle"]
+        if latest_worker_dispatch(ledger, handle, include_failed=True)["Last dispatch at"] != receipt["Last dispatch at"]:
+            return False
+        accepted = {row["Provider handle"] for row in prior.get("runtime_audits", [])
+                    if row.get("Worker") in {"implement", "review"}}
+        if (len(accepted) != 2 or handle in accepted or set(ledger["thread_mappings"]) != accepted | {handle}
+                or ledger.get("failed_dispatches")):
+            return False
+        receipts = json.loads((artifact_root / "activation_receipts.json").read_text())
+        return any(value.get("sha256") == repair.get("Corrected dispatch SHA256")
+                   and value.get("agent") == "tester" and value.get("run_id") == prior["identity"]["Run ID"]
+                   and (artifact_root / name).is_file() and not (artifact_root / name).is_symlink()
+                   and hashlib.sha256((artifact_root / name).read_bytes()).hexdigest() == value["sha256"]
+                   for name, value in receipts.items() if Path(name).name == name)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
 def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, closure: dict,
                                            source_checkout: Path) -> tuple[dict, dict]:
-    """Preserve approved planning and the candidate after a verified late parent-context failure."""
+    """Preserve approved planning and candidate after a verified late delivery failure."""
     try:
         from planning_contracts import _worker_runtime_audit_errors, terminal_closure_dispatch_errors
         from merge_techops_result import merged_result_errors
@@ -1368,14 +1467,15 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
                 and "parent_tool_arguments_unavailable" in errors[0]):
             context_verified = _verified_historical_tester_guard_parser_rejection(artifact_root, bindings)
         pending = ledger.get("rejected_results", {})
+        undispatched_tester = _undispatched_tester_recovery(artifact_root, prior, ledger, errors)
         pending_verified = (not pending or isinstance(pending, dict) and set(pending) == {"tester"}
-            and results.get("validate") == "blocked"
+            and (results.get("validate") == "blocked" or undispatched_tester)
             and _defer_downstream_rejection(artifact_root, "implementer", "tester", pending["tester"]))
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
                 and failure.get("reported_by") == "Coordinator" and failure.get("runtime_closure") in {"terminal", "unverified"}
                 and failure.get("run_id") == prior["identity"]["Run ID"]
-                and prior["identity"].get("Lifecycle") == "remediation" and has_context_failure
-                and context_verified
+                and prior["identity"].get("Lifecycle") == "remediation"
+                and (has_context_failure and context_verified or undispatched_tester)
                 and context.get("turn_id") == parent["turn_id"]
                 and snapshot.parent == artifact_root.resolve() and json.loads(frozen) == prior
                 and hashlib.sha256(frozen).hexdigest() == failure.get("snapshot_sha256") == failure.get("packet_sha256")
@@ -1396,7 +1496,10 @@ def _recover_post_delivery_context_failure(artifact_root: Path, prior: dict, clo
         if (not reentry.get("Approval reference") or reentry.get("Approved plan") != str(plan.resolve())
                 or hashlib.sha256(plan.read_bytes()).hexdigest() != reentry.get("Approved plan SHA256")):
             raise ValueError("remediation_recovery_plan_changed")
-        return _recover_current_accepted_candidate(artifact_root, prior, source_checkout), _verified_recovery_planning(artifact_root, prior)
+        candidate = (_recover_reviewed_checkout_candidate(artifact_root, prior, source_checkout)
+                     if undispatched_tester and not bindings.get("recovered_candidate")
+                     else _recover_current_accepted_candidate(artifact_root, prior, source_checkout))
+        return candidate, _verified_recovery_planning(artifact_root, prior)
     except (OSError, KeyError, TypeError, AttributeError, StopIteration, json.JSONDecodeError) as error:
         raise ValueError("remediation_recovery_evidence_unverified") from error
 
@@ -2059,8 +2162,10 @@ def _reentry_source(
             elif (any("parent_context_nonconformant:" in str(error) or "parent_unassigned_thread_read:" in str(error) or
                       "parent context" in str(error).lower() and "nonconformant" in str(error).lower()
                       for error in failure.get("errors", []))
+                  or _undispatched_tester_recovery(artifact_root, prior,
+                      json.loads((artifact_root / "runtime_dispatches.json").read_text()), failure.get("errors", []))) \
                   and any(row.get("Worker") == "review" and row.get("Outcome") == "complete"
-                          for row in prior.get("worker_results", []))):
+                          for row in prior.get("worker_results", [])):
                 if source_checkout is None:
                     raise ValueError("candidate_recovery_source_checkout_invalid")
                 candidate, planning_source = _recover_post_delivery_context_failure(
@@ -3185,7 +3290,8 @@ def status_projection(execution_repository: Path, work_item: str, provider_sessi
     ids = prior_run_status_thread_ids(root, parent)
     bindings_path = root / "role_bindings.json"
     packet_path = root / "finalization_packet.json"
-    if not ids and bindings_path.is_file() and packet_path.is_file():
+    if (not ids and bindings_path.is_file() and packet_path.is_file()
+            and not (root / "finalization_failure.json").exists()):
         bindings = json.loads(bindings_path.read_text())
         identity = json.loads(packet_path.read_text()).get("identity", {})
         saved_parent = bindings.get("parent_context", {})

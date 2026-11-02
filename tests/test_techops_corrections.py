@@ -22,6 +22,82 @@ from tests.worker_response_support import stage_worker_response
 
 
 class TechOpsCorrections(unittest.TestCase):
+    def test_recovery_preserves_first_planning_archive_only_when_plan_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            archive = root / "runs" / "planning-run"
+            archive.mkdir(parents=True)
+            plan = archive / "implementation_plan.md"
+            plan.write_text("Approved plan")
+            digest = hashlib.sha256(plan.read_bytes()).hexdigest()
+            planning = {"identity": {"Run ID": "planning-run", "Lifecycle": "planning",
+                        "State": "ready_for_implementation", "Workflow outcome": "completed"},
+                        "worker_results": [{"Worker": "issue-evidence"}], "claims": [{"Claim ID": "CL-1"}]}
+            packet = archive / "finalization_packet.json"
+            packet.write_text(json.dumps(planning))
+            (archive / "archive_manifest.json").write_text(json.dumps({"run_id": "planning-run", "files": [
+                {"path": "finalization_packet.json", "snapshot": packet.name, "sha256": hashlib.sha256(packet.read_bytes()).hexdigest()},
+                {"path": "implementation_plan.md", "snapshot": plan.name, "sha256": digest}]}))
+            prior = {"reentry": {"Prior run ID": "planning-run", "Prior artifacts": str(archive),
+                "Approved plan SHA256": digest, "Approval reference": "approved"}, "claims": [{"Claim ID": "CL-1"}]}
+            self.assertEqual(prepare._verified_recovery_planning(root, prior), planning)
+            plan.write_text("Changed")
+            with self.assertRaisesRegex(ValueError, "prior_archive_invalid"):
+                prepare._verified_recovery_planning(root, prior)
+
+    def test_reviewed_checkout_recovery_rejects_changed_or_unreviewed_files(self):
+        from review_evidence import delivery_evidence_fixture, PLAN_FIXTURE
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            repository, review, _ = delivery_evidence_fixture(root)
+            (root / "role_bindings.json").write_text(json.dumps({"source_checkout": str(repository)}))
+            (root / "code_review.md").write_text(review)
+            (root / "implementation_plan.md").write_text(PLAN_FIXTURE)
+            trace = root / "review.trace.json"
+            trace.write_text(json.dumps({"result_artifact": {"output_sha256": hashlib.sha256(review.encode()).hexdigest()}}))
+            prior = {"identity": {"Run ID": "run"}, "runtime_audits": [{"Worker": "review", "Trace path": str(trace)}]}
+            result = prepare._recover_reviewed_checkout_candidate(root, prior, repository)
+            self.assertEqual(set(result["files"]), {"asset.py"})
+            self.assertTrue(result["source_already_present"])
+            (repository / "unreviewed.txt").write_text("unreviewed")
+            with self.assertRaisesRegex(ValueError, "candidate_changed_paths_mismatch"):
+                prepare._recover_reviewed_checkout_candidate(root, prior, repository)
+            (repository / "unreviewed.txt").unlink()
+            (repository / "asset.py").write_text("changed after review")
+            with self.assertRaisesRegex(ValueError, "candidate_review_fingerprint_invalid"):
+                prepare._recover_reviewed_checkout_candidate(root, prior, repository)
+
+    def test_undispatched_tester_recovery_requires_exact_receipts_and_no_new_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            dispatch = root / "recovery.txt"
+            dispatch.write_text("guarded assignment")
+            digest = hashlib.sha256(dispatch.read_bytes()).hexdigest()
+            receipt = {"sha256": "rejected", "Provider handle": "/root/tester", "Last dispatch at": "2026-11-02T20:00:00Z"}
+            prior = {"identity": {"Run ID": "run"}, "runtime_audits": [
+                {"Worker": "implement", "Provider handle": "/root/implement"},
+                {"Worker": "review", "Provider handle": "/root/review"}],
+                "activation_repairs": {"tester": {"Attempt": 1, "Rejected trace SHA256": "rejected",
+                    "Provider handle": "/root/tester", "Last dispatch at": receipt["Last dispatch at"],
+                    "Corrected dispatch SHA256": digest}}}
+            ledger = {"rejected_results": {"tester": receipt}, "thread_mappings": {
+                "/root/implement": "i", "/root/review": "r", "/root/tester": "t"},
+                "events": [{"Provider handle": "/root/tester", "Last dispatch at": receipt["Last dispatch at"]}]}
+            (root / "activation_receipts.json").write_text(json.dumps({dispatch.name: {
+                "sha256": digest, "agent": "tester", "run_id": "run"}}))
+            errors = ["tester result rejected; replacement not dispatched"]
+            with patch.object(runtime, "_defer_downstream_rejection", return_value=True):
+                self.assertTrue(prepare._undispatched_tester_recovery(root, prior, ledger, errors))
+                changes = []
+                extra = copy.deepcopy(ledger); extra["thread_mappings"]["/root/replacement"] = "new"; changes.append(extra)
+                extra = copy.deepcopy(ledger); extra["failed_dispatches"] = [{"Provider handle": "/root/other"}]; changes.append(extra)
+                extra = copy.deepcopy(ledger); extra["events"].append({"Provider handle": "/root/tester", "Last dispatch at": "2026-11-02T20:01:00Z"}); changes.append(extra)
+                for changed in changes:
+                    self.assertFalse(prepare._undispatched_tester_recovery(root, prior, changed, errors))
+                self.assertFalse(prepare._undispatched_tester_recovery(root, prior, ledger, ["unrelated failure"]))
+                dispatch.write_text("changed")
+                self.assertFalse(prepare._undispatched_tester_recovery(root, prior, ledger, errors))
+
     def test_prepared_planning_contracts_explain_and_validate_role_specific_results(self):
         with tempfile.TemporaryDirectory() as directory:
             run = prepare.prepare_run(Path(directory), "FIELDS-1", "techops_issue_remediation", None, False)
@@ -88,6 +164,20 @@ class TechOpsCorrections(unittest.TestCase):
                     errors=["correction_blocked:parent_context_nonconformant:forbidden_context_reference:memory_path"])
                 failure_path.write_text(json.dumps(failure))
                 self.assertEqual(prepare._recover_post_delivery_context_failure(root, reviewed, closure, root), (candidate, planning))
+                failure["errors"] = ["tester result rejected before replacement was dispatched"]
+                failure_path.write_text(json.dumps(failure))
+                ledger["rejected_results"] = {"tester": {}}
+                ledger_path.write_text(json.dumps(ledger))
+                audit.return_value = {"status": "passed", "errors": [], "turn_id": "turn"}
+                with patch.object(prepare, "_undispatched_tester_recovery", return_value=True), \
+                     patch.object(runtime, "_defer_downstream_rejection", return_value=True), \
+                     patch.object(prepare, "_recover_reviewed_checkout_candidate", return_value=candidate):
+                    self.assertEqual(prepare._recover_post_delivery_context_failure(root, reviewed, closure, root), (candidate, planning))
+                with patch.object(prepare, "_undispatched_tester_recovery", return_value=False):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_post_delivery_context_failure(root, reviewed, closure, root)
+                ledger.pop("rejected_results")
+                ledger_path.write_text(json.dumps(ledger))
                 snapshot.write_bytes(data)
                 failure.update(snapshot_sha256=digest, packet_sha256=digest,
                     errors=["final work record blocked: parent context is nonconformant: memory_path"])
