@@ -32,6 +32,9 @@ timestamp; a substitute scan must not be reported as equivalent silently.
 
 Preserve command output and distinguish passing, failing, skipped, unavailable,
 and inconclusive checks. Do not implement fixes or make external writes.
+Do not read, print, or search another worker's raw execution trace; it can contain private host context.
+Use the Coordinator-accepted worker result and exact command receipts supplied to you, or run an authorized
+focused check. If you cannot verify a claimed result, record it as unverified rather than inferring a pass.
 
 For a bounded dependency change, run required local proof first: complete diff,
 exact resolved version, frozen dependency checks, and focused affected tests.
