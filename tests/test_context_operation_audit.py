@@ -241,6 +241,23 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact",
                       audit(body.replace(str(self.root) + ".", str(self.root) + "/runs/prior/notes.md")))
 
+    def test_python_packet_and_ancestor_instruction_checks_remain_read_only(self):
+        targets = ["AGENTS.md", ".thoughts/AGENTS.md", ".thoughts/ITEM-1/AGENTS.md"]
+        body = ("import json\nfrom pathlib import Path\np=Path('.thoughts/ITEM-1/activation.txt')\n"
+                "for line in p.read_text().splitlines():\n try:\n  d=json.loads(line)\n"
+                "  print(list(d))\n except ValueError: pass\n"
+                "for p in [" + ",".join("Path(" + repr(path) + ")" for path in targets) + "]:\n"
+                " if p.exists(): print(p.read_text())")
+        def audit(source):
+            cmd = "python3 - <<'PY'\n" + source + "\nPY"
+            return runtime.context_trace_errors({"tool_trace": self.paired(
+                'await tools.exec_command(' + json.dumps({"cmd": cmd}) + ')', "")}, artifact_root=self.root)
+        self.assertEqual(audit(body), [])
+        for changed in (body.replace("p.read_text())", "p.write_text('x'))"),
+                        body.replace(".thoughts/AGENTS.md", ".thoughts/OTHER/AGENTS.md"),
+                        body + "\nPath('.thoughts/AGENTS.md').write_text('x')"):
+            self.assertIn("forbidden_context_reference:archived_artifact", audit(changed))
+
     def test_bound_failure_reason_punctuation_is_not_an_artifact_operation(self):
         package = self.repository / "package"
         (self.root / "role_bindings.json").write_text(json.dumps({"framework_package": {"root": str(package)}}))

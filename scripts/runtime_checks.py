@@ -1911,11 +1911,26 @@ def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -
 
 def _python_instruction_reads(command: str) -> list[str]:
     """Recognize a literal optional-instruction loop without executing provider code."""
-    match = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*", command, re.S)
+    match = re.fullmatch(r"(python3|/[^\s]+/python3) - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\2\s*", command, re.S)
     if not match:
         return []
     try:
-        tree = ast.parse(match[2])
+        if match[1] != "python3" and Path(match[1]).resolve() != Path(sys.executable).resolve():
+            return []
+        tree = ast.parse(match[3])
+        # This exact read-only inspection also checks the three ancestor instruction paths.
+        if len(tree.body) == 5 and isinstance(tree.body[-1], ast.For):
+            loop = tree.body[-1]
+            selected = [ast.literal_eval(node.args[0]) for node in loop.iter.elts]
+            paths = ",".join(f"Path({target!r})" for target in selected)
+            packet = ast.literal_eval(tree.body[2].value.args[0])
+            expected = ("import json\nfrom pathlib import Path\np=Path(" + repr(packet) + ")\n"
+                        "for line in p.read_text().splitlines():\n try:\n  d=json.loads(line)\n"
+                        "  print(list(d))\n except ValueError: pass\n"
+                        "for p in [" + paths + "]:\n if p.exists(): print(p.read_text())")
+            if (isinstance(packet, str) and all(isinstance(target, str) for target in selected)
+                    and ast.dump(tree) == ast.dump(ast.parse(expected))):
+                return selected
         imports = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
         if (len(imports) != 1 or ast.dump(imports[0]) != ast.dump(ast.parse('from pathlib import Path').body[0])
                 or any(isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
