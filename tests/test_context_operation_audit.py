@@ -1121,6 +1121,25 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
             {"tool_trace": self.paired(call(command), "")}, artifact_root=self.root))
 
+    def test_python_literal_path_list_reads_only_assigned_ancestor_instructions(self):
+        paths = [str(self.repository / "AGENTS.md"), str(self.root.parent / "AGENTS.md"),
+                 str(self.root / "AGENTS.md")]
+        program = ("from pathlib import Path\npaths = " + repr(paths) + "\n"
+                   "for value in paths:\n    path = Path(value)\n    if path.is_file():\n"
+                   "        print(f'===== {value} =====')\n        print(path.read_text())\n"
+                   "    else:\n        print(f'ABSENT {value}')")
+        call = lambda script: 'await tools.exec_command(' + json.dumps({
+            "cmd": "python3 - <<'PY'\n" + script + "\nPY", "workdir": str(self.repository)}) + ')'
+        output = "".join("ABSENT " + value + "\n" for value in paths)
+        self.assertEqual(runtime.context_trace_errors(
+            {"tool_trace": self.paired(call(program), output)}, artifact_root=self.root), [])
+        for unsafe in (program + "\nprint(open('.thoughts/ITEM-1/runs/prior/secret').read())",
+                       program.replace(paths[1], str(self.root / 'runs/prior/AGENTS.md')),
+                       program.replace("path.read_text()", "path.write_text('changed')")):
+            with self.subTest(script=unsafe):
+                self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
+                    {"tool_trace": self.paired(call(unsafe), "")}, artifact_root=self.root))
+
     def test_ancestor_filename_probe_is_not_an_archive_read(self):
         for directory in ("", str(self.repository) + "/"):
             trace = self.instruction_read_trace()

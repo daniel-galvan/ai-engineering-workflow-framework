@@ -1926,6 +1926,17 @@ def _python_instruction_reads(command: str) -> list[str]:
         if match[1] != "python3" and Path(match[1]).resolve() != Path(sys.executable).resolve():
             return []
         tree = ast.parse(match[3])
+        # Exact literal path-list form: it inspects files only and never lists directories.
+        if len(tree.body) == 3 and isinstance(tree.body[1], ast.Assign):
+            selected = ast.literal_eval(tree.body[1].value)
+            if (isinstance(selected, list) and selected
+                    and all(isinstance(p, str) and Path(p).name == "AGENTS.md" for p in selected)):
+                expected = ("from pathlib import Path\npaths = " + repr(selected) + "\n"
+                            "for value in paths:\n path = Path(value)\n if path.is_file():\n"
+                            "  print(f'===== {value} =====')\n  print(path.read_text())\n"
+                            " else:\n  print(f'ABSENT {value}')")
+                if ast.dump(tree) == ast.dump(ast.parse(expected)):
+                    return selected
         # This exact read-only inspection also checks the three ancestor instruction paths.
         if len(tree.body) == 5 and isinstance(tree.body[-1], ast.For):
             loop = tree.body[-1]
