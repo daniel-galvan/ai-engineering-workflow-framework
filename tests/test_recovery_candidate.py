@@ -568,18 +568,11 @@ class CandidateRecoveryTest(unittest.TestCase):
         review_dispatch = dispatch("reviewer", None)
         implement_dispatch_path.write_bytes(implement_dispatch)
         review_dispatch_path.write_bytes(review_dispatch)
-        candidate_session = root / "implement-session.jsonl"
-        candidate_session.write_text("\n".join((
-            json.dumps({"type": "session_meta", "payload": {"id": "worker"}}),
-            json.dumps({"type": "event_msg", "payload": {"type": "item_completed", "item": {
-                "type": "FileChange", "changes": {str(repository / "asset.py"):
-                    {"type": "update", "unified_diff": "@@ -1 +1 @@\n-version = 1\n+version = 2\n"}}}}}),
-        )) + "\n")
         implement_time = "2026-11-01T10:00:00Z"
         review_time = "2026-11-01T10:05:00Z"
         implement_trace = {
             "run_id": run_id, "worker": "implementer", "audit": {"status": "passed"},
-            "trace_retrieval": str(candidate_session), "thread_id": "worker", "last_dispatch_at": implement_time,
+            "trace_retrieval": str(self.session), "thread_id": "worker", "last_dispatch_at": implement_time,
             "status_observation": {"Provider handle": "/root/implement", "Thread ID": "worker",
                                    "Last dispatch at": implement_time},
             "spawn": {"agent": "implementer", "provider_handle": "/root/implement", "thread_id": "worker",
@@ -650,11 +643,14 @@ class CandidateRecoveryTest(unittest.TestCase):
         }
         prior = {"reentry": {"Approved plan SHA256": "plan"}}
         with patch.dict(sys.modules, {"recovery_candidate": recovery}), \
-                patch.object(recovery, "verify_edit_authorization"):
+                patch.object(recovery, "verify_edit_authorization") as edit_authorization, \
+                patch.object(recovery, "verify_candidate") as candidate_replay:
             result = prepare._recover_candidate_archive(root, prior, repository, candidate,
                                                         visited=set(), check_checkout=True)
         self.assertEqual(result["_contents"], contents)
         self.assertTrue(result["source_already_present"])
+        edit_authorization.assert_not_called()
+        candidate_replay.assert_not_called()
 
         invalid_packet = json.loads(archived_files["finalization_packet.json"])
         invalid_packet["runtime_audits"][0]["Provider status"] = "failed"

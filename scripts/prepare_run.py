@@ -1109,19 +1109,26 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
             raise ValueError("candidate_recovery_snapshot_invalid")
         if check_checkout:
             verify_checkout_snapshot(source_checkout, revision, files)
-    else:
+    elif not reviewed_checkout_candidate:
         verify_edit_authorization(Path(parent["provider_session"]), parent["parent_thread_id"], session, trace["thread_id"],
             original["runtime_evidence"]["run_started_at"], Path(original["worker_runtime_guard"]),
             artifact_root / "finalization_packet.json", trace["spawn"]["provider_handle"], repository, list(files))
     if base is None and candidate.get("source_already_present") is True:
-        hashes = verify_candidate(repository, revision, session, trace["thread_id"], list(files))
-        if hashes != files:
-            raise ValueError("candidate_recovery_snapshot_invalid")
-        if check_checkout:
-            verify_checkout_snapshot(source_checkout, revision, hashes)
-            contents = {name: (source_checkout / name).read_bytes() for name in hashes}
+        if reviewed_checkout_candidate:
+            if check_checkout:
+                verify_checkout_snapshot(source_checkout, revision, files)
+                contents = {name: (source_checkout / name).read_bytes() for name in files}
+            else:
+                contents = {name: (snapshot_root / name).read_bytes() for name in files}
         else:
-            contents = {name: (snapshot_root / name).read_bytes() for name in hashes}
+            hashes = verify_candidate(repository, revision, session, trace["thread_id"], list(files))
+            if hashes != files:
+                raise ValueError("candidate_recovery_snapshot_invalid")
+            if check_checkout:
+                verify_checkout_snapshot(source_checkout, revision, hashes)
+                contents = {name: (source_checkout / name).read_bytes() for name in hashes}
+            else:
+                contents = {name: (snapshot_root / name).read_bytes() for name in hashes}
     elif base is None:
         contents = replay_candidate(source_checkout, revision, session, trace["thread_id"], repository, list(files))
     for name, data in contents.items():
