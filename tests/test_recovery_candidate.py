@@ -4,6 +4,7 @@ import importlib
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -538,6 +539,137 @@ class CandidateRecoveryTest(unittest.TestCase):
             (root / "runs" / "second" / "trace_first.json").write_text("tampered")
             with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
                 prepare._recover_candidate_archive(root, prior, self.repo, candidate, visited=set(), check_checkout=True)
+
+    def test_reviewer_archive_recovers_candidate_through_accepted_implementer_trace(self):
+        from scripts.review_evidence import PLAN_FIXTURE, delivery_evidence_fixture
+
+        repository, review, _ = delivery_evidence_fixture(self.root)
+        root = self.root / "reviewed-artifacts"
+        root.mkdir()
+        run_id = "reviewed-run"
+        artifact_archive = root / "runs" / run_id
+        artifact_archive.mkdir(parents=True)
+        contents = {"asset.py": (repository / "asset.py").read_bytes()}
+        hashes = {name: hashlib.sha256(data).hexdigest() for name, data in contents.items()}
+        snapshot_root = root / ("recovery_candidate." + run_id)
+        snapshot_replayed_candidate(snapshot_root, hashes, contents)
+
+        implement_dispatch_path = root / "implement_dispatch.md"
+        review_dispatch_path = root / "review_dispatch.md"
+
+        def dispatch(agent, recovered_candidate):
+            packet = {"run_id": run_id, "agent": agent,
+                      "coordinator_execution": {"source_checkout": str(repository)},
+                      "worker_contract": {"recovered_candidate": recovered_candidate}}
+            return ("Coordinator initialization: complete\n" + json.dumps(packet)
+                    + "\nTyped assignment:\n{}\n").encode()
+
+        implement_dispatch = dispatch("implementer", None)
+        review_dispatch = dispatch("reviewer", None)
+        implement_dispatch_path.write_bytes(implement_dispatch)
+        review_dispatch_path.write_bytes(review_dispatch)
+        candidate_session = root / "implement-session.jsonl"
+        candidate_session.write_text("\n".join((
+            json.dumps({"type": "session_meta", "payload": {"id": "worker"}}),
+            json.dumps({"type": "event_msg", "payload": {"type": "item_completed", "item": {
+                "type": "FileChange", "changes": {str(repository / "asset.py"):
+                    {"type": "update", "unified_diff": "@@ -1 +1 @@\n-version = 1\n+version = 2\n"}}}}}),
+        )) + "\n")
+        implement_time = "2026-11-01T10:00:00Z"
+        review_time = "2026-11-01T10:05:00Z"
+        implement_trace = {
+            "run_id": run_id, "worker": "implementer", "audit": {"status": "passed"},
+            "trace_retrieval": str(candidate_session), "thread_id": "worker", "last_dispatch_at": implement_time,
+            "status_observation": {"Provider handle": "/root/implement", "Thread ID": "worker",
+                                   "Last dispatch at": implement_time},
+            "spawn": {"agent": "implementer", "provider_handle": "/root/implement", "thread_id": "worker",
+                      "dispatch_file": str(implement_dispatch_path),
+                      "dispatch_file_sha256": hashlib.sha256(implement_dispatch).hexdigest()},
+        }
+        review_trace = {
+            "run_id": run_id, "worker": "reviewer", "audit": {"status": "passed"},
+            "result_artifact": {"output_sha256": hashlib.sha256(review.encode()).hexdigest()},
+            "trace_retrieval": str(self.session), "thread_id": "review-worker", "last_dispatch_at": review_time,
+            "status_observation": {"Provider handle": "/root/review", "Thread ID": "review-worker",
+                                   "Last dispatch at": review_time},
+            "spawn": {"agent": "reviewer", "provider_handle": "/root/review", "thread_id": "review-worker",
+                      "dispatch_file": str(review_dispatch_path),
+                      "dispatch_file_sha256": hashlib.sha256(review_dispatch).hexdigest()},
+        }
+        implement_path = root / "implement.trace.json"
+        review_path = root / "review.trace.json"
+        implement_audit = {"Worker": "implement", "Provider handle": "/root/implement",
+                           "Provider status": "completed", "Thread ID": "worker",
+                           "Last dispatch at": implement_time, "Trace path": str(implement_path)}
+        review_audit = {"Worker": "review", "Provider handle": "/root/review",
+                        "Provider status": "completed", "Thread ID": "review-worker",
+                        "Last dispatch at": review_time, "Trace path": str(review_path)}
+        original = {
+            "source_checkout": str(repository), "execution_repository": str(repository),
+            "parent_context": {"provider_session": str(self.session), "parent_thread_id": "parent"},
+            "runtime_evidence": {"run_started_at": "start"},
+            "worker_runtime_guard": str(root / "worker-runtime-guard"),
+        }
+        original_packet = {
+            "identity": {"Run ID": run_id}, "reentry": {"Approved plan SHA256": "plan"},
+            "worker_results": [{"Worker": "implement", "Outcome": "complete"},
+                               {"Worker": "review", "Outcome": "complete"}],
+            "runtime_audits": [implement_audit, review_audit],
+        }
+        receipts = {
+            implement_dispatch_path.name: {"sha256": hashlib.sha256(implement_dispatch).hexdigest(),
+                                           "run_id": run_id, "agent": "implementer"},
+            review_dispatch_path.name: {"sha256": hashlib.sha256(review_dispatch).hexdigest(),
+                                        "run_id": run_id, "agent": "reviewer"},
+        }
+
+        archived_files = {
+            "code_review.md": review.encode(), "implementation_plan.md": PLAN_FIXTURE.encode(),
+            "role_bindings.json": json.dumps(original).encode(),
+            "finalization_packet.json": json.dumps(original_packet).encode(),
+            "activation_receipts.json": json.dumps(receipts).encode(),
+            "implement.trace.json": json.dumps(implement_trace).encode(),
+            "review.trace.json": json.dumps(review_trace).encode(),
+            implement_dispatch_path.name: implement_dispatch,
+            review_dispatch_path.name: review_dispatch,
+        }
+        manifest_rows = []
+        for name, data in archived_files.items():
+            (artifact_archive / name).write_bytes(data)
+            manifest_rows.append({"path": name, "snapshot": name, "sha256": hashlib.sha256(data).hexdigest()})
+        (artifact_archive / "archive_manifest.json").write_text(
+            json.dumps({"run_id": run_id, "files": manifest_rows}))
+        candidate = {
+            "prior_run_id": run_id, "status": "unaccepted",
+            "trace_sha256": hashlib.sha256(archived_files["review.trace.json"]).hexdigest(),
+            "baseline_revision": subprocess.check_output(
+                ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True).strip(),
+            "files": hashes, "source_already_present": True,
+            "snapshot_run_id": run_id,
+            "snapshot_files": {str(snapshot_root / name): digest for name, digest in hashes.items()},
+        }
+        prior = {"reentry": {"Approved plan SHA256": "plan"}}
+        with patch.dict(sys.modules, {"recovery_candidate": recovery}), \
+                patch.object(recovery, "verify_edit_authorization"):
+            result = prepare._recover_candidate_archive(root, prior, repository, candidate,
+                                                        visited=set(), check_checkout=True)
+        self.assertEqual(result["_contents"], contents)
+        self.assertTrue(result["source_already_present"])
+
+        invalid_packet = json.loads(archived_files["finalization_packet.json"])
+        invalid_packet["runtime_audits"][0]["Provider status"] = "failed"
+        invalid_packet_bytes = json.dumps(invalid_packet).encode()
+        (artifact_archive / "finalization_packet.json").write_bytes(invalid_packet_bytes)
+        manifest_path = artifact_archive / "archive_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        packet_row = next(row for row in manifest["files"] if row["path"] == "finalization_packet.json")
+        packet_row["sha256"] = hashlib.sha256(invalid_packet_bytes).hexdigest()
+        manifest_path.write_text(json.dumps(manifest))
+        with patch.dict(sys.modules, {"recovery_candidate": recovery}), \
+                patch.object(recovery, "verify_edit_authorization"):
+            with self.assertRaisesRegex(ValueError, "candidate_recovery_archive_evidence_invalid"):
+                prepare._recover_candidate_archive(root, prior, repository, candidate,
+                                                   visited=set(), check_checkout=True)
 
     def test_activation_requires_assigned_unchanged_snapshot(self):
         worktree = self.root / "worktree"

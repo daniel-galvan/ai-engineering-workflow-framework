@@ -867,8 +867,126 @@ def _recover_candidate_archive(artifact_root: Path, prior: dict, source_checkout
     files, revision = candidate["files"], candidate["baseline_revision"]
     repository = Path(original.get("source_checkout", original["execution_repository"])).resolve()
     common = _git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    reviewed_checkout_candidate = (
+        candidate.get("source_already_present") is True and trace.get("worker") == "reviewer"
+    )
+    if reviewed_checkout_candidate:
+        try:
+            from review_evidence import (
+                _candidate_fields, plan_review_coverage_errors, review_candidate_metadata_errors,
+                review_report_errors,
+            )
+        except ModuleNotFoundError:
+            from scripts.review_evidence import (
+                _candidate_fields, plan_review_coverage_errors, review_candidate_metadata_errors,
+                review_report_errors,
+            )
+        review_trace = trace
+        review_path = archived("code_review.md")
+        review_text = review_path.decode()
+        review_audits = [row for row in original_packet.get("runtime_audits", [])
+                         if row.get("Worker") == "review"]
+        review_results = [row for row in original_packet.get("worker_results", [])
+                          if row.get("Worker") == "review" and row.get("Outcome") == "complete"]
+        review_audit = review_audits[0] if len(review_audits) == 1 else {}
+        review_observation = review_trace.get("status_observation", {})
+        receipts = json.loads(archived("activation_receipts.json"))
+        if not isinstance(receipts, dict):
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+
+        def archived_dispatch_packet(saved_trace: dict, agent: str) -> dict:
+            spawn = saved_trace.get("spawn", {})
+            if not isinstance(spawn, dict):
+                raise ValueError("candidate_recovery_archive_evidence_invalid")
+            dispatch_file = spawn.get("dispatch_file")
+            if not isinstance(dispatch_file, str) or not dispatch_file:
+                raise ValueError("candidate_recovery_archive_evidence_invalid")
+            dispatch_path = Path(dispatch_file).resolve()
+            if dispatch_path.parent != artifact_root.resolve():
+                raise ValueError("candidate_recovery_archive_evidence_invalid")
+            raw = archived(dispatch_path.name)
+            digest = hashlib.sha256(raw).hexdigest()
+            receipt = receipts.get(dispatch_path.name, {})
+            if (not isinstance(receipt, dict) or digest != spawn.get("dispatch_file_sha256")
+                    or receipt.get("sha256") != digest
+                    or receipt.get("run_id") != run_id or receipt.get("agent") != agent):
+                raise ValueError("candidate_recovery_archive_evidence_invalid")
+            try:
+                packet = json.loads(raw.decode().split("\n", 2)[1])
+                if not isinstance(packet, dict):
+                    raise ValueError("dispatch packet must be an object")
+                execution = packet.get("coordinator_execution", {})
+                if not isinstance(execution, dict):
+                    raise ValueError("coordinator execution must be an object")
+                checkout = Path(execution.get("source_checkout", "")).resolve()
+            except (IndexError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+                raise ValueError("candidate_recovery_archive_evidence_invalid") from None
+            if packet.get("run_id") != run_id or packet.get("agent") != agent or checkout != source_checkout.resolve():
+                raise ValueError("candidate_recovery_archive_evidence_invalid")
+            return packet
+
+        review_fields, review_field_errors = _candidate_fields(review_text)
+        review_trace_path = review_audit.get("Trace path")
+        if not isinstance(review_trace_path, str) or not review_trace_path:
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        review_errors = [
+            *review_field_errors,
+            *review_candidate_metadata_errors(review_text, expected_repository=source_checkout),
+            *review_report_errors(review_text, require_accepted=True),
+            *plan_review_coverage_errors(archived("implementation_plan.md").decode(), review_text),
+        ]
+        if (len(review_results) != 1 or len(review_audits) != 1 or review_errors
+                or review_fields.get("Base revision") != revision
+                or review_trace.get("run_id") != run_id or review_trace.get("worker") != "reviewer"
+                or review_trace.get("audit", {}).get("status") != "passed"
+                or review_trace.get("spawn", {}).get("agent") != "reviewer"
+                or review_trace.get("spawn", {}).get("thread_id") != review_trace.get("thread_id")
+                or review_trace.get("result_artifact", {}).get("output_sha256")
+                    != hashlib.sha256(review_text.encode()).hexdigest()
+                or Path(review_trace_path).resolve().parent != artifact_root.resolve()
+                or Path(review_trace_path).name != trace_rows[0]["path"]
+                or review_audit.get("Provider status") != "completed"
+                or review_audit.get("Provider handle") != review_trace.get("spawn", {}).get("provider_handle")
+                or review_audit.get("Thread ID") != review_trace.get("thread_id")
+                or review_audit.get("Last dispatch at") != review_trace.get("last_dispatch_at")
+                or review_observation.get("Provider handle") != review_audit.get("Provider handle")
+                or review_observation.get("Thread ID") != review_audit.get("Thread ID")
+                or review_observation.get("Last dispatch at") != review_audit.get("Last dispatch at")):
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        archived_dispatch_packet(review_trace, "reviewer")
+        implement_audits = [row for row in original_packet.get("runtime_audits", [])
+                            if row.get("Worker") == "implement"]
+        implement_results = [row for row in original_packet.get("worker_results", [])
+                             if row.get("Worker") == "implement" and row.get("Outcome") == "complete"]
+        implement_audit = implement_audits[0] if len(implement_audits) == 1 else {}
+        implement_trace_path = implement_audit.get("Trace path")
+        if not isinstance(implement_trace_path, str) or not implement_trace_path:
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        implement_path = Path(implement_trace_path).resolve()
+        implement_rows = [row for row in manifest["files"] if row.get("path") == implement_path.name
+                          and Path(str(row.get("path", ""))).name == row.get("path")
+                          and str(row.get("path", "")).endswith(".json")]
+        if (len(implement_results) != 1 or len(implement_audits) != 1
+                or implement_path.parent != artifact_root.resolve() or len(implement_rows) != 1):
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        trace = json.loads(archived(implement_rows[0]["path"]))
+        implement_observation = trace.get("status_observation", {})
+        if (trace.get("run_id") != run_id or trace.get("worker") not in {"implementer", "implement"}
+                or trace.get("audit", {}).get("status") != "passed"
+                or trace.get("spawn", {}).get("agent") != "implementer"
+                or trace.get("spawn", {}).get("thread_id") != trace.get("thread_id")
+                or implement_audit.get("Provider status") != "completed"
+                or implement_audit.get("Provider handle") != trace.get("spawn", {}).get("provider_handle")
+                or implement_audit.get("Thread ID") != trace.get("thread_id")
+                or implement_audit.get("Last dispatch at") != trace.get("last_dispatch_at")
+                or implement_observation.get("Provider handle") != implement_audit.get("Provider handle")
+                or implement_observation.get("Thread ID") != implement_audit.get("Thread ID")
+                or implement_observation.get("Last dispatch at") != implement_audit.get("Last dispatch at")):
+            raise ValueError("candidate_recovery_archive_evidence_invalid")
+        archived_dispatch_packet(trace, "implementer")
     if (trace.get("run_id") != run_id or trace.get("worker") not in {"implementer", "implement"}
-            or trace.get("audit", {}).get("status") not in ({"rejected", "passed"} if candidate.get("base_candidate") else {"rejected"})
+            or trace.get("audit", {}).get("status") not in (
+                {"rejected", "passed"} if candidate.get("base_candidate") or reviewed_checkout_candidate else {"rejected"})
             or original_packet.get("identity", {}).get("Run ID") != run_id
             or original_packet.get("reentry", {}).get("Approved plan SHA256") != prior["reentry"]["Approved plan SHA256"]
             or common == "Unknown" or common != _git(source_checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")):
