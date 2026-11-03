@@ -882,6 +882,17 @@ class ParentContext(unittest.TestCase):
             self.call("exec_command", cmd=f"sed -n '1,20p' {playbook}")]
         self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
 
+        versioned_python = f"python3.15 {framework}/scripts/run_preflight.py"
+        observed_versioned = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
+            "type": "CommandExecution", "command": ["/bin/bash", "-lc", versioned_python],
+            "status": "completed", "exit_code": 0,
+            "aggregated_output": json.dumps({"status": "passed"})}}}
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=versioned_python), observed_versioned,
+                                     self.call("exec_command", cmd=f"sed -n '1,20p' {playbook}")]
+        self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
+
+        self.rows = self.rows[:2] + [self.call("exec_command", cmd=preflight), observed_preflight,
+                                     self.call("exec_command", cmd=f"sed -n '1,20p' {playbook}")]
         observed_preflight["payload"]["item"]["exit_code"] = 2
         observed_preflight["payload"]["item"]["aggregated_output"] = json.dumps({"status": "blocked"})
         result = self.audit(framework_root=framework, require_preflight_order=True)

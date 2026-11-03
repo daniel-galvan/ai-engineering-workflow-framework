@@ -756,7 +756,7 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
         if not completed_preflight and command in empty_memory_probes:
             continue
         is_preflight = (
-            len(argv) >= 2 and Path(argv[0]).name in {"python", "python3"}
+            len(argv) >= 2 and bool(re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(argv[0]).name))
             and Path(argv[1]).name == "run_preflight.py"
             and ((Path(argv[1]).is_absolute() and Path(argv[1]).resolve() == preflight_path)
                  or argv[1] in {"scripts/run_preflight.py", "./scripts/run_preflight.py"})
