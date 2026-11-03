@@ -1305,7 +1305,7 @@ def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure
             and _verified_reviewer_replacement_context_failure(artifact_root)
             and trace.get("audit", {}).get("status") == "rejected"
             and recorded_errors == {"worker_fan_in_rejected", "forbidden_context_reference:memory_path"}
-            and current_errors == ["worker_fan_in_rejected"])
+            and set(current_errors) == recorded_errors)
         closure_reverified = (failure.get("runtime_closure") == "terminal" or
                               replacement_context_failure and failure.get("runtime_closure") == "unverified")
         if not (failure.get("status") == "failed" and failure.get("stage") == "workflow"
@@ -1319,7 +1319,12 @@ def _recover_terminal_reviewer_failure(artifact_root: Path, prior: dict, closure
                 and trace.get("worker") == "reviewer" and trace.get("spawn", {}).get("provider_handle") == pending["Provider handle"]
                 and trace.get("last_dispatch_at") == pending["Last dispatch at"]
                 and _verified_dispatch_content(trace) and handles and ledger["timing"]["open_worker_intervals"] == 0
-                and any(row.get("Provider handle") == pending["Provider handle"] and row.get("Provider status") == "completed"
+                and any(row.get("Provider handle") == pending["Provider handle"]
+                        and (row.get("Provider status") == "completed"
+                             or row.get("Provider status") == "idle"
+                             and row.get("Status source") in {"read_thread", "wait_threads"}
+                             and row.get("Latest turn status") == "completed"
+                             and row.get("Thread status") in {"idle", "notLoaded"})
                         and row.get("Last dispatch at") == pending["Last dispatch at"]
                         and row.get("Thread ID") == trace.get("thread_id") for row in observations)
                 and len(observations) == len(handles) and not terminal_closure_dispatch_errors(packet_path, observations, historical_recovery=True)

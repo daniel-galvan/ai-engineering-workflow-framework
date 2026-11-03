@@ -800,8 +800,10 @@ class TechOpsCorrections(unittest.TestCase):
             ledger = {"thread_mappings": {"/root/review": "thread"}, "rejected_results": {"reviewer": pending},
                       "timing": {"open_worker_intervals": 0}}
             (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
-            observations = [{"Provider handle": "/root/review", "Provider status": "completed",
-                             "Thread ID": "thread", "Last dispatch at": "time"}]
+            observations = [{"Provider handle": "/root/review", "Provider status": "idle",
+                             "Status source": "read_thread", "Thread status": "idle",
+                             "Latest turn status": "completed", "Thread ID": "thread",
+                             "Last dispatch at": "time"}]
             closure = {"terminal_observations": observations}
             def save(value):
                 frozen = json.dumps(value).encode()
@@ -823,6 +825,11 @@ class TechOpsCorrections(unittest.TestCase):
                  patch.object(prepare, "_recover_current_accepted_candidate", return_value=candidate):
                 result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
                 self.assertEqual((result, saved), (candidate, planning))
+                observations[0]["Latest turn status"] = "in_progress"
+                with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                    prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+                observations[0]["Latest turn status"] = "completed"
+                observations[0]["Provider status"] = "completed"
                 failure_path = root / "finalization_failure.json"
                 failure = json.loads(failure_path.read_text())
                 failure["runtime_closure"] = "unverified"
@@ -837,6 +844,14 @@ class TechOpsCorrections(unittest.TestCase):
                 self.assertTrue(prepare._can_defer_reviewer_parent_audit(
                     root, {"status": "rejected", "errors": ["parent_tool_arguments_unavailable"]}, True))
                 with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=["stale"]):
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+                with patch("runtime_checks.trace_errors", return_value=[
+                    "worker_fan_in_rejected", "forbidden_context_reference:memory_path"]):
+                    result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
+                    self.assertEqual((result, saved), (candidate, planning))
+                with patch("runtime_checks.trace_errors", return_value=[
+                    "worker_fan_in_rejected", "forbidden_context_reference:archived_artifact"]):
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
                 failure["errors"] = [prepare._REVIEWER_REPLACEMENT_CONTEXT_FAILURE + " extra"]
