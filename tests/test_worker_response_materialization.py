@@ -179,6 +179,7 @@ class WorkerResponseMaterialization(unittest.TestCase):
             role = "current_state_investigator"
             packet = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"][role]
             contract = packet["worker_contract"]
+            self.assertIn("Do not write the assigned output or result files directly", contract["result_instructions"])
             output_path, result_path = Path(contract["output"]), Path(contract["result"])
             self.assertFalse(output_path.exists())
             self.assertFalse(result_path.exists())
@@ -237,7 +238,9 @@ class WorkerResponseMaterialization(unittest.TestCase):
             parent.write_text("\n".join(json.dumps(row) for row in parent_rows) + "\n")
 
             activation_read = dispatch_file.read_text()
-            child = root / "child.jsonl"
+            sessions = root / ".codex" / "sessions"
+            sessions.mkdir(parents=True)
+            child = sessions / f"rollout-{CHILD}.jsonl"
             child_rows = [
                 event(0, "session_meta", {"id": CHILD}),
                 event(2, "response_item", {"type": "function_call", "name": "exec_command",
@@ -286,6 +289,7 @@ class WorkerResponseMaterialization(unittest.TestCase):
             ledger = read_runtime_events(parent, PARENT, run["runtime_evidence"]["run_started_at"])
             trace = export_worker_trace(ledger, child, role, run_id=run["run_id"], artifact_root=root)
             self.assertEqual(trace["audit"]["status"], "passed", trace["audit"]["errors"])
+            self.assertNotIn("forbidden_context_reference:session_log", trace["audit"]["errors"])
             self.assertEqual(trace["status_observation"]["Latest turn ID"], CORRECTION_TURN)
             with self.assertRaisesRegex(ValueError, "worker_final_response_turn_id_required"):
                 worker_final_response(child, trace["last_dispatch_at"], observed_at,
@@ -298,6 +302,16 @@ class WorkerResponseMaterialization(unittest.TestCase):
             self.assertEqual(Path(trace["result_artifact"]["output_path"]).read_text(), narrative)
             self.assertFalse(output_path.exists())
             self.assertFalse(result_path.exists())
+
+            unrelated = sessions / "unrelated.jsonl"
+            unrelated_rows = list(child_rows)
+            unrelated_rows[0] = event(0, "session_meta", {"id": "unrelated-thread"})
+            unrelated.write_text("\n".join(json.dumps(row) for row in unrelated_rows) + "\n")
+            mismatched = {**trace, "trace_retrieval": str(unrelated)}
+            errors = runtime_checks.trace_errors(mismatched, require_freshness=True)
+            self.assertIn("worker_trace_session_mismatch", errors)
+            self.assertIn("forbidden_context_reference:session_log",
+                          runtime_checks.context_trace_errors(mismatched))
 
             Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
             trace_path = root / "trace.json"

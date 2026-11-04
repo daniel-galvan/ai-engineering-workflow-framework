@@ -3228,6 +3228,8 @@ def prepare_run(
                     f"{artifact_root / 'finalization_packet.json'} --agent {agent} --response-stdin. "
                     "Correct any validation errors and rerun it; return its successful stdout unchanged as the JSON. "
                     "This read-only preview does not accept or merge the result. "
+                    "Do not write the assigned output or result files directly; return their contents only in this "
+                    "JSON response, and let the Coordinator merger publish them after acceptance. "
                     "Return exactly one strict JSON object with keys "
                     "output (narrative string) and result (the JSON envelope with run_id, worker_result, and "
                     "evidence/claims/decisions/actions arrays). The Coordinator captures this answer into immutable "

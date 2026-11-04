@@ -123,6 +123,9 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
     contract = bindings.get("worker_contracts", {}).get(role, {})
     if not contract.get("result_hash_required"):
         return []
+    retrieval = trace.get("trace_retrieval")
+    if _is_codex_session_path(retrieval) and _verified_trace_retrieval_path(trace) is None:
+        return ["worker_trace_session_mismatch:" + role]
     receipt = trace.get("result_artifact", {})
     try:
         root = root.resolve()
@@ -2320,8 +2323,35 @@ def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
     return text
 
 
+def _is_codex_session_path(value: object) -> bool:
+    return isinstance(value, str) and re.search(r"[/\\]\.codex[/\\]sessions[/\\]", value) is not None
+
+
+def _verified_trace_retrieval_path(trace: dict[str, object]) -> Path | None:
+    """Verify the trace locator's filename binds it to the worker thread."""
+    value = trace.get("trace_retrieval")
+    spawn, observation = trace.get("spawn"), trace.get("status_observation")
+    if not isinstance(value, str) or not isinstance(spawn, dict) or not isinstance(observation, dict):
+        return None
+    thread_ids = (trace.get("thread_id"), spawn.get("thread_id"), observation.get("Thread ID"))
+    if (any(not isinstance(thread, str) or not thread for thread in thread_ids)
+            or len(set(thread_ids)) != 1
+            or not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", thread_ids[0])):
+        return None
+    try:
+        path = Path(value).resolve(strict=True)
+    except (OSError, ValueError, TypeError):
+        return None
+    # Codex names session files with their thread UUID; reject a different session before reading it.
+    if (not _is_codex_session_path(str(path)) or path.suffix != ".jsonl"
+            or thread_ids[0] not in path.name):
+        return None
+    return path
+
+
 def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
-                         input_paths: tuple[str, ...] = (), artifact_root: Path | None = None) -> list[str]:
+                         input_paths: tuple[str, ...] = (), artifact_root: Path | None = None,
+                         verified_trace_retrieval: Path | None = None) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
@@ -2358,6 +2388,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                          for row in trace.get("tool_trace", []) if root and isinstance(row, dict) and row.get("call_id")
                          and row.get("type") in {"function_call", "custom_tool_call"}}
     for path, value in _trace_strings(trace):
+        if path == ("trace_retrieval",) and verified_trace_retrieval is not None:
+            if Path(value).resolve() == verified_trace_retrieval:
+                continue
         if any(path[:len(prefix)] == prefix for prefix in source_outputs):
             continue
         candidate = value
@@ -2583,6 +2616,10 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
                  context_details: list[dict] | None = None) -> list[str]:
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
+    retrieval = trace.get("trace_retrieval")
+    verified_retrieval = _verified_trace_retrieval_path(trace)
+    if _is_codex_session_path(retrieval) and verified_retrieval is None:
+        return ["worker_trace_session_mismatch"]
     if not isinstance(trace.get("events", []), list):
         return ["runtime_event_invalid"]
     launch_errors = trace.get("launch_errors", [])
@@ -2671,7 +2708,8 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
         if failure.get("evidence_artifact_required"):
             errors.append("analytical_failure_artifact_absent")
     errors.extend(planning_permission_errors(trace))
-    errors.extend(context_trace_errors(trace, details=context_details))
+    errors.extend(context_trace_errors(trace, details=context_details,
+                                       verified_trace_retrieval=verified_retrieval))
     return list(dict.fromkeys(errors))
 
 

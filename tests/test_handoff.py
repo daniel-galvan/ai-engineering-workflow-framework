@@ -48,7 +48,7 @@ class V5Handoff(unittest.TestCase):
         self.assertIn("For Sentry planning, follow", packet["developer_instructions"])
         self.assertIn("create implementation_plan as well as output", contract["instructions"])
         fields = bundle["packets"]["solution_architect"]["worker_contract"]["result_instructions"]
-        self.assertIn("plan_readiness with implementation_plan_action", fields)
+        self.assertIn("result.techops_checks, result.plan_readiness and result.implementation_plan_action", fields)
         self.assertNotIn("plan_readiness", bundle["packets"]["solution_architect"]["worker_contract"]["result_fields"])
         self.assertIn("Work item evidence refs", bundle["packets"]["solution_architect"]["worker_contract"]["instructions"])
 
