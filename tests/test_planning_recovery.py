@@ -13,7 +13,7 @@ from scripts import finalize_work_record as finalizer
 from scripts import prepare_run as preparation
 from scripts.merge_techops_result import merge_result
 from scripts.review_evidence import PLAN_FIXTURE, draft_plan_errors
-from scripts.worker_runtime_evidence import read_runtime_events
+from scripts.worker_runtime_evidence import read_runtime_events, terminal_closure
 from tests.worker_response_support import stage_worker_response
 
 
@@ -113,6 +113,34 @@ class PlanningRecovery(unittest.TestCase):
         self.assertNotIn('Approved plan', current['recovery'])
         self.assertFalse(any(Path(row['Path']).name == 'implementation_plan.md'
                              for row in current['durable_artifacts']))
+
+    def test_zero_dispatch_techops_planning_recovery_accepts_terminal_receipt(self):
+        self.packet['identity'].update({
+            'Playbook / version': 'techops_issue_remediation / 1',
+            'Requested profile': 'standard',
+            'Lifecycle': 'planning',
+            'State': 'awaiting_input',
+        })
+        self.packet_path.write_text(json.dumps(self.packet))
+        frozen = self.packet_path.read_bytes()
+        snapshot = self.artifacts / 'finalization_snapshot.json'
+        snapshot.write_bytes(frozen)
+        digest = hashlib.sha256(frozen).hexdigest()
+        (self.artifacts / 'finalization_failure.json').write_text(json.dumps({
+            'status': 'failed', 'stage': 'workflow', 'run_id': self.packet['identity']['Run ID'],
+            'packet_snapshot': str(snapshot.resolve()), 'packet_sha256': digest,
+            'snapshot_sha256': digest,
+        }))
+        (self.artifacts / 'runtime_closure.json').write_text(json.dumps(terminal_closure({
+            'thread_mappings': {}, 'timing': {'open_worker_intervals': 0},
+        })))
+
+        prior = preparation._reentry_source(
+            self.artifacts, 'User authorized same-chat recovery', planning_recovery=True,
+            expected_playbook='techops_issue_remediation',
+        )
+
+        self.assertEqual(prior['identity']['Run ID'], self.packet['identity']['Run ID'])
 
     def test_hash_bound_failure_receipt_allows_recovery_of_provisional_packet(self):
         self.close_prior()

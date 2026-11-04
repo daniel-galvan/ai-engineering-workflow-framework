@@ -2437,7 +2437,7 @@ def _reentry_source(
             raise ValueError("prior_worker_runtime_closure_required")
         handles = [handle.strip() for row in rows if row["Runtime status"].lower() == "terminal"
                    for handle in re.split(r",|;", row["Completed worker handles"])
-                   if handle.strip() and not (failed_delivery and handle.strip().lower() == "none dispatched")]
+                   if handle.strip() and handle.strip().lower() != "none dispatched"]
         if handles and terminal_observation_errors(closure.get("terminal_observations"), handles,
                                                    require_completed=False, allow_inactive_message=True):
             raise ValueError("prior_worker_runtime_closure_required")
