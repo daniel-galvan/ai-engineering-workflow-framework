@@ -2067,6 +2067,9 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                                       ["test", "-f", argument])
                     for output in (["printf", "%s\\n", argument], ["echo", argument]))
                 valid = valid or include_probes and tail == [
+                    "do", "if", "test", "-e", variable, "then", "printf", "present %s\\n", variable,
+                    "else", "printf", "absent %s\\n", variable, "fi", "done"]
+                valid = valid or include_probes and tail == [
                     "do", "test", "!", "-f", variable, "||", "printf", "%s\\n", variable, "done"]
                 for condition in conditions:
                     prefix = ["do", "if", *condition, "then"]

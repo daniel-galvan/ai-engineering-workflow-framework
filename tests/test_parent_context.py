@@ -1065,7 +1065,18 @@ class ParentContext(unittest.TestCase):
         self.rows.append(self.call("exec_command", cmd="test -f " + str(shared_instructions)))
         self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
 
+        command = (f"for f in {shared_instructions} {artifact_root}/AGENTS.md "
+                   f"{artifact_root}/assignment_issue_evidence.json; "
+                   "do if test -e \"$f\"; then printf 'present %s\\n' \"$f\"; "
+                   "else printf 'absent %s\\n' \"$f\"; fi; done")
+        self.rows[-1] = self.call("exec_command", cmd=command)
+        self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
+
         archived = self.root / ".thoughts" / "OTHER" / "runs" / "old" / "notes.md"
+        self.rows[-1] = self.call("exec_command", cmd=command.replace(
+            str(artifact_root / "assignment_issue_evidence.json"), str(archived)))
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      self.audit(artifact_root=artifact_root)["errors"])
         self.rows[-1]["payload"]["arguments"] = json.dumps({"cmd": "test -f " + str(archived)})
         self.assertIn("forbidden_context_reference:archived_artifact",
                       self.audit(artifact_root=artifact_root)["errors"])
