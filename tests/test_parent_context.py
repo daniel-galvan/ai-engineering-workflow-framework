@@ -599,6 +599,46 @@ class ParentContext(unittest.TestCase):
             self.assertEqual(self.audit(artifact_root=root, related_run_thread_ids=(TURN,),
                 runtime_evidence=runtime)["status"], "passed")
 
+    def test_parent_allows_only_current_run_worker_trace_session(self):
+        artifact_root = self.root / ".thoughts" / "ITEM-1"
+        artifact_root.mkdir(parents=True)
+        sessions = self.root / ".codex" / "sessions" / "2026" / "10" / "01"
+        sessions.mkdir(parents=True)
+        self.source = sessions / f"rollout-parent-{PARENT}.jsonl"
+        worker_session = sessions / f"rollout-worker-{CHILD}.jsonl"
+        worker_session.write_text(json.dumps({"type": "session_meta", "payload": {"id": CHILD}}) + "\n")
+        runtime = {"run_started_at": "2026-10-01T00:00:00Z",
+                   "collector": str(Path(__file__).resolve().parents[1] / "scripts" / "worker_runtime_evidence.py"),
+                   "ledger": str(artifact_root / "runtime_dispatches.json")}
+        script = Path(runtime["collector"])
+        native = {"thread_mappings": {"/root/worker": CHILD}, "events": [
+            {"Provider handle": "/root/worker", "Thread ID": CHILD,
+             "Last dispatch at": runtime["run_started_at"]}]}
+
+        def command(session):
+            return shlex.join(["python3", str(script), "--provider-session", str(self.source),
+                "--parent-thread-id", PARENT, "--started-at", runtime["run_started_at"],
+                "--ledger", runtime["ledger"], "--worker-session", str(session), "--agent",
+                "current_state_investigator", "--trace", str(artifact_root / "trace.json")])
+
+        self.rows.append(self.call("exec_command", cmd=command(worker_session), workdir=str(self.root)))
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
+            result = self.audit(artifact_root=artifact_root, related_run_thread_ids=(), runtime_evidence=runtime)
+            self.assertEqual(result["status"], "passed", result)
+
+            prior_thread = "00000000-0000-0000-0000-000000000004"
+            prior_session = sessions / f"rollout-prior-{prior_thread}.jsonl"
+            prior_session.write_text(json.dumps({"type": "session_meta", "payload": {"id": prior_thread}}) + "\n")
+            self.rows[-1] = self.call("exec_command", cmd=command(prior_session), workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
+            appended = command(worker_session) + "; cat " + str(prior_session)
+            self.rows[-1] = self.call("exec_command", cmd=appended, workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
+
     def test_status_projection_helper_includes_prior_parent_and_worker_without_writing(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
         artifact_root.mkdir(parents=True)
