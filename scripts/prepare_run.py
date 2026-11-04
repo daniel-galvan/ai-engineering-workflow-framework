@@ -3004,11 +3004,9 @@ def prepare_run(
     if prior:
         archived_path = _archive_recovery(artifact_root, prior["identity"]["Run ID"])
         archived = str(archived_path)
-        for name in ("pre_release_check.json", "finalization_failure.json", "runtime_closure.json", "run_budget.json"):
+        for name in ("pre_release_check.json", "finalization_failure.json", "runtime_closure.json", "run_budget.json",
+                     "runtime_dispatches.json", "activation_receipts.json"):
             (artifact_root / name).unlink(missing_ok=True)
-        if recovered_candidate:
-            for name in ("runtime_dispatches.json", "activation_receipts.json"):
-                (artifact_root / name).unlink(missing_ok=True)
     record = artifact_root / "work_record.md"
     if continuation:
         if not record.is_file():

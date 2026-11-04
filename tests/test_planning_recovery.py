@@ -408,14 +408,34 @@ class TechOpsPlanningRecovery(unittest.TestCase):
     def test_techops_recovery_archives_failure_and_preserves_accepted_findings(self):
         packet_bytes, failure_path, _, receipt = self.close_blocked_prior()
         failure_bytes = failure_path.read_bytes()
+        rejected_trace = self.artifacts / "trace_repository_integrator.json"
+        rejected_trace_bytes = b'{"worker":"repository_integrator"}\n'
+        rejected_trace.write_bytes(rejected_trace_bytes)
+        dispatch_ledger = self.artifacts / "runtime_dispatches.json"
+        dispatch_ledger.write_text(json.dumps({"rejected_results": {"repository_integrator": {
+            "run_id": self.packet["identity"]["Run ID"], "trace": str(rejected_trace),
+            "sha256": hashlib.sha256(rejected_trace_bytes).hexdigest(),
+        }}}))
+        dispatch_bytes = dispatch_ledger.read_bytes()
+        activation_receipts = self.artifacts / "activation_receipts.json"
+        activation_receipts.write_text('{"prior_run": true}')
+        activation_bytes = activation_receipts.read_bytes()
         result = preparation.prepare_run(
             self.root, "ECHO-2781", "techops_issue_remediation", None, True,
             planning_recovery=True, approval_reference="Authorized same-chat recovery",
         )
         current = json.loads(self.packet_path.read_text())
         archived = Path(result["archived_prior_run"])
+        archived_files = {row["path"]: row for row in
+                          json.loads((archived / "archive_manifest.json").read_text())["files"]}
         self.assertEqual((archived / "finalization_packet.json").read_bytes(), packet_bytes)
         self.assertEqual((archived / "finalization_failure.json").read_bytes(), failure_bytes)
+        self.assertEqual((archived / archived_files["runtime_dispatches.json"]["snapshot"]).read_bytes(), dispatch_bytes)
+        self.assertEqual((archived / archived_files["activation_receipts.json"]["snapshot"]).read_bytes(), activation_bytes)
+        self.assertEqual((archived / archived_files["trace_repository_integrator.json"]["snapshot"]).read_bytes(),
+                         rejected_trace_bytes)
+        self.assertFalse(dispatch_ledger.exists())
+        self.assertFalse(activation_receipts.exists())
         self.assertFalse(failure_path.exists())
         self.assertEqual(json.loads((archived / "finalization_failure.json").read_text()), receipt)
         self.assertNotEqual(current["identity"]["Run ID"], self.packet["identity"]["Run ID"])
