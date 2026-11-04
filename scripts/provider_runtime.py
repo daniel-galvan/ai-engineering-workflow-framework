@@ -178,7 +178,7 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
 def related_run_status_projection_source(
     work_item: str, current_thread_id: str, prior_thread_ids: tuple[str, ...] = (),
 ) -> str:
-    """Return the only permitted, redacted provider task-status lookup for this work item."""
+    """Return the only permitted status lookup for explicitly recorded prior run threads."""
     if not isinstance(work_item, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", work_item):
         raise ValueError("stale_run_status_work_item_invalid")
     if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
@@ -186,19 +186,10 @@ def related_run_status_projection_source(
     if (not isinstance(prior_thread_ids, tuple)
             or any(not isinstance(value, str) or not UUID.fullmatch(value) for value in prior_thread_ids)):
         raise ValueError("stale_run_status_prior_thread_ids_invalid")
-    return ("const response = await tools.mcp__codex_app__list_threads({limit: 50});\n"
-            "const data = JSON.parse(response.content[0].text);\n"
-            "const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];\n"
-            f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
-            f"const related = rows.filter(row => row.id !== {json.dumps(current_thread_id)} &&\n"
-            "  (priorIds.includes(row.id) ||\n"
-            f"   typeof row.title === 'string' && row.title.includes({json.dumps(work_item)})));\n"
-            "const targets = new Map(priorIds.map(id => [id, undefined]));\n"
-            "for (const row of related) targets.set(row.id, row.hostId);\n"
-            "const relatedRows = await Promise.all([...targets].map(async ([id, hostId]) => {\n"
+    return (f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
+            "const relatedRows = await Promise.all(priorIds.map(async id => {\n"
             "  try {\n"
             "    const args = {threadId: id, turnLimit: 1, includeOutputs: false};\n"
-            "    if (typeof hostId === 'string') args.hostId = hostId;\n"
             "    const result = await tools.mcp__codex_app__read_thread(args);\n"
             "    if (result.isError) {\n"
             "      const errorText = Array.isArray(result.content)\n"
@@ -220,9 +211,7 @@ def related_run_status_projection_source(
             "        ? latestTurn : 'unavailable';\n"
             "    }\n"
             "    if (status === 'notLoaded') {\n"
-            "      const target = {threadId: id};\n"
-            "      if (typeof hostId === 'string') target.hostId = hostId;\n"
-            "      const wait = await tools.mcp__codex_app__wait_threads({targets: [target], timeoutMs: 0});\n"
+            "      const wait = await tools.mcp__codex_app__wait_threads({targets: [{threadId: id}], timeoutMs: 0});\n"
             "      if (wait.isError) return {id, status: 'unavailable'};\n"
             "      const state = JSON.parse(wait.content[0].text);\n"
             "      const poll = state.polls?.find(row => row.thread?.id === id);\n"
@@ -612,12 +601,15 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                       "function_call_output", "custom_tool_call_output"}):
                 call_id = payload.get("call_id")
                 if call_id in pending_related_run_status:
-                    pending_related_run_status.pop(call_id)
+                    expected_ids = pending_related_run_status.pop(call_id)
                     if payload.get("isError") or payload.get("status") in {"failed", "error"}:
                         errors.append("parent_related_run_status_output_invalid")
                     else:
                         try:
-                            related_run_status_rows = _related_run_status_rows(payload)
+                            rows = _related_run_status_rows(payload)
+                            if not {item["id"] for item in rows}.issubset(set(expected_ids)):
+                                raise ValueError("parent_related_run_status_output_invalid")
+                            related_run_status_rows = rows
                             verified_related_run_status_probes += 1
                         except ValueError as error:
                             errors.append(str(error))
@@ -633,29 +625,28 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                    if timestamp(event["Last dispatch at"]) <= observed}
                         if at_call:
                             ids_to_check.extend((tuple(sorted(at_call)), tuple(sorted(set(prior_ids) | at_call))))
-                    expected_projections = ({related_run_status_projection_source(artifact_root.name, thread, ids)
-                                             for ids in ids_to_check} if artifact_root is not None else set())
+                    matched_projection_ids = next((ids for ids in ids_to_check
+                        if artifact_root is not None and isinstance(raw_source, str)
+                        and raw_source.strip() == related_run_status_projection_source(
+                            artifact_root.name, thread, ids)), None)
                 except (ValueError, KeyError, TypeError):
-                    expected_projections = set()
-                exact_status_projection = (isinstance(raw_source, str)
-                                           and raw_source.strip() in expected_projections)
-                calls = (
-                    [("mcp__codex_app__list_threads", {"limit": 50})]
-                    if exact_status_projection else _tool_operations(payload)
-                )
+                    matched_projection_ids = None
+                exact_status_projection = matched_projection_ids is not None
+                if exact_status_projection:
+                    call_id = payload.get("call_id")
+                    if not isinstance(call_id, str) or not call_id or related_run_probe_attempts:
+                        errors.append("parent_related_run_status_probe_invalid")
+                    else:
+                        sequenced_operations.append({"name": "related_run_status_projection", "arguments": {}})
+                        pending_related_run_status[call_id] = matched_projection_ids
+                        related_run_probe_attempts += 1
+                    continue
+                calls = _tool_operations(payload)
                 if not calls and payload.get("type") == "custom_tool_call":
                     calls = (_literal_worker_status_observation(raw_source) or _literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source)
                              or _incomplete_literal_command(raw_source) or [])
-                if (not calls and payload.get("type") == "custom_tool_call"
-                        and "tools.mcp__codex_app__list_threads({limit: 50})" in str(raw_source or "")):
-                    calls = [("mcp__codex_app__list_threads", {})]
                 if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(raw_source or ""):
                     errors.append("parent_tool_arguments_unavailable")
-                status_projection_candidate = (
-                    exact_status_projection and len(calls) == 1
-                    and calls[0][0].rsplit("__", 1)[-1] == "list_threads"
-                    and calls[0][1] == {"limit": 50}
-                    and isinstance(payload.get("call_id"), str) and payload["call_id"])
                 for name, arguments in calls:
                     sequenced_operations.append({"name": name, "arguments": arguments})
                     if name == "exec_command":
@@ -678,13 +669,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                     and not status_only_prior):
                                 errors.append("parent_unassigned_thread_read:" + str(identity))
                     elif name.rsplit("__", 1)[-1] in {"list_threads", "list_archived_threads"}:
-                        if (name.rsplit("__", 1)[-1] == "list_threads" and status_projection_candidate
-                                and related_run_probe_attempts == 0):
-                            exempt.add(len(operations))
-                            pending_related_run_status[payload["call_id"]] = True
-                            related_run_probe_attempts += 1
-                        else:
-                            errors.append("parent_unassigned_thread_discovery")
+                        errors.append("parent_unassigned_thread_discovery")
                         operations.append({"type": "function_call", "name": name, "arguments": arguments})
         if pending_related_run_status:
             errors.append("parent_related_run_status_output_missing")

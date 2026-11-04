@@ -36,7 +36,10 @@ invocation: run package preflight first, then the required status projection, be
 2. Invocation gate: do not begin with repository discovery, status checks, `AGENTS.md`, or playbook reads.
    If the host has not already provided this active skill's contents, read only the active installed `SKILL.md`.
    The first framework tool call after this skill is loaded MUST be the package preflight command by itself. A
-   host-required read-only memory check may precede it. Never combine the skill read with repository guidance, a
+   host-required read-only memory check may precede it; search only the exact current work-item ID and a recovery
+   topic the user named. Do not add ticket IDs copied from unrelated memory entries, broad playbook/project terms, or
+   follow references into other chats unless the user names that chat or asks for its history. Never combine the
+   skill read with repository guidance, a
    playbook, or another command. After preflight, never call `list_threads` directly: its raw output includes
    unassigned chat content.
    For the related-run check, execute only step 7's exact status-only JavaScript projection through `functions.exec`.
@@ -467,24 +470,22 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    and report its errors and receipt path. The receipt does not certify worker release or make `work_record.md`
    terminal; reconcile runtime handles before a new run. A genuinely unavailable required source yields
    `awaiting_input` and no implementation plan; a malformed manifest is a contract failure, not an access gap.
-   Capture the current turn start before checking provider-visible tasks. The current-task rule is:
+   Capture the current turn start before checking this work item's recorded run state. The current-task rule is:
    `task created at or after the captured current turn start`
-   is the current run and MUST NOT be classified as a related run. After the initial passing preflight, inspect only
-   status metadata for provider-visible tasks and sibling artifact roots; do not inspect prior thread content, task
-   summaries, or stale analytical files. Before calling the provider status tools, run this read-only helper using
-   the `provider_session` returned by preflight:
+   is the current run and MUST NOT be classified as a prior run. After the initial passing
+   preflight, inspect only status metadata for thread IDs explicitly recorded in this work item's run identity
+   receipts. Do not inventory provider-visible tasks, search by title, inspect other work items, or read prior thread
+   content, task summaries, or stale analytical files. Before calling the provider status tools, run this read-only
+   helper using the `provider_session` returned by preflight:
    ```bash
    python3 <framework-root>/scripts/prepare_run.py --status-projection \
      --execution-repository <path> --work-item <ID> --provider-session <preflight-provider-session>
    ```
-   Execute its complete `projection` value as the `functions.exec` source, exactly once. The helper derives the prior
-   parent and worker IDs from current-root identity receipts and emits no historical analytical content; do not guess
-   an empty list or run the projection before this helper. If it blocks, stop without creating run artifacts.
-   The parent-context audit permits one exact
-   related-run status projection for the current work item per turn. It uses the recency-limited
-   `list_threads({limit: 50})` only to find visible tasks with this work-item key, then calls `read_thread` by exact
-   ID for each visible related task and each prior parent/worker ID. The wrapper requests one turn with outputs
-   disabled and emits only the exact thread ID and status; never expose titles, summaries, previews, or turn contents.
+   Execute its complete `projection` value as the `functions.exec` source, exactly once. The helper derives explicit
+   prior parent and worker IDs from current-root identity receipts; do not guess an empty list or run the projection
+   before this helper. An empty list returns `[]` without querying any chats. A nonempty list reads only those exact
+   IDs, one turn with outputs disabled, and emits only ID/status; never search by title or inspect other tasks.
+   If projection blocks, stop without creating run artifacts.
    For `idle`, the projection returns the terminal latest-turn status when available; accept that terminal status.
    An idle thread with an absent or nonterminal latest turn is `unavailable` and blocks archival. For `notLoaded`,
    one immediate `wait_threads` lookup can confirm terminal status only when it reports
@@ -493,23 +494,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `No Codex thread found for threadId: <id>. Hosts without a readable match: <hosts>` with a nonempty host list emits
    `status: not_found`; this confirms there is no readable task on any host and is terminal for preservation.
    All other read errors remain unavailable and block archival. Do not call these tools outside this projection.
-   The following shows this exact projection as an example, replacing `ECHO-2806` with the current work-item key,
-   `PARENT-THREAD-UUID` with the provider-verified current parent thread ID, and `PRIOR-WORKER-THREAD-UUID` with the
-   JSON array of prior parent and worker thread IDs (use `[]` when empty):
+   The following shows this exact projection as an example, replacing `PRIOR-WORKER-THREAD-UUID` with the JSON array
+   of explicit prior parent and worker thread IDs (use `[]` when empty):
    ```javascript
-   const response = await tools.mcp__codex_app__list_threads({limit: 50});
-   const data = JSON.parse(response.content[0].text);
-   const rows = [...(data.pinnedThreads || []), ...(data.threads || [])];
    const priorIds = ["PRIOR-WORKER-THREAD-UUID"];
-   const related = rows.filter(row => row.id !== "PARENT-THREAD-UUID" &&
-     (priorIds.includes(row.id) ||
-      typeof row.title === 'string' && row.title.includes("ECHO-2806")));
-   const targets = new Map(priorIds.map(id => [id, undefined]));
-   for (const row of related) targets.set(row.id, row.hostId);
-   const relatedRows = await Promise.all([...targets].map(async ([id, hostId]) => {
+   const relatedRows = await Promise.all(priorIds.map(async id => {
      try {
        const args = {threadId: id, turnLimit: 1, includeOutputs: false};
-       if (typeof hostId === 'string') args.hostId = hostId;
        const result = await tools.mcp__codex_app__read_thread(args);
        if (result.isError) {
          const errorText = Array.isArray(result.content)
@@ -531,9 +522,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
            ? latestTurn : 'unavailable';
        }
        if (status === 'notLoaded') {
-         const target = {threadId: id};
-         if (typeof hostId === 'string') target.hostId = hostId;
-         const wait = await tools.mcp__codex_app__wait_threads({targets: [target], timeoutMs: 0});
+         const wait = await tools.mcp__codex_app__wait_threads({targets: [{threadId: id}], timeoutMs: 0});
          if (wait.isError) return {id, status: 'unavailable'};
          const state = JSON.parse(wait.content[0].text);
          const poll = state.polls?.find(row => row.thread?.id === id);
@@ -554,11 +543,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    active, malformed, or unavailable status blocks archival and leaves old artifacts in place. The projection
    also blocks on malformed dispatch or closure identity receipts; only a failed `spawn_agent` with no worker thread
    ID is exempt because the provider never created an observable worker task.
-   excludes the current parent thread by its exact provider ID. A different provider-visible task can block startup
-   only when it predates the current turn and is independently active. Do not inspect old thread content; use only
-   the projected status to prove worker closure. If every visible worker
+   excludes the current parent thread by its exact provider ID. Only a prior parent or worker recorded in this work
+   item's active run receipts can block reuse of its artifact root. Do not inspect old thread content; use only the
+   projected status to prove worker closure. If every recorded worker
    handle cannot be verified terminal from permitted status evidence, stop with `run_already_active`. When the prior
-   task is idle, every visible child worker is terminal, and no artifact writer remains, rerun once with
+   task is idle, every recorded child worker is terminal, and no artifact writer remains, rerun once with
    `--archive-stale-run`. This preserves every stale artifact under `runs/stale-<timestamp>/` and creates a fresh run.
    Apply this supported retry to `existing_run_not_terminal` when the required terminal-status proof is present.
    The first transactional block is not, by itself, a reason to end the fresh-run request. Dispatch remains prohibited
@@ -569,9 +558,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    old files and satisfy the stale-archive checks above first. Confirm new-run capacity by activating its first required
    worker; if that fails, stop with the exact runtime reason. If worker or writer activity is present or cannot be
    verified, stop with `run_already_active`. Do not tell the user to request continuation when they requested a new run.
-   Before recording `Active related run or work item: None`, check provider-visible tasks and sibling artifact roots.
-   Record the method, RFC 3339 time, and result in `Related-run check`; if either view is unavailable, record
-   `Unknown; detection unavailable`, not an unsupported `None`.
+   Record the method, RFC 3339 time, and result of this work-item-scoped check in `Related-run check`. An empty list
+   means no prior thread IDs are recorded for this work item's run; it does not establish that no unrelated chat is
+   active. If a required receipt or status is unavailable, record `Unknown; detection unavailable`.
    Copy `provider_configuration_source_status` from its result into Run Identity; do not infer provider status from a
    `find -type f` result because a valid runtime view may consist of symlinked definitions.
    Register a user-named prior session or backup used for decision history as `Classification: decision continuity`.
