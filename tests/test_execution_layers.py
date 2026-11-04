@@ -162,6 +162,15 @@ class ExecutionLayers(unittest.TestCase):
         self.assertIn("For TechOps and Feature Delivery planning, the Coordinator runs the prepared", launcher)
         self.assertIn("`scripts/stage_documenter_packet.py` transition after analytical fan-in", launcher)
 
+    def test_fix_design_result_normalizer_is_sentry_only(self):
+        launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
+        fix_design = launcher.split("10. For Sentry planning only, after analytical fan-in", 1)[1].split(
+            "Send each analytical worker at most one aggregated correction", 1
+        )[0]
+        self.assertIn("normalize_fix_design_result.py", fix_design)
+        self.assertIn("validate_library.py --sentry-artifacts", fix_design)
+        self.assertIn("For TechOps and other playbooks, skip these Sentry-only helpers", fix_design)
+
     def test_unreleased_stale_run_requires_a_separate_artifact_root_for_new_planning(self):
         launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
         self.assertIn("separate execution repository and artifact root", launcher)

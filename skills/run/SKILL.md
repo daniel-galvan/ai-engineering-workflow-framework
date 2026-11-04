@@ -893,7 +893,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    that value before writing its envelope. The Coordinator validates the assigned file and never reconstructs its JSON
    from a worker message. Require Evidence Topology to
    run `validate_library.py --normalized-evidence <artifact-path>` before its first terminal response.
-10. After analytical fan-in, run
+10. For Sentry planning only, after analytical fan-in, run
    `python3 <packaged-framework-root>/scripts/normalize_fix_design_result.py --artifact-root`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>`. This deterministic producer-format repair runs before validation
    and does not consume the analytical correction allowance. It may only preserve equivalent values in canonical field
@@ -901,7 +901,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Then run
    `python3 <packaged-framework-root>/scripts/validate_library.py --sentry-artifacts`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>` for Sentry planning. Return Evidence Topology errors to that worker
-   and Fix Design schema/readiness errors to Fix Design. Send each analytical worker at most one aggregated correction.
+   and Fix Design schema/readiness errors to Fix Design. For TechOps and other playbooks, skip these
+   Sentry-only helpers and follow the selected playbook's own validation and finalization gates. Send each analytical
+   worker at most one aggregated correction.
    If its corrected result still fails, stop with `analytical_contract_failure`, preserve the validation errors and
    artifacts, and release all handles; do not make the Documenter repair upstream artifacts. Count the correction only
    after a terminal response and revalidation. Then mechanically finalize the packet, runtime closure receipt, and work
