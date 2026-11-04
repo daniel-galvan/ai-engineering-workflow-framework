@@ -50,7 +50,8 @@ class ActivationDelivery(unittest.TestCase):
                     policy = packet["repository_instructions"]
                     self.assertIn(f"Keep every run-created file, including scratch drafts and temporary output, inside {run['artifact_root']}", policy)
                     self.assertIn("do not write them to a separate temporary directory", policy)
-                    self.assertIn("ancestors up to the assigned repository root", policy)
+                    self.assertIn("ancestors up to the source checkout root", policy)
+                    self.assertIn("Do not check the artifact root or its .thoughts parent for AGENTS.md", policy)
                     self.assertIn("Do not recursively search parent directory trees", policy)
                     self.assertIn("Run filename discovery in a separate tool result from content reads or searches", policy)
                     self.assertIn("do not search unassigned runs/ archives", policy)
@@ -90,7 +91,7 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn("selected playbook, closest alternative, and rationale", message)
 
     def test_missing_instruction_input_is_rejected_before_dispatch(self):
-        instructions = self.root / ".thoughts/AGENTS.md"
+        instructions = self.root / "AGENTS.md"
         source = self.root / "assignment.json"
         source.write_text(json.dumps({"objective": "Inspect current inputs", "input_paths": [str(instructions)]}))
         dispatch = self.artifacts / "activation_context.txt"
@@ -681,7 +682,7 @@ class ActivationDelivery(unittest.TestCase):
             "--dispatch-file", self.artifacts / "retry.txt", *recovery]
         before = Path(self.run["finalization_packet"]).read_bytes()
         assignment.write_text(json.dumps({"objective": "Read complete guarded instructions",
-                                         "input_paths": [str(self.artifacts.parent / "AGENTS.md")]}))
+                                         "input_paths": [str(self.root / "AGENTS.md")]}))
         rejected = self.command(*activation)
         self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
         self.assertIn("assigned_instruction_file_missing", rejected.stdout)

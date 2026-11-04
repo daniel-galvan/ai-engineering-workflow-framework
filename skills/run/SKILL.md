@@ -58,10 +58,10 @@ invocation: run package preflight first, then the required status projection, be
    or artifact reference into another chat/session unless the current user explicitly authorizes that exact source.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
-   Before editing or planning changes, check local `AGENTS.md` in the actual target directory and its ancestors up
-   to the execution repository root. Include the current `.thoughts/<WORK-ITEM-ID>` artifact directory and its
-   `.thoughts` parent when editing current run artifacts. These exact ancestor checks do not authorize searching
-   the artifact tree or opening prior run content. Do not search parent directory trees.
+   Before editing or planning source changes, check local `AGENTS.md` only in the source target directory and its
+   ancestors up to the verified source checkout root. Use `.thoughts` only for framework-flow artifacts such as
+   fan-in/fan-out outputs; it is not a code, test, infrastructure, project, or repository path. Do not check
+   `.thoughts/<WORK-ITEM-ID>` or its `.thoughts` parent for `AGENTS.md`, and do not search parent directory trees.
    Instruction files are optional: check existence, read those
    present, and continue when absent. Never promote a missing instruction-file probe into a required worker input.
    Run filename discovery in a separate tool result from content reads or searches; mixed outputs may not prove which

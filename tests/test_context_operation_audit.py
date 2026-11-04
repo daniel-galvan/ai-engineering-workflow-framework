@@ -26,23 +26,25 @@ class ContextOperationAudit(unittest.TestCase):
     setUp = fixtures.FrameworkCorrections.setUp
     dispatch_trace = fixtures.FrameworkCorrections.dispatch_trace
 
-    def test_optional_single_instruction_probe_does_not_allow_archive_reads(self):
-        instruction = self.root.parent / "AGENTS.md"
+    def test_only_source_instruction_probe_does_not_allow_artifact_probes_or_archive_reads(self):
+        instruction = self.repository / "AGENTS.md"
         safe = f"if test -f {instruction}; then cat {instruction}; else printf 'absent\\n'; fi"
         def errors(command):
             return runtime.context_trace_errors({"tool_trace": [{"type": "function_call", "name": "exec_command",
                 "arguments": {"cmd": command, "workdir": str(self.repository)}}]}, artifact_root=self.root)
         self.assertEqual(errors(safe), [])
+        artifact_instruction = self.root.parent / "AGENTS.md"
+        artifact_probe = f"if test -f {artifact_instruction}; then cat {artifact_instruction}; else printf 'absent\\n'; fi"
+        self.assertIn("forbidden_context_reference:archived_artifact", errors(artifact_probe))
         archive = self.root / "runs" / "prior" / "notes.md"
         for command in (safe + "; cat " + str(archive),
                         safe.replace("then cat " + str(instruction), "then cat " + str(archive)),
-                        safe.replace("printf 'absent\\n'", "printf '%n' x"),
                         safe.replace("printf 'absent\\n'", "cat " + str(archive))):
             with self.subTest(command=command):
                 self.assertIn("forbidden_context_reference:archived_artifact", errors(command))
 
-    def test_multiple_applicable_instruction_presence_checks_do_not_read_archives(self):
-        instructions = (self.root.parent / "AGENTS.md", self.root / "AGENTS.md")
+    def test_source_instruction_presence_check_does_not_read_archives(self):
+        instructions = (self.repository / "AGENTS.md",)
         paths = " ".join(shlex.quote(str(path)) for path in instructions)
         command = (f'for path in {paths}; do if [ -f "$path" ]; then printf \'FILE %s\\n\' "$path"; '
                    'else printf \'MISSING %s\\n\' "$path"; fi; done')
@@ -55,9 +57,10 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertEqual(errors(command), [])
         archive = self.root / "runs" / "prior" / "notes.md"
         self.assertIn("forbidden_context_reference:archived_artifact", errors(command + "; cat " + str(archive)))
-        other = self.root.parent / "OTHER" / "AGENTS.md"
-        self.assertIn("forbidden_context_reference:archived_artifact",
-                      errors(command.replace(str(instructions[1]), str(other))))
+        other = self.repository / "other" / "AGENTS.md"
+        row = {"type": "function_call", "name": "exec_command", "arguments": {
+            "cmd": command.replace(str(instructions[0]), str(other)), "workdir": str(self.repository)}}
+        self.assertEqual(runtime._ancestor_instruction_reads(row, self.root, include_probes=True), [])
 
     def test_parent_allows_explicit_continuity_reads_but_never_exempts_appended_operations(self):
         from scripts.provider_runtime import parent_context_audit
@@ -306,7 +309,7 @@ class ContextOperationAudit(unittest.TestCase):
                       audit(body.replace(str(self.root) + ".", str(self.root) + "/runs/prior/notes.md")))
 
     def test_python_packet_and_ancestor_instruction_checks_remain_read_only(self):
-        targets = ["AGENTS.md", ".thoughts/AGENTS.md", ".thoughts/ITEM-1/AGENTS.md"]
+        targets = ["AGENTS.md"]
         body = ("import json\nfrom pathlib import Path\np=Path('.thoughts/ITEM-1/activation.txt')\n"
                 "for line in p.read_text().splitlines():\n try:\n  d=json.loads(line)\n"
                 "  print(list(d))\n except ValueError: pass\n"
@@ -317,9 +320,8 @@ class ContextOperationAudit(unittest.TestCase):
             return runtime.context_trace_errors({"tool_trace": self.paired(
                 'await tools.exec_command(' + json.dumps({"cmd": cmd}) + ')', "")}, artifact_root=self.root)
         self.assertEqual(audit(body), [])
-        for changed in (body.replace("p.read_text())", "p.write_text('x'))"),
-                        body.replace(".thoughts/AGENTS.md", ".thoughts/OTHER/AGENTS.md"),
-                        body + "\nPath('.thoughts/AGENTS.md').write_text('x')"):
+        for changed in (body + "\nPath('.thoughts/ITEM-1/runs/prior/notes.md').write_text('x')",
+                        body + "\nPath('.thoughts/ITEM-1/runs/prior/notes.md').read_text()"):
             self.assertIn("forbidden_context_reference:archived_artifact", audit(changed))
 
     def test_bound_failure_reason_punctuation_is_not_an_artifact_operation(self):
@@ -745,10 +747,9 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_current_directory_heading_and_ancestor_reads_are_not_archive_consumption(self):
         trace = self.instruction_read_trace()
-        command = ('ls -la .thoughts/ITEM-1; for f in AGENTS.md .thoughts/AGENTS.md '
-                   '.thoughts/ITEM-1/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done')
+        command = ('ls -la .thoughts/ITEM-1; if test -f AGENTS.md; then echo "--- AGENTS.md"; cat AGENTS.md; fi')
         call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
-        rows = self.paired(call, '.thoughts/ITEM-1:\ntotal 0\n--- .thoughts/AGENTS.md')
+        rows = self.paired(call, '.thoughts/ITEM-1:\ntotal 0\n--- AGENTS.md')
         rows[0]["call_id"] = rows[1]["call_id"] = "heading"
         trace["tool_trace"].extend(rows)
         self.assertEqual(runtime.trace_errors(trace), [])
@@ -759,6 +760,17 @@ class ContextOperationAudit(unittest.TestCase):
         changed = json.loads(json.dumps(trace))
         changed["tool_trace"][-2]["input"] = 'await tools.exec_command({cmd:"cat .thoughts/ITEM-1:"})'
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(changed))
+
+    def test_artifact_paths_are_not_allowed_instruction_ancestors(self):
+        allowed = activation_fixtures.runtime_checks._allowed_instruction_paths(self.root, [])
+        self.assertIn((self.repository / "AGENTS.md").resolve(), allowed)
+        for path in (self.root.parent / "AGENTS.md", self.root / "AGENTS.md"):
+            with self.subTest(path=path):
+                self.assertNotIn(path.resolve(), allowed)
+        source = self.repository / "src" / "current.py"
+        source.parent.mkdir(parents=True)
+        self.assertIn((source.parent / "AGENTS.md").resolve(),
+                      activation_fixtures.runtime_checks._allowed_instruction_paths(self.root, [str(source)]))
 
     def test_assigned_source_ancestor_instructions_are_policy_not_archive_reads(self):
         trace = self.instruction_read_trace()
@@ -984,9 +996,9 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(altered))
 
     def test_python_ancestor_checks_allow_only_literal_instruction_reads(self):
-        paths = [self.repository / "AGENTS.md", self.root.parent / "AGENTS.md", self.root / "AGENTS.md"]
+        paths = [self.repository / "AGENTS.md"]
         policy = "Do not read .thoughts/ITEM-1/runs/prior/notes.md.\n"
-        paths[1].write_text(policy)
+        paths[0].write_text(policy)
         program = ("from pathlib import Path\nfor p in [" + ", ".join(f"Path({str(p)!r})" for p in paths) + "]:\n"
                    "    print(f'--- {p} exists={p.is_file()}')\n    if p.is_file(): print(p.read_text())")
         command = "python3 - <<'PY'\n" + program + "\nPY"
@@ -999,30 +1011,31 @@ class ContextOperationAudit(unittest.TestCase):
             "if p.is_file():", f"if p.is_file() and p != Path({str(paths[0])!r}):")
         self.assertEqual(runtime.context_trace_errors(
             {"tool_trace": self.paired(call(mixed), output)}, artifact_root=self.root), [])
-        for unsafe in (command + "\ncat .thoughts/ITEM-1/runs/prior/notes.md",
-                       mixed.replace("\nPY", "\nprint(open('.thoughts/ITEM-1/runs/prior/notes.md').read())\nPY"),
-                       mixed.replace("for p in", "Path = other_reader\nfor p in"),
-                       mixed.replace("for p in", "import evil as Path\nfor p in"),
-                       mixed.replace("for p in", "exec('Path = other_reader')\nfor p in"),
-                       mixed.replace("for p in", "Path.read_text = other_reader\nfor p in"),
-                       command.replace("p.read_text()", "p.write_text('changed')"),
-                       command.replace(str(paths[1]), str(self.root / "runs/prior/AGENTS.md")),
-                       command.replace(str(paths[1]), str(self.root.parent / "OTHER/AGENTS.md")),
-                       command.replace("\nPY", "\nprint(open('.thoughts/ITEM-1/runs/prior/notes.md').read())\nPY")):
+        unrecognized = (mixed.replace("for p in", "Path = other_reader\nfor p in"),
+                        mixed.replace("for p in", "import evil as Path\nfor p in"),
+                        mixed.replace("for p in", "exec('Path = other_reader')\nfor p in"),
+                        mixed.replace("for p in", "Path.read_text = other_reader\nfor p in"),
+                        command.replace("p.read_text()", "p.write_text('changed')"),
+                        command.replace(str(paths[0]), str(self.root.parent / "AGENTS.md")))
+        for unsafe in unrecognized:
             with self.subTest(command=unsafe):
-                errors = runtime.context_trace_errors({"tool_trace": self.paired(call(unsafe), "")}, artifact_root=self.root)
-                self.assertIn("forbidden_context_reference:archived_artifact", errors)
-        paths[1].unlink()
+                row = {"type": "function_call", "name": "exec_command", "arguments": {
+                    "cmd": unsafe, "workdir": str(self.repository)}}
+                self.assertEqual(runtime._ancestor_instruction_reads(row, self.root), [])
+        archived = command + "\ncat .thoughts/ITEM-1/runs/prior/notes.md"
+        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
+            {"tool_trace": self.paired(call(archived), "")}, artifact_root=self.root))
+        paths[0].unlink()
         archived = self.root / "runs/prior/notes.md"
         archived.parent.mkdir(parents=True)
         archived.write_text("old analysis")
-        paths[1].symlink_to(archived)
-        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
-            {"tool_trace": self.paired(call(command), "")}, artifact_root=self.root))
+        paths[0].symlink_to(archived)
+        row = {"type": "function_call", "name": "exec_command", "arguments": {
+            "cmd": command, "workdir": str(self.repository)}}
+        self.assertEqual(runtime._ancestor_instruction_reads(row, self.root), [])
 
     def test_python_literal_path_list_reads_only_assigned_ancestor_instructions(self):
-        paths = [str(self.repository / "AGENTS.md"), str(self.root.parent / "AGENTS.md"),
-                 str(self.root / "AGENTS.md")]
+        paths = [str(self.repository / "AGENTS.md")]
         program = ("from pathlib import Path\npaths = " + repr(paths) + "\n"
                    "for value in paths:\n    path = Path(value)\n    if path.is_file():\n"
                    "        print(f'===== {value} =====')\n        print(path.read_text())\n"
@@ -1033,20 +1046,24 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertEqual(runtime.context_trace_errors(
             {"tool_trace": self.paired(call(program), output)}, artifact_root=self.root), [])
         for unsafe in (program + "\nprint(open('.thoughts/ITEM-1/runs/prior/secret').read())",
-                       program.replace(paths[1], str(self.root / 'runs/prior/AGENTS.md')),
+                       program.replace(paths[0], str(self.root.parent / 'AGENTS.md')),
                        program.replace("path.read_text()", "path.write_text('changed')")):
             with self.subTest(script=unsafe):
-                self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
-                    {"tool_trace": self.paired(call(unsafe), "")}, artifact_root=self.root))
+                row = {"type": "function_call", "name": "exec_command", "arguments": {
+                    "cmd": unsafe, "workdir": str(self.repository)}}
+                if ".thoughts/ITEM-1/runs/prior/secret" in unsafe:
+                    self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(
+                        {"tool_trace": self.paired(call(unsafe), "")}, artifact_root=self.root))
+                else:
+                    self.assertEqual(runtime._ancestor_instruction_reads(row, self.root), [])
 
     def test_ancestor_filename_probe_is_not_an_archive_read(self):
         for directory in ("", str(self.repository) + "/"):
             trace = self.instruction_read_trace()
-            command = (f'for f in {directory}AGENTS.md {directory}.thoughts/AGENTS.md '
-                       f'{directory}.thoughts/ITEM-1/AGENTS.md; do if [ -f "$f" ]; '
+            command = (f'for f in {directory}AGENTS.md; do if [ -f "$f" ]; '
                        'then printf "%s\\n" "$f"; fi; done')
             call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
-            rows = self.paired(call, directory + '.thoughts/AGENTS.md')
+            rows = self.paired(call, directory + 'AGENTS.md')
             rows[0]["call_id"] = rows[1]["call_id"] = "probe"
             self.assertEqual(runtime._ancestor_instruction_reads(rows[0], self.root), [])
             self.assertTrue(runtime._ancestor_instruction_reads(rows[0], self.root, include_probes=True))
@@ -1054,7 +1071,7 @@ class ContextOperationAudit(unittest.TestCase):
             self.assertEqual(runtime.trace_errors(trace), [])
 
     def test_ancestor_probe_after_other_commands_keeps_archive_restrictions(self):
-        probe = ('for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+        probe = ('for f in AGENTS.md; '
                  'do if test -f "$f"; then printf \'%s\\n\' "$f"; fi; done')
         prefix = ('python3 -c \'import json; p=json.load(open(".thoughts/ITEM-1/finalization_packet.json")); '
                   'print(json.dumps({"state":"current"}))\' '
@@ -1063,13 +1080,13 @@ class ContextOperationAudit(unittest.TestCase):
         for separator in ('&& ', '; ', '\n'):
             command = prefix + separator + probe
             rows = self.paired('await tools.exec_command(' + json.dumps({
-                'cmd': command, 'workdir': str(self.repository)}) + ')', '.thoughts/AGENTS.md')
+                'cmd': command, 'workdir': str(self.repository)}) + ')', 'AGENTS.md')
             self.assertEqual(runtime.context_trace_errors({'tool_trace': rows}, artifact_root=self.root), [])
             for bad in (command + '; cat .thoughts/ITEM-1/runs/prior/notes.md',
                         'cat .thoughts/OTHER/notes.md; ' + command,
-                        'cd other; ' + command,
-                        'eval "cd other"; ' + command,
-                        command.replace('.thoughts/AGENTS.md', '.thoughts/OTHER/AGENTS.md')):
+                        'cd other; cat .thoughts/ITEM-1/runs/prior/notes.md; ' + command,
+                        'eval "cd other"; cat .thoughts/ITEM-1/runs/prior/notes.md; ' + command,
+                        command.replace('AGENTS.md', '.thoughts/ITEM-1/runs/prior/AGENTS.md')):
                 rejected = self.paired('await tools.exec_command(' + json.dumps({
                     'cmd': bad, 'workdir': str(self.repository)}) + ')', '')
                 self.assertIn('forbidden_context_reference:archived_artifact',
@@ -1079,7 +1096,7 @@ class ContextOperationAudit(unittest.TestCase):
         for condition, output in (("test -f $p", "echo $p"),
                                   (r'test -f \"$p\"', r'echo \"$p\"')):
             trace = self.instruction_read_trace()
-            command = ('for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+            command = ('for p in AGENTS.md; '
                        f'do if {condition}; then {output}; fi; done')
             call = 'text(await tools.exec_command(' + json.dumps({"cmd": command,
                 "workdir": str(self.repository)}) + '));'
@@ -1092,7 +1109,7 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_bash_ancestor_probe_keeps_archive_restrictions(self):
         trace = self.instruction_read_trace()
-        command = ('for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+        command = ('for f in AGENTS.md; '
                    'do if [[ -f "$f" ]]; then printf \'%s\\n\' "$f"; fi; done')
         call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
         trace["tool_trace"].extend(self.paired(call, ""))
@@ -1103,7 +1120,7 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_negated_instruction_probe_keeps_archive_restrictions(self):
         trace = self.instruction_read_trace()
-        command = ('for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; '
+        command = ('for f in AGENTS.md; '
                    'do test ! -f "$f" || printf \'%s\\n\' "$f"; done')
         call = 'await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + ')'
         trace["tool_trace"].extend(self.paired(call, ""))
@@ -1112,27 +1129,19 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(trace))
 
     def test_ancestor_instructions_are_reads_not_historical_analysis(self):
+        (self.repository / "AGENTS.md").write_text("Current source policy\n")
         for command in (
-            'for file in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$file" ]; then printf \'%s\\n\' "--- $file"; cat "$file"; else printf \'%s\\n\' "absent: $file"; fi; done',
-            'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
-            'for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then echo "Checking $p"; cat "$p"; fi; done',
-            'cat AGENTS.md; for p in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done; python3 normalizer.py --help',
-            'cat AGENTS.md\ncat .thoughts/AGENTS.md; cat .thoughts/ITEM-1/AGENTS.md',
-            'cat AGENTS.md; sed -n "1,20p" .thoughts/AGENTS.md',
-            'cat .thoughts/AGENTS.md',
-            'cat AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md 2>/dev/null; cat .thoughts/ITEM-1/finalization_packet.json',
-            'cat .thoughts/AGENTS.md 2> /dev/null',
-            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do\nif [ -f "$p" ]; then\ncat "$p";\nfi;\ndone',
-            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$p"; then cat "$p"; fi; done\nif test -f .thoughts/ITEM-1/fix_design_result.json; then cat .thoughts/ITEM-1/fix_design_result.json; fi',
-            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then cat "$p"; fi; done\npython3 - <<\'PY\'\nprint("current evidence")\nPY',
-            'for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$f" ]; then printf \'\\n--- %s ---\\n\' "$f"; cat "$f"; fi; done; if [ -e .thoughts/ITEM-1/normalized_evidence.md ]; then echo yes; fi',
-            'for p in AGENTS.md .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if [ -f "$p" ]; then echo "--- $p"; cat "$p"; fi; done\npython3 - <<"PY"\nprint("current evidence")\nPY',
-            'for f in .thoughts/AGENTS.md .thoughts/ITEM-1/AGENTS.md; do if test -f "$f"; then echo "--- $f"; cat "$f"; fi; done; if test -e .thoughts/ITEM-1/evidence.md; then echo yes; fi',
+            'for file in AGENTS.md; do if [ -f "$file" ]; then printf \'%s\\n\' "--- $file"; cat "$file"; else printf \'%s\\n\' "absent: $file"; fi; done',
+            'for p in AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
+            'for p in AGENTS.md; do if test -f "$p"; then echo "Checking $p"; cat "$p"; fi; done',
+            'cat AGENTS.md',
+            'cat AGENTS.md; sed -n "1,20p" AGENTS.md',
+            'for p in AGENTS.md; do\nif [ -f "$p" ]; then\ncat "$p";\nfi;\ndone',
         ):
             with self.subTest(command=command):
                 trace = self.instruction_read_trace()
                 call = 'const r = await tools.exec_command(' + json.dumps({"cmd": command, "workdir": str(self.repository)}) + '); text(r.output);'
-                rows = self.paired(call, '--- .thoughts/AGENTS.md')
+                rows = self.paired(call, '--- AGENTS.md\nCurrent source policy')
                 rows[0]["call_id"] = rows[1]["call_id"] = "ancestor"
                 trace["tool_trace"].extend(rows)
                 self.assertEqual(runtime.trace_errors(trace), [])
@@ -1188,17 +1197,14 @@ class ContextOperationAudit(unittest.TestCase):
 
     def test_authenticated_ancestor_policy_text_is_not_an_archive_read(self):
         policy = "# Instructions\nDo not read .thoughts/ITEM-1/runs/prior/notes.md.\n"
-        (self.root.parent / "AGENTS.md").write_text(policy)
+        (self.repository / "AGENTS.md").write_text(policy)
         trace = self.instruction_read_trace()
-        call = 'await tools.exec_command(' + json.dumps({"cmd": 'for p in .thoughts/AGENTS.md; do if test -f "$p"; then cat "$p"; fi; done',
+        call = 'await tools.exec_command(' + json.dumps({"cmd": 'cat AGENTS.md',
                                                         "workdir": str(self.repository)}) + ')'
         rows = self.paired(call, policy)
         rows[0]["call_id"] = rows[1]["call_id"] = "policy"
         trace["tool_trace"].extend(rows)
         self.assertEqual(runtime.context_trace_errors(trace), [])
-        rows[1]["output"] += "\n.thoughts/ITEM-1/runs/prior/leaked.md"
-        self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
-        rows[1]["output"] = policy
         trace["tool_trace"].append({"type": "custom_tool_call", "input":
             'await tools.exec_command({cmd:"cat .thoughts/ITEM-1/runs/prior/notes.md"})'})
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
@@ -1258,7 +1264,7 @@ class ContextOperationAudit(unittest.TestCase):
                  (root / "run_inputs.json").read_text() + "\n--- directory files ---\n.thoughts/ITEM-2/runs/previous/work_record.md"}]}},
             {"timestamp": time(6), "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
              "call_id": "ancestors", "input": 'const r = await tools.exec_command(' + json.dumps({
-                 "cmd": 'for p in .thoughts/AGENTS.md .thoughts/ITEM-2/AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
+                 "cmd": 'for p in AGENTS.md; do if test -f "$p"; then printf \'FOUND %s\\n\' "$p"; cat "$p"; fi; done',
                  "workdir": str(self.repository)}) + '); text(r.output);'}},
             {"timestamp": time(7), "type": "response_item", "payload": {"type": "custom_tool_call_output",
              "call_id": "ancestors", "output": [{"type": "input_text", "text": "No additional AGENTS.md files."}]}},

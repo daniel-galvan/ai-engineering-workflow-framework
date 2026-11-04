@@ -1137,17 +1137,21 @@ class ParentContext(unittest.TestCase):
             payload["input"] = source
             self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
-    def test_shared_thoughts_agents_file_is_not_treated_as_archived_artifact(self):
+    def test_thoughts_instruction_probes_are_rejected_but_current_flow_artifacts_are_allowed(self):
         shared_instructions = self.root / ".thoughts" / "AGENTS.md"
         artifact_root = self.root / ".thoughts" / "ITEM-1"
-        self.rows.append(self.call("exec_command", cmd="test -f " + str(shared_instructions)))
-        self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
-
         command = (f"for f in {shared_instructions} {artifact_root}/AGENTS.md "
                    f"{artifact_root}/assignment_issue_evidence.json; "
                    "do if test -e \"$f\"; then printf 'present %s\\n' \"$f\"; "
                    "else printf 'absent %s\\n' \"$f\"; fi; done")
-        self.rows[-1] = self.call("exec_command", cmd=command)
+        for probe in ("test -f " + str(shared_instructions), command):
+            self.rows.append(self.call("exec_command", cmd=probe))
+            rejected = self.audit(artifact_root=artifact_root)
+            self.assertEqual(rejected["status"], "rejected")
+            self.assertIn("forbidden_context_reference:archived_artifact", rejected["errors"])
+
+        self.rows = self.rows[:2]
+        self.rows.append(self.call("exec_command", cmd="test -f " + str(artifact_root / "assignment_issue_evidence.json")))
         self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
 
         archived = self.root / ".thoughts" / "OTHER" / "runs" / "old" / "notes.md"

@@ -1559,9 +1559,10 @@ def _read_targets(command: str) -> list[str]:
 
 
 def _allowed_instruction_paths(root: Path, assigned: list[str]) -> set[Path]:
-    """Allow only repository instructions on the run or an explicitly assigned path's ancestor chain."""
+    """Allow source-repository instructions, excluding the artifact tree."""
     repository = root.parent.parent.resolve()
-    directories = {root.resolve(), root.parent.resolve(), repository}
+    artifact_tree = (repository / ".thoughts").resolve()
+    directories = {repository}
     for source in assigned:
         if not isinstance(source, str) or not source.strip() or "://" in source:
             continue
@@ -1570,12 +1571,14 @@ def _allowed_instruction_paths(root: Path, assigned: list[str]) -> set[Path]:
             resolved = (path if path.is_absolute() else repository / path).resolve()
         except OSError:
             continue
-        if not resolved.is_relative_to(repository):
+        if not resolved.is_relative_to(repository) or resolved.is_relative_to(artifact_tree):
             continue
         if resolved.name == "AGENTS.md":
             directories.add(resolved.parent)
         directory = resolved if resolved.is_dir() else resolved.parent
         while directory.is_relative_to(repository):
+            if directory.is_relative_to(artifact_tree):
+                break
             directories.add(directory)
             if directory == repository:
                 break
