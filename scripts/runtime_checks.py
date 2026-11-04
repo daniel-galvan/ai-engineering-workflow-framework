@@ -961,6 +961,12 @@ def _literal_argument(node: ast.AST, constants: dict[str, str] | None = None):
             else:
                 raise ValueError("nonliteral template substitution")
         return "".join(parts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _literal_argument(node.left, constants)
+        right = _literal_argument(node.right, constants)
+        if isinstance(left, str) and isinstance(right, str):
+            return left + right
+        raise ValueError("nonliteral string concatenation")
     if isinstance(node, ast.Dict):
         return {(key.id if isinstance(key, ast.Name) else _literal_argument(key, constants)):
                 _literal_argument(value, constants)
@@ -2106,10 +2112,20 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                 probe_prefix = include_probes and (
                     len(statement) == 4 and statement[:3] in (["test", "!", "-e"], ["test", "!", "-f"])
                     and not any(char in statement[3] for char in "$`<>|&")
+                    or len(statement) == 3 and statement[:2] in (["test", "-e"], ["test", "-f"])
+                    and not any(char in statement[2] for char in "$`<>|&")
                     or len(statement) == 2 and statement[0] == "printf"
                     and not statement[1].startswith("-") and not any(char in statement[1] for char in "$`%<>|&"))
                 if not selected and not probe_prefix:
                     break
+                if (not selected and statement[0] == "test" and statement[-1].endswith("AGENTS.md")):
+                    target = Path(statement[-1])
+                    target = target if target.is_absolute() else Path(arguments.get("workdir", root.parent.parent)) / target
+                    try:
+                        if target.name == "AGENTS.md" and target.resolve() in allowed:
+                            targets.append(statement[-1])
+                    except (OSError, RuntimeError):
+                        pass
                 targets.extend(selected)
                 index += 1
         cwd = Path(arguments.get("workdir", root.parent.parent))

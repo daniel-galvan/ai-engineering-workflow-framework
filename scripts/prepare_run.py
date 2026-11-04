@@ -1503,13 +1503,16 @@ def _recover_terminal_unmerged_review(artifact_root: Path, prior: dict, closure:
                 and _native_terminal_observations(ledger, handles, require_terminal=False) == observations):
             raise ValueError("remediation_recovery_evidence_unverified")
         matches = []
+        review_trace_found = False
         for path in artifact_root.glob("trace*.json"):
             if path.is_symlink() or not path.is_file():
                 continue
             trace = json.loads(path.read_text())
             handle = trace.get("spawn", {}).get("provider_handle")
-            if (trace.get("run_id") == prior["identity"]["Run ID"] and trace.get("worker") in {"review", "reviewer"}
-                    and trace.get("audit", {}).get("status") == "passed"
+            if trace.get("run_id") != prior["identity"]["Run ID"] or trace.get("worker") not in {"review", "reviewer"}:
+                continue
+            review_trace_found = True
+            if (trace.get("audit", {}).get("status") == "passed"
                     and ledger["thread_mappings"].get(handle) == trace.get("thread_id")
                     and trace.get("last_dispatch_at") and _verified_dispatch_content(trace)
                     and not trace_errors(trace, require_freshness=True)
@@ -1517,7 +1520,12 @@ def _recover_terminal_unmerged_review(artifact_root: Path, prior: dict, closure:
                             and row.get("Last dispatch at") == trace.get("last_dispatch_at")
                             and row.get("Provider status") == "completed" for row in observations)):
                 matches.append(path)
-        if len(matches) != 1:
+        result_rows = [prior.get(field, []) for field in ("workers", "worker_results", "runtime_audits")]
+        if (any(not isinstance(rows, list) for rows in result_rows)
+                or len(matches) > 1
+                or not matches and (review_trace_found or any(
+                    isinstance(row, dict) and row.get("Worker") in {"review", "reviewer"}
+                    for rows in result_rows for row in rows))):
             raise ValueError("remediation_recovery_evidence_unverified")
         reentry = prior["reentry"]
         plan = artifact_root / "implementation_plan.md"

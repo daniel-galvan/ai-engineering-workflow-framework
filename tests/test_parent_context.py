@@ -457,21 +457,22 @@ class ParentContext(unittest.TestCase):
                 self.assertEqual(json.loads(result.stdout), [{"id": CHILD, "status": expected}])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
-    def test_related_status_projection_marks_unavailable_exact_ids(self):
+    def test_related_status_projection_distinguishes_missing_from_unavailable_ids(self):
         projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
         inventory = {"threads": [{"id": TURN, "title": "ECHO-2806 other", "hostId": "local"}]}
-        thread = {"thread": {"id": TURN, "status": {"type": "notLoaded"}}}
+        missing = (f"No Codex thread found for threadId: {CHILD}. "
+                   "Hosts without a readable match: local, remote-ssh-codex-managed:devbox")
         stub = ("const tools = {mcp__codex_app__list_threads: async () => ({content: [{text: " +
                 json.dumps(json.dumps(inventory)) + "}]}),\n"
-                "mcp__codex_app__read_thread: async args => args.threadId === " + json.dumps(CHILD) +
-                " ? {isError: true} : {content: [{text: " + json.dumps(json.dumps(thread)) + "}]},\n"
-                "mcp__codex_app__wait_threads: async () => ({isError: true})};\n"
+                "mcp__codex_app__read_thread: async args => ({isError: true, content: [{text: " +
+                "(args.threadId === " + json.dumps(CHILD) + " ? " + json.dumps(missing) +
+                " : 'permission denied')}]})};\n"
                 "const text = value => process.stdout.write(value);\n")
         result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=stub + projection,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), [
-            {"id": CHILD, "status": "unavailable"}, {"id": TURN, "status": "unavailable"}])
+            {"id": CHILD, "status": "not_found"}, {"id": TURN, "status": "unavailable"}])
 
     def test_only_one_exact_redacted_related_run_status_projection_is_allowed(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
@@ -517,6 +518,30 @@ class ParentContext(unittest.TestCase):
             self.call("mcp__codex_app__read_thread", threadId=CHILD)]
         result = self.audit(artifact_root=artifact_root)
         self.assertIn("parent_unassigned_thread_read:" + CHILD, result["errors"])
+
+    def test_active_reentry_projection_uses_saved_related_thread_ids(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        artifact_root.mkdir(parents=True)
+        run_id = "ECHO-2806-active"
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "run_id": run_id,
+            "parent_context": {"parent_thread_id": PARENT, "related_run_thread_ids": [CHILD]},
+        }))
+        (artifact_root / "finalization_packet.json").write_text(json.dumps({
+            "identity": {"Run ID": run_id, "State": "in_progress"},
+        }))
+
+        self.assertEqual(prior_run_status_thread_ids(artifact_root, PARENT), (CHILD,))
+        projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
+        self.rows.extend([
+            {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+             "call_id": "status-call", "input": projection}},
+            {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "status-call",
+             "output": [{"type": "text", "text": json.dumps([{"id": CHILD, "status": "completed"}])}]}},
+        ])
+        result = self.audit(artifact_root=artifact_root)
+        self.assertEqual(result["status"], "passed", result)
+        self.assertEqual(result["related_run_status_rows"], [{"id": CHILD, "status": "completed"}])
 
     def test_continuation_projection_can_target_only_provider_verified_current_workers(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
@@ -721,6 +746,8 @@ class ParentContext(unittest.TestCase):
             "prior_run_dispatch_ledger_present": True,
         }
         self.assertEqual(stale_run_status_errors(context, "active"), [])
+        not_found = {**context, "related_run_status_rows": [{"id": CHILD, "status": "not_found"}]}
+        self.assertEqual(stale_run_status_errors(not_found, "active"), [])
         active = {**context, "related_run_status_rows": [{"id": CHILD, "status": "running"}]}
         self.assertEqual(stale_run_status_errors(active, "active"), ["stale_run_related_task_active:" + CHILD])
         missing = {**context, "related_run_status_rows": []}
@@ -940,6 +967,24 @@ class ParentContext(unittest.TestCase):
         expected = expected.replace(json.dumps([prior_id]), '["PRIOR-WORKER-THREAD-UUID"]')
         self.assertEqual(textwrap.dedent(snippet).strip(), expected)
 
+    def test_tool_operations_parse_only_static_string_concatenation(self):
+        from scripts.runtime_checks import _tool_operations
+
+        payload = {"type": "custom_tool_call", "name": "exec", "input": (
+            'const root = "/repo"; '
+            "const results = await Promise.all(["
+            'tools.exec_command({cmd:"cat " + root + "/one",workdir:"/repo",max_output_tokens:500}),'
+            'tools.exec_command({cmd:"cat " + root + "/two",workdir:"/repo",max_output_tokens:500})]); '
+            "for (const r of results) text(r.output);"
+        )}
+        self.assertEqual(_tool_operations(payload), [
+            ("exec_command", {"cmd": "cat /repo/one", "workdir": "/repo", "max_output_tokens": 500}),
+            ("exec_command", {"cmd": "cat /repo/two", "workdir": "/repo", "max_output_tokens": 500}),
+        ])
+
+        payload["input"] = payload["input"].replace('"cat " + root', '"cat " + dynamic')
+        self.assertEqual(_tool_operations(payload), [])
+
     def test_missing_turn_wrong_parent_and_unparsed_calls_cannot_pass(self):
         with self.assertRaisesRegex(ValueError, "parent_mismatch"):
             self.audit(expected_thread_id=CHILD)
@@ -998,6 +1043,17 @@ class ParentContext(unittest.TestCase):
                        'const r = await tools.exec_command({cmd:"cat /repo/file", extra:unknown}'):
             payload["input"] = source
             self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
+    def test_shared_thoughts_agents_file_is_not_treated_as_archived_artifact(self):
+        shared_instructions = self.root / ".thoughts" / "AGENTS.md"
+        artifact_root = self.root / ".thoughts" / "ITEM-1"
+        self.rows.append(self.call("exec_command", cmd="test -f " + str(shared_instructions)))
+        self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
+
+        archived = self.root / ".thoughts" / "OTHER" / "runs" / "old" / "notes.md"
+        self.rows[-1]["payload"]["arguments"] = json.dumps({"cmd": "test -f " + str(archived)})
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      self.audit(artifact_root=artifact_root)["errors"])
 
     def test_literal_worker_status_observation_is_bounded(self):
         from scripts.provider_runtime import _literal_worker_status_observation

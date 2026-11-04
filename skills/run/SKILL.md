@@ -485,7 +485,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    An idle thread with an absent or nonterminal latest turn is `unavailable` and blocks archival. For `notLoaded`,
    one immediate `wait_threads` lookup can confirm terminal status only when it reports
    `inactiveStatus` and a terminal latest-turn status for the same ID. An unavailable lookup emits
-   `status: unavailable` and blocks archival. Do not call these tools outside this projection.
+   `status: unavailable` and blocks archival. A read error that exactly reports
+   `No Codex thread found for threadId: <id>. Hosts without a readable match: <hosts>` with a nonempty host list emits
+   `status: not_found`; this confirms there is no readable task on any host and is terminal for preservation.
+   All other read errors remain unavailable and block archival. Do not call these tools outside this projection.
    The following shows this exact projection as an example, replacing `ECHO-2806` with the current work-item key,
    `PARENT-THREAD-UUID` with the provider-verified current parent thread ID, and `PRIOR-WORKER-THREAD-UUID` with the
    JSON array of prior parent and worker thread IDs (use `[]` when empty):
@@ -504,7 +507,15 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
        const args = {threadId: id, turnLimit: 1, includeOutputs: false};
        if (typeof hostId === 'string') args.hostId = hostId;
        const result = await tools.mcp__codex_app__read_thread(args);
-       if (result.isError) return {id, status: 'unavailable'};
+       if (result.isError) {
+         const errorText = Array.isArray(result.content)
+           ? result.content.map(item => typeof item.text === 'string' ? item.text : '').join(' ')
+           : '';
+         const missingPrefix = 'No Codex thread found for threadId: ' + id
+           + '. Hosts without a readable match: ';
+         return {id, status: errorText.startsWith(missingPrefix) && errorText.length > missingPrefix.length
+           ? 'not_found' : 'unavailable'};
+       }
        const read = JSON.parse(result.content[0].text);
        const thread = read.thread;
        if (thread.id !== id || typeof thread.status?.type !== 'string')

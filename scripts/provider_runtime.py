@@ -19,7 +19,8 @@ UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
 RELATED_RUN_STATUS_FIELDS = {"id", "status", "hostId", "kind", "updatedAt"}
-RELATED_RUN_TERMINAL_STATUSES = {"completed", "failed", "stopped", "interrupted", "cancelled", "idle", "archived"}
+RELATED_RUN_TERMINAL_STATUSES = {"completed", "failed", "stopped", "interrupted", "cancelled", "idle", "archived",
+                                "not_found"}
 
 
 def strict_json_loads(value: str):
@@ -156,6 +157,21 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
     except (OSError, json.JSONDecodeError, AttributeError, TypeError) as error:
         raise ValueError("stale_run_thread_identity_invalid:" + str(error)) from error
     identities.discard(current_thread_id)
+    if not identities and isinstance(bindings, dict):
+        parent_context = bindings.get("parent_context")
+        packet_path = artifact_root / "finalization_packet.json"
+        if isinstance(parent_context, dict) and packet_path.is_file():
+            packet = _read_status_receipt(packet_path)
+            identity = packet.get("identity", {})
+            saved_ids = parent_context.get("related_run_thread_ids", [])
+            if not isinstance(saved_ids, list):
+                raise ValueError("stale_run_thread_identity_invalid")
+            if (bindings.get("run_id") == identity.get("Run ID")
+                    and identity.get("State") == "in_progress"
+                    and parent_context.get("parent_thread_id") == current_thread_id):
+                for value in saved_ids:
+                    add(value, required=True)
+    identities.discard(current_thread_id)
     return tuple(sorted(identities))
 
 
@@ -184,7 +200,15 @@ def related_run_status_projection_source(
             "    const args = {threadId: id, turnLimit: 1, includeOutputs: false};\n"
             "    if (typeof hostId === 'string') args.hostId = hostId;\n"
             "    const result = await tools.mcp__codex_app__read_thread(args);\n"
-            "    if (result.isError) return {id, status: 'unavailable'};\n"
+            "    if (result.isError) {\n"
+            "      const errorText = Array.isArray(result.content)\n"
+            "        ? result.content.map(item => typeof item.text === 'string' ? item.text : '').join(' ')\n"
+            "        : '';\n"
+            "      const missingPrefix = 'No Codex thread found for threadId: ' + id\n"
+            "        + '. Hosts without a readable match: ';\n"
+            "      return {id, status: errorText.startsWith(missingPrefix) && errorText.length > missingPrefix.length\n"
+            "        ? 'not_found' : 'unavailable'};\n"
+            "    }\n"
             "    const read = JSON.parse(result.content[0].text);\n"
             "    const thread = read.thread;\n"
             "    if (thread.id !== id || typeof thread.status?.type !== 'string')\n"

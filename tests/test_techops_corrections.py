@@ -897,6 +897,19 @@ class TechOpsCorrections(unittest.TestCase):
                 with patch("runtime_checks.trace_errors", return_value=[]):
                     result, saved = prepare._recover_terminal_unmerged_review(root, packet, closure, root)
                     self.assertEqual((result, saved), (candidate, planning))
+                    trace_path.unlink()
+                    result, saved = prepare._recover_terminal_unmerged_review(root, packet, closure, root)
+                    self.assertEqual((result, saved), (candidate, planning))
+                    reviewed = copy.deepcopy(packet)
+                    reviewed["worker_results"].append({"Worker": "reviewer", "Outcome": "complete"})
+                    save(reviewed)
+                    with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
+                        prepare._recover_terminal_unmerged_review(root, reviewed, closure, root)
+                    save(packet)
+                    failure = json.loads(failure_path.read_text())
+                    failure["errors"] = ["parent_context_nonconformant:forbidden_context_reference:archived_artifact"]
+                    failure_path.write_text(json.dumps(failure))
+                    trace_path.write_text(json.dumps(passed))
                     passed["worker"] = "review"
                     trace_path.write_text(json.dumps(passed))
                     self.assertEqual(prepare._recover_terminal_unmerged_review(root, packet, closure, root),
