@@ -472,6 +472,33 @@ def _incomplete_literal_command(source: str) -> list[tuple[str, dict]] | None:
         return None
 
 
+def _redact_current_session_projection(command: str, source: Path) -> str:
+    """Allow the exact current session path only as the status-projection input."""
+    try:
+        args = shlex.split(command)
+        if (len(args) < 9 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
+                or Path(args[1]).resolve() != Path(__file__).with_name("prepare_run.py").resolve()
+                or args[2] != "--status-projection"):
+            return command
+        values, index = {}, 3
+        allowed = {"--execution-repository", "--work-item", "--provider-session",
+                   "--authorize-prior-parent-thread"}
+        while index < len(args):
+            option = args[index]
+            if option not in allowed or option in values or index + 1 == len(args):
+                return command
+            values[option] = args[index + 1]
+            index += 2
+        if (not {"--execution-repository", "--work-item", "--provider-session"}.issubset(values)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values["--work-item"])
+                or Path(values["--provider-session"]).resolve() != source.resolve()):
+            return command
+        args[args.index("--provider-session") + 1] = "<current-provider-session>"
+        return shlex.join(args)
+    except (OSError, ValueError):
+        return command
+
+
 def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          input_paths: tuple[str, ...] = (), expected_thread_id: str | None = None,
                          expected_turn_id: str | None = None, runtime_evidence: dict | None = None,
@@ -601,7 +628,13 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 for name, arguments in calls:
                     sequenced_operations.append({"name": name, "arguments": arguments})
                     if name == "exec_command":
-                        operations.append({"type": "function_call", "name": name, "arguments": arguments})
+                        audit_arguments = arguments
+                        command = arguments.get("cmd")
+                        if isinstance(command, str):
+                            redacted = _redact_current_session_projection(command, source)
+                            if redacted != command:
+                                audit_arguments = {**arguments, "cmd": redacted}
+                        operations.append({"type": "function_call", "name": name, "arguments": audit_arguments})
                     elif name == "apply_patch":
                         if not isinstance(arguments.get("patch"), str):
                             errors.append("parent_tool_arguments_unavailable")
