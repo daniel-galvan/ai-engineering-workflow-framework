@@ -2069,6 +2069,17 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                     "else", "printf", "absent %s\\n", variable, "fi", "done"]
                 valid = valid or include_probes and tail == [
                     "do", "test", "!", "-f", variable, "||", "printf", "%s\\n", variable, "done"]
+                if include_probes:
+                    for condition in conditions:
+                        prefix = ["do", "if", *condition, "then"]
+                        output = tail[len(prefix):] if tail[:len(prefix)] == prefix else []
+                        if (len(output) == 9 and output[0] == "printf" and output[2] == variable
+                                and output[3:5] == ["else", "printf"] and output[6] == variable
+                                and output[7:] == ["fi", "done"]
+                                and all("%s" in fmt and "%n" not in fmt and not fmt.startswith("-")
+                                        and not any(char in fmt for char in "$`<>|&")
+                                        for fmt in (output[1], output[5]))):
+                            valid = True
                 for condition in conditions:
                     prefix = ["do", "if", *condition, "then"]
                     branch_tail = tail

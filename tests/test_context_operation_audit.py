@@ -41,6 +41,24 @@ class ContextOperationAudit(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIn("forbidden_context_reference:archived_artifact", errors(command))
 
+    def test_multiple_applicable_instruction_presence_checks_do_not_read_archives(self):
+        instructions = (self.root.parent / "AGENTS.md", self.root / "AGENTS.md")
+        paths = " ".join(shlex.quote(str(path)) for path in instructions)
+        command = (f'for path in {paths}; do if [ -f "$path" ]; then printf \'FILE %s\\n\' "$path"; '
+                   'else printf \'MISSING %s\\n\' "$path"; fi; done')
+
+        def errors(value):
+            trace = {"tool_trace": [{"type": "function_call", "name": "exec_command",
+                "arguments": {"cmd": value, "workdir": str(self.repository)}}]}
+            return runtime.context_trace_errors(trace, artifact_root=self.root)
+
+        self.assertEqual(errors(command), [])
+        archive = self.root / "runs" / "prior" / "notes.md"
+        self.assertIn("forbidden_context_reference:archived_artifact", errors(command + "; cat " + str(archive)))
+        other = self.root.parent / "OTHER" / "AGENTS.md"
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      errors(command.replace(str(instructions[1]), str(other))))
+
     def test_parent_allows_explicit_continuity_reads_but_never_exempts_appended_operations(self):
         from scripts.provider_runtime import parent_context_audit
         source = self.repository / "parent.jsonl"
