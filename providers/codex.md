@@ -182,6 +182,8 @@ invocation. Do not interrupt completed workers to free capacity or substitute `s
 `followup_task`. Collect fresh closure and use supported workflow-failure finalization when required correction
 cannot execute; never leave the invocation at an unpublished narrative failure. Model-capacity backoff does not
 apply to this different provider error.
+The error includes no stable numeric worker cap. Do not infer a framework-wide limit from it or assume terminal workers
+have released capacity.
 
 A targeted closure read must show no active or pending thread and an inactive latest turn started at or after the
 last dispatch.

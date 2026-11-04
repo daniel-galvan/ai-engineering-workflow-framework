@@ -124,6 +124,11 @@ PLAYBOOK_DEFAULT_GOALS = {
         "requested_outcome": "implementation_plan",
         "authority": "Feature Delivery playbook configuration",
     },
+    "techops_issue_remediation": {
+        "workflow_objective": "implementation_planning",
+        "requested_outcome": "implementation_plan",
+        "authority": "TechOps Issue Remediation playbook configuration",
+    },
 }
 TECHNICAL_SPIKE_PRIMARY_GOALS = {
     "execute_spike": "Execute technical spike",
@@ -2391,9 +2396,20 @@ def _reentry_source(
             prior["_recovered_candidate"] = candidate
         if not planning_recovery and not failed_delivery and prior["identity"].get("State") != "ready_for_implementation":
             raise ValueError("remediation_requires_ready_plan")
-        if planning_recovery and prior["identity"].get("State") not in {
-                "awaiting_input", "ready_for_implementation", "completed", "blocked"}:
-            receipt = json.loads((artifact_root / "finalization_failure.json").read_text())
+        if planning_recovery and (expected_playbook == "techops_issue_remediation"
+                or prior["identity"].get("State") not in {
+                    "awaiting_input", "ready_for_implementation", "completed", "blocked"}):
+            failure_path = artifact_root / "finalization_failure.json"
+            if expected_playbook == "techops_issue_remediation" and not failure_path.is_file():
+                raise ValueError("planning_recovery_requires_terminal_invocation")
+            try:
+                receipt = json.loads(failure_path.read_text())
+            except (OSError, ValueError) as error:
+                if expected_playbook == "techops_issue_remediation":
+                    raise ValueError("planning_recovery_requires_terminal_invocation") from error
+                raise
+            if expected_playbook == "techops_issue_remediation" and not isinstance(receipt, dict):
+                raise ValueError("planning_recovery_requires_terminal_invocation")
             proof_matches = receipt.get("packet_sha256") == hashlib.sha256(
                 (artifact_root / "finalization_packet.json").read_bytes()).hexdigest()
             if receipt.get("packet_snapshot"):
@@ -2406,7 +2422,8 @@ def _reentry_source(
                                  and frozen_packet["identity"]["Run ID"] == receipt.get("run_id")
                                  == prior["identity"]["Run ID"]
                                  and frozen_packet["identity"]["Lifecycle"] == "planning")
-            if (receipt.get("status") != "failed" or receipt.get("stage") != "workflow" or not proof_matches):
+            if (receipt.get("status") != "failed" or receipt.get("stage") != "workflow" or not proof_matches
+                    or (expected_playbook == "techops_issue_remediation" and not receipt.get("packet_snapshot"))):
                 raise ValueError("planning_recovery_requires_terminal_invocation")
         if prior["identity"]["Lifecycle"] != "planning" and not failed_delivery:
             raise ValueError("remediation_reentry_requires_planning_run")
@@ -2756,12 +2773,14 @@ def prepare_run(
     if remediation_reentry and (not continuation or playbook not in {
             "feature_delivery", "sentry_issue_remediation", "techops_issue_remediation"}):
         raise ValueError("remediation_reentry_requires_supported_playbook_continuation")
-    if planning_recovery and (not continuation or playbook != "feature_delivery" or remediation_reentry):
-        raise ValueError("planning_recovery_requires_feature_delivery_continuation")
+    if planning_recovery and (not continuation or playbook not in {
+            "feature_delivery", "techops_issue_remediation"} or remediation_reentry):
+        raise ValueError("planning_recovery_requires_supported_playbook_continuation")
     if approval_reference and not (remediation_reentry or planning_recovery):
         raise ValueError("approval_reference_requires_reentry_or_recovery")
     goal_defaults_used = playbook in PLAYBOOK_DEFAULT_GOALS and (
-        workflow_objective is None and requested_outcome is None
+        (playbook != "techops_issue_remediation" or planning_recovery)
+        and workflow_objective is None and requested_outcome is None
     )
     if goal_defaults_used:
         defaults = PLAYBOOK_DEFAULT_GOALS[playbook]
@@ -2845,6 +2864,12 @@ def prepare_run(
     # overwriting any run artifact. This makes invalid retries transactional.
     if input_manifest is not None and input_data is not None:
         raise ValueError("run_input_manifest_sources_conflict")
+    if (planning_recovery and playbook == "techops_issue_remediation"
+            and input_manifest is None and input_data is None):
+        saved_inputs = artifact_root / RUN_INPUTS_FILENAME
+        if not saved_inputs.is_file():
+            raise ValueError("run_input_manifest_required")
+        input_manifest = saved_inputs
     if playbook == "feature_delivery" and input_manifest is None and input_data is None:
         raise ValueError("run_input_manifest_required")
     validated_supplied = (load_manifest(input_manifest, explicit=True) if input_manifest else

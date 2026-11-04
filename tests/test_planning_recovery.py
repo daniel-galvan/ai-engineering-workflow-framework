@@ -1,5 +1,6 @@
 """Compose planning recovery, provider evidence and partial-handoff gates."""
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -322,6 +323,111 @@ class PlanningRecovery(unittest.TestCase):
         self.packet_path.write_text(json.dumps(self.packet))
         self.assertTrue(any('dispatch_mismatch' in error for error in
                             finalizer.feature_delivery_pre_handoff_errors(self.packet_path)))
+
+
+
+class TechOpsPlanningRecovery(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.inputs = self.root / "inputs.json"
+        self.inputs.write_text(json.dumps({"inputs": [{
+            "Input ID": "IN-001", "Input or artifact": "Jira ECHO-2781",
+            "Source or path": "Current request", "Authority": "User", "Status": "Verified",
+        }]}))
+        self.prepared = preparation.prepare_run(
+            self.root, "ECHO-2781", "techops_issue_remediation", None, False,
+            input_manifest=self.inputs,
+        )
+        self.artifacts = Path(self.prepared["artifact_root"])
+        self.packet_path = Path(self.prepared["finalization_packet"])
+        self.packet = json.loads(self.packet_path.read_text())
+
+    def close_blocked_prior(self, *, write_failure=True):
+        self.packet["identity"].update({
+            "Requested profile": "standard", "State": "blocked", "Workflow outcome": "blocked",
+            "Lifecycle": "planning",
+        })
+        self.packet["evidence"] = [{"Evidence ID": "E-OLD-001", "Statement": "Accepted finding"}]
+        workers = ("issue-evidence", "failure-path", "repository-integration", "fix-design")
+        handles = ["/root/" + worker.replace("-", "_") for worker in workers]
+        self.packet["worker_results"] = [{"Worker": worker, "Outcome": "complete"} for worker in workers]
+        self.packet_path.write_text(json.dumps(self.packet, indent=2) + "\n")
+        observations = []
+        for index, handle in enumerate(handles):
+            thread_id = f"00000000-0000-0000-0000-{index + 1:012d}"
+            dispatch = f"2026-10-12T00:00:0{index + 1}Z"
+            completed = f"2026-10-12T00:01:0{index + 1}Z"
+            observations.append({
+                "Provider handle": handle, "Provider status": "completed", "Status source": "read_thread",
+                "Thread ID": thread_id, "Last dispatch at": dispatch, "Observed at": "2026-10-12T00:02:00Z",
+                "Latest turn started at": dispatch, "Latest turn completed at": completed,
+                "Latest turn status": "completed", "Thread status": "idle",
+            })
+        closure = {"runtime_closure": [{
+            "Run or stage": "planning", "Receipt owner": "Coordinator",
+            "Completed worker handles": ", ".join(handles), "Runtime status": "Terminal",
+            "Remaining active handles": "None", "Closure evidence or blocker": "Fresh status for every worker",
+        }], "terminal_observations": observations}
+        (self.artifacts / "runtime_closure.json").write_text(json.dumps(closure))
+        snapshot = self.artifacts / "failure_packet_snapshot.json"
+        packet_bytes = self.packet_path.read_bytes()
+        snapshot.write_bytes(packet_bytes)
+        receipt = {
+            "status": "failed", "stage": "workflow", "run_id": self.packet["identity"]["Run ID"],
+            "packet_snapshot": str(snapshot), "snapshot_sha256": hashlib.sha256(packet_bytes).hexdigest(),
+            "packet_sha256": hashlib.sha256(packet_bytes).hexdigest(),
+        }
+        failure_path = self.artifacts / "finalization_failure.json"
+        if write_failure:
+            failure_path.write_text(json.dumps(receipt))
+        return packet_bytes, failure_path, snapshot, receipt
+
+    def test_blocked_techops_recovery_requires_a_hash_bound_failure_receipt(self):
+        self.close_blocked_prior(write_failure=False)
+        original = self.packet_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "planning_recovery_requires_terminal_invocation"):
+            preparation.prepare_run(
+                self.root, "ECHO-2781", "techops_issue_remediation", None, True,
+                planning_recovery=True, approval_reference="Authorized same-chat recovery",
+            )
+        self.assertEqual(self.packet_path.read_bytes(), original)
+
+    def test_techops_recovery_rejects_a_stale_failure_snapshot(self):
+        _, _, snapshot, _ = self.close_blocked_prior()
+        snapshot.write_text(json.dumps({"identity": {
+            "Run ID": self.packet["identity"]["Run ID"], "Lifecycle": "planning",
+        }}))
+        with self.assertRaisesRegex(ValueError, "planning_recovery_requires_terminal_invocation"):
+            preparation.prepare_run(
+                self.root, "ECHO-2781", "techops_issue_remediation", None, True,
+                planning_recovery=True, approval_reference="Authorized same-chat recovery",
+            )
+
+    def test_techops_recovery_archives_failure_and_preserves_accepted_findings(self):
+        packet_bytes, failure_path, _, receipt = self.close_blocked_prior()
+        failure_bytes = failure_path.read_bytes()
+        result = preparation.prepare_run(
+            self.root, "ECHO-2781", "techops_issue_remediation", None, True,
+            planning_recovery=True, approval_reference="Authorized same-chat recovery",
+        )
+        current = json.loads(self.packet_path.read_text())
+        archived = Path(result["archived_prior_run"])
+        self.assertEqual((archived / "finalization_packet.json").read_bytes(), packet_bytes)
+        self.assertEqual((archived / "finalization_failure.json").read_bytes(), failure_bytes)
+        self.assertFalse(failure_path.exists())
+        self.assertEqual(json.loads((archived / "finalization_failure.json").read_text()), receipt)
+        self.assertNotEqual(current["identity"]["Run ID"], self.packet["identity"]["Run ID"])
+        self.assertEqual(current["identity"]["Lifecycle"], "planning")
+        self.assertEqual(current["evidence"], self.packet["evidence"])
+        self.assertEqual(current["worker_results"], [])
+        self.assertEqual(current["workers"], [])
+        bindings = json.loads(Path(result["role_binding_manifest"]).read_text())
+        goals = {row["Input ID"]: row for row in bindings["run_input_manifest"]["inputs"]}
+        self.assertEqual(goals["RUN-GOAL-001"]["Source or path"], "Selected playbook defaults")
+        self.assertEqual(goals["RUN-GOAL-002"]["Input or artifact"], "Workflow objective: implementation_planning")
+        self.assertTrue((self.artifacts / "run_inputs.json").is_file())
 
 
 if __name__ == "__main__":

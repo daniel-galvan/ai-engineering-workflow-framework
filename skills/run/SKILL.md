@@ -396,9 +396,13 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    unaccepted input for the new delivery workers; retain the prior failure and do not claim the rejected validation.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
    An ordinary continuation cannot reopen a completed Feature Delivery planning execution or bypass exhausted
-   finalization attempts. For explicitly authorized planning recovery, reconcile prior actual worker rows and fresh
-   Coordinator closure first, then pass `--continuation --planning-recovery` with
+   finalization attempts. For explicitly authorized Feature Delivery planning recovery, or TechOps recovery after a
+   terminal workflow failure, reconcile prior actual worker rows and fresh Coordinator closure first, then pass
+   `--continuation --planning-recovery` with
    `--approval-reference <recovery authorization>`.
+   TechOps recovery requires a hash-verified workflow-failure receipt and packet snapshot even when the packet state is
+   `blocked`; that state alone is insufficient. When no updated TechOps input manifest is supplied, preparation reuses
+   the saved `run_inputs.json`.
    Planning recovery is untimeboxed unless the user supplies a timebox. Omit both `--started-at` and
    `--timebox-minutes` otherwise; do not invent a deadline or explicit goal overrides. Use the playbook defaults.
    Preparation preserves the prior invocation under `runs/`, starts a new planning identity, and clears current

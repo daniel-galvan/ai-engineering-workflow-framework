@@ -1776,12 +1776,14 @@ A pilot run MUST NOT be called contract-compliant unless its work record can ans
 - Why did the workflow finish, stop, or defer?
 - What is the next action and who owns it?
 
-### Feature Delivery Planning Recovery
+### Feature Delivery and TechOps Planning Recovery
 
-Explicit planning recovery preserves the closed failed/completed invocation, including its attempt counters, before
-starting a new planning execution identity in the same session. Reconcile actual prior workers and current provider
-closure before preparation. Historical executions are provenance, not current worker or runtime rows. Recover accepted
-findings as named inputs and reverify applicability; do not restart discovery without a material gap.
+Feature Delivery recovery preserves a closed failed/completed planning invocation. TechOps recovery is limited to a
+terminal workflow failure with a hash-verified packet snapshot and Run ID; a `blocked` packet state alone is not proof
+that the invocation ended. Both paths preserve the prior invocation, including its attempt counters, before starting a
+new planning identity in the same chat. Reconcile actual prior workers and current provider closure before preparation.
+Historical executions are provenance, not current worker or runtime rows. Recover accepted findings as named inputs and
+reverify applicability; do not restart discovery without a material gap.
 Recovery archives use `archive_manifest.json`: each original relative path maps to a SHA256-verified snapshot.
 Distinct bytes are stored once in `runs/_objects/`; the packet, work record, failure receipt, and closure remain
 readable in the prior run folder, along with the published work-record snapshot. Resolve other files through the
