@@ -181,10 +181,10 @@ worker contexts and correction turns.
 When an input contains a relative framework artifact reference, preserve it and
 also deliver its verified canonical path; a worker must not report that input
 unavailable when the resolved artifact is available.
-Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them. Inspect the worker tool trace. When a provider exposes a tool trace, run the packaged
+Use only this chat and current-run artifacts. Do not include or rely on other
+chats, sessions, or host memory unless the current user explicitly identifies
+and authorizes the exact source. Verify material current-state claims against
+current evidence. Do not open unassigned `.thoughts` run archives. Inspect the worker tool trace. When a provider exposes a tool trace, run the packaged
 `validate_worker_runtime.py --trace <current-run-trace.json>` check before fan-in
 and quarantine any `forbidden_context_reference:*` or
 `context_conformance_failed` result. If no trace is exposed, record the worker

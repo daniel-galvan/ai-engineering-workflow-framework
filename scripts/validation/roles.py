@@ -29,8 +29,8 @@ def validate_activation_roles(agent_configs: dict) -> None:
         ):
             if phrase not in instructions:
                 fail(f"{agent_name}.toml is missing remediation barrier rule: {phrase}")
-        if "Follow higher-priority host memory instructions" not in instructions:
-            fail(f"{agent_name}.toml is missing host memory precedence")
+        if "Use only this chat and current-run artifacts" not in instructions:
+            fail(f"{agent_name}.toml is missing the current-chat context boundary")
 
     for agent_name, phrases in {
         "implementer": (
@@ -323,7 +323,7 @@ def validate_technical_roles() -> None:
         "decision_expected_to_change: true",
         "concrete question",
         "expected disposition",
-        "Follow higher-priority host memory instructions",
+        "Use only this chat and current-run artifacts",
         "Check runner availability",
         "decision_changed",
         "low-value integration check",

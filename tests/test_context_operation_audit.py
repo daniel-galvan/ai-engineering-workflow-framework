@@ -51,12 +51,15 @@ class ContextOperationAudit(unittest.TestCase):
             call = {"type": "custom_tool_call", "name": "exec", "input":
                     "const result = await tools.exec_command(" + json.dumps({"cmd": command}) + "); text(result.output);"}
             source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
-            self.assertEqual(parent_context_audit(source, artifact_root=self.root, input_paths=(approved,))["status"], "passed")
-            self.assertIn("forbidden_context_reference:archived_artifact", parent_context_audit(source, artifact_root=self.root)["errors"])
+            self.assertEqual(parent_context_audit(source, artifact_root=self.root, input_paths=(approved,),
+                                                  related_run_thread_ids=())["status"], "passed")
+            self.assertIn("forbidden_context_reference:archived_artifact",
+                          parent_context_audit(source, artifact_root=self.root, related_run_thread_ids=())["errors"])
             call["input"] += "await tools.exec_command({cmd:'cat /repo/.thoughts/OTHER/runs/old/analysis.md'});"
             source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
             self.assertIn("forbidden_context_reference:archived_artifact",
-                          parent_context_audit(source, artifact_root=self.root, input_paths=(approved,))["errors"])
+                          parent_context_audit(source, artifact_root=self.root, input_paths=(approved,),
+                                               related_run_thread_ids=())["errors"])
 
     def test_parent_patch_operations_are_parsed_without_treating_written_prose_as_reads(self):
         from scripts.provider_runtime import parent_context_audit
@@ -69,16 +72,19 @@ class ContextOperationAudit(unittest.TestCase):
                 call = {"type": "custom_tool_call", "name": "apply_patch" if direct else "exec",
                         "input": patch if direct else "text(await tools.apply_patch(" + json.dumps(patch) + "));"}
                 source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
-                self.assertEqual(parent_context_audit(source, artifact_root=self.root)["status"], "passed")
+                self.assertEqual(parent_context_audit(source, artifact_root=self.root,
+                                                      related_run_thread_ids=())["status"], "passed")
                 forbidden = dict(call)
                 forbidden["input"] = forbidden["input"].replace(str(self.root / "notes.md"), str(self.root / "runs/old/notes.md"))
                 source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": forbidden}]))
                 self.assertIn("forbidden_context_reference:archived_artifact",
-                              parent_context_audit(source, artifact_root=self.root)["errors"])
+                              parent_context_audit(source, artifact_root=self.root,
+                                                   related_run_thread_ids=())["errors"])
         call["input"] = "await tools.apply_patch(" + json.dumps(patch) + "); await tools.exec_command({cmd:'cat /repo/.codex/memories/MEMORY.md'});"
         call["name"] = "exec"
         source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
-        self.assertIn("forbidden_context_reference:memory_path", parent_context_audit(source, artifact_root=self.root)["errors"])
+        self.assertIn("forbidden_context_reference:memory_path",
+                      parent_context_audit(source, artifact_root=self.root, related_run_thread_ids=())["errors"])
 
     def test_parent_allows_assigned_source_ancestor_policy_but_rejects_extra_output(self):
         source = self.repository / "src" / "module" / "current.py"
@@ -460,197 +466,32 @@ class ContextOperationAudit(unittest.TestCase):
             trace = {"tool_trace": self.paired(code, "Current report\n/Users/example/.codex/memories/MEMORY.md")}
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
 
-    def test_worker_host_memory_probe_requires_native_proof_of_no_matches(self):
-        from unittest.mock import patch
-        codex = self.repository / ".codex"
-        session = codex / "sessions" / "worker.jsonl"
-        session.parent.mkdir(parents=True)
-        memory = codex / "memories" / "MEMORY.md"
-        command = "rg -n -F ITEM-1 " + str(memory)
-        observation = {"type": "CommandExecution", "command": ["bash", "-lc", command],
-                       "parsed_cmd": [{"type": "search", "query": "ITEM-1", "path": "MEMORY.md"}],
-                       "exit_code": 1, "status": "failed", "aggregated_output": ""}
-        header = {"type": "session_meta", "payload": {"id": SOURCE}}
-        event = {"type": "event_msg", "payload": {"type": "item_completed", "item": observation}}
-        def save(*rows):
-            session.write_text("".join(json.dumps(row) + "\n" for row in rows))
-        trace = {"thread_id": SOURCE, "trace_retrieval": str(session), "tool_trace": [{
-            "type": "function_call", "name": "exec_command", "arguments": {"cmd": command}}]}
-        with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
-            save(header, event)
-            self.assertEqual(runtime.context_trace_errors(trace), [])
-            batched = {"thread_id": SOURCE, "trace_retrieval": str(session), "tool_trace": [{
-                "type": "custom_tool_call", "name": "exec", "input":
-                'await tools.exec_command({cmd:"shasum -a 256 dispatch.txt"});\n'
-                + "await tools.exec_command(" + json.dumps({"cmd": command}) + ");"}]}
-            self.assertEqual(runtime.context_trace_errors(batched), [])
-            observation.update({"exit_code": 0, "status": "completed", "aggregated_output": "matched historical content"})
-            save(header, event)
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(batched))
-            observation.update({"exit_code": 1, "status": "failed", "aggregated_output": ""})
-            save(header, event)
-            batched["tool_trace"][0]["input"] += "\nawait tools.exec_command(" + json.dumps({"cmd": "cat " + str(memory)}) + ");"
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(batched))
-            save(header, event, event)
-            self.assertEqual(runtime.context_trace_errors(trace), [])
-            bad_observation = dict(observation, exit_code=0, status="completed", aggregated_output="matched historical content")
-            bad_event = {"type": "event_msg", "payload": {"type": "item_completed", "item": bad_observation}}
-            save(header, event, bad_event)
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
-            save({"type": "session_meta", "payload": {"id": "other"}}, event)
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+    def test_memory_and_session_log_reads_require_exact_run_inputs(self):
+        for target, error in (
+            ("/repo/.codex/memories/MEMORY.md", "memory_path"),
+            ("/repo/.codex/sessions/prior.jsonl", "session_log"),
+        ):
+            with self.subTest(target=target):
+                command = "cat " + target
+                code = "await tools.exec_command(" + json.dumps({"cmd": command}) + ")"
+                trace = {"tool_trace": self.paired(code, "previous chat content")}
+                self.assertIn("forbidden_context_reference:" + error, runtime.context_trace_errors(trace))
+                self.assertNotIn("forbidden_context_reference:" + error,
+                                 runtime.context_trace_errors(trace, input_paths=(target,)))
 
-    def test_worker_host_memory_read_requires_host_authority_and_native_output(self):
-        from unittest.mock import patch
-        codex = self.repository / ".codex"
-        session = codex / "sessions" / "worker.jsonl"
-        session.parent.mkdir(parents=True)
-        memory = codex / "memories" / "MEMORY.md"
-        memory.parent.mkdir(parents=True)
-        memory.write_text("historical .thoughts/OTHER/runs/old/file\n")
-        command = "rg -n -C 2 'historical|service' " + str(memory)
-        header = {"type": "session_meta", "payload": {"id": SOURCE}}
-        directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
-                     "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
-        native = {"type": "event_msg", "timestamp": "2026-10-01T00:00:02Z", "payload": {"type": "item_completed", "item": {
-            "type": "CommandExecution", "command": ["bash", "-lc", command], "status": "completed",
-            "exit_code": 0, "aggregated_output": memory.read_text()}}}
-        trace = {"thread_id": SOURCE, "trace_retrieval": str(session), "last_dispatch_at": "2026-10-01T00:00:01Z",
-                 "status_observation": {"Observed at": "2026-10-01T00:00:03Z"},
-                 "tool_trace": self.paired("await tools.exec_command(" + json.dumps({"cmd": command}) + ")", memory.read_text())}
-        def save():
-            session.write_text("".join(json.dumps(row) + "\n" for row in (header, directive, native)))
-        with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
-            save()
-            self.assertEqual(runtime.context_trace_errors(trace), [])
-            batch = ('const rs = await Promise.allSettled(['
-                     'tools.exec_command({cmd:"cat /tmp/skill.md"}),'
-                     'tools.exec_command(' + json.dumps({"cmd": command}) + ')'
-                     ']); for (const r of rs) text(r.status === "fulfilled" ? r.value.output : String(r.reason));')
-            batched = {**trace, "tool_trace": self.paired(batch, "skill contents\n" + memory.read_text())}
-            self.assertEqual(runtime.context_trace_errors(batched), [])
-            batched["tool_trace"][0]["input"] = batch.replace(
-                'tools.exec_command({cmd:"cat /tmp/skill.md"})',
-                'tools.exec_command(' + json.dumps({"cmd": "cat " + str(memory) + " > /tmp/copy"}) + ')')
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(batched))
-            trace["tool_trace"][1]["output"] += ".thoughts/OTHER/runs/old/extra\n"
-            self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
-            trace["tool_trace"][1]["output"] = memory.read_text()
-            native["timestamp"] = "2026-09-30T00:00:00Z"
-            save()
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
-            native["timestamp"] = "2026-10-01T00:00:02Z"
-            directive["payload"]["role"] = "user"
-            save()
-            self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
+    def test_no_match_memory_search_is_always_forbidden(self):
+        memory = "/repo/.codex/memories/MEMORY.md"
+        command = "rg -n ITEM " + memory
+        trace = {"tool_trace": self.paired(
+            "await tools.exec_command(" + json.dumps({"cmd": command}) + ")", "")}
+        self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
 
-    def test_host_memory_read_before_correction_requires_its_exact_native_call_interval(self):
-        from unittest.mock import patch
-        codex = self.repository / ".codex"
-        session = codex / "sessions" / "worker.jsonl"
-        session.parent.mkdir(parents=True)
-        memory = codex / "memories" / "MEMORY.md"
-        memory.parent.mkdir(parents=True)
-        memory.write_text("historical .thoughts/OTHER/runs/old/file\n")
-        command = "rg -n historical " + str(memory)
-        trace = {"thread_id": SOURCE, "trace_retrieval": str(session),
-                 "last_dispatch_at": "2026-10-01T00:00:03Z",
-                 "status_observation": {"Observed at": "2026-10-01T00:00:05Z"},
-                 "tool_trace": self.paired("await tools.exec_command(" + json.dumps({"cmd": command}) + ")",
-                                           memory.read_text())}
-        header = {"type": "session_meta", "payload": {"id": SOURCE}}
-        directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
-                     "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
-        call = {"type": "response_item", "timestamp": "2026-10-01T00:00:01Z",
-                "payload": trace["tool_trace"][0]}
-        receipt = {"type": "event_msg", "timestamp": "2026-10-01T00:00:02Z",
-                   "payload": {"type": "item_completed", "item": {"type": "CommandExecution",
-                       "command": ["bash", "-lc", command], "status": "completed", "exit_code": 0,
-                       "aggregated_output": memory.read_text()}}}
-        completion = {"type": "response_item", "timestamp": "2026-10-01T00:00:02.500Z",
-                      "payload": trace["tool_trace"][1]}
-        rows = [header, directive, call, receipt, completion]
-        def save(events):
-            session.write_text("".join(json.dumps(row) + "\n" for row in events))
-        with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
-            save(rows)
-            self.assertEqual(runtime.context_trace_errors(trace), [])
-            for change in ("mismatched_source", "mismatched_call", "missing_completion", "future_completion",
-                           "receipt_before_call", "receipt_after_completion"):
-                changed = json.loads(json.dumps(rows))
-                if change == "mismatched_source": changed[2]["payload"]["input"] += "; text('different call')"
-                elif change == "mismatched_call": changed[2]["payload"]["call_id"] = "another-call"
-                elif change == "missing_completion": changed.pop()
-                elif change == "future_completion": changed[-1]["timestamp"] = "2026-10-01T00:00:06Z"
-                elif change == "receipt_before_call": changed[3]["timestamp"] = "2026-10-01T00:00:00Z"
-                elif change == "receipt_after_completion": changed[3]["timestamp"] = "2026-10-01T00:00:02.750Z"
-                save(changed)
-                with self.subTest(change=change):
-                    self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
-            save(rows)
-            trace["tool_trace"][1]["output"] += ".thoughts/OTHER/runs/old/extra\n"
-            self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
-
-    def test_worker_response_preserves_host_required_memory_citation(self):
-        from unittest.mock import patch
-        from scripts.worker_runtime_evidence import worker_response_value, _materialize_worker_response
-        codex = self.repository / ".codex"
-        session = codex / "sessions" / "worker.jsonl"
-        session.parent.mkdir(parents=True)
-        memory = codex / "memories" / "MEMORY.md"
-        directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
-            "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
-        session.write_text(json.dumps(directive) + "\n")
-        envelope = {"output": "Historical context is identified.", "result": {"run_id": "run"}}
+    def test_worker_response_rejects_memory_citation_suffix(self):
+        from scripts.worker_runtime_evidence import worker_response_value
+        envelope = {"output": "Current-run evidence only.", "result": {"run_id": "run"}}
         suffix = "\n<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[context]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>"
-        response = json.dumps(envelope) + suffix
-        with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
-            self.assertEqual(worker_response_value(response, session), envelope)
-            receipt = _materialize_worker_response(self.root, "tester", "dispatch", response, {}, session)
-            self.assertEqual(Path(receipt["response_path"]).read_text(), response)
-            directive["payload"]["role"] = "user"
-            session.write_text(json.dumps(directive) + "\n")
-            with self.assertRaisesRegex(ValueError, "worker_final_response_json_invalid"):
-                worker_response_value(response, session)
-            directive["payload"]["role"] = "developer"
-            session.write_text(json.dumps(directive) + "\n")
-            for invalid in (response + " trailing text", response.replace("MEMORY.md:1-2", "../../secret:1-2"),
-                            response.replace("MEMORY.md:1-2", "MEMORY.md:2-1"),
-                            response.replace("MEMORY.md:1-2|note=[context]", ""),
-                            response.replace("<rollout_ids>\n", "<rollout_ids>\ninvalid-id\n")):
-                with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "worker_final_response_json_invalid"):
-                    worker_response_value(invalid, session)
-
-    def test_worker_can_read_only_a_rollout_linked_by_a_native_memory_read(self):
-        from unittest.mock import patch
-        codex = self.repository / ".codex"
-        session = codex / "sessions" / "worker.jsonl"
-        session.parent.mkdir(parents=True)
-        prior = session.parent / "prior.jsonl"
-        memory = codex / "memories" / "MEMORY.md"
-        memory.parent.mkdir(parents=True)
-        memory.write_text("rollout_path=" + str(prior) + "\n")
-        prior.write_text(".thoughts/OTHER/runs/old/file\n")
-        directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
-            "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
-        def native(path):
-            return {"type": "event_msg", "timestamp": "2026-10-01T00:00:02Z", "payload": {
-                "type": "item_completed", "item": {"type": "CommandExecution",
-                "command": ["bash", "-lc", "cat " + str(path)], "status": "completed", "exit_code": 0,
-                "aggregated_output": path.read_text()}}}
-        first = self.paired('await tools.exec_command(' + json.dumps({"cmd": "cat " + str(memory)}) + ')', memory.read_text())
-        second = self.paired('await tools.exec_command(' + json.dumps({"cmd": "cat " + str(prior)}) + ')', prior.read_text())
-        for row in second: row["call_id"] = "read-2"
-        trace = {"thread_id": SOURCE, "trace_retrieval": str(session), "last_dispatch_at": "2026-10-01T00:00:01Z",
-                 "status_observation": {"Observed at": "2026-10-01T00:00:03Z"}, "tool_trace": first + second}
-        rows = [{"type": "session_meta", "payload": {"id": SOURCE}}, directive, native(memory), native(prior)]
-        with patch.dict("os.environ", {"CODEX_HOME": str(codex)}):
-            session.write_text("".join(json.dumps(row) + "\n" for row in rows))
-            self.assertEqual(runtime.context_trace_errors(trace), [])
-            rows[2]["payload"]["item"]["aggregated_output"] = "no linked rollout\n"
-            session.write_text("".join(json.dumps(row) + "\n" for row in rows))
-            self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+        with self.assertRaisesRegex(ValueError, "worker_final_response_json_invalid"):
+            worker_response_value(json.dumps(envelope) + suffix, Path("unused-session.jsonl"))
 
     def test_codex_home_memory_paths_are_rejected_when_quoted(self):
         for command, expected in (

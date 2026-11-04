@@ -78,7 +78,8 @@ class CandidateRecoveryTest(unittest.TestCase):
             (root / "finalization_failure.json").unlink()
             bindings["parent_context"]["parent_thread_id"] = worker
             (root / "role_bindings.json").write_text(json.dumps(bindings))
-            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session)["prior_thread_ids"], [])
+            with self.assertRaisesRegex(ValueError, "prior_run_status_requires_user_authorization"):
+                prepare.status_projection(self.repo, "ITEM-1", self.session)
 
     def test_followup_replays_only_authorized_snapshot_updates(self):
         initial = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}

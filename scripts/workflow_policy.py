@@ -11,6 +11,10 @@ FORBIDDEN_MEMORY_CONTEXT_PATTERNS = (
         r"(?i)(?:^|[/\\])\.codex[/\\]memories" + _PATH_REFERENCE_END
         + r"|" + _CODEX_HOME + r"[/\\]memories" + _PATH_REFERENCE_END
     )),
+    ("session_log", re.compile(
+        r"(?i)(?:^|[/\\])\.?codex[/\\]sessions" + _PATH_REFERENCE_END
+        + r"|" + _CODEX_HOME + r"[/\\]sessions" + _PATH_REFERENCE_END
+    )),
     ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries" + _PATH_REFERENCE_END)),
 )
 

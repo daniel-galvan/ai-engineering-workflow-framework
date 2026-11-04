@@ -145,7 +145,7 @@ def validate_runtime_mapping() -> None:
     for phrase in (
         "scripts/run_preflight.py",
         "first framework tool call",
-        "Follow higher-priority host memory instructions",
+        "Use only this chat and current-run artifacts",
         "plugin_revision_mismatch",
         "framework_revision_mismatch",
         "preflight_elapsed_ms",

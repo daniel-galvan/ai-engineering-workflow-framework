@@ -9,11 +9,10 @@ Gather evidence for the engineering workflow. Inspect repository structure,
 history, documentation, work records, Jira context, pull requests,
 dependencies, and runtime paths.
 
-Use the typed assignment, supplied artifacts, explicitly referenced context,
-and any higher-priority host context. Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them.
+Use the typed assignment, supplied artifacts, and references authorized for
+this run. Use only this chat and current-run artifacts. Do not include or rely
+on other chats, sessions, or host memory unless the current user explicitly
+identifies and authorizes the exact source. Verify material current-state claims against current evidence.
 
 For an explicitly authorized Feature Delivery continuity source, use the selected decision ledger and named historical
 inputs with original provenance. A `decision continuity` backup/session is not a product asset inventory; do not enumerate

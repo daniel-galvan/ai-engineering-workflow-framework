@@ -244,7 +244,10 @@ BLOCKING_DECISION_TYPES = {
     "indispensable_evidence",
 }
 
-PROHIBITED_CONTEXT_MARKERS = ("MEMORY.md", "/memories/", "<oai-mem-citation>")
+PROHIBITED_CONTEXT_MARKERS = (
+    "MEMORY.md", "/memories/", "/.codex/sessions/", "/codex/sessions/", "\\.codex\\sessions\\",
+    "$CODEX_HOME/sessions", "${CODEX_HOME}/sessions", "<oai-mem-citation>",
+)
 
 UNOBSERVED_MODEL_VALUES = {"", "unknown", "none"}
 

@@ -2497,7 +2497,6 @@ def _configure_remediation_result_contracts(artifact_root: Path, worker_contract
                 "files; read-only roles can instead pipe their JSON draft to --response-stdin without writing files. "
                 "Correct any reported schema or reference errors and rerun it. Return its successful "
                 "stdout unchanged as the JSON portion of your final answer; this preview does not accept or merge your result. "
-                "If higher-priority host instructions require a memory citation, append that citation block after the JSON. "
                 "Do not edit Coordinator-owned packet rows or write assigned output files directly. "
                 "Before ending, return exactly one strict JSON final answer with output (the assigned "
                 "worker artifact contents) and result (the current run_id, one worker_result object with "
@@ -2756,12 +2755,13 @@ def prepare_run(
     lifecycle: str | None = None,
     execution_profile: str | None = None,
     input_data: dict[str, object] | None = None,
+    authorize_prior_parent_thread: str | None = None,
 ) -> dict[str, object]:
     playbook = _playbook_name(playbook)
     try:
-        from provider_runtime import current_parent_session
+        from provider_runtime import current_parent_session, scoped_prior_run_status_thread_ids
     except ModuleNotFoundError:
-        from scripts.provider_runtime import current_parent_session
+        from scripts.provider_runtime import current_parent_session, scoped_prior_run_status_thread_ids
     provider_session = current_parent_session(provider_session)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
         raise ValueError("invalid_work_item")
@@ -2899,14 +2899,24 @@ def prepare_run(
                 assigned.append(str(row.get("Source or path", "")))
         previous_parent = previous_run_bindings.get("parent_context", {})
         control = dict(previous_run_bindings.get("runtime_evidence", {}))
+        related_thread_ids = (tuple(previous_parent["related_run_thread_ids"])
+                              if "related_run_thread_ids" in previous_parent else None)
+        if authorize_prior_parent_thread is not None:
+            if previous_parent:
+                if authorize_prior_parent_thread != previous_parent.get("parent_thread_id"):
+                    raise ValueError("stale_run_status_authorization_mismatch")
+            else:
+                with provider_session.open() as stream:
+                    current_thread_id = json.loads(next(stream, "")).get("payload", {}).get("id")
+                related_thread_ids = scoped_prior_run_status_thread_ids(
+                    artifact_root, current_thread_id, authorize_prior_parent_thread)
         if previous_parent and Path(previous_parent["provider_session"]).resolve() != provider_session.resolve():
             control["identity_sessions"] = list(dict.fromkeys([
                 *control.get("identity_sessions", []), previous_parent["provider_session"]]))
         parent_context = parent_context_audit(provider_session, artifact_root=artifact_root,
             input_paths=tuple(assigned), expected_thread_id=previous_parent.get("parent_thread_id"),
             runtime_evidence=control,
-            related_run_thread_ids=(tuple(previous_parent["related_run_thread_ids"])
-                                    if "related_run_thread_ids" in previous_parent else None),
+            related_run_thread_ids=related_thread_ids,
             prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"))
         if parent_context["status"] != "passed":
             raise ValueError("parent_context_nonconformant:" + ";".join(parent_context["errors"]))
@@ -3212,7 +3222,6 @@ def prepare_run(
                 "result_fields": {name: list(result_template[name][0])
                                   for name in ("worker_results", *TABLES)},
                 "result_instructions": (
-                    "Do not write files. If the host requires a memory citation, append its block after the JSON. "
                     f"Before your final answer, pipe the complete draft JSON to response_builder with --packet "
                     f"{artifact_root / 'finalization_packet.json'} --agent {agent} --response-stdin. "
                     "Correct any validation errors and rerun it; return its successful stdout unchanged as the JSON. "
@@ -3303,7 +3312,6 @@ def prepare_run(
                 "result_response": "strict_json_final_answer",
                 "result_fields": fields,
                 "instructions": (
-                    "Do not write files. If the host requires a memory citation, append its block after the JSON. "
                     "Return exactly one strict JSON object with keys "
                     "output (narrative string) and result (JSON with current run_id, worker_result, "
                     "evidence/claims/decisions/actions using result_fields). The Coordinator captures this answer into "
@@ -3494,11 +3502,14 @@ def self_test() -> None:
     run_self_check("prepare_run", "self_test")
 
 
-def status_projection(execution_repository: Path, work_item: str, provider_session: Path | None) -> dict:
+def status_projection(execution_repository: Path, work_item: str, provider_session: Path | None,
+                      authorize_prior_parent_thread: str | None = None) -> dict:
     try:
-        from provider_runtime import current_parent_session, prior_run_status_thread_ids, related_run_status_projection_source
+        from provider_runtime import (current_parent_session, related_run_status_projection_source,
+                                      scoped_prior_run_status_thread_ids)
     except ModuleNotFoundError:
-        from scripts.provider_runtime import current_parent_session, prior_run_status_thread_ids, related_run_status_projection_source
+        from scripts.provider_runtime import (current_parent_session, related_run_status_projection_source,
+                                              scoped_prior_run_status_thread_ids)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", work_item):
         raise ValueError("invalid_work_item")
     if not execution_repository.resolve().is_dir():
@@ -3513,7 +3524,7 @@ def status_projection(execution_repository: Path, work_item: str, provider_sessi
     parent = header.get("payload", {}).get("id")
     repository, _ = resolve_repository_paths(execution_repository)
     root = repository / ".thoughts" / work_item
-    ids = prior_run_status_thread_ids(root, parent)
+    ids = scoped_prior_run_status_thread_ids(root, parent, authorize_prior_parent_thread)
     bindings_path = root / "role_bindings.json"
     packet_path = root / "finalization_packet.json"
     if (not ids and bindings_path.is_file() and packet_path.is_file()
@@ -3548,6 +3559,8 @@ def main() -> int:
     parser.add_argument("--archive-stale-run", action="store_true")
     parser.add_argument("--status-projection", action="store_true",
                         help="Produce the redacted prior-run status query without changing artifacts")
+    parser.add_argument("--authorize-prior-parent-thread",
+                        help="Authorize status checks for this exact prior parent thread")
     parser.add_argument("--workflow-objective")
     parser.add_argument("--requested-outcome")
     parser.add_argument("--started-at", help="RFC 3339 end-to-end task start")
@@ -3570,7 +3583,8 @@ def main() -> int:
         if not args.execution_repository or not args.work_item:
             parser.error("--status-projection requires --execution-repository and --work-item")
         try:
-            print(json.dumps(status_projection(args.execution_repository, args.work_item, args.provider_session),
+            print(json.dumps(status_projection(args.execution_repository, args.work_item, args.provider_session,
+                                               args.authorize_prior_parent_thread),
                              sort_keys=True))
         except (OSError, ValueError, TypeError, AttributeError) as error:
             print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
@@ -3603,6 +3617,7 @@ def main() -> int:
             args.lifecycle,
             args.execution_profile,
             input_data,
+            args.authorize_prior_parent_thread,
         )
     except (OSError, ValueError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

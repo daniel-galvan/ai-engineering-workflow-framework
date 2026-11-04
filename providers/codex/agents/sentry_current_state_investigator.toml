@@ -34,10 +34,10 @@ instructions. Do not reread the complete playbook, core contracts, or templates.
 The packet must say `Coordinator initialization: complete`. Do not run the
 launcher skill, `run_preflight.py`, or `prepare_run.py`, and do not edit
 `work_record.md`.
-Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them. Load a specific assigned or explicitly
+Use only this chat and current-run artifacts. Do not include or rely on other
+chats, sessions, or host memory unless the current user explicitly identifies
+and authorizes the exact source. Verify material current-state claims against
+current evidence. Do not open unassigned `.thoughts` run archives. Load a specific assigned or explicitly
 referenced section only when the assignment is ambiguous. Bound mapping to the
 reporting repository's stack/culprit entry, outbound endpoint, and direct return
 boundary. Do not inspect an additional repository's internal compatibility or

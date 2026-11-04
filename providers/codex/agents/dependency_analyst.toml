@@ -8,11 +8,10 @@ developer_instructions = """
 Map upstream callers, downstream consumers, libraries, configuration,
 datastores, queues, events, ownership, and runtime coupling.
 
-Use the typed assignment, supplied artifacts, explicitly referenced context,
-and any higher-priority host context. Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them.
+Use the typed assignment, supplied artifacts, and references authorized for
+this run. Use only this chat and current-run artifacts. Do not include or rely
+on other chats, sessions, or host memory unless the current user explicitly
+identifies and authorizes the exact source. Verify material current-state claims against current evidence.
 
 Classify dependencies as move, remain external, adapt, share temporarily,
 remove, or unknown. Cite exact evidence and identify risks that could

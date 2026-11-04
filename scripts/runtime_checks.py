@@ -290,12 +290,10 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     file_identity = (f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
                      if len(message) > 12000 else "")
     return (packet["required_prefix"] + "\n"
-            + "First step: verify and read the file; this bootstrap is self-contained. Follow higher-priority host "
-              "memory instructions when applicable, and verify current claims against current evidence. "
-              "Do not search the artifact directory, previous chats or archives.\n"
-            + "Run each required host-memory lookup in a separate shell-tool call (exec_command on Codex) "
-              "containing only that lookup; keep source and artifact reads in other calls. "
-              "Independent exec_command calls may share functions.exec.\n"
+            + "First step: verify and read the file; this bootstrap is self-contained. Use only this chat and current-run "
+              "artifacts. Do not include or rely on other chats, sessions, or host memory unless the current user "
+              "explicitly identifies and authorizes the exact source. Verify current claims against current evidence. "
+              "Do not search the artifact directory or archives.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
             + f"Run ID: {packet['run_id']}.\n"
             + file_identity
@@ -2191,142 +2189,6 @@ def _without_verified_search_lines(value: str, targets: list[Path]) -> str:
     return "".join(remaining)
 
 
-def _empty_worker_memory_probes(trace: dict) -> dict[int, str]:
-    """Verify no-match host probes from the worker's native session, without accepting memory content."""
-    try:
-        from provider_runtime import _verified_empty_memory_search
-    except ModuleNotFoundError:
-        from scripts.provider_runtime import _verified_empty_memory_search
-    if not any("MEMORY.md" in value for _, value in _trace_strings({"tool_trace": trace.get("tool_trace", [])})):
-        return {}
-    try:
-        session = Path(trace["trace_retrieval"])
-        sessions = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
-        if session.is_symlink() or not session.resolve().is_relative_to(sessions.resolve()):
-            return {}
-        with session.open() as stream:
-            header = json.loads(next(stream))
-            if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != trace.get("thread_id"):
-                return {}
-            observations = []
-            for line in stream:
-                event = json.loads(line)
-                item = event.get("payload", {}).get("item", {})
-                if (event.get("type") == "event_msg" and event.get("payload", {}).get("type") == "item_completed"
-                        and item.get("type") == "CommandExecution"):
-                    observations.append(item)
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration):
-        return {}
-    probes = {}
-    for index, row in enumerate(trace.get("tool_trace", [])):
-        if not isinstance(row, dict) or row.get("type") not in {"function_call", "custom_tool_call"}:
-            continue
-        operations = _tool_operations(row)
-        commands = [args.get("cmd") for name, args in operations
-                    if name == "exec_command" and isinstance(args.get("cmd"), str)
-                    and "MEMORY.md" in args["cmd"]]
-        if len(commands) != 1:
-            continue
-        command = commands[0]
-        matches = [item for item in observations if isinstance(item.get("command"), list)
-                   and item["command"] and item["command"][-1] == command]
-        try:
-            if not matches or not all(_verified_empty_memory_search(command, item) for item in matches):
-                continue
-            target = shlex.split(command)[-1]
-        except (ValueError, IndexError):
-            continue
-        source = row.get("input") if row.get("type") == "custom_tool_call" else row.get("arguments")
-        source = source if isinstance(source, str) else json.dumps(source)
-        if (source.count(target) == 1
-                and Path(target).resolve() == (sessions.parent / "memories" / "MEMORY.md").resolve()):
-            probes[index] = target
-    return probes
-
-
-def _host_worker_memory_reads(trace: dict) -> tuple[dict[int, list[str]], dict[str, list[str]]]:
-    """Bind permitted host-memory reads to native worker command records."""
-    if not any(any(marker in value for marker in ("MEMORY.md", "memories", "rollout_summaries"))
-               for _, value in _trace_strings({"tool_trace": trace.get("tool_trace", [])})):
-        return {}, {}
-    try:
-        from host_memory import host_memory_rollouts, host_memory_root, host_memory_target
-    except ModuleNotFoundError:
-        from scripts.host_memory import host_memory_rollouts, host_memory_root, host_memory_target
-    try:
-        session = Path(trace["trace_retrieval"])
-        session_roots = {Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions",
-                         Path.home() / ".codex" / "sessions"}
-        if session.is_symlink() or not any(session.resolve().is_relative_to(root.resolve()) for root in session_roots):
-            return {}, {}
-        root = host_memory_root(session)
-        if root is None:
-            return {}, {}
-        started = timestamp(trace["last_dispatch_at"])
-        observed = timestamp(trace["status_observation"]["Observed at"])
-        with session.open() as stream:
-            header = json.loads(next(stream))
-            if header.get("type") != "session_meta" or header.get("payload", {}).get("id") != trace.get("thread_id"):
-                return {}, {}
-            native, calls, completions = [], {}, {}
-            for line in stream:
-                event = json.loads(line)
-                payload = event.get("payload", {})
-                if (event.get("type") == "response_item" and payload.get("call_id")
-                        and payload.get("type") in {"function_call", "custom_tool_call",
-                                                    "function_call_output", "custom_tool_call_output"}):
-                    at = timestamp(event["timestamp"])
-                    if at <= observed:
-                        if payload["type"].endswith("_output"):
-                            completions[payload["call_id"]] = at
-                        else:
-                            calls[payload["call_id"]] = (at, payload)
-                elif (event.get("type") == "event_msg" and payload.get("type") == "item_completed"
-                      and (item := payload.get("item", {})).get("type") == "CommandExecution"):
-                    at = timestamp(event["timestamp"])
-                    if at <= observed:
-                        native.append((at, item))
-        reads, outputs, linked_sessions = {}, {}, set()
-        for index, row in enumerate(trace.get("tool_trace", [])):
-            if not isinstance(row, dict) or not row.get("call_id"):
-                continue
-            lower, upper = started, observed
-            if row["call_id"] in calls:
-                lower, recorded = calls[row["call_id"]]
-                upper = completions.get(row["call_id"])
-                source_key = "input" if row.get("type") == "custom_tool_call" else "arguments"
-                if (upper is None or not lower <= upper <= observed or any(
-                        recorded.get(key) != row.get(key) for key in ("type", "name", source_key))):
-                    continue
-                # A later correction message must not invalidate a genuine earlier call in this trace.
-            operations = _tool_operations(row)
-            approved = []
-            for name, arguments in operations:
-                command = arguments.get("cmd") if name == "exec_command" else None
-                target = host_memory_target(command, root, linked_sessions)
-                observations = [item for at, item in native if lower <= at <= upper
-                                and isinstance(item.get("command"), list)
-                                and item["command"] and item["command"][-1] == command
-                                and (item.get("status"), item.get("exit_code")) in {("completed", 0), ("failed", 1)}]
-                if target and observations:
-                    approved.append((command, target, observations))
-            source = row.get("input") if row.get("type") == "custom_tool_call" else row.get("arguments")
-            source = source if isinstance(source, str) else json.dumps(source)
-            for command, target, observations in approved:
-                if source.count(target) != sum(value.count(target) for value, _, _ in approved):
-                    continue
-                reads.setdefault(index, []).append(target)
-                matched = [item.get("aggregated_output", "") for item in observations
-                           if isinstance(item.get("aggregated_output"), str)]
-                outputs.setdefault(row["call_id"], []).extend(matched)
-                if Path(target).resolve().is_relative_to(root):
-                    for output in matched:
-                        linked_sessions.update(host_memory_rollouts(output, root))
-        return reads, outputs
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, StopIteration):
-        return {}, {}
-
-
 def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
     """Recognize root punctuation only in serialized objectives and bound failure-reason text."""
     if str(root) + "." not in text and ".thoughts/" + root.name + "." not in text:
@@ -2470,8 +2332,6 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
     labeled_outputs = _labeled_packet_outputs(trace, root) if dispatch_content else {}
     pretty_outputs = _pretty_packet_reads(trace, root)
-    empty_memory_probes = _empty_worker_memory_probes(trace) if trace.get("trace_retrieval") else {}
-    host_memory_reads, host_memory_outputs = _host_worker_memory_reads(trace) if trace.get("trace_retrieval") else ({}, {})
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
     framework_searches = _framework_searches(trace, root) if root else {}
     call_sources = {row.get("call_id"): row.get("input", "") for row in trace.get("tool_trace", [])
@@ -2487,13 +2347,6 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         if any(path[:len(prefix)] == prefix for prefix in source_outputs):
             continue
         candidate = value
-        if (path[:1] == ("tool_trace",) and len(path) > 2 and str(path[1]).isdigit()
-                and path[2] in {"input", "arguments"} and int(path[1]) in empty_memory_probes):
-            candidate = candidate.replace(empty_memory_probes[int(path[1])], "[empty host memory probe]", 1)
-        if (path[:1] == ("tool_trace",) and len(path) > 2 and str(path[1]).isdigit()
-                and path[2] in {"input", "arguments"} and int(path[1]) in host_memory_reads):
-            for target in host_memory_reads[int(path[1])]:
-                candidate = candidate.replace(target, "[host memory read]", 1)
         for prefix, content in listing_reads.items():
             if path[:len(prefix)] == prefix and candidate.startswith(content):
                 candidate = content + "\n".join(line for line in candidate[len(content):].splitlines()
@@ -2506,9 +2359,6 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:
-            for content in host_memory_outputs.get(row.get("call_id"), []):
-                if content:
-                    candidate = candidate.replace(content, "").replace(json.dumps(content, ensure_ascii=False)[1:-1], "")
             labeled = labeled_outputs.get(row.get("call_id"))
             if labeled and candidate == labeled[0]:
                 candidate = candidate.replace(labeled[1], '"[current packet archive reference]"', 1)
@@ -2533,11 +2383,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
             checked = candidate if (ancestor_instruction_output or label == "archived_artifact"
-                                    or (output and row.get("call_id") in framework_searches)
-                                    or candidate != value and path[:1] == ("tool_trace",)
-                                    and len(path) > 2 and path[2] in {"input", "arguments"}
-                                    and str(path[1]).isdigit() and int(path[1]) in (empty_memory_probes.keys() | host_memory_reads.keys())
-                                    or output and row.get("call_id") in host_memory_outputs) else value
+                                    or output and row.get("call_id") in framework_searches
+                                    or _authorized_read(row, assigned)
+                                    or output and row.get("call_id") in reads) else value
             if label == "archived_artifact" and listing:
                 continue
             if label == "memory_citation" and output:

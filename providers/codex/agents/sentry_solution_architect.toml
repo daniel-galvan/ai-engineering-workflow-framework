@@ -22,10 +22,10 @@ launcher skill, `run_preflight.py`, or `prepare_run.py`. The activation packet
 supplies one assigned `fix_design_result.json` output path. Write only that file
 after the Coordinator supplies the exact activation handle; do not edit source,
 `work_record.md`, or any other durable artifact.
-Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them. Treat source paths and citations already
+Use only this chat and current-run artifacts. Do not include or rely on other
+chats, sessions, or host memory unless the current user explicitly identifies
+and authorizes the exact source. Verify material current-state claims against
+current evidence. Treat source paths and citations already
 verified by the evidence worker as inputs; do not remap them unless the evidence records a named
 discrepancy. For a simple `needs_input` gate, run one smallest check that could
 change that disposition, then return the gate result without broader source

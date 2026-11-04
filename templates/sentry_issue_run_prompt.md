@@ -14,9 +14,9 @@ These fields define run-specific plugin inputs. Invoke `$ai-engineering-workflow
 context. The shared contract and selected playbook own execution behavior. Preserve supplied context and place explicit
 decisions in the authoritative confirmed-input section.
 Populate the prompt only from the current user request, references explicitly named for this run, and facts retrieved
-from those references. Follow higher-priority host memory instructions; treat memory as historical context and verify
-material current-state claims against current evidence. Do not open unassigned `.thoughts` run archives merely because
-memory references them. Use `None` for unused optional fields.
+from those references. Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or
+host memory unless the current user explicitly identifies and authorizes the exact source. Verify material current-state
+claims against current evidence. Do not open unassigned `.thoughts` run archives. Use `None` for unused optional fields.
 
 Run-input rules:
 
@@ -191,8 +191,9 @@ Runtime bootstrap:
   local source cannot supply fails the gate.
 - Before any repository becomes evidence, record its role, branch, full revision, clean status, selected ref, release
   mapping, and evidence eligibility. Reject undeclared feature-branch behavior as baseline or production evidence.
-- Follow higher-priority host memory instructions. Keep historical context distinct from current evidence and do not
-  accept unverified current-state claims merely because they appear in memory.
+- Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or host memory unless
+  the current user explicitly identifies and authorizes the exact source. Keep authorized historical context distinct
+  from current evidence and verify current-state claims against current evidence.
 - Before analytical fan-in, audit each exposed provider tool trace with `validate_worker_runtime.py --trace`. Reject or
   quarantine results containing `forbidden_context_reference:*` or `context_conformance_failed`; an unavailable trace
   is `context-unverified` and must not be reported as independently audited. The Pilot Standard finalizer may continue

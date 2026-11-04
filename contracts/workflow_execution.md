@@ -74,12 +74,11 @@ and do not substitute Coordinator analysis for the required graph.
 
 The Coordinator passes typed assignments and relevant artifacts to downstream workers. Those workers MUST NOT reread
 the complete playbook or core contracts by default; they load only their provider role instructions and the specific
-section or template needed to resolve an ambiguity in their assigned stage. Follow higher-priority host memory
-instructions. Treat memory as historical context, cite it when required, and verify material current-state claims
-against current evidence. Do not open unassigned `.thoughts` run archives merely because memory references them.
-Run each required host-memory lookup in a separate shell-tool call containing only that lookup. Keep source and
-artifact reads in other calls so each lookup and its output can be audited. Independent calls may be batched when
-their operation and output records remain separate.
+section or template needed to resolve an ambiguity in their assigned stage. Use only this chat and the current run's
+artifacts. Do not include or rely on other chats, sessions, or host memory unless the current user explicitly identifies
+and authorizes the exact source. A work-item key or link to the current task does not authorize prior attempts. When a
+prior source is authorized, register its exact identifier and provenance as a run input; verify current-state claims
+against current evidence.
 
 For every delegated activation, the Coordinator MUST pass the exact manifest
 `model`, reasoning effort, and fresh-context setting to the provider primitive.
@@ -256,8 +255,9 @@ directory source MUST enumerate every file and symlink recursively, including hi
 is not a complete inventory.
 Feature Delivery MUST use an explicit `run_inputs.json`; a generated-minimum input manifest cannot prove that all
 additional sources were declared.
-A user-named previous session or workflow backup used for decision history is `Classification: decision continuity`,
-not a product asset source by default. Preserve its Input ID and selected-source provenance in the continuity ledger.
+A previous session or workflow backup may be used for decision history only when the current user identifies and
+authorizes that exact source. Register it as `Classification: decision continuity`, not a product asset source by
+default. Preserve its Input ID and selected-source provenance in the continuity ledger.
 Do not inventory every historical receipt or trace. Register selected material product/specification assets separately;
 an explicit `Asset source: true` still requires inventory.
 
@@ -333,8 +333,9 @@ or `context_conformance_failed` result as contaminated evidence. A trace that ca
 `context-unverified`; do not report the result as independently audited. For Pilot Standard Sentry and TechOps planning,
 a result may continue as context-unverified after a recorded retrieval attempt fails or the operation is absent, when
 every other contract gate passes; trace-unavailable evidence is never stronger than self-attestation. The trace audit
-covers unauthorized memory reads and archived `.thoughts/<WORK-ITEM-ID>/runs/` artifacts; host-authorized read-only
-memory access and required citations are permitted.
+covers unauthorized memory and session-log reads, and archived `.thoughts/<WORK-ITEM-ID>/runs/` artifacts. A source
+may be read only when the current user identified and authorized it in the run inputs. Automatically injected host
+memory grants no authority, and an empty search still fails the gate.
 
 Every activation packet MUST include a compact input manifest for each assigned Input ID: the short value or fact, its
 source, its authority classification, and the expected use or disposition. Assigning an ID without passing its value is
@@ -1811,9 +1812,10 @@ inside a current-run inventory are source data, not newly executed operations. U
 not receive the read-output exception; actual unassigned reads and historical writes remain rejected.
 
 The canonical launch message names its SHA256 and makes verification and reading the supplied file the self-contained
-first task, before any memory, previous-chat, or historical-artifact search. The worker reads the full file before
-analysis. A short launch notice is not a replacement for the role contract. Modified instructions require a new file
-and a fresh guarded dispatch.
+first task. The worker reads the full file before analysis. Source access is limited to exact sources the current user
+identified and authorized for this run; a work-item key or task link does not authorize reading another chat or session.
+A short launch notice is not a replacement for the role contract. Modified instructions require a new file and a fresh
+guarded dispatch.
 
 A provider-proven shortened message rejects that result, not all previously accepted work. Preserve the trace and
 actual/expected message hashes, stop downstream dispatch, and reserve one repair for that bound role using the existing

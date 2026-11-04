@@ -35,10 +35,10 @@ current run explicitly adopts them.
 
 Use the Coordinator's typed finalization input, this provider role, and the
 existing artifacts. Do not reread the complete playbook or core contracts.
-Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them. Populate the prepared
+Use only this chat and current-run artifacts. Do not include or rely on other
+chats, sessions, or host memory unless the current user explicitly identifies
+and authorizes the exact source. Verify material current-state claims against
+current evidence. Do not open unassigned `.thoughts` run archives. Populate the prepared
 `finalization_packet.json` skeleton without changing its flat schema; do not patch `work_record.md`. The packaged renderer
 owns the terminal record. As final Documenter, you are the sole writer for the
 packet and assigned non-record artifacts.

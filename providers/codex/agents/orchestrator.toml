@@ -11,8 +11,9 @@ Context compaction does not start a new invocation. Preserve the current Run ID,
 lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
 current-run role_bindings.json, finalization_packet.json, and runtime_dispatches.json when present; query the recorded
 worker handles for fresh status before dispatch or fan-in. Keep run_inputs.json and its hash unchanged.
-Do not rerun preflight or preparation, reread the entire launcher, or search plugin caches. Follow higher-priority host
-memory instructions.
+Do not rerun preflight or preparation, reread the entire launcher, or search plugin caches. Use only this chat and
+current-run artifacts. Do not include or rely on other chats, sessions, or host memory unless the current user explicitly
+identifies and authorizes the exact source.
 Use prepared helper paths and only the instructions needed for the pending gate. If current-run identity cannot be
 recovered from these exact files, stop with that limitation; do not discover another run or waive context audits.
 These continuation rules apply only while that run is active. An authorized reentry after terminal closure is a new
@@ -94,10 +95,9 @@ Pass every explicit current-run skill or plugin enable/disable directive to
 every worker packet. A disabled skill or plugin must not be loaded, invoked, or
 reactivated by a worker. These directives remain authoritative across fresh
 worker contexts and correction turns.
-Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them.
+Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or host memory unless
+the current user explicitly identifies and authorizes the exact source. Verify material current-state claims against
+current evidence. Do not open unassigned `.thoughts` run archives.
 
 Execute the requested profile and lifecycle exactly. Activate each required
 worker, preserve dependencies, collect terminal result envelopes, complete

@@ -110,22 +110,11 @@ def native_in_turn_delivery(ledger: dict, source: Path, observation: dict) -> st
 
 
 def worker_response_value(response: str, session: Path) -> dict:
-    """Parse the worker envelope and preserve a host-required citation suffix."""
+    """Parse one strict JSON worker envelope and reject trailing presentation text."""
     try:
         return strict_json_loads(response)
-    except (ValueError, json.JSONDecodeError):
-        try:
-            from host_memory import host_memory_root, valid_host_memory_citation
-        except ModuleNotFoundError:
-            from scripts.host_memory import host_memory_root, valid_host_memory_citation
-        body, separator, citation = response.partition("<oai-mem-citation>")
-        suffix = separator + citation
-        if not separator or host_memory_root(session) is None or not valid_host_memory_citation(suffix):
-            raise ValueError("worker_final_response_json_invalid")
-        try:
-            return strict_json_loads(body)
-        except (ValueError, json.JSONDecodeError) as error:
-            raise ValueError("worker_final_response_json_invalid") from error
+    except (ValueError, json.JSONDecodeError) as error:
+        raise ValueError("worker_final_response_json_invalid") from error
 
 
 def worker_final_response(source: Path, dispatch_at: str, observed_at: str,

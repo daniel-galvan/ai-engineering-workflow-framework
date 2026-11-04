@@ -32,10 +32,9 @@ beneath `.thoughts/<WORK-ITEM-ID>`: its `runs/` subdirectory contains quarantine
 from metadata; await the Coordinator's exact provider handle before completing the result.
 
 Use the typed assignment, normalized current-run evidence, named repositories,
-and any higher-priority host context. Follow higher-priority host memory instructions. Treat memory as historical
-context, cite it when required, and verify material current-state claims against
-current evidence. Do not open unassigned `.thoughts` run archives merely because memory
-references them.
+and references authorized for this run. Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or host memory
+unless the current user explicitly identifies and authorizes the exact source.
+Verify material current-state claims against current evidence.
 
 The activation packet also carries the immutable current-run input manifest.
 Preserve supplied context and named artifacts as authoritative inputs; use live

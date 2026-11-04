@@ -10,11 +10,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-try:
-    from host_memory import host_memory_rollouts, host_memory_root, host_memory_target, host_memory_presentation_write
-except ModuleNotFoundError:
-    from scripts.host_memory import host_memory_rollouts, host_memory_root, host_memory_target, host_memory_presentation_write
-
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
@@ -175,10 +170,49 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
     return tuple(sorted(identities))
 
 
+def scoped_prior_run_status_thread_ids(
+    artifact_root: Path, current_thread_id: str, authorized_prior_parent_thread_id: str | None = None,
+) -> tuple[str, ...]:
+    """Read prior identities only for this chat or a parent the user explicitly authorized."""
+    if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
+        raise ValueError("stale_run_thread_identity_invalid")
+    if (authorized_prior_parent_thread_id is not None
+            and (not isinstance(authorized_prior_parent_thread_id, str)
+                 or not UUID.fullmatch(authorized_prior_parent_thread_id))):
+        raise ValueError("stale_run_status_authorization_invalid")
+    bindings_path = artifact_root / "role_bindings.json"
+    bindings = _read_status_receipt(bindings_path) if bindings_path.is_file() else {}
+    if not isinstance(bindings, dict):
+        raise ValueError("stale_run_thread_identity_invalid")
+    parent_context = bindings.get("parent_context")
+    if parent_context is not None and not isinstance(parent_context, dict):
+        raise ValueError("stale_run_thread_identity_invalid")
+    prior_parent = parent_context.get("parent_thread_id") if isinstance(parent_context, dict) else None
+    ledger_path = artifact_root / "runtime_dispatches.json"
+    ledger = _read_status_receipt(ledger_path) if ledger_path.is_file() else {}
+    ledger_parent = ledger.get("parent_thread_id") if isinstance(ledger, dict) else None
+    if prior_parent is not None and ledger_parent is not None and prior_parent != ledger_parent:
+        raise ValueError("stale_run_thread_identity_invalid")
+    prior_parent = prior_parent or ledger_parent
+    has_prior_receipts = any((artifact_root / name).is_file() for name in (
+        "role_bindings.json", "runtime_dispatches.json", "runtime_closure.json"))
+    if not prior_parent:
+        if has_prior_receipts:
+            raise ValueError("stale_run_parent_identity_invalid")
+        return ()
+    if not isinstance(prior_parent, str) or not UUID.fullmatch(prior_parent):
+        raise ValueError("stale_run_thread_identity_invalid")
+    if authorized_prior_parent_thread_id is not None and authorized_prior_parent_thread_id != prior_parent:
+        raise ValueError("stale_run_status_authorization_mismatch")
+    if prior_parent != current_thread_id and authorized_prior_parent_thread_id != prior_parent:
+        raise ValueError("prior_run_status_requires_user_authorization")
+    return prior_run_status_thread_ids(artifact_root, current_thread_id)
+
+
 def related_run_status_projection_source(
     work_item: str, current_thread_id: str, prior_thread_ids: tuple[str, ...] = (),
 ) -> str:
-    """Return the only permitted status lookup for explicitly recorded prior run threads."""
+    """Return a redacted, batched status snapshot for explicitly authorized prior threads."""
     if not isinstance(work_item, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", work_item):
         raise ValueError("stale_run_status_work_item_invalid")
     if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
@@ -187,42 +221,30 @@ def related_run_status_projection_source(
             or any(not isinstance(value, str) or not UUID.fullmatch(value) for value in prior_thread_ids)):
         raise ValueError("stale_run_status_prior_thread_ids_invalid")
     return (f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
-            "const relatedRows = await Promise.all(priorIds.map(async id => {\n"
+            "const terminal = new Set(['completed', 'failed', 'stopped', 'interrupted', 'cancelled']);\n"
+            "const batches = [];\n"
+            "for (let i = 0; i < priorIds.length; i += 8) batches.push(priorIds.slice(i, i + 8));\n"
+            "const relatedRows = (await Promise.all(batches.map(async ids => {\n"
             "  try {\n"
-            "    const args = {threadId: id, turnLimit: 1, includeOutputs: false};\n"
-            "    const result = await tools.mcp__codex_app__read_thread(args);\n"
-            "    if (result.isError) {\n"
-            "      const errorText = Array.isArray(result.content)\n"
-            "        ? result.content.map(item => typeof item.text === 'string' ? item.text : '').join(' ')\n"
-            "        : '';\n"
-            "      const missingPrefix = 'No Codex thread found for threadId: ' + id\n"
-            "        + '. Hosts without a readable match: ';\n"
-            "      return {id, status: errorText.startsWith(missingPrefix) && errorText.length > missingPrefix.length\n"
-            "        ? 'not_found' : 'unavailable'};\n"
-            "    }\n"
-            "    const read = JSON.parse(result.content[0].text);\n"
-            "    const thread = read.thread;\n"
-            "    if (thread.id !== id || typeof thread.status?.type !== 'string')\n"
-            "      return {id, status: 'unavailable'};\n"
-            "    let status = thread.status.type;\n"
-            "    if (status === 'idle') {\n"
-            "      const latestTurn = read.turns?.[0]?.status;\n"
-            "      status = ['completed', 'failed', 'stopped', 'interrupted', 'cancelled'].includes(latestTurn)\n"
-            "        ? latestTurn : 'unavailable';\n"
-            "    }\n"
-            "    if (status === 'notLoaded') {\n"
-            "      const wait = await tools.mcp__codex_app__wait_threads({targets: [{threadId: id}], timeoutMs: 0});\n"
-            "      if (wait.isError) return {id, status: 'unavailable'};\n"
-            "      const state = JSON.parse(wait.content[0].text);\n"
-            "      const poll = state.polls?.find(row => row.thread?.id === id);\n"
-            "      const latestTurn = poll?.latestTurn?.status;\n"
-            "      if (state.wake?.reason === 'inactiveStatus' && state.wake.threadId === id &&\n"
-            "          ['completed', 'failed', 'stopped', 'interrupted', 'cancelled'].includes(latestTurn))\n"
-            "        status = latestTurn;\n"
-            "    }\n"
-            "    return {id, status};\n"
-            "  } catch { return {id, status: 'unavailable'}; }\n"
-            "}));\n"
+            "    const result = await tools.mcp__codex_app__wait_threads({\n"
+            "      targets: ids.map(threadId => ({threadId})), timeoutMs: 0\n"
+            "    });\n"
+            "    if (result.isError || !Array.isArray(result.content) || result.content.length !== 1)\n"
+            "      return ids.map(id => ({id, status: 'unavailable'}));\n"
+            "    const snapshot = JSON.parse(result.content[0].text);\n"
+            "    const polls = Array.isArray(snapshot.polls) ? snapshot.polls : [];\n"
+            "    const byId = new Map(polls.map(poll => [poll.thread?.id, poll]));\n"
+            "    return ids.map(id => {\n"
+            "      const poll = byId.get(id);\n"
+            "      const latestTurn = poll?.latestTurn;\n"
+            "      const threadStatus = poll?.thread?.status;\n"
+            "      const inactive = ['idle', 'ready'].includes(threadStatus?.type) && !threadStatus.activeFlags?.length\n"
+            "        || snapshot.wake?.threadId === id && snapshot.wake.reason === 'inactiveStatus';\n"
+            "      return {id, status: inactive && terminal.has(latestTurn?.status)\n"
+            "        ? latestTurn.status : 'unavailable'};\n"
+            "    });\n"
+            "  } catch { return ids.map(id => ({id, status: 'unavailable'})); }\n"
+            "}))).flat();\n"
             "text(JSON.stringify(relatedRows));")
 
 
@@ -294,75 +316,6 @@ def stale_run_status_errors(
     if require_prior_dispatch_ledger and context.get("prior_run_dispatch_ledger_present") is not True:
         errors.append("stale_run_dispatch_ledger_required")
     return errors
-
-
-def _verified_empty_memory_search(command: str, observation: dict,
-                                 framework_root: Path | None = None) -> bool:
-    """Recognize only a native, no-result search of the host memory index."""
-    path_alias_warning = (
-        "WARNING: proceeding, even though we could not create PATH aliases: "
-        "Operation not permitted (os error 1)\n"
-    )
-    try:
-        commands = command.split(" && ")
-        if len(commands) == 2:
-            if framework_root is None:
-                return False
-            bootstrap = shlex.split(commands[0])
-            skill = (framework_root.expanduser().resolve() / "skills" / "run" / "SKILL.md").resolve()
-            if (len(bootstrap) != 2 or Path(bootstrap[0]).name != "cat"
-                    or Path(bootstrap[1]).resolve() != skill):
-                return False
-            search_command = commands[1]
-            parsed_count = 2
-            expected_bootstrap_path = str(skill)
-        elif len(commands) == 1:
-            search_command = command
-            parsed_count = 1
-            expected_bootstrap_path = None
-        else:
-            return False
-        argv = shlex.split(search_command)
-    except ValueError:
-        return False
-    if Path(argv[0]).name != "rg":
-        return False
-    args, flags = argv[1:], []
-    allowed_flags = {"-n", "--line-number", "-i", "--ignore-case", "-F", "--fixed-strings"}
-    while args and args[0] in allowed_flags:
-        flags.append(args.pop(0))
-    if (len(args) != 2 or not any(flag in {"-n", "--line-number"} for flag in flags)
-            or len(flags) != len(set(flags))):
-        return False
-    query, target = args[0], Path(args[1])
-    if not query or not target.is_absolute() or target.parts[-3:] != (".codex", "memories", "MEMORY.md"):
-        return False
-    native_command = observation.get("command")
-    if not isinstance(native_command, list) or not native_command or native_command[-1] != command:
-        return False
-    parsed = observation.get("parsed_cmd")
-    if (observation.get("exit_code") != 1 or isinstance(observation.get("exit_code"), bool)
-            or observation.get("status") != "failed"
-            or not isinstance(parsed, list) or len(parsed) != parsed_count
-            or not all(isinstance(item, dict) for item in parsed)):
-        return False
-    item = parsed[-1]
-    if not (item.get("type") == "search" and item.get("query") == query
-            and str(item.get("path", "")) in {str(target), target.name}):
-        return False
-    if expected_bootstrap_path is None:
-        return observation.get("aggregated_output") in {"", path_alias_warning}
-    bootstrap_item = parsed[0]
-    try:
-        skill_text = Path(expected_bootstrap_path).read_text()
-    except OSError:
-        return False
-    output = observation.get("aggregated_output")
-    expected_output = skill_text[:min(len(skill_text), 65536)]
-    return (bootstrap_item.get("type") == "read"
-            and isinstance(bootstrap_item.get("path"), str)
-            and Path(bootstrap_item["path"]).resolve() == Path(expected_bootstrap_path)
-            and output in {expected_output, path_alias_warning + expected_output})
 
 
 def current_parent_session(source: Path | None = None) -> Path | None:
@@ -547,7 +500,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         identity_error = None
         try:
             if related_run_thread_ids is None:
-                prior_ids = prior_run_status_thread_ids(artifact_root, thread) if artifact_root else ()
+                prior_ids = scoped_prior_run_status_thread_ids(artifact_root, thread) if artifact_root else ()
             else:
                 if (not isinstance(related_run_thread_ids, tuple)
                         or any(not isinstance(value, str) or not UUID.fullmatch(value)
@@ -561,7 +514,6 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                           if prior_dispatch_ledger_present is None else prior_dispatch_ledger_present)
         turn, operations, sequenced_operations, children, errors = None, [], [], set(known_children), []
         command_observations: dict[str, list[dict]] = {}
-        exempt = set()
         pending_related_run_status = {}
         related_run_probe_attempts = 0
         verified_related_run_status_probes = 0
@@ -580,7 +532,6 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 turn = payload.get("turn_id")
                 operations, sequenced_operations, children, errors = [], [], set(known_children), []
                 command_observations = {}
-                exempt = set()
                 pending_related_run_status = {}
                 related_run_probe_attempts = 0
                 verified_related_run_status_probes = 0
@@ -677,73 +628,26 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             raise ValueError("provider_current_turn_unavailable")
         if expected_turn_id and turn != expected_turn_id:
             raise ValueError("provider_bound_turn_unavailable")
-    # Host instructions may require memory access; identify that authority in the native session.
-    operation_indexes: dict[str, list[int]] = {}
-    for index, operation in enumerate(operations):
-        arguments = operation.get("arguments", {})
-        command = arguments.get("cmd") if operation.get("name") == "exec_command" else None
-        if isinstance(command, str):
-            operation_indexes.setdefault(command, []).append(index)
-    empty_memory_probes = 0
-    preflight_memory_probes = set()
-    host_root = host_memory_root(source)
-    host_memory_reads = 0
-    linked_sessions: set[Path] = set()
-    for command, indexes in operation_indexes.items():
-        observations = command_observations.get(command, [])
-        if (host_memory_presentation_write(command, host_root, artifact_root)
-                and len(indexes) == len(observations) and observations
-                and all(item.get("status") == "completed" and item.get("exit_code") == 0
-                        and isinstance(item.get("command"), list) and item["command"]
-                        and item["command"][-1] == command for item in observations)):
-            exempt.update(indexes)
-            continue
-        target = host_memory_target(command, host_root, linked_sessions)
-        if (target and len(indexes) == len(observations)
-                and all(isinstance(item.get("command"), list) and item["command"]
-                        and item["command"][-1] == command
-                        and (item.get("status"), item.get("exit_code")) in {("completed", 0), ("failed", 1)}
-                        for item in observations)):
-            exempt.update(indexes)
-            host_memory_reads += len(indexes)
-            preflight_memory_probes.add(command)
-            for item in observations:
-                if Path(target).resolve().is_relative_to(host_root) and isinstance(item.get("aggregated_output"), str):
-                    linked_sessions.update(host_memory_rollouts(item["aggregated_output"], host_root))
-            continue
-        if (len(indexes) == 1 and len(observations) == 1
-                and _verified_empty_memory_search(command, observations[0], framework_root)):
-            exempt.add(indexes[0])
-            empty_memory_probes += 1
-            # A host-mandated no-match search is not framework discovery. Only its standalone form may precede
-            # preflight; combined commands remain subject to normal ordering checks.
-            if len(command.split(" && ")) == 1:
-                preflight_memory_probes.add(command)
-    audited_operations = [operation for index, operation in enumerate(operations) if index not in exempt]
     if require_preflight_order and framework_root is not None:
-        errors.extend(_preflight_order_errors(sequenced_operations, framework_root, command_observations,
-                                              preflight_memory_probes))
+        errors.extend(_preflight_order_errors(sequenced_operations, framework_root, command_observations))
     details = []
-    errors.extend(context_trace_errors({"tool_trace": audited_operations}, details=details,
+    errors.extend(context_trace_errors({"tool_trace": operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
     return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
             "parent_thread_id": thread, "turn_id": turn, "errors": list(dict.fromkeys(errors)),
-            "context_violations": details, "empty_memory_probes": empty_memory_probes, "host_memory_reads": host_memory_reads,
+            "context_violations": details, "empty_memory_probes": 0, "host_memory_reads": 0,
             "verified_related_run_status_probes": verified_related_run_status_probes,
             "related_run_status_probe_attempts": related_run_probe_attempts,
             "related_run_status_rows": related_run_status_rows,
             "related_run_thread_ids": list(prior_ids),
             "prior_run_dispatch_ledger_present": bool(ledger_present)}
 
-
 def _preflight_order_errors(operations: list[dict], framework_root: Path,
-                            command_observations: dict[str, list[dict]],
-                            empty_memory_probes: set[str] | None = None) -> list[str]:
+                            command_observations: dict[str, list[dict]]) -> list[str]:
     """Require package preflight before current-turn repository or workflow operations."""
     preflight_path = (framework_root.expanduser().resolve() / "scripts" / "run_preflight.py").resolve()
     skill_path = (framework_root.expanduser().resolve() / "skills" / "run" / "SKILL.md").resolve()
     completed_preflight = False
-    empty_memory_probes = empty_memory_probes or set()
     for operation in operations:
         if operation.get("name") != "exec_command":
             if not completed_preflight:
@@ -762,8 +666,6 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
         bootstrap = bool(skill_read and (
             argv[-1] == "skills/run/SKILL.md"
             or Path(argv[-1]).is_absolute() and Path(argv[-1]).resolve() == skill_path))
-        if not completed_preflight and command in empty_memory_probes:
-            continue
         is_preflight = (
             len(argv) >= 2 and bool(re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(argv[0]).name))
             and Path(argv[1]).name == "run_preflight.py"

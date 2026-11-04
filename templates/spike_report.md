@@ -77,8 +77,8 @@ labels, or a search name without the location or command that can be independent
 or version; `current`, `latest`, `HEAD`, and working-tree labels are not sufficient by themselves.
 For a new current-run Spike, every external document URL or stable locator in an evidence source must be declared in
 `run_inputs.json`; a linked historical document is not current-run evidence by discovery alone. Cite current evidence in
-the report, and place any host-required memory citation in the final response suffix. Do not cite unassigned archived
-`.thoughts/.../runs/` material.
+the report. Cite a prior source only when the current user identified and authorized that exact source for this run and
+it was used. Do not cite unassigned archived `.thoughts/.../runs/` material.
 Each Evidence ID must identify one source and one source-backed observation. Give corroborating repository, Jira, Slack,
 or runtime sources separate Evidence IDs, then connect those IDs through the relevant claim or finding.
 

@@ -28,7 +28,8 @@ different repository. The installed package supplies the framework and provider 
 
 The active run skill and shared contract own preflight, source-access gates, input-manifest creation, worker selection,
 artifact placement, validation, and handoff. Do not copy framework commands, worker lists, internal paths, or evaluation
-metadata into an ordinary run prompt.
+metadata into an ordinary run prompt. Use only this chat and current-run artifacts. Do not include or rely on other
+chats, sessions, or host memory unless the current user explicitly identifies and authorizes the exact source.
 
 ## Optional user context
 

@@ -123,7 +123,7 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn(receipt["dispatch_file_sha256"], receipt["activation_message"])
         self.assertIn(packet["run_id"], receipt["activation_message"])
         self.assertIn("this bootstrap is self-contained", receipt["activation_message"])
-        self.assertLess(receipt["activation_message"].index("Follow higher-priority host memory instructions"),
+        self.assertLess(receipt["activation_message"].index("Use only this chat and current-run artifacts"),
                         receipt["activation_message"].index(packet["run_id"]))
         outbound = self.root / "outbound.txt"
         outbound.write_text(receipt["activation_message"])
@@ -213,7 +213,8 @@ class ActivationDelivery(unittest.TestCase):
             "instructions", path)
         command = notice.split("Read it with this separate literal command: ", 1)[1].split("\n", 1)[0]
         self.assertEqual(runtime_checks._read_targets(command), [str(path.resolve())])
-        self.assertIn("Follow higher-priority host memory instructions", notice)
+        self.assertIn("Use only this chat and current-run artifacts", notice)
+        self.assertNotIn("Follow higher-priority host memory instructions", notice)
         self.assertIn("Do not search the artifact directory", notice)
         self.assertIn("Use separate tool calls for verification and the complete instruction read", notice)
         self.assertIn("max_output_tokens to at least 12; truncated output is not delivery", notice)

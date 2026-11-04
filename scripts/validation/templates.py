@@ -31,6 +31,7 @@ def validate_run_prompt_basics() -> None:
                 "Do not copy framework commands, worker lists, internal paths, or evaluation",
                 "## Optional user context",
                 "Unanswered material user decisions carried from the current request",
+                "Use only this chat and current-run artifacts",
             ):
                 if phrase not in text:
                     fail(f"templates/techops_issue_run_prompt.md is missing minimal launch control: {phrase}")
@@ -42,7 +43,7 @@ def validate_run_prompt_basics() -> None:
         if "Additional supplied context (preserve and classify):" not in text:
             fail(f"{path.relative_to(ROOT)} is missing the additional-context section")
         for phrase in (
-            "Follow higher-priority host memory instructions",
+            "Use only this chat and current-run artifacts",
             "`.thoughts`",
             "Use `None` for unused optional fields",
         ):
@@ -218,7 +219,7 @@ def validate_sentry_prompt_and_isolation() -> None:
         "applied model, effort, and fresh-context metadata",
         "The native dispatch record must prove the exact explicit launch arguments",
         "`runs/` archives",
-        "Follow higher-priority host memory instructions",
+        "Use only this chat and current-run artifacts",
         "implementation_plan_action",
         "concurrent-run decision",
         "without its value is not a delivered input",

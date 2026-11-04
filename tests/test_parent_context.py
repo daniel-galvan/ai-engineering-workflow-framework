@@ -17,6 +17,7 @@ from scripts.provider_runtime import (
     parent_context_audit,
     prior_run_status_thread_ids,
     related_run_status_projection_source,
+    scoped_prior_run_status_thread_ids,
     stale_run_status_errors,
     strict_json_loads,
 )
@@ -117,7 +118,7 @@ class ParentContext(unittest.TestCase):
             with self.subTest(change=change):
                 self.assertEqual(native_finalization_observed(self.source, TURN, root, packet, record, "a" * 40, canonical), change == "valid")
 
-    def test_host_required_presentation_write_is_not_a_historical_read(self):
+    def test_host_memory_citation_write_is_rejected(self):
         codex = self.root / "codex"
         memory = codex / "memories" / "MEMORY.md"
         directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
@@ -133,16 +134,13 @@ class ParentContext(unittest.TestCase):
             "type": "CommandExecution", "command": ["bash", "-lc", command], "status": "completed", "exit_code": 0}}}
         self.rows.extend([directive, self.call("exec_command", cmd=command), observation])
         with patch.dict(os.environ, {"CODEX_HOME": str(codex)}):
-            self.assertEqual(self.audit(artifact_root=artifact)["status"], "passed")
-            from scripts.host_memory import host_memory_presentation_write
-            self.assertTrue(host_memory_presentation_write(command.replace("python3", shlex.quote(sys.executable), 1), codex / "memories", artifact))
-            self.assertTrue(host_memory_presentation_write(command.replace(f"write_text({citation!r})", f"write_text({citation!r}, encoding='utf-8')"), codex / "memories", artifact))
-            self.assertFalse(host_memory_presentation_write(command.replace("python3", "/tmp/other-python", 1), codex / "memories", artifact))
+            errors = self.audit(artifact_root=artifact)["errors"]
+            self.assertIn("forbidden_context_reference:memory_citation", errors)
             for unsafe in (command.replace(str(target), str(self.root / "outside.md")),
                            command.replace("\nPY", "\nopen('.thoughts/OTHER/runs/prior/notes.md').read()\nPY"),
                            command.replace("MEMORY.md:1-2", "MEMORY.md:2-1")):
                 self.rows[-2] = self.call("exec_command", cmd=unsafe)
-                self.assertEqual(self.audit(artifact_root=artifact)["status"], "rejected")
+            self.assertEqual(self.audit(artifact_root=artifact)["status"], "rejected")
             self.rows[-2] = self.call("exec_command", cmd=command)
             directive["payload"]["role"] = "user"
             self.assertIn("forbidden_context_reference:memory_citation", self.audit(artifact_root=artifact)["errors"])
@@ -150,7 +148,7 @@ class ParentContext(unittest.TestCase):
             self.rows.pop()
             self.assertIn("forbidden_context_reference:memory_citation", self.audit(artifact_root=artifact)["errors"])
 
-    def test_host_memory_instructions_allow_native_read_only_memory_access(self):
+    def test_injected_host_memory_does_not_authorize_memory_reads(self):
         codex = self.root / "codex"
         memory = codex / "memories" / "MEMORY.md"
         memory.parent.mkdir(parents=True)
@@ -168,8 +166,10 @@ class ParentContext(unittest.TestCase):
                           self.call("exec_command", cmd=read), observation(read)])
         with patch.dict(os.environ, {"CODEX_HOME": str(codex)}):
             result = self.audit(framework_root=self.root / "framework", require_preflight_order=True)
-            self.assertEqual(result["status"], "passed", result)
-            self.assertEqual(result["host_memory_reads"], 2)
+            self.assertEqual(result["status"], "rejected", result)
+            self.assertEqual(result["host_memory_reads"], 0)
+            self.assertIn("forbidden_context_reference:memory_path", result["errors"])
+            self.assertIn("parent_framework_content_before_preflight", result["errors"])
             directive["payload"]["role"] = "user"
             self.assertIn("forbidden_context_reference:memory_path", self.audit()["errors"])
             directive["payload"]["role"] = "developer"
@@ -179,7 +179,7 @@ class ParentContext(unittest.TestCase):
             self.rows[-2] = self.call("exec_command", cmd=read + " ; cat /secret")
             self.assertIn("forbidden_context_reference:memory_path", self.audit()["errors"])
 
-    def test_host_memory_rollout_read_requires_a_prior_native_reference(self):
+    def test_host_memory_cannot_authorize_reading_a_linked_session_log(self):
         codex = self.root / "codex"
         memory = codex / "memories" / "MEMORY.md"
         memory.parent.mkdir(parents=True)
@@ -198,10 +198,10 @@ class ParentContext(unittest.TestCase):
         with patch.dict(os.environ, {"CODEX_HOME": str(codex)}):
             self.rows.extend([self.call("exec_command", cmd=search), observation(search, "rollout_path=" + str(session)),
                               self.call("exec_command", cmd=read), observation(read, "{}")])
-            self.assertEqual(self.audit(framework_root=self.root / "framework", require_preflight_order=True)["status"], "passed")
-            self.rows[-3] = observation(search, "no rollout reference")
-            self.assertIn("parent_framework_content_before_preflight",
-                          self.audit(framework_root=self.root / "framework", require_preflight_order=True)["errors"])
+            result = self.audit(framework_root=self.root / "framework", require_preflight_order=True)
+            self.assertEqual(result["status"], "rejected", result)
+            self.assertIn("forbidden_context_reference:memory_path", result["errors"])
+            self.assertIn("forbidden_context_reference:session_log", result["errors"])
 
     def test_actual_memory_read_is_rejected_but_quotes_and_prior_turn_are_ignored(self):
         memory = "/repo/.codex/memories/MEMORY.md"
@@ -225,21 +225,22 @@ class ParentContext(unittest.TestCase):
             ('rg -n issue "$CODEX_HOME"/memories/notes.md', "memory_directory"),
             ('rg -n issue "${CODEX_HOME}"/memories/notes.md', "memory_directory"),
             (r'rg -n issue "$env:CODEX_HOME"\memories\notes.md', "memory_directory"),
+            ('cat "$CODEX_HOME/sessions/prior.jsonl"', "session_log"),
         ):
             with self.subTest(command=command):
                 self.rows = self.rows[:2] + [self.call("exec_command", cmd=command)]
                 self.assertIn("forbidden_context_reference:" + expected, self.audit()["errors"])
 
-    def test_verified_no_match_memory_probe_is_distinct_from_a_memory_read(self):
+    def test_verified_no_match_memory_search_is_still_forbidden(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         command = "rg -n 'ECHO-2806|planning' " + memory
         self.rows.extend([self.call("exec_command", cmd=command), self.command_execution(command)])
         result = self.audit()
-        self.assertEqual(result["status"], "passed")
-        self.assertEqual(result["empty_memory_probes"], 1)
-        self.assertNotIn("forbidden_context_reference:memory_path", result["errors"])
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["empty_memory_probes"], 0)
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
-    def test_verified_fixed_string_no_match_memory_probe_is_distinct_from_a_memory_read(self):
+    def test_verified_fixed_string_memory_search_is_still_forbidden(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         command = "rg -n -F 'ECHO-2806' " + memory
         parsed = [{"type": "search", "cmd": "rg -n -F ECHO-2806 " + memory,
@@ -247,10 +248,11 @@ class ParentContext(unittest.TestCase):
         self.rows.extend([self.call("exec_command", cmd=command),
                           self.command_execution(command, parsed_cmd=parsed)])
         result = self.audit()
-        self.assertEqual(result["status"], "passed", result)
-        self.assertEqual(result["empty_memory_probes"], 1)
+        self.assertEqual(result["status"], "rejected", result)
+        self.assertEqual(result["empty_memory_probes"], 0)
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
-    def test_verified_empty_host_memory_probe_may_precede_preflight(self):
+    def test_no_match_host_memory_search_cannot_precede_preflight(self):
         framework = self.root / "framework"
         memory = "/Users/example/.codex/memories/MEMORY.md"
         search = "rg -n 'ECHO-2806|planning' " + memory
@@ -263,8 +265,9 @@ class ParentContext(unittest.TestCase):
                           self.call("exec_command", cmd=preflight), observation,
                           self.call("exec_command", cmd="cat playbooks/techops_issue_remediation.md")])
         result = self.audit(framework_root=framework, require_preflight_order=True)
-        self.assertEqual(result["status"], "passed", result)
-        self.assertEqual(result["empty_memory_probes"], 1)
+        self.assertEqual(result["status"], "rejected", result)
+        self.assertEqual(result["empty_memory_probes"], 0)
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
     def test_nonempty_memory_probe_still_blocks_preflight_order(self):
         framework = self.root / "framework"
@@ -277,7 +280,7 @@ class ParentContext(unittest.TestCase):
         self.assertIn("parent_framework_content_before_preflight", result["errors"])
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
-    def test_empty_memory_probe_allows_only_exact_native_shell_startup_warning(self):
+    def test_empty_memory_probe_with_startup_warning_is_still_forbidden(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         query = "ECHO-2806|Issue Remediation|issue_remediation"
         command = "rg -n -i " + shlex.quote(query) + " " + memory
@@ -287,15 +290,15 @@ class ParentContext(unittest.TestCase):
         self.rows.extend([self.call("exec_command", cmd=command),
                           self.command_execution(command, output=warning, parsed_cmd=parsed)])
         result = self.audit()
-        self.assertEqual(result["status"], "passed", result)
-        self.assertEqual(result["empty_memory_probes"], 1)
-
-        self.rows[-1]["payload"]["item"]["aggregated_output"] += "MEMORY.md:7: ECHO-2806"
-        result = self.audit()
+        self.assertEqual(result["status"], "rejected", result)
         self.assertEqual(result["empty_memory_probes"], 0)
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
-    def test_verified_case_insensitive_probe_accepts_native_basename_path(self):
+        self.rows[-1]["payload"]["item"]["aggregated_output"] += "MEMORY.md:7: ECHO-2806"
+        result = self.audit()
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
+
+    def test_case_insensitive_memory_search_is_still_forbidden(self):
         memory = "/Users/example/.codex/memories/MEMORY.md"
         query = "ECHO-2806|Issue Remediation|issue_remediation"
         command = "rg -n -i " + shlex.quote(query) + " " + memory
@@ -303,14 +306,14 @@ class ParentContext(unittest.TestCase):
         self.rows.extend([self.call("exec_command", cmd=command),
                           self.command_execution(command, parsed_cmd=parsed)])
         result = self.audit()
-        self.assertEqual(result["status"], "passed")
-        self.assertEqual(result["empty_memory_probes"], 1)
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["empty_memory_probes"], 0)
+        self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
         forged = self.command_execution(command, parsed_cmd=[
             {"type": "search", "cmd": command, "query": query, "path": "/tmp/MEMORY.md"}])
         self.rows = self.rows[:2] + [self.call("exec_command", cmd=command), forged]
         result = self.audit()
-        self.assertEqual(result["empty_memory_probes"], 0)
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
     def test_no_match_probe_cannot_share_native_run_skill_bootstrap_command(self):
@@ -331,7 +334,7 @@ class ParentContext(unittest.TestCase):
         result = self.audit(framework_root=framework, require_preflight_order=True)
         self.assertEqual(result["status"], "rejected", result)
         self.assertIn("parent_framework_content_before_preflight", result["errors"])
-        self.assertEqual(result["empty_memory_probes"], 1)
+        self.assertEqual(result["empty_memory_probes"], 0)
 
         observation["payload"]["item"]["aggregated_output"] += "match from memory"
         result = self.audit(framework_root=framework, require_preflight_order=True)
@@ -399,18 +402,21 @@ class ParentContext(unittest.TestCase):
         self.assertIn("parent_unassigned_thread_discovery", self.audit(artifact_root=artifact_root)["errors"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
-    def test_related_status_projection_reads_only_explicit_ids(self):
-        prior = {"thread": {"id": CHILD, "status": {"type": "completed"},
-                             "preview": "private worker prompt"},
-                 "turns": [{"status": "completed", "items": [{"text": "private worker output"}]}]}
+    def test_related_status_projection_returns_only_explicit_id_status(self):
+        prior = {"wake": None, "polls": [{
+            "thread": {"id": CHILD, "status": {"type": "idle", "activeFlags": []}},
+            "latestTurn": {"status": "completed"},
+            "preview": "private worker prompt", "items": [{"text": "private worker output"}],
+        }]}
         projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
         stub = ("const calls = [];\nconst tools = {mcp__codex_app__list_threads: async () => {\n"
                 "  calls.push('list_threads'); throw new Error('must not inventory provider threads');\n"
-                "}, mcp__codex_app__read_thread: async args => {\n"
-                "  calls.push(args.threadId);\n"
-                "  if (args.turnLimit !== 1 || args.includeOutputs !== false)\n"
-                "    throw new Error('unexpected exact-id request');\n"
-                "  if (args.threadId !== " + json.dumps(CHILD) + " || 'hostId' in args)\n"
+                "}, mcp__codex_app__read_thread: async () => { throw new Error('must not read chat history'); },\n"
+                "mcp__codex_app__wait_threads: async args => {\n"
+                "  calls.push(...args.targets.map(row => row.threadId));\n"
+                "  if (args.timeoutMs !== 0 || args.targets.length !== 1 || 'hostId' in args.targets[0])\n"
+                "    throw new Error('unexpected exact-id status request');\n"
+                "  if (args.targets[0].threadId !== " + json.dumps(CHILD) + ")\n"
                 "    throw new Error('unexpected exact-id target');\n"
                 "  return {content: [{text: JSON.stringify(" + json.dumps(prior) + ")} ]};\n"
                 "}};\nconst text = value => process.stdout.write(JSON.stringify({rows: JSON.parse(value), calls}));\n")
@@ -420,6 +426,7 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout), {"rows": [{"id": CHILD, "status": "completed"}],
                                                       "calls": [CHILD]})
         self.assertNotIn("private", result.stdout)
+        self.assertNotIn("mcp__codex_app__read_thread", projection)
         skill = (Path(__file__).resolve().parents[1] / "skills/run/SKILL.md").read_text()
         example = textwrap.dedent(skill.split("   ```javascript\n", 1)[1].split("   ```", 1)[0])
         example = example.replace("PRIOR-WORKER-THREAD-UUID", CHILD)
@@ -445,10 +452,11 @@ class ParentContext(unittest.TestCase):
         for latest, expected in (("completed", "completed"), ("failed", "failed"),
                                  ("inProgress", "unavailable"), (None, "unavailable")):
             with self.subTest(latest=latest):
-                read = {"thread": {"id": CHILD, "status": {"type": "idle"}},
-                        "turns": [] if latest is None else [{"status": latest}]}
-                stub = ("const tools = {mcp__codex_app__read_thread: async args => {\n"
-                        "if (args.threadId !== " + json.dumps(CHILD) + ") throw new Error('unexpected id');\n"
+                read = {"wake": None, "polls": [{"thread": {
+                    "id": CHILD, "status": {"type": "idle", "activeFlags": []}},
+                    "latestTurn": None if latest is None else {"status": latest}}]}
+                stub = ("const tools = {mcp__codex_app__wait_threads: async args => {\n"
+                        "if (args.targets[0].threadId !== " + json.dumps(CHILD) + ") throw new Error('unexpected id');\n"
                         "return {content: [{text: " + json.dumps(json.dumps(read)) + "}]};\n"
                         "}};\n"
                         "const text = value => process.stdout.write(value);\n")
@@ -458,23 +466,12 @@ class ParentContext(unittest.TestCase):
                 self.assertEqual(json.loads(result.stdout), [{"id": CHILD, "status": expected}])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
-    def test_related_status_projection_distinguishes_missing_from_unavailable_ids(self):
+    def test_related_status_projection_fails_closed_for_missing_or_unavailable_ids(self):
         projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))
-        missing = (f"No Codex thread found for threadId: {CHILD}. "
-                   "Hosts without a readable match: local, remote-ssh-codex-managed:devbox")
-        stub = ("const tools = {mcp__codex_app__list_threads: async () => {\n"
-                "  throw new Error('must not inventory provider threads');\n"
-                "}, mcp__codex_app__read_thread: async args => ({isError: true, content: [{text: " +
-                "(args.threadId === " + json.dumps(CHILD) + " ? " + json.dumps(missing) +
-                " : 'permission denied')}]})};\n"
+        stub = ("const tools = {mcp__codex_app__wait_threads: async () => ({content: [{text: " +
+                json.dumps(json.dumps({"polls": [], "errors": [{"threadId": CHILD}]})) + "}]})};\n"
                 "const text = value => process.stdout.write(value);\n")
         result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=stub + projection,
-                                capture_output=True, text=True, timeout=10)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), [{"id": CHILD, "status": "not_found"}])
-
-        denied = stub.replace(json.dumps(missing), "'permission denied'")
-        result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=denied + projection,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), [{"id": CHILD, "status": "unavailable"}])
@@ -614,7 +611,8 @@ class ParentContext(unittest.TestCase):
         before = {path.name: path.read_bytes() for path in artifact_root.iterdir()}
         script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
         command = ["python3", str(script), "--status-projection", "--execution-repository", str(self.root),
-                   "--work-item", "ECHO-2806", "--provider-session", str(self.source)]
+                   "--work-item", "ECHO-2806", "--provider-session", str(self.source),
+                   "--authorize-prior-parent-thread", TURN]
         result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         output = json.loads(result.stdout)
@@ -629,7 +627,7 @@ class ParentContext(unittest.TestCase):
                     "output": [{"type": "text", "text": json.dumps([
                         {"id": TURN, "status": "idle"}, {"id": CHILD, "status": "completed"}])}]}}
         self.rows.extend([self.call("exec_command", cmd=shlex.join(command)), call, response])
-        audit = self.audit(artifact_root=artifact_root)
+        audit = self.audit(artifact_root=artifact_root, related_run_thread_ids=tuple(output["prior_thread_ids"]))
         self.assertEqual(audit["status"], "passed", audit["errors"])
         self.assertEqual(stale_run_status_errors(audit, "active"), [])
 
@@ -639,6 +637,76 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(rejected.returncode, 2)
         self.assertIn("stale_run_thread_identity_invalid", json.loads(rejected.stdout)["reason"])
         self.assertEqual(ledger.read_text(), '{"thread_mappings": {"/root/prior-worker": "invalid"}, "events": []}')
+
+    def test_fresh_status_projection_blocks_unapproved_prior_parent(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        artifact_root.mkdir(parents=True)
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "parent_context": {"parent_thread_id": TURN}}))
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "thread_mappings": {}, "events": [], "failed_dispatches": [],
+            "timing": {"open_worker_intervals": 0}}))
+        self.audit()
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        result = subprocess.run(["python3", str(script), "--status-projection", "--execution-repository",
+                                 str(self.root), "--work-item", "ECHO-2806", "--provider-session", str(self.source)],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["reason"], "prior_run_status_requires_user_authorization")
+
+    def test_unapproved_parent_blocks_before_reading_prior_run_receipts(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        artifact_root.mkdir(parents=True)
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "parent_context": {"parent_thread_id": TURN}}))
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "parent_thread_id": TURN, "thread_mappings": {"/root/prior-worker": CHILD}}))
+        with patch("scripts.provider_runtime.prior_run_status_thread_ids",
+                   side_effect=AssertionError("prior session details were read")) as prior_details:
+            with self.assertRaisesRegex(ValueError, "prior_run_status_requires_user_authorization"):
+                scoped_prior_run_status_thread_ids(artifact_root, PARENT)
+        prior_details.assert_not_called()
+
+    def test_prior_worker_status_requires_authorizing_its_parent_thread(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        artifact_root.mkdir(parents=True)
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "parent_context": {"parent_thread_id": TURN}}))
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "thread_mappings": {"/root/prior-worker": CHILD}, "events": [], "failed_dispatches": []}))
+        self.audit()
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        base = ["python3", str(script), "--status-projection", "--execution-repository", str(self.root),
+                "--work-item", "ECHO-2806", "--provider-session", str(self.source)]
+        blocked = subprocess.run(base, capture_output=True, text=True, timeout=30)
+        self.assertEqual(blocked.returncode, 2)
+        self.assertEqual(json.loads(blocked.stdout)["reason"], "prior_run_status_requires_user_authorization")
+        authorized = subprocess.run(base + ["--authorize-prior-parent-thread", TURN],
+                                    capture_output=True, text=True, timeout=30)
+        self.assertEqual(authorized.returncode, 0, authorized.stdout + authorized.stderr)
+        output = json.loads(authorized.stdout)
+        self.assertEqual(output["prior_thread_ids"], sorted([TURN, CHILD]))
+        self.assertIn("mcp__codex_app__wait_threads", output["projection"])
+        self.assertNotIn("mcp__codex_app__read_thread", output["projection"])
+
+    def test_terminal_local_closure_does_not_authorize_a_prior_parent(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        artifact_root.mkdir(parents=True)
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "parent_context": {"parent_thread_id": TURN}}))
+        (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
+            "thread_mappings": {"/root/worker": CHILD},
+            "events": [{"Thread ID": CHILD}], "failed_dispatches": []}))
+        (artifact_root / "runtime_closure.json").write_text(json.dumps({
+            "runtime_closure": [{"Runtime status": "Terminal", "Remaining active handles": "0"}],
+            "terminal_observations": [{"Thread ID": CHILD, "Provider status": "completed"}]}))
+        self.audit()
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        result = subprocess.run(["python3", str(script), "--status-projection", "--execution-repository",
+                                 str(self.root), "--work-item", "ECHO-2806", "--provider-session", str(self.source)],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["reason"], "prior_run_status_requires_user_authorization")
 
     def test_status_projection_helper_does_not_create_a_new_artifact_root(self):
         self.audit()
@@ -687,6 +755,8 @@ class ParentContext(unittest.TestCase):
     def test_related_status_probe_requires_correlated_minimal_output(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
         artifact_root.mkdir(parents=True)
+        (artifact_root / "role_bindings.json").write_text(json.dumps({
+            "parent_context": {"parent_thread_id": PARENT}}))
         (artifact_root / "runtime_dispatches.json").write_text(json.dumps({
             "thread_mappings": {"/root/prior-worker": CHILD}, "events": [], "failed_dispatches": [],
         }))
@@ -974,12 +1044,20 @@ class ParentContext(unittest.TestCase):
 
     def test_shipped_status_projection_matches_the_audit_allowlist(self):
         skill = (Path(__file__).resolve().parents[1] / "skills" / "run" / "SKILL.md").read_text()
+        self.assertIn("A work-item key or link to the current task does", skill)
+        self.assertIn("unless the current user explicitly identifies", skill)
+        self.assertIn("Do not consult host memory, rollout summaries", skill)
+        self.assertNotIn("Follow higher-priority host memory instructions", skill)
+        self.assertNotIn("host-required read-only memory check may precede it", skill)
         section = skill.split("this exact projection", 1)[1]
         snippet = section.split("```javascript\n", 1)[1].split("\n   ```", 1)[0]
         prior_id = "00000000-0000-0000-0000-000000000004"
         expected = related_run_status_projection_source("ECHO-2806", PARENT, (prior_id,))
         expected = expected.replace(json.dumps(PARENT), '"PARENT-THREAD-UUID"')
         expected = expected.replace(json.dumps([prior_id]), '["PRIOR-WORKER-THREAD-UUID"]')
+        self.assertIn("mcp__codex_app__wait_threads", expected)
+        self.assertNotIn("mcp__codex_app__read_thread", expected)
+        self.assertIn("i += 8", expected)
         self.assertEqual(textwrap.dedent(snippet).strip(), expected)
 
     def test_tool_operations_parse_only_static_string_concatenation(self):

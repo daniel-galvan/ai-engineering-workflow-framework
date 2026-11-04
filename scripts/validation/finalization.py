@@ -362,9 +362,9 @@ def validate_final_documenter_rules() -> None:
         "repository_integrator.toml",
         "solution_architect.toml",
     ):
-        text = (CODEX_AGENT_DIR / name).read_text()
-        if "Follow higher-priority host memory instructions" not in text or "verify material current-state claims" not in text:
-            fail(f"providers/codex/agents/{name} is missing host memory precedence or current-evidence verification")
+        text = (CODEX_AGENT_DIR / name).read_text().lower()
+        if "use only this chat and current-run artifacts" not in text or "verify material current-state claims" not in text:
+            fail(f"providers/codex/agents/{name} is missing the current-chat boundary or current-evidence verification")
 
     for name in (
         "sentry_current_state_investigator.toml",
@@ -372,9 +372,9 @@ def validate_final_documenter_rules() -> None:
         "sentry_solution_architect.toml",
         "documenter.toml",
     ):
-        text = (CODEX_AGENT_DIR / name).read_text()
-        if "Follow higher-priority host memory instructions" not in text or "verify material current-state claims" not in text:
-            fail(f"providers/codex/agents/{name} is missing host memory precedence or current-evidence verification")
+        text = (CODEX_AGENT_DIR / name).read_text().lower()
+        if "use only this chat and current-run artifacts" not in text or "verify material current-state claims" not in text:
+            fail(f"providers/codex/agents/{name} is missing the current-chat boundary or current-evidence verification")
 
     for path in (
         RUN_SKILL,

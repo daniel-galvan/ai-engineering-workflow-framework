@@ -896,7 +896,7 @@ def validate_coordinator_authority() -> None:
         "pass those exact values explicitly",
         "sole writer for its assigned non-record artifacts and packet",
         "MUST NOT reread",
-        "Follow higher-priority host memory",
+        "Use only this chat and the current run's",
         "The native dispatch record MUST prove those exact launch arguments were sent",
         "Missing applied telemetry alone does not",
         "Active-run artifacts MUST be direct children",

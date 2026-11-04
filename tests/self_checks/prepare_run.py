@@ -24,7 +24,7 @@ from scripts.prepare_run import (
     resolve_bindings,
 )
 from scripts.run_input_manifest import DEFAULT_PRECEDENCE_RULE, load_manifest
-from tests.parent_status_support import write_parent_status_session
+from tests.parent_status_support import PARENT_THREAD_ID, write_parent_status_session
 
 
 def self_test() -> None:
@@ -172,6 +172,10 @@ def self_test() -> None:
         )
         prior_ledger = Path(first["artifact_root"]) / "runtime_dispatches.json"
         prior_ledger.write_text(json.dumps({"thread_mappings": {}, "events": [], "failed_dispatches": []}))
+        bindings_path = Path(first["artifact_root"]) / "role_bindings.json"
+        bindings = json.loads(bindings_path.read_text())
+        bindings["parent_context"] = {"parent_thread_id": PARENT_THREAD_ID}
+        bindings_path.write_text(json.dumps(bindings))
         parent_session = write_parent_status_session(
             execution / "parent-status.jsonl", Path(first["artifact_root"]),
         )
