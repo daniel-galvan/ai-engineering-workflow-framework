@@ -58,12 +58,18 @@ invocation: run package preflight first, then the required status projection, be
    or artifact reference into another chat/session unless the current user explicitly authorizes that exact source.
    Execute all later framework helpers, including delegated Documenter commands, with absolute paths from this root.
    Preparation binds that root and plugin identity; changing directories does not select another framework package.
-   Before editing or planning source changes, check local `AGENTS.md` only in the source target directory and its
-   ancestors up to the verified source checkout root. Use `.thoughts` only for framework-flow artifacts such as
+   Before code inspection, editing or planning, obtain missing local `AGENTS.md` guidance only in the target directory
+   and its ancestors up to the verified source checkout root. Use `.thoughts` only for framework-flow artifacts such as
    fan-in/fan-out outputs; it is not a code, test, infrastructure, project, or repository path. Do not check
    `.thoughts/<WORK-ITEM-ID>` or its `.thoughts` parent for `AGENTS.md`, and do not search parent directory trees.
    Instruction files are optional: check existence, read those
    present, and continue when absent. Never promote a missing instruction-file probe into a required worker input.
+   Check explicit candidate paths with guarded reads that combine existence checks and content reads; these exact-path
+   reads need no separate filename listing. Never run a repository-wide `AGENTS.md` search. Reuse complete instructions
+   and absence checks in the current agent's context; when code scope expands, check only new ancestor directories.
+   Repeat checks or reads only for changed paths or instructions, incomplete output, or context lost after compaction.
+   A parent read or a file-path summary does not deliver complete instructions to a fresh worker. Issue-only analysis
+   and workflow-artifact work do not initiate additional source-instruction discovery; honor explicit read requirements.
    Run filename discovery in a separate tool result from content reads or searches; mixed outputs may not prove which
    references are names only. Run gates separately, or use fail-fast command chaining;
    inspect each exit status. When batching independent calls through `functions.exec`, keep each nested `tools.*`

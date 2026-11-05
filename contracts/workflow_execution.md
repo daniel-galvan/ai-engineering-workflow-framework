@@ -256,6 +256,17 @@ recursively inventoried as assets.
 Search relevant code and expand into another project or repository only when the issue, user context, or evidence gives
 a reason. Record why the scope expanded. Additional code scopes remain code inputs, not asset sources.
 
+Each agent MUST follow applicable repository instructions. Before code inspection, planning, or changes, obtain missing
+`AGENTS.md` guidance using explicit candidate paths in the target directory and its ancestors up to the source checkout
+root. Use guarded reads to check existence and read each exact candidate without a separate filename listing.
+Never discover these files with a recursive repository-wide search. Retain checked directories, absent files,
+and complete instruction reads in the current agent's context. When scope expands, check only new ancestor directories.
+Reuse complete guidance already available to that agent; repeat checks or reads only for changed paths or instructions,
+missing or truncated content, or context lost after compaction. A parent or another worker reading a file does not
+deliver its contents to a fresh worker; a locator or summary alone is insufficient. Issue-only context recovery and
+workflow-artifact work do not initiate additional source-instruction discovery. Honor explicit instruction-read
+requirements. A guide listing possible project paths does not require loading every project's instructions.
+
 Classify separately supplied materials such as guides, specifications, logs, screenshots, recordings, or payloads with
 `Classification: supporting artifact`. They may relate to the code but remain separate from source-code scope.
 Register each path in `run_inputs.json` and inventory its contents under the selected playbook. For a supporting

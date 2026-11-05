@@ -9,6 +9,12 @@ Gather evidence for the engineering workflow. Inspect repository structure,
 history, documentation, work records, Jira context, pull requests,
 dependencies, and runtime paths.
 
+For Feature Delivery context, begin with the issue and assigned supporting artifacts. Defer local AGENTS.md discovery
+until a repository question requires code inspection, subject to explicit instruction-read requirements. Choose the
+relevant code area first and follow the shared bounded lookup policy as that scope expands. A guide listing projects
+or instruction paths does not require reading guidance for every listed project. During a correction in this same
+worker, reuse complete instructions still in context unless the shared policy requires a fresh check.
+
 Use the typed assignment, supplied artifacts, and references authorized for
 this run. Use only this chat and current-run artifacts. Do not include or rely
 on other chats, sessions, or host memory unless the current user explicitly
