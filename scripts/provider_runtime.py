@@ -478,31 +478,28 @@ def _redact_current_session_projection(command: str, source: Path, script_dir: P
     """Allow the exact current session path only as the status-projection input."""
     try:
         args = shlex.split(command)
-        if (len(args) < 9 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
+        if (len(args) < 5 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
                 or Path(args[1]).resolve() != (script_dir / "prepare_run.py").resolve()):
             return command
-        recovery = args[2:4] == ["--continuation", "--planning-recovery"]
-        continuation = args[2] == "--continuation" and not recovery
-        if not (recovery or continuation) and args[2] != "--status-projection":
-            return command
-        values, index = {}, 4 if recovery else 3
-        allowed = ({"--execution-repository", "--work-item", "--provider-session", "--playbook",
-                    "--approval-reference"} if recovery else
-                   {"--execution-repository", "--work-item", "--provider-session", "--playbook",
-                    "--input-manifest"} if continuation else
-                   {"--execution-repository", "--work-item", "--provider-session",
-                    "--authorize-prior-parent-thread"})
+        flags = {"--status-projection", "--continuation", "--planning-recovery"}
+        allowed = {"--execution-repository", "--work-item", "--provider-session", "--playbook",
+                   "--approval-reference", "--input-manifest", "--authorize-prior-parent-thread"}
+        values, seen_flags, index = {}, set(), 2
         while index < len(args):
             option = args[index]
-            if option not in allowed or option in values or index + 1 == len(args):
+            if option in flags and option not in seen_flags:
+                seen_flags.add(option)
+                index += 1
+            elif option in allowed and option not in values and index + 1 < len(args):
+                values[option] = args[index + 1]
+                index += 2
+            else:
                 return command
-            values[option] = args[index + 1]
-            index += 2
-        if (not {"--execution-repository", "--work-item", "--provider-session"}.issubset(values)
-                or (recovery and (set(values) != allowed or values["--playbook"] != "techops_issue_remediation"
-                                  or not values["--approval-reference"].strip()))
-                or (continuation and (set(values) != allowed or values["--playbook"] != "techops_issue_remediation"))
-                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values["--work-item"])
+        if (not seen_flags.intersection({"--status-projection", "--continuation"})
+                or ("--status-projection" in seen_flags and "--continuation" in seen_flags)
+                or ("--planning-recovery" in seen_flags and "--continuation" not in seen_flags)
+                or "--provider-session" not in values
+                or ("--work-item" in values and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values["--work-item"]))
                 or Path(values["--provider-session"]).resolve() != source.resolve()):
             return command
         args[args.index("--provider-session") + 1] = "<current-provider-session>"
@@ -512,15 +509,19 @@ def _redact_current_session_projection(command: str, source: Path, script_dir: P
 
 
 def _redact_current_runtime_collection(command: str, source: Path, thread: str, runtime_evidence: dict | None,
-                                       artifact_root: Path | None, known_children: set[str], script_dir: Path) -> str:
+                                       artifact_root: Path | None, known_children: set[str], script_dir: Path,
+                                       previous_collector: Path | None) -> str:
     if not runtime_evidence or artifact_root is None:
         return command
     try:
         args = shlex.split(command)
         collector = Path(runtime_evidence["collector"]).resolve()
+        allowed_collectors = {collector}
+        if previous_collector:
+            allowed_collectors.add(Path(previous_collector).resolve())
         if (len(args) < 10 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
                 or collector != (script_dir / "worker_runtime_evidence.py").resolve()
-                or Path(args[1]).resolve() != collector):
+                or Path(args[1]).resolve() not in allowed_collectors):
             return command
         values, index = {}, 2
         allowed = {"--provider-session", "--parent-thread-id", "--started-at", "--ledger",
@@ -622,7 +623,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          prior_dispatch_ledger_present: bool | None = None,
                          framework_root: Path | None = None,
                          require_preflight_order: bool = False,
-                         audit_script_dir: Path | None = None) -> dict:
+                         audit_script_dir: Path | None = None,
+                         audit_previous_collector: Path | None = None) -> dict:
     """Audit current-turn operations without importing messages or previous analytical content."""
     try:
         from runtime_checks import _tool_operations, context_trace_errors
@@ -761,7 +763,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                 if lines:
                                     first = lines[0].rstrip("\r\n")
                                     replacement = _redact_current_runtime_collection(
-                                        first, source, thread, runtime_evidence, artifact_root, known_children, script_dir)
+                                        first, source, thread, runtime_evidence, artifact_root, known_children, script_dir,
+                                        audit_previous_collector)
                                     if replacement != first:
                                         redacted = replacement + lines[0][len(first):] + "".join(lines[1:])
                             if redacted == command:

@@ -674,6 +674,14 @@ class ParentContext(unittest.TestCase):
             self.assertIn("forbidden_context_reference:session_log",
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                      runtime_evidence=runtime)["errors"])
+            old_collector = self.root / "old-package" / "scripts" / "worker_runtime_evidence.py"
+            old_command = shlex.join(base_command()).replace(str(script), str(old_collector))
+            self.rows[-1] = self.call("exec_command", cmd=old_command, workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                runtime_evidence=runtime, audit_previous_collector=old_collector)["status"], "passed")
             closure_command = shlex.join(base_command() + ["--closure", str(artifact_root / "runtime_closure.json")])
             self.rows[-1] = self.call("exec_command", cmd=closure_command, workdir=str(self.root))
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
@@ -711,6 +719,14 @@ class ParentContext(unittest.TestCase):
         self.rows[-1] = self.call("exec_command", cmd=continuation + "\ncat /tmp/.codex/sessions/other.jsonl")
         self.assertIn("forbidden_context_reference:session_log",
                       self.audit(related_run_thread_ids=())["errors"])
+        reordered = shlex.join(["python3", str(script), "--execution-repository", str(self.root),
+            "--work-item", "ECHO-2806", "--playbook", "playbooks/techops_issue_remediation.md",
+            "--continuation", "--provider-session", str(self.source)])
+        self.rows[-1] = self.call("exec_command", cmd=reordered)
+        self.assertEqual(self.audit(related_run_thread_ids=())["status"], "passed")
+        incomplete = shlex.join(["python3", str(script), "--continuation", "--provider-session", str(self.source)])
+        self.rows[-1] = self.call("exec_command", cmd=incomplete)
+        self.assertEqual(self.audit(related_run_thread_ids=())["status"], "passed")
         pinned_scripts = self.root / "pinned" / "scripts"
         pinned_command = command.replace(str(script), str(pinned_scripts / "prepare_run.py"))
         self.rows[-1] = self.call("exec_command", cmd=pinned_command)

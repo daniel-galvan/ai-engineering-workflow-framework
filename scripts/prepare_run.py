@@ -2901,11 +2901,17 @@ def prepare_run(
                 assigned.append(str(row.get("Source or path", "")))
         previous_parent = previous_run_bindings.get("parent_context", {})
         control = dict(previous_run_bindings.get("runtime_evidence", {}))
+        prior_collector = None
+        if control and previous_run_bindings.get("framework_package"):
+            pinned_root = Path(previous_run_bindings["framework_package"]["root"]).resolve()
+            prior_collector = Path(control["collector"]).resolve()
+            if prior_collector != pinned_root / "scripts" / "worker_runtime_evidence.py":
+                raise ValueError("continuation_collector_package_mismatch")
         if planning_recovery and not control and (artifact_root / "role_bindings.json").is_file():
             saved_bindings = json.loads((artifact_root / "role_bindings.json").read_text())
             control = dict(saved_bindings.get("runtime_evidence", {}))
-            if control:
-                control["collector"] = str(Path(__file__).with_name("worker_runtime_evidence.py"))
+        if control:
+            control["collector"] = str(Path(__file__).with_name("worker_runtime_evidence.py"))
         related_thread_ids = (tuple(previous_parent["related_run_thread_ids"])
                               if "related_run_thread_ids" in previous_parent else None)
         if authorize_prior_parent_thread is not None:
@@ -2924,7 +2930,8 @@ def prepare_run(
             input_paths=tuple(assigned), expected_thread_id=previous_parent.get("parent_thread_id"),
             runtime_evidence=control,
             related_run_thread_ids=related_thread_ids,
-            prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"))
+            prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"),
+            audit_previous_collector=prior_collector)
         if parent_context["status"] != "passed":
             raise ValueError("parent_context_nonconformant:" + ";".join(parent_context["errors"]))
         if previous_parent and previous_parent["parent_thread_id"] != parent_context["parent_thread_id"]:
