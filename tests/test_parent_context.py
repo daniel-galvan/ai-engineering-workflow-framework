@@ -691,6 +691,18 @@ class ParentContext(unittest.TestCase):
                                      runtime_evidence=runtime)["errors"])
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                 runtime_evidence=runtime, audit_previous_collector=old_collector)["status"], "passed")
+            (artifact_root / "finalization_packet.json").write_text(json.dumps({"recovery": {
+                "Prior run ID": "ITEM-1-20260930T230000000000Z"}}))
+            prior_command = base_command()
+            prior_command[prior_command.index("--started-at") + 1] = "2026-09-30T23:00:00Z"
+            self.rows[-1] = self.call("exec_command", cmd=shlex.join(prior_command), workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            prior_command[prior_command.index("--started-at") + 1] = "2026-09-29T23:00:00Z"
+            self.rows[-1] = self.call("exec_command", cmd=shlex.join(prior_command), workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
             closure_command = shlex.join(base_command() + ["--closure", str(artifact_root / "runtime_closure.json")])
             self.rows[-1] = self.call("exec_command", cmd=closure_command, workdir=str(self.root))
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),

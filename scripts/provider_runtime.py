@@ -523,7 +523,7 @@ def _redact_current_session_projection(command: str, source: Path, script_dir: P
 
 def _redact_current_runtime_collection(command: str, source: Path, thread: str, runtime_evidence: dict | None,
                                        artifact_root: Path | None, known_children: set[str], script_dir: Path,
-                                       previous_collector: Path | None) -> str:
+                                       previous_collector: Path | None, prior_started_at: datetime | None) -> str:
     if not runtime_evidence or artifact_root is None:
         return command
     try:
@@ -553,7 +553,8 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
         if (not required.issubset(values)
                 or Path(values["--provider-session"]).resolve() != source.resolve()
                 or not UUID.fullmatch(values["--parent-thread-id"])
-                or values["--started-at"] != runtime_evidence["run_started_at"]
+                or (timestamp(values["--started-at"]) != timestamp(runtime_evidence["run_started_at"])
+                    and (prior_started_at is None or timestamp(values["--started-at"]) != prior_started_at))
                 or Path(runtime_evidence["ledger"]).resolve() != ledger
                 or Path(values["--ledger"]).resolve() != ledger
                 ):
@@ -645,6 +646,16 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
     except ModuleNotFoundError:
         from scripts.runtime_checks import _tool_operations, context_trace_errors
     script_dir = audit_script_dir or Path(__file__).resolve().parent
+    prior_started_at = None
+    if artifact_root and (artifact_root / "finalization_packet.json").is_file():
+        try:
+            packet = json.loads((artifact_root / "finalization_packet.json").read_text())
+            prior_id = packet.get("recovery", {}).get("Prior run ID", "")
+            match = re.search(r"-(\d{8}T\d{12}Z)$", prior_id)
+            if match:
+                prior_started_at = datetime.strptime(match[1], "%Y%m%dT%H%M%S%fZ").replace(tzinfo=timezone.utc)
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
     with source.open() as stream:
         header = json.loads(next(stream, ""))
         thread = header.get("payload", {}).get("id")
@@ -772,7 +783,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                 if replacement == text:
                                     replacement = _redact_current_runtime_collection(
                                         text, source, thread, runtime_evidence, artifact_root, known_children, script_dir,
-                                        audit_previous_collector)
+                                        audit_previous_collector, prior_started_at)
                                 if replacement == text:
                                     replacement = _redact_workflow_failure(
                                         text, source, thread, runtime_evidence, artifact_root, script_dir)
