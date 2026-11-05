@@ -140,22 +140,27 @@ class NativeParentSession(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "provider_current_turn_unavailable"):
             current_parent_session()
 
-    def test_an_offline_packet_cannot_bypass_parent_binding_when_used_in_a_native_chat(self):
+    def test_an_unbound_offline_packet_cannot_be_claimed_by_a_native_chat(self):
         from scripts.prepare_run import prepare_run
         from scripts.runtime_checks import prepared_package_errors
         source = self.record("current")
+        self.assertEqual(current_parent_session(), source.resolve())
         repository = self.root / "repository"
         repository.mkdir()
         with patch.dict(os.environ, {"CODEX_THREAD_ID": "", "CODEX_SESSION_ID": ""}):
             prepared = prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False)
         root = Path(prepared["artifact_root"])
         before = Path(prepared["finalization_packet"]).read_bytes()
+        bindings = Path(prepared["role_binding_manifest"])
+        before_bindings = bindings.read_bytes()
         self.assertTrue(any(error.startswith("parent_context_binding_required") for error in prepared_package_errors(root)))
         self.assertEqual(Path(prepared["finalization_packet"]).read_bytes(), before)
-        continued = prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, True)
-        self.assertEqual(continued["run_id"], prepared["run_id"])
-        self.assertEqual(prepared_package_errors(root), [])
-        self.assertEqual(json.loads(Path(continued["role_binding_manifest"]).read_text())["parent_context"]["provider_session"], str(source.resolve()))
+        with self.assertRaisesRegex(ValueError, "parent_context_nonconformant:stale_run_parent_identity_invalid"):
+            prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, True)
+        self.assertEqual((Path(prepared["finalization_packet"]).read_bytes(), bindings.read_bytes()),
+                         (before, before_bindings))
+        self.assertTrue(any(error.startswith("parent_context_binding_required")
+                            for error in prepared_package_errors(root)))
 
     def test_self_checks_isolate_and_restore_the_native_environment_even_on_failure(self):
         from scripts.self_check import run_self_check

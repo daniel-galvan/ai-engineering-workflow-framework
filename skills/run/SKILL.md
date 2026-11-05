@@ -156,11 +156,12 @@ invocation: run package preflight first, then the required status projection, be
    activation or `SubAgentActivity` event. Then export with `--worker-thread-id <verified-child-UUID>`, `--agent`, and
    `--trace`, omitting `--observation`; the collector derives a timestamped receipt from native inventory. Do not call
    `list_agents` to discover worker identity or use a handle from another run. The collector resolves only that
-   current-run child. Never enumerate the native sessions directory or search other session files. If the latest
-   inventory omits this worker, use the exact single-thread `read_thread` or `wait_threads` projection below for
-   that UUID, then rerun the trace-export collector without `--observation`; it derives the fresh receipt from that
-   status probe, so no separate observation file is needed. If neither source can provide a correlated status, report a
-   collection failure. Never substitute turn completion time for observation time.
+   current-run child. Never enumerate the native sessions directory or search other session files.
+   If the latest inventory omits this worker, use the exact single-thread
+   `read_thread` or `wait_threads` projection below for that UUID, then rerun the collector without `--observation`;
+   it derives the fresh receipt from that status probe, so no separate observation file is needed. If neither source
+   can provide a correlated status, report a collection failure. Never substitute turn completion time for
+   observation time.
    Do not manually reconstruct a trace or inject delivery flags. The collector derives omitted dispatch
    timestamps from its verified ledger and recognizes authenticated complete instruction reads. Missing export fields
    or parser errors are collection failures; reconcile them once without repeating analysis or spending a worker
