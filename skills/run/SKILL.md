@@ -149,13 +149,17 @@ invocation: run package preflight first, then the required status projection, be
    `runtime_evidence.ledger` when declared. Extract dispatches from the verified current parent session and export the
    exact child session with its fresh provider status observation. Use the canonical binding key as `--agent`, not a
    stage label. For TechOps, the `failure-path` workstream's `--agent` value is `dependency_analyst`; keep it distinct
-   from the `failure_path` artifact name and `/root/failure_path` task handle. After the worker completes, call
-   `list_agents`, then export with `--worker-thread-id <ledger-verified-child-UUID>`, `--agent`, and `--trace`,
-   omitting `--observation`; the collector derives a timestamped receipt from that native inventory. The collector
-   resolves only that current-run child. Never enumerate the native sessions directory or search other session files.
-   If the latest inventory omits this worker, use the exact single-thread `read_thread` or `wait_threads` projection
-   below, then rerun the collector without `--observation`; it derives the fresh receipt from that status probe, so
-   no separate observation file is needed. If neither source can provide a correlated status, report a
+   from the `failure_path` artifact name and `/root/failure_path` task handle. After each worker completes, first
+   run the prepared collector in ledger-refresh mode with only its parent-session, parent-thread, run-start, and
+   ledger arguments; this creates or refreshes `runtime_dispatches.json`. Do not inspect that file before this call.
+   Match the current-run provider handle to its exact child UUID in the refreshed `thread_mappings`, using this run's
+   activation or `SubAgentActivity` event. Then export with `--worker-thread-id <verified-child-UUID>`, `--agent`, and
+   `--trace`, omitting `--observation`; the collector derives a timestamped receipt from native inventory. Do not call
+   `list_agents` to discover worker identity or use a handle from another run. The collector resolves only that
+   current-run child. Never enumerate the native sessions directory or search other session files. If the latest
+   inventory omits this worker, use the exact single-thread `read_thread` or `wait_threads` projection below for
+   that UUID, then rerun the trace-export collector without `--observation`; it derives the fresh receipt from that
+   status probe, so no separate observation file is needed. If neither source can provide a correlated status, report a
    collection failure. Never substitute turn completion time for observation time.
    Do not manually reconstruct a trace or inject delivery flags. The collector derives omitted dispatch
    timestamps from its verified ledger and recognizes authenticated complete instruction reads. Missing export fields
