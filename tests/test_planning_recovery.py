@@ -252,6 +252,26 @@ class PlanningRecovery(unittest.TestCase):
                 self.assertEqual(ledger["thread_mappings"], {"/root/new": CHILD})
                 self.assertEqual(len(ledger["events"]), 1)
 
+    def test_same_chat_redispatch_maps_prior_worker_without_importing_prior_events(self):
+        source = self.root / "provider.jsonl"
+        rows = [
+            {"timestamp": START, "type": "session_meta", "payload": {"id": PARENT}},
+            {"timestamp": START, "type": "event_msg", "payload": {"item": {
+                "type": "SubAgentActivity", "kind": "started", "agent_path": "/root/old",
+                "agent_thread_id": CHILD}}},
+            {"timestamp": "2026-10-12T00:02:00Z", "type": "response_item", "payload": {
+                "type": "function_call", "namespace": "collaboration", "name": "followup_task",
+                "arguments": json.dumps({"target": "/root/old"})}},
+        ]
+        source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        ledger = read_runtime_events(source, PARENT, "2026-10-12T00:01:00Z")
+        self.assertEqual(ledger["thread_mappings"], {"/root/old": CHILD})
+        self.assertEqual([row["Operation"] for row in ledger["events"]], ["followup_task"])
+        rows[1]["payload"]["item"]["agent_thread_id"] = "invalid"
+        source.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        with self.assertRaisesRegex(ValueError, "provider_dispatch_handle_unmapped"):
+            read_runtime_events(source, PARENT, "2026-10-12T00:01:00Z")
+
     def test_identity_fragment_maps_redispatch_without_importing_prior_results(self):
         source = self.root / "prior.jsonl"
         source.write_text(json.dumps({"timestamp": START, "type": "session_meta", "payload": {"id": PARENT}})

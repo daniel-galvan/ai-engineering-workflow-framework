@@ -1302,6 +1302,28 @@ def read_runtime_events(
                     continue
                 target = arguments.get("target")
                 matches = [handle for handle in mappings if target in {handle, handle.rsplit("/", 1)[-1]}]
+                if not matches and isinstance(target, str):
+                    prior = set()
+                    with path.open() as history:
+                        next(history)
+                        for old_line in history:
+                            try:
+                                old = json.loads(old_line)
+                            except json.JSONDecodeError:
+                                continue
+                            if timestamp(old["timestamp"]) >= started:
+                                break
+                            item = old.get("payload", {}).get("item", {})
+                            handle, identity = item.get("agent_path"), item.get("agent_thread_id")
+                            if (old.get("type") == "event_msg" and item.get("type") == "SubAgentActivity"
+                                    and item.get("kind") == "started" and isinstance(handle, str)
+                                    and target in {handle, handle.rsplit("/", 1)[-1]}
+                                    and isinstance(identity, str) and UUID.fullmatch(identity)):
+                                prior.add((handle, identity))
+                    if len(prior) == 1:
+                        handle, identity = prior.pop()
+                        mappings[handle] = identity
+                        matches = [handle]
                 if len(matches) != 1:
                     raise ValueError("provider_dispatch_handle_unmapped")
                 handle = matches[0]
