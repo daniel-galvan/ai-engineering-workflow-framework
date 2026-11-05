@@ -208,7 +208,7 @@ def validate_sentry_prompt_and_isolation() -> None:
         "packaged deterministic finalizer is the sole writer",
         "initialization acknowledgement",
         "token-based Sentry skill",
-        "under the declared execution-repository path",
+        "under the execution repository root resolved by the shared contract",
         "evidence worker exclusively owns raw Sentry queries",
         "same Documenter",
         "Best current explanations",

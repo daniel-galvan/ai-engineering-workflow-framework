@@ -26,6 +26,8 @@ Run-input rules:
 - Register every material detail in the current request in the run input manifest before worker activation, including
   supplied repository paths and supporting artifacts. Preserve the original value, source, authority, classification,
   expected use, and status; do not reduce an asset path to an unverified hint.
+- Use `Classification: code scope` for repository or project paths and `Classification: supporting artifact` for
+  separately supplied non-code materials.
 - Explicitly supplied current-run context and artifacts take precedence over historical conclusions. Live Sentry or
   runtime evidence is additive unless the user explicitly selects live-only analysis; it must not replace named assets.
 - Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
@@ -58,11 +60,14 @@ Execution profile: standard
 Lifecycle: planning
 The selected execution profile is mandatory; do not silently downgrade it.
 
-Execution repository (required; durable artifact root):
-<ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
+Execution repository (optional; omit when running from the main checkout root):
+<ABSOLUTE-PATH-OR-OMIT>
 
-If the session runs in a managed worktree of this repository, use that worktree for source operations but keep every
-durable `.thoughts/<WORK-ITEM-ID>/` artifact under the declared execution-repository path above.
+Primary code scope (optional; when known):
+<PROJECT-PATH-OR-UNKNOWN>
+
+If the session runs in a managed worktree, use that worktree for source operations and keep durable
+`.thoughts/<WORK-ITEM-ID>/` artifacts under the execution repository root resolved by the shared contract.
 
 Provider/runtime configuration (optional execution-repository runtime view; use `Not provided` when absent):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION-OR-Not-provided>
@@ -274,10 +279,14 @@ Runtime bootstrap:
   only when it exists; an Evidence Topology runtime failure before artifact creation omits that argument. The final
   response must be copied from that finalized record.
 
-Additional repositories and working directories (optional; the execution
-repository is already declared):
-- Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
+Additional code scopes (optional; include only when the issue or evidence requires them):
+- Path: <PROJECT-OR-REPOSITORY-PATH-OR-NONE>
+  Why it is relevant: <REASON-OR-OMIT>
   Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
+
+Supporting artifacts (optional; payloads, logs, screenshots, guides, or other non-code materials):
+- Path or URL: <SUPPORTING-ARTIFACT-OR-NONE>
+  Intended use: <REASON-OR-OMIT>
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>
@@ -297,9 +306,6 @@ Reporter context and investigation hints (optional; unverified until reconciled)
 
 Additional supplied context (preserve and classify):
 - <NONE-OR-DESCRIPTION-OR-REFERENCE>
-
-Optional supporting artifacts:
-- <NONE-OR-ABSOLUTE-PATH>
 
 Integration:
 - Use the playbook's configured Sentry MCP integration.

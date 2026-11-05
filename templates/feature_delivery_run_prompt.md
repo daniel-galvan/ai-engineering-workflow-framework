@@ -42,8 +42,8 @@ For an approved remediation re-entry, use `Lifecycle: remediation`, `Requested o
 `Planning objective: feature_implementation`. Prepare with `--continuation --remediation-reentry --approval-reference`
 and preserve the prior lifecycle history. A later follow-up within that remediation uses only `--continuation`.
 
-Execution repository (required; durable artifact root):
-<ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
+Execution repository (optional; omit when running from the main checkout root, using the monorepo root when applicable):
+<ABSOLUTE-PATH-TO-REPOSITORY-ROOT-OR-OMIT>
 
 Provider/runtime configuration (optional execution-repository runtime view; use `Not provided` when absent):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION-OR-Not-provided>
@@ -77,16 +77,21 @@ Runtime bootstrap:
 - Feature Delivery requires the explicit current-run input manifest; a generated-minimum manifest cannot establish the
   complete set of additional asset sources.
 
-Additional repositories and working directories (optional; the execution
-repository is already declared):
-- Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
+Primary code scope (optional):
+- Path: <PROJECT-PATH-OR-NONE>
   Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
+  Corresponding input row: `Classification: code scope`; do not set `Asset source: true`
 
-Additional asset sources (optional; every entry is inventoried, not silently ignored):
+Additional code scopes (optional):
+- Path: <ADDITIONAL-PROJECT-OR-REPOSITORY-OR-NONE>
+  Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
+  Corresponding input row: `Classification: code scope`; do not set `Asset source: true`
+
+Supporting artifacts to inventory (optional):
 - Source ID: <OPTIONAL-ID>
   Path or URL: <ABSOLUTE-FILE-OR-FOLDER-PATH-OR-URL>
   Intended use: <DESCRIPTION>
-  Corresponding input row: `Asset source: true`
+  Corresponding input row: `Classification: supporting artifact`; `Asset source: true`
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>
@@ -104,11 +109,8 @@ Feature context and constraints (unverified until reconciled):
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
 - Constraints, dependencies, or release timing: <NONE-OR-DESCRIPTION>
 
-Optional supporting artifacts (each file or folder is an asset source and must be inventoried):
-- <NONE-OR-ABSOLUTE-PATHS>
-
-For every listed artifact, add a corresponding current-run input row with `Asset source: true`; do not hide an asset
-source in free-form context. A supplied `codex://threads/` reference is a URL asset source even when used only as
+For each listed supporting artifact, add a corresponding current-run input row with `Asset source: true`; do not hide an
+asset source in free-form context. A supplied `codex://threads/` reference is a URL asset source even when used only as
 prior-decision context.
 
 Additional supplied context (preserve and classify):

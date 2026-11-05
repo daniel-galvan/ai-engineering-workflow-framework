@@ -8,6 +8,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import validate_worker_runtime as runtime
 from scripts import asset_manifest as assets
@@ -1362,6 +1363,57 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertEqual(assets._expected_jira_input_ids(inputs, "ITEM-1"), set())
         inputs["HIST-001"]["Asset source"] = True
         self.assertEqual(assets._expected_asset_input_ids(inputs), {"HIST-001"})
+
+    def test_code_scope_is_excluded_from_asset_inventory_and_directory_scans(self):
+        code_dir = self.repository / "journeys"
+        code_dir.mkdir()
+        (code_dir / "main.go").write_text("package journeys\n")
+        inputs = {
+            "CODE-001": {"Classification": "code scope", "Asset source": True,
+                         "Source or path": str(code_dir)},
+            "LEGACY-001": {"Classification": "repository scope", "Asset source": True,
+                           "Source or path": str(code_dir)},
+            "DOC-001": {"Classification": "supporting artifact", "Asset source": True,
+                        "Source or path": str(self.repository / "guide.md")},
+        }
+        self.assertEqual(assets._expected_asset_input_ids(inputs), {"DOC-001"})
+        manifest = {
+            "schema_version": 1,
+            "status": "awaiting_input",
+            "work_item": "ITEM-1",
+            "sources": [{
+                "source_id": "SRC-CODE",
+                "input_id": "CODE-001",
+                "kind": "directory",
+                "locator": str(code_dir),
+                "requiredness": "supporting",
+                "discovery_status": "partial",
+                "discovery_method": "classification check",
+                "limitation": "This path is code scope, not an asset source.",
+                "asset_ids": [],
+                "evidence_refs": ["EV-001"],
+            }],
+            "assets": [],
+            "gate": {
+                "inventory_complete": False,
+                "all_assets_accounted_for": True,
+                "all_available_assets_reviewed": True,
+                "all_material_assets_linked": True,
+                "reviewed_before_plan": False,
+                "unresolved_asset_ids": [],
+                "blocking_source_ids": ["SRC-CODE"],
+            },
+        }
+        with patch.object(assets, "_check_source_files", side_effect=AssertionError("code scope was scanned")) as scan:
+            errors = assets.validate_asset_manifest(
+                manifest,
+                expected_input_ids=inputs,
+                expected_inputs=inputs,
+                expected_evidence_ids=["EV-001"],
+            )
+        scan.assert_not_called()
+        self.assertIn("code scope input CODE-001 cannot be declared as an asset source", errors)
+        self.assertIn("code scope input LEGACY-001 cannot be declared as an asset source", errors)
 
     def test_partial_draft_disposition_is_merged_and_required_at_handoff(self):
         self.result["worker_result"]["Worker"] = "feature-design"

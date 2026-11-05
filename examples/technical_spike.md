@@ -22,9 +22,10 @@ question, a fixed evidence budget, named repositories and documents, and no auth
 
 ## Plugin Invocation
 
-Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
-context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
-records belong in the resolved main checkout, while source operations use the active equivalent worktree.
+Start the Codex task from the main checkout root, using the monorepo root when the code is in a monorepo, and invoke the
+installed plugin. Supply known code scope and any separate supporting artifacts; the launcher loads the canonical input
+schema and provider definitions. Durable records belong in the resolved main checkout, while source operations use the
+active equivalent worktree.
 
 ```text
 Use $ai-engineering-workflows:run.
@@ -32,6 +33,8 @@ Work item: <SPIKE-JIRA-ID-OR-URL>
 Playbook: playbooks/technical_spike.md
 Execution profile: standard
 Lifecycle: planning
+Primary code scope: <PROJECT-PATH-OR-UNKNOWN>
+Supporting artifacts: <GUIDE-OR-LOG-OR-NONE>
 Requested outcome: technical_answer
 Spike objective: execute_spike
 Primary question: <ONE-DECISION-RELEVANT-QUESTION>

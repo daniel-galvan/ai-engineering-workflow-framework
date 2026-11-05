@@ -152,8 +152,9 @@ non-goals. Do not create an implementation plan during initialization.
 Read the issue, comments, related resolved work, and supplied artifacts before touching code. Record reported and
 expected behavior, impact, affected users or systems, evidence IDs, facts, assumptions, unknowns, and redaction limits.
 
-Consume every supplied attachment, log, screenshot, payload, and repository
-artifact before requesting clarification. Apply the shared
+Consume every separately supplied attachment, log, screenshot, payload, and other supporting artifact before requesting
+clarification. Treat a supplied repository or project path as code scope: search relevant source files, but do not
+inventory the repository or project recursively. Apply the shared
 [Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate)
 and preserve the exact input path or reference in the evidence record.
 

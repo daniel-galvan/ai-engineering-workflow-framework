@@ -222,6 +222,29 @@ class ReviewRegressions(unittest.TestCase):
             self.assertTrue((Path(first) / "work_record.md").is_file())
             self.assertTrue((Path(second) / "work_record.md").is_file())
 
+    def test_archive_snapshots_supporting_directories_but_not_code_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "work_record.md").write_text("| State | intake |\n")
+            code_dir = root / "journeys"
+            code_dir.mkdir()
+            (code_dir / "main.go").write_text("package journeys\n")
+            guide_dir = root / "guide"
+            guide_dir.mkdir()
+            (guide_dir / "guide.md").write_text("Supporting guide")
+            inputs = {"inputs": [
+                {"Classification": "repository scope", "path": str(code_dir)},
+                {"Classification": "supporting artifact", "path": str(guide_dir)},
+            ]}
+            status_context = {"verified_related_run_status_probes": 1,
+                              "related_run_status_probe_attempts": 1,
+                              "related_run_status_rows": [], "related_run_thread_ids": [],
+                              "prior_run_dispatch_ledger_present": False}
+            prepare_run._archive_existing_run(root, True, run_inputs=inputs, parent_context=status_context)
+            snapshots = root / "input_snapshots" / "directories"
+            self.assertEqual(len(list(snapshots.rglob("guide.md"))), 1)
+            self.assertEqual(list(snapshots.rglob("main.go")), [])
+
     def test_directory_capture_failure_does_not_archive_the_run(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = self.repository(Path(directory))

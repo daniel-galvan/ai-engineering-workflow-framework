@@ -867,7 +867,7 @@ def validate_bounded_vulnerability_route() -> None:
     vulnerability_prompt = (ROOT / "templates" / "vulnerability_issue_run_prompt.md").read_text()
     for phrase in (
         "owns the affected artifact",
-        "Affected component root",
+        "Primary code scope",
         "three-worker graph",
         "runtime-managed worktree",
         "Coordinator performs preflight directly",

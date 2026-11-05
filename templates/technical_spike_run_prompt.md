@@ -38,8 +38,11 @@ Use `technical_answer + execute_spike` to investigate a bounded technical questi
 `Requested outcome` (`technical_answer` or `spike_assessment`) and `Spike objective` (`execute_spike` or
 `review_spike`) select the route; neither value may be copied into `Primary goal`.
 
-Execution repository (required; durable artifact root):
-<ABSOLUTE-PATH-TO-EXECUTION-REPOSITORY>
+Execution repository (optional; omit when running from the main checkout root):
+<ABSOLUTE-PATH-OR-OMIT>
+
+Primary code scope (optional; when known):
+<PROJECT-PATH-OR-UNKNOWN>
 
 Provider/runtime configuration (optional execution-repository runtime view; use `Not provided` when absent):
 <PATH-TO-EXECUTION-REPOSITORY-PROVIDER-CONFIGURATION-OR-Not-provided>
@@ -93,8 +96,13 @@ Comparison reference (optional for `execute_spike`; otherwise `None`):
 - Comparison rule: Establish findings and a recommendation independently, then record agreements, contradictions,
   or omissions. Never use the reference as the answer or as the investigation's source of truth.
 
-Additional repositories and working directories (optional; the execution repository is already declared):
-- Path: <REPOSITORY-OR-DIRECTORY-OR-NONE>
+Additional supporting artifacts (optional; guides, reports, logs, or other non-code materials):
+- Path or URL: <SUPPORTING-ARTIFACT-OR-NONE>
+  Intended use: <REASON-OR-OMIT>
+
+Additional code scopes (optional; include only when relevant):
+- Path: <PROJECT-OR-REPOSITORY-PATH-OR-NONE>
+  Why it is relevant: <REASON-OR-OMIT>
   Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
@@ -110,9 +118,6 @@ Evidence and experiment hints (unverified until reconciled):
 - Suspected repositories, components, services, or owners: <HINT-OR-NONE>
 - Candidate checks, experiments, logs, metrics, or test commands: <HINT-OR-NONE>
 - Constraints, dependencies, privacy boundaries, or environment limits: <NONE-OR-DESCRIPTION>
-
-Optional supporting artifacts:
-- <NONE-OR-ABSOLUTE-PATHS>
 
 Additional supplied context (preserve and classify):
 - <NONE-OR-DESCRIPTION-OR-REFERENCE>

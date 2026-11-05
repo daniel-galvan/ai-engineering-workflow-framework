@@ -29,20 +29,22 @@ regression test, and validation plan.
 | Work item | `<STABLE-WORK-ITEM-ID-OR-URL>` |
 | Evidence source | `live_sentry`, `supplied_occurrence`, or `mixed` |
 | Sentry issue | `<SENTRY-ISSUE-ID-OR-URL-OR-NOT-PROVIDED>` |
-| Execution repository | Resolved main checkout for durable artifacts |
+| Execution repository | Main checkout root, using the monorepo root when applicable; omitted from the ordinary prompt |
+| Primary code scope | Project/component to investigate first, when known |
+| Additional code scopes | Other project or repository paths only when evidence requires them, with the reason |
 | Event-origin repository | `<REPORTING-REPOSITORY>` |
 | Candidate fault repository | `<REPOSITORY-OR-UNKNOWN>` |
 | Candidate component | `<COMPONENT-OR-UNKNOWN>` |
 | Downstream or return path | `<PATH-OR-UNKNOWN>` |
 | Confirmed decisions and constraints | Source-of-truth rules, scope, or non-goals; authoritative |
-| Additional repositories and assets | Relevant local checkouts and evidence folders |
 | Supporting artifacts | Payload JSON, logs, screenshots, traces, or reproduction fixtures |
 
 ## Plugin Invocation
 
-Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
-context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
-records belong in the resolved main checkout, while source operations use the active equivalent worktree.
+Start the Codex task from the main checkout root, using the monorepo root when applicable, and invoke the installed
+plugin. Supply known code scope and any separate supporting artifacts; the launcher loads the canonical input schema
+and provider definitions. Durable records belong in the resolved main checkout, while source operations use the active
+equivalent worktree.
 
 For a normal first investigation, use:
 
@@ -54,6 +56,8 @@ Evidence source: live_sentry
 Sentry issue: <SENTRY-ISSUE-ID-OR-URL>
 Execution profile: standard
 Lifecycle: planning
+Primary code scope: <PROJECT-OR-COMPONENT-PATH-OR-UNKNOWN>
+Supporting artifacts: <PAYLOAD-LOG-OR-SCREENSHOT-PATHS-OR-NONE>
 ```
 
 Use `deep` when ownership, causality, repository boundaries, concurrency, security, data impact, or deployment

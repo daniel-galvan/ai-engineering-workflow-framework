@@ -58,9 +58,9 @@ Use another workflow when:
 ## Required Inputs
 
 - For `live_sentry`: a stable Sentry issue URL or identifier, access to the relevant Sentry organization and project,
-  and one or more relevant repository checkouts or working directories
-- For `supplied_occurrence`: the current-run occurrence artifact and one or more relevant repository checkouts or
-  working directories; live Sentry identity and access are optional
+  and the main code checkout started from its root
+- For `supplied_occurrence`: the current-run occurrence artifact and the main code checkout started from its root;
+  live Sentry identity and access are optional
 - For `mixed`: the `live_sentry` inputs plus the current-run occurrence artifact
 
 An explicit Sentry issue ID or URL requires the [source-access gate](../integrations/sentry.md#source-access-gate)
@@ -110,9 +110,10 @@ exclude that service from the deployed path until release or deployment mapping 
 
 The initial topology is a hypothesis unless the run prompt explicitly records a confirmed topology decision. Verify
 hypotheses with Sentry evidence, release metadata, repository history, event payloads, queues, callbacks, and tests. Do
-not infer event origin or candidate fault ownership from a field named “primary code repository.” Do not inspect or
-modify an unrelated project merely because it exists in the same monorepo. Code changes are limited to the verified
-fault boundary unless an expanded scope is approved.
+not infer event origin or candidate fault ownership from a field named “primary code repository.” Begin code search in
+the primary code scope; do not search or inventory the whole monorepo by default. Add another code scope only when the
+issue or evidence requires it, and record why. Do not inspect or modify an unrelated project merely because it exists
+in the same monorepo. Code changes are limited to the verified fault boundary unless an expanded scope is approved.
 
 Confirmed user decisions and constraints are authoritative run inputs. The current-run input manifest is the durable
 record of every supplied decision, context item, repository path, and supporting artifact. Reporter context may identify
@@ -407,7 +408,8 @@ fresh run archives prior terminal artifacts before creating the new record; only
 current record. The helper starts Sentry runs from `templates/sentry_work_record.md`; use the full work-record template
 only as reference for an uncommon section instead of copying it wholesale.
 
-Use the prompt's declared `Execution repository` as the durable-artifact root. Code repositories listed for Sentry
+Use the execution repository resolved from the current run as the durable-artifact root. It is the main checkout root,
+or the monorepo root when the affected code lives in a monorepo. Additional code repositories listed for Sentry
 investigation must not receive the work record or worker artifacts.
 
 Recover or create:

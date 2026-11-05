@@ -18,6 +18,11 @@ DEFAULT_PRECEDENCE_RULE = (
 )
 REQUIRED_INPUT_FIELDS = ("Input ID", "Input or artifact", "Source or path", "Authority", "Status")
 LOCAL_LINE_REFERENCE = re.compile(r"^(?P<path>/.*?)(?::\d+(?:-\d+)?|#L\d+(?:-L?\d+)?)$")
+CODE_SCOPE_CLASSIFICATIONS = {"code scope", "repository", "repository scope", "repository source"}
+
+
+def is_code_scope(row: dict[str, object]) -> bool:
+    return str(row.get("Classification", "")).strip().lower() in CODE_SCOPE_CLASSIFICATIONS
 
 
 def _provider_text(value: object):

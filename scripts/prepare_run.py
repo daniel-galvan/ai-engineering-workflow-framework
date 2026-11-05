@@ -19,6 +19,7 @@ try:
     from run_input_manifest import (
         DEFAULT_PRECEDENCE_RULE as DEFAULT_PRECEDENCE_RULE,
         default_manifest,
+        is_code_scope,
         load_manifest,
         local_input_paths,
         retain_source_releases,
@@ -31,6 +32,7 @@ except ModuleNotFoundError:  # Imported as scripts.prepare_run from the reposito
     from scripts.run_input_manifest import (
         DEFAULT_PRECEDENCE_RULE as DEFAULT_PRECEDENCE_RULE,
         default_manifest,
+        is_code_scope,
         load_manifest,
         local_input_paths,
         retain_source_releases,
@@ -2699,7 +2701,8 @@ def _archive_existing_run(
     destination = artifact_root / "runs" / re.sub(r"[^A-Za-z0-9._-]", "_", run_id)
     if destination.exists():
         raise ValueError("prior_run_archive_exists")
-    directories = {path for row in (run_inputs or {}).get("inputs", []) for path in local_input_paths(row)
+    directories = {path for row in (run_inputs or {}).get("inputs", []) if not is_code_scope(row)
+                   for path in local_input_paths(row)
                    if path.is_dir() and path.is_relative_to(artifact_root.resolve())
                    and not path.is_relative_to((artifact_root / "runs").resolve())}
     original_names = {path.name for path in artifact_root.iterdir() if path.name != "runs"}

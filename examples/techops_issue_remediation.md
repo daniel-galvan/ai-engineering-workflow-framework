@@ -26,24 +26,28 @@ screenshots, a payload export, and an approximate timestamp, but the responsible
 | Item | Example |
 | --- | --- |
 | Work item | `<TECHOPS-JIRA-ID-OR-URL>` |
-| Execution repository | Resolved main checkout; defaults to the current repository |
-| Primary or additional code repositories | `<ABSOLUTE-PATHS-OR-UNKNOWN>` |
+| Execution repository | Current main checkout root; use the monorepo root when applicable, omitted from the ordinary prompt |
+| Primary code scope | `<PROJECT-PATH-OR-UNKNOWN>` |
+| Additional code scopes | `<OTHER-PROJECT-OR-REPOSITORY-PATHS-AND-WHY-OR-NONE>` |
 | Reported behavior | `<DESCRIPTION>` |
 | Expected behavior | `<DESCRIPTION>` |
-| Artifacts | `<SCREENSHOT-LOG-JSON-OR-TRANSCRIPT-PATHS>` |
+| Supporting artifacts | `<SCREENSHOT-LOG-JSON-OR-TRANSCRIPT-PATHS-OR-NONE>` |
 | Related work | `<JIRA-PR-RUNBOOK-OR-NONE>` |
 
 ## Plugin Invocation
 
-Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
-context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
-records belong in the resolved main checkout, while source operations use the active equivalent worktree.
+Start the Codex task from the main checkout root, using the monorepo root when applicable, and invoke the installed
+plugin. Supply known code scope and any separately supplied supporting artifacts; the launcher loads the canonical
+input schema and provider definitions. Durable records belong in the resolved main checkout, while source operations
+use the active equivalent worktree.
 
 ```text
 $ai-engineering-workflows:run Run the TechOps Issue Remediation playbook.
 
 Work item: <TECHOPS-JIRA-ID-OR-URL>
 Playbook: playbooks/techops_issue_remediation.md
+Primary code scope: <PROJECT-PATH-OR-UNKNOWN>
+Supporting artifacts: <SCREENSHOT-LOG-JSON-OR-TRANSCRIPT-PATHS-OR-NONE>
 ```
 
 For this new planning run, omit profile and lifecycle to use `standard` + `planning`. Add `Execution profile: deep` when
@@ -52,8 +56,8 @@ and rollback are non-trivial. The current repository and installed provider defi
 
 ## Run-Input Examples
 
-The execution repository override is optional; omit it to use the current repository. If the likely fault later moves to
-a second checkout, list it as an additional repository; retain the same work record for the run.
+The current main checkout root is resolved automatically; omit an execution-repository path from an ordinary prompt. If
+the likely fault later involves another project or repository, add it as an additional code scope and state why.
 
 For an approved remediation re-entry, keep the same artifact root and add only the continuation information that
 changed:

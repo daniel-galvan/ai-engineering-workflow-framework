@@ -242,17 +242,40 @@ under the active run root before worker activation.
 Live runtime evidence is additive unless the user explicitly selects live-only analysis.
 The persisted manifest is named `run_inputs.json`.
 
+## Repository Code Scope and Supporting Materials
+
+Start each workflow from the main checkout root. For a monorepo, the workflow MUST start from the monorepo root; resolve
+the execution repository and durable-artifact root to that location. A nested project directory is a code scope, not a
+second execution repository. The prompt need not repeat an unambiguous current execution repository.
+
+Classify a supplied source-code root or project path with `Classification: code scope`. Resolve one primary code scope
+before searching code, using the supplied path or the work item's evidence. Begin there; do not search or inventory the
+whole monorepo by default. A code scope sets a search boundary; it is not a supporting artifact and MUST NOT be
+recursively inventoried as assets.
+
+Search relevant code and expand into another project or repository only when the issue, user context, or evidence gives
+a reason. Record why the scope expanded. Additional code scopes remain code inputs, not asset sources.
+
+Classify separately supplied materials such as guides, specifications, logs, screenshots, recordings, or payloads with
+`Classification: supporting artifact`. They may relate to the code but remain separate from source-code scope.
+Register each path in `run_inputs.json` and inventory its contents under the selected playbook. For a supporting
+directory, list its files and symlinks recursively, including hidden entries, in the playbook's inventory or evidence
+artifact. Review the listed items or record why review is incomplete.
+For Feature Delivery, mark supplied supporting artifacts `Asset source: true`. Do not set it on a code-scope input.
+A code-scope input marked as an asset source is a conflicting classification and MUST be corrected before the
+asset gate runs.
+
 ## Feature Delivery Asset Gate
 
-Feature Delivery treats Jira attachments from the supplied and inventoried related issues, plus explicitly supplied
-files, folders, and URLs, as first-class current-run inputs. Before downstream planning workers are activated,
-`feature-context` MUST create `asset_manifest.json` under the
+Feature Delivery treats Jira attachments from the supplied and selected related issues, plus explicitly declared
+supporting artifact sources, as first-class current-run inputs. Code scopes are not supporting asset sources. Before
+downstream planning workers are activated, `feature-context` MUST create `asset_manifest.json` under the
 active run root. The manifest MUST contain one source row for the Jira attachment inventory, even when it is explicitly
 empty, and one row for each declared supporting source. The Jira source row may group associated issue attachments,
 but each attachment locator must identify its owning issue. Each supporting product/specification source MUST be marked
-`Asset source: true` in the current-run input manifest so source-to-manifest reconciliation is deterministic. A
-directory source MUST enumerate every file and symlink recursively, including hidden entries; an empty filtered search
-is not a complete inventory.
+`Asset source: true` in the current-run input manifest so source-to-manifest reconciliation is deterministic. A declared
+supporting directory source MUST enumerate every file and symlink recursively, including hidden entries; an empty
+filtered search is not a complete inventory. Code-scope directories MUST NOT be entered in the asset manifest.
 Feature Delivery MUST use an explicit `run_inputs.json`; a generated-minimum input manifest cannot prove that all
 additional sources were declared.
 A previous session or workflow backup may be used for decision history only when the current user identifies and
@@ -291,13 +314,14 @@ that is neither consumed nor explicitly recorded as unavailable, conflicting, or
 incomplete. Return the worker once with the missing Input IDs; never ask the user to repeat the underlying information.
 If the worker cannot consume them, preserve the partial result and record the concrete runtime or access limitation.
 
-Before preparation, the Coordinator MUST try to open every explicitly supplied file, folder, URL, or attachment
-through an available local path or connected source and confirm its contents can be delivered to the assigned worker.
-Keep the original locator in `Source or path` and record the access result in that input row's `Status`; do not leave an
-inaccessible artifact marked only `Registered`. If access fails, record the attempted route and which question or
-conclusion it limits, then tell the user promptly. Continue only when the remaining evidence can still produce a useful
-bounded result; otherwise stop for the indispensable input. A name, link, or attachment count does not prove that its
-contents were reviewed.
+Before preparation, the Coordinator MUST verify each supplied path's type and access. For separately supplied
+supporting files, folders, URLs, or attachments, confirm their contents can be delivered to the assigned worker. For a
+code-scope directory, verify the project or repository root and search relevant code without reading or inventorying
+every file beneath it. Keep the original locator in `Source or path` and record the access result in that input row's
+`Status`; do not leave an inaccessible supporting artifact marked only `Registered`. If access fails, record the
+attempted route and which question or conclusion it limits, then tell the user promptly. Continue only if evidence can
+support a useful bounded result; otherwise stop for the indispensable input. A name, link, or
+attachment count does not prove that its contents were reviewed.
 Complete initial access-status updates in the source manifest before preparation hashes it. After preparation,
 `run_inputs.json` is frozen; do not edit it or replace its recorded hash. Record later access observations in the
 current-run evidence and work record, referencing the original Input IDs.
@@ -1240,9 +1264,10 @@ The verification MUST distinguish at least:
 * no entries matched a particular filter; and
 * a symlink exists but its target is missing or inaccessible.
 
-Directory inspection MUST include hidden entries and symlinks. Configuration discovery MUST inspect both regular files
-and symlinks, then verify symlink targets. An empty result from a filtered search MUST NOT be interpreted as evidence
-that the directory or configuration is absent. If the path cannot be verified, record `Unknown` or `blocked` with the
+A complete directory inventory MUST include hidden entries and symlinks. Targeted code search within a declared code
+scope is not a full directory inventory. Configuration discovery MUST inspect regular files and
+symlinks, then verify symlink targets. An empty result from a filtered search MUST NOT be interpreted as evidence that
+the directory or configuration is absent. If the path cannot be verified, record `Unknown` or `blocked` with the
 attempted check; do not infer absence.
 
 The work record must preserve the path, expected type, observed status, check time, and command or other evidence used
@@ -1254,7 +1279,8 @@ artifacts, and supporting evidence paths.
 ## Durable Artifact Root
 
 The execution repository is the main checkout of the repository where the workflow is started, or of an explicitly
-selected record repository. It is the durable-artifact root for that run:
+selected record repository. Resolve nested working directories to that checkout root. It is the durable-artifact root
+for that run:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/

@@ -90,19 +90,19 @@ result merger materializes the file before the packaged gate. The worker MUST in
 attachment collections of the supplied issue and selected related issues, and separately query Jira remote links
 for each selected issue. Record the remote-link collection as `empty`,
 `complete`, or an explicit retrieval limitation in the Jira source's `remote_link_inventory`; every discovered link
-needs a supporting source and disposition even when non-material. Include every file or folder explicitly supplied in
-the run prompt or `run_inputs.json`. A folder inventory is recursive
-and includes hidden entries and symlinks; an empty filtered
-search is not an empty folder. Each source must record `complete`, `empty`, `unavailable`, `permission_denied`, or
-`partial`, or `conflict` explicitly.
+needs a supporting source and disposition even when non-material. Inventory each supporting artifact explicitly declared
+as an asset source in the prompt or `run_inputs.json`. Classify source-code roots as `code scope`; do not enter them in
+`asset_manifest.json` or inventory them recursively. A declared supporting directory is inventoried recursively,
+including hidden entries and symlinks; an empty filtered search is not a complete inventory. Each source must record
+`complete`, `empty`, `unavailable`, `permission_denied`, `partial`, or `conflict` explicitly.
 
 Feature Delivery requires an explicit current-run `run_inputs.json`; a generated-minimum manifest cannot establish the
 complete set of additional asset sources and therefore cannot reach planning readiness.
 
-Every available asset must receive an individual manifest row, a source locator, an observation, a review method, a
-review status, a relevance classification, a disposition, and evidence references. Images, screenshots, diagrams, and
-other visual assets require visual inspection or rendered reading; metadata alone is not review. Material assets must
-reach `feature-design` (or `planning-review` in `deep`), influence the evidence/claim chain, and be named in the
+Every available supporting asset must receive an individual manifest row, a source locator, an observation, a review
+method, a review status, a relevance classification, a disposition, and evidence references. Images, screenshots,
+diagrams, and other visual assets require visual inspection or rendered reading; metadata alone is not review. Material
+assets must reach `feature-design` (or `planning-review` in `deep`), influence evidence and claims, and appear in the
 selected terminal artifact. A Jira description mentioning screenshots does not prove that attachments were retrieved
 or reviewed.
 

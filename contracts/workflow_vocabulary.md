@@ -13,8 +13,10 @@ last_updated: 2026-10-27
 | Work item | The normalized request being handled, such as a Jira Story, bug, incident, or upgrade. |
 | Coordinator | The active session or runtime responsible for activating workers, collecting results, completing fan-in, and closing the run. |
 | Workflow run | One execution of a playbook for one work item. |
-| Execution repository | Repository where the workflow starts and durable run artifacts are stored. |
-| Code repository | Repository inspected or modified by the workflow. |
+| Execution repository | Main checkout root where the workflow starts and durable run artifacts are stored; use the monorepo root when working in a monorepo. |
+| Code scope | Repository or project path searched for relevant source code. A nested project path is not an execution repository or an asset inventory. |
+| Code repository | Repository inspected or modified by the workflow; it may contain one or more code scopes. |
+| Supporting artifact | Separately supplied guide, specification, log, screenshot, recording, payload, or other non-code material reviewed under the selected playbook's input rules. |
 | Playbook | A scenario-specific workflow made of stages, roles, skills, gates, and outputs. |
 | Stage | A meaningful unit of work inside a playbook. |
 | Role | A reusable responsibility and reasoning boundary. |

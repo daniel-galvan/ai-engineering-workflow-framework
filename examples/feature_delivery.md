@@ -29,19 +29,21 @@ as automatic scope.
 | Item | Example |
 | --- | --- |
 | Work item | `<JIRA-TICKET-ID-OR-URL>` |
-| Execution repository | Resolved main checkout; defaults to the current repository |
-| Primary or additional code repositories | Affected repository checkouts |
+| Execution repository | Monorepo root; resolved from the current repository by default, omitted from an ordinary prompt |
+| Primary code scope | Project directory to investigate first, such as `gocode/src/yext/journeys` |
+| Additional code scopes | Other project directories or repositories, added only when needed |
 | Parent or ancestor context | `<JIRA-URLS-OR-UNKNOWN>` |
 | Related siblings or decisions | `<JIRA-URLS-OR-NONE>` |
-| Jira attachments and supporting asset sources | Complete attachment inventory plus explicitly marked file/folder/URL inputs |
+| Jira attachments and supporting artifacts | Complete Jira attachment inventory plus explicitly declared guides, logs, screenshots, or other materials |
 | Desired outcome | `<DESCRIPTION-OR-UNKNOWN>` |
 | Constraints and non-goals | `<DESCRIPTION-OR-NONE>` |
 
 ## Plugin Invocation
 
-Start a Codex task in the repository being investigated and explicitly invoke the installed plugin. Supply relevant
-context and artifacts with the request; the launcher loads the canonical input schema and provider definitions. Durable
-records belong in the resolved main checkout, while source operations use the active equivalent worktree.
+Start the Codex task from the main checkout root, using the monorepo root when applicable, and invoke the installed
+plugin. Supply the project code scope and any separately supplied supporting artifacts; the launcher loads the canonical
+input schema and provider definitions. Durable records belong in the resolved main checkout, while source operations use
+the active equivalent worktree.
 
 ```text
 Use $ai-engineering-workflows:run.
@@ -49,7 +51,16 @@ Work item: <JIRA-TICKET-ID-OR-URL>
 Playbook: playbooks/feature_delivery.md
 Execution profile: standard
 Lifecycle: planning
+Primary code scope: <PROJECT-PATH>
+Supporting artifacts to inventory:
+- <GUIDE-OR-LOG-OR-SCREENSHOT-PATH-OR-NONE>
 ```
+
+The execution repository defaults to the current monorepo root and is not repeated in the ordinary prompt. Register the
+primary and any additional code scopes as `Classification: code scope`, without `Asset source: true`. Register supplied
+guides and other supporting materials separately as `Classification: supporting artifact`; Feature Delivery marks these
+with `Asset source: true` for inventory. A code scope can contain many projects. Its path defines where code search
+starts, not a request to inventory every file beneath it.
 
 Use `deep` when ownership, repositories, public contracts, persistence, rollout, or acceptance criteria remain
 uncertain.

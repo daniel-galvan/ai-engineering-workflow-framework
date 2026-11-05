@@ -23,8 +23,8 @@ Playbook: playbooks/techops_issue_remediation.md
 ```
 
 That is enough to start. Omit `Execution profile` and `Lifecycle` to use the TechOps defaults: `standard` and
-`planning`. The current task's main Git repository is the execution repository and artifact root unless the user names a
-different repository. The installed package supplies the framework and provider definitions.
+`planning`. Start the workflow from the main checkout root; for a monorepo, use its root. That checkout root is the
+execution repository and artifact root. The installed package supplies the framework and provider definitions.
 
 The active run skill and shared contract own preflight, source-access gates, input-manifest creation, worker selection,
 artifact placement, validation, and handoff. Do not copy framework commands, worker lists, internal paths, or evaluation
@@ -39,10 +39,13 @@ not apply.
 - `Execution profile: deep` when the investigation crosses systems, ownership is unclear, or the failure is
   intermittent.
 - `Lifecycle: remediation` only for an approved remediation re-entry with its existing plan and approval.
-- `Execution repository: <absolute path>` only when the current repository is not the source repository.
+- `Primary code scope: <project path>` when the relevant project is known; omit it when the playbook must identify it
+  from the work item. Register it as `Classification: code scope`.
+- `Additional code scopes: <project or repository path, with reason>` only when another code area is relevant.
+- `Supporting artifacts: <guide, specification, log, screenshot, or other material>` for separately supplied non-code
+  files, registered as `Classification: supporting artifact`.
 - Unanswered material user decisions carried from the current request, if any.
-- Code-scope or repository hints, confirmed decisions and constraints, unanswered material user decisions, reported and
-  expected behavior, reproduction details, supporting artifacts, or additional context.
+- Confirmed decisions and constraints, reported and expected behavior, reproduction details, or additional context.
 
 Unanswered material user decisions carried from the current request are asked and resolved in this run when needed. Do
 not invent unknown details or ask the user to prepare framework-generated manifests or worker instructions.

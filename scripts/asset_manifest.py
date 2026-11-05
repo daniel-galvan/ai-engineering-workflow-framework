@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Iterable
 
 try:
-    from run_input_manifest import load_manifest, local_input_paths
+    from run_input_manifest import is_code_scope, load_manifest, local_input_paths
 except ModuleNotFoundError:  # Imported as scripts.asset_manifest from the repository root.
-    from scripts.run_input_manifest import load_manifest, local_input_paths
+    from scripts.run_input_manifest import is_code_scope, load_manifest, local_input_paths
 
 
 try:
@@ -196,13 +196,15 @@ def _expected_asset_input_ids(expected_inputs: object) -> set[str]:
     return {
         str(input_id)
         for input_id, row in expected_inputs.items()
-        if isinstance(row, dict) and (row.get("Asset source") is True or _supplied_asset_reference(row))
+        if isinstance(row, dict) and not is_code_scope(row)
+        and (row.get("Asset source") is True or _supplied_asset_reference(row))
     }
 
 
 def _supplied_asset_reference(row: dict[str, object]) -> bool:
     """Do not let a directly supplied artifact bypass inventory by omitting its marker."""
-    if str(row.get("Classification", "")).strip().lower() in {"work item", "repository", "decision continuity"}:
+    classification = str(row.get("Classification", "")).strip().lower()
+    if is_code_scope(row) or classification in {"work item", "decision continuity"}:
         return False
     locator = str(row.get("Source or path", "")).strip()
     direct = locator.startswith(("/", "https://", "http://", "codex://threads/"))
@@ -396,6 +398,11 @@ def validate_asset_manifest(
         jira_inputs = set(declared_input_ids)
     source_input_ids = [str(source["input_id"]) for source in sources]
     expected_rows = expected_inputs if isinstance(expected_inputs, dict) else {}
+    for input_id, row in expected_rows.items():
+        if isinstance(row, dict) and is_code_scope(row) and (
+            row.get("Asset source") is True or str(input_id) in source_input_ids
+        ):
+            errors.append(f"code scope input {input_id} cannot be declared as an asset source")
     if expected_inputs is not None:
         for input_id in sorted(set(source_input_ids) - set(expected_rows)):
             errors.append(f"asset source input {input_id} is not declared in run_inputs.json")
@@ -429,7 +436,8 @@ def validate_asset_manifest(
             if missing:
                 errors.append(f"asset source {source['source_id']} references missing evidence: " + ", ".join(missing))
         row = expected_rows.get(source["input_id"], {})
-        errors.extend(_check_source_files(source, assets_by_id, local_input_paths(row) if isinstance(row, dict) else []))
+        if not isinstance(row, dict) or not is_code_scope(row):
+            errors.extend(_check_source_files(source, assets_by_id, local_input_paths(row) if isinstance(row, dict) else []))
     if require_jira_source:
         jira_sources = [source for source in sources if source["kind"] == "jira_issue_attachments"]
         if len(jira_sources) != 1:
