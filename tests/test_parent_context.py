@@ -693,6 +693,8 @@ class ParentContext(unittest.TestCase):
                                      runtime_evidence=runtime)["errors"])
 
     def test_planning_recovery_command_references_only_current_session(self):
+        self.source = self.root / ".codex" / "sessions" / "parent.jsonl"
+        self.source.parent.mkdir(parents=True)
         script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
         command = shlex.join(["python3", str(script), "--continuation", "--planning-recovery",
             "--approval-reference", "user authorized recovery", "--execution-repository", str(self.root),
@@ -709,6 +711,11 @@ class ParentContext(unittest.TestCase):
         self.rows[-1] = self.call("exec_command", cmd=continuation + "\ncat /tmp/.codex/sessions/other.jsonl")
         self.assertIn("forbidden_context_reference:session_log",
                       self.audit(related_run_thread_ids=())["errors"])
+        pinned_scripts = self.root / "pinned" / "scripts"
+        pinned_command = command.replace(str(script), str(pinned_scripts / "prepare_run.py"))
+        self.rows[-1] = self.call("exec_command", cmd=pinned_command)
+        self.assertIn("forbidden_context_reference:session_log", self.audit(related_run_thread_ids=())["errors"])
+        self.assertEqual(self.audit(related_run_thread_ids=(), audit_script_dir=pinned_scripts)["status"], "passed")
         self.rows[-1] = self.call("exec_command", cmd=command + "; cat /tmp/.codex/sessions/other.jsonl")
         self.assertIn("forbidden_context_reference:session_log",
                       self.audit(related_run_thread_ids=())["errors"])

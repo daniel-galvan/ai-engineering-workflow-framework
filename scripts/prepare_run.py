@@ -2930,12 +2930,19 @@ def prepare_run(
         if previous_parent and previous_parent["parent_thread_id"] != parent_context["parent_thread_id"]:
             raise ValueError("continuation_parent_identity_mismatch: continue the run in its original chat")
         if previous_parent:
+            pinned_root = None
+            if previous_run_bindings.get("framework_package") and previous_run_bindings.get("runtime_evidence"):
+                pinned_root = Path(previous_run_bindings["framework_package"]["root"]).resolve()
+                pinned_collector = Path(previous_run_bindings["runtime_evidence"]["collector"]).resolve()
+                if pinned_collector != pinned_root / "scripts" / "worker_runtime_evidence.py":
+                    raise ValueError("continuation_collector_package_mismatch")
             previous_context = parent_context_audit(Path(previous_parent["provider_session"]), artifact_root=artifact_root,
                 input_paths=tuple(previous_parent["input_paths"]), expected_thread_id=previous_parent["parent_thread_id"],
                 expected_turn_id=previous_parent["turn_id"], runtime_evidence=previous_run_bindings.get("runtime_evidence"),
                 related_run_thread_ids=(tuple(previous_parent["related_run_thread_ids"])
                                         if "related_run_thread_ids" in previous_parent else None),
-                prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"))
+                prior_dispatch_ledger_present=previous_parent.get("prior_run_dispatch_ledger_present"),
+                audit_script_dir=pinned_root / "scripts" if pinned_root else None)
             if previous_context["status"] != "passed":
                 if not _can_defer_reviewer_parent_audit(artifact_root, previous_context, remediation_reentry):
                     raise ValueError("continuation_parent_context_nonconformant:" + ";".join(previous_context["errors"]))

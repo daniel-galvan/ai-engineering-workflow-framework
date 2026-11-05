@@ -474,12 +474,12 @@ def _incomplete_literal_command(source: str) -> list[tuple[str, dict]] | None:
         return None
 
 
-def _redact_current_session_projection(command: str, source: Path) -> str:
+def _redact_current_session_projection(command: str, source: Path, script_dir: Path) -> str:
     """Allow the exact current session path only as the status-projection input."""
     try:
         args = shlex.split(command)
         if (len(args) < 9 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
-                or Path(args[1]).resolve() != Path(__file__).with_name("prepare_run.py").resolve()):
+                or Path(args[1]).resolve() != (script_dir / "prepare_run.py").resolve()):
             return command
         recovery = args[2:4] == ["--continuation", "--planning-recovery"]
         continuation = args[2] == "--continuation" and not recovery
@@ -512,14 +512,14 @@ def _redact_current_session_projection(command: str, source: Path) -> str:
 
 
 def _redact_current_runtime_collection(command: str, source: Path, thread: str, runtime_evidence: dict | None,
-                                       artifact_root: Path | None, known_children: set[str]) -> str:
+                                       artifact_root: Path | None, known_children: set[str], script_dir: Path) -> str:
     if not runtime_evidence or artifact_root is None:
         return command
     try:
         args = shlex.split(command)
         collector = Path(runtime_evidence["collector"]).resolve()
         if (len(args) < 10 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
-                or collector != Path(__file__).with_name("worker_runtime_evidence.py").resolve()
+                or collector != (script_dir / "worker_runtime_evidence.py").resolve()
                 or Path(args[1]).resolve() != collector):
             return command
         values, index = {}, 2
@@ -594,13 +594,13 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
 
 
 def _redact_workflow_failure(command: str, source: Path, thread: str, runtime_evidence: dict | None,
-                             artifact_root: Path | None) -> str:
+                             artifact_root: Path | None, script_dir: Path) -> str:
     if not runtime_evidence or artifact_root is None:
         return command
     try:
         args = shlex.split(command)
         if (len(args) != 10 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
-                or Path(args[1]).resolve() != Path(__file__).with_name("finalize_work_record.py").resolve()):
+                or Path(args[1]).resolve() != (script_dir / "finalize_work_record.py").resolve()):
             return command
         values = dict(zip(args[2::2], args[3::2]))
         if (set(values) != {"--workflow-failure", "--packet", "--provider-session", "--parent-thread-id"}
@@ -621,12 +621,14 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          related_run_thread_ids: tuple[str, ...] | None = None,
                          prior_dispatch_ledger_present: bool | None = None,
                          framework_root: Path | None = None,
-                         require_preflight_order: bool = False) -> dict:
+                         require_preflight_order: bool = False,
+                         audit_script_dir: Path | None = None) -> dict:
     """Audit current-turn operations without importing messages or previous analytical content."""
     try:
         from runtime_checks import _tool_operations, context_trace_errors
     except ModuleNotFoundError:
         from scripts.runtime_checks import _tool_operations, context_trace_errors
+    script_dir = audit_script_dir or Path(__file__).resolve().parent
     with source.open() as stream:
         header = json.loads(next(stream, ""))
         thread = header.get("payload", {}).get("id")
@@ -751,7 +753,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                             redacted_lines = []
                             for line in lines:
                                 text = line.rstrip("\r\n")
-                                redacted_lines.append(_redact_current_session_projection(text, source)
+                                redacted_lines.append(_redact_current_session_projection(text, source, script_dir)
                                                       + line[len(text):])
                             redacted = "".join(redacted_lines)
                             if redacted == command:
@@ -759,12 +761,12 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                 if lines:
                                     first = lines[0].rstrip("\r\n")
                                     replacement = _redact_current_runtime_collection(
-                                        first, source, thread, runtime_evidence, artifact_root, known_children)
+                                        first, source, thread, runtime_evidence, artifact_root, known_children, script_dir)
                                     if replacement != first:
                                         redacted = replacement + lines[0][len(first):] + "".join(lines[1:])
                             if redacted == command:
                                 redacted = _redact_workflow_failure(
-                                    command, source, thread, runtime_evidence, artifact_root)
+                                    command, source, thread, runtime_evidence, artifact_root, script_dir)
                             if redacted != command:
                                 audit_arguments = {**arguments, "cmd": redacted}
                         operations.append({"type": "function_call", "name": name, "arguments": audit_arguments})
