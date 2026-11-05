@@ -1288,9 +1288,12 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
             self.assertIn("terminal_closure_worker_operation_mismatch",
                           terminal_closure_dispatch_errors(root / "finalization_packet.json", [row]))
+            ledger["events"][-1]["Operation"] = "send_message"
+            observation["Latest turn completed at"] = time(6)
+            row = terminal_closure(ledger)["terminal_observations"][0]
+            self.assertIn("terminal_observation_latest_turn_stale:/root/worker",
+                          runtime.terminal_observation_errors([row], [handle]))
             for operation, completed, state in (("followup_task", time(10), "idle"),
-                                                 ("send_message", time(6), "idle"),
-                                                 ("send_message", time(7), "idle"),
                                                  ("send_message", time(10), "active")):
                 with self.subTest(operation=operation, completed=completed, state=state):
                     ledger["events"][-1]["Operation"] = operation

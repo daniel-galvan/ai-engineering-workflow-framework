@@ -578,8 +578,9 @@ def terminal_observation_errors(observations: object, handles: list[str], *, req
                 if (not fresh_turn and allow_inactive_message and not require_completed
                         and row.get("Last dispatch operation") == "send_message"):
                     completed = datetime.fromisoformat(str(row["Latest turn completed at"]).replace("Z", "+00:00"))
+                    # send_message queues input but does not start a turn; this proves inactivity only.
                     fresh_turn = (completed.tzinfo is not None and
-                                  times[0] < completed <= times[1] and started <= completed)
+                                  started <= completed <= times[1] and times[0] <= times[1])
                 if started.tzinfo is None or not fresh_turn or started > times[1]:
                     errors.append(f"terminal_observation_latest_turn_stale:{handle}")
                 turn_statuses = {"completed"} if require_completed else TERMINAL_STATUSES
