@@ -522,7 +522,8 @@ def _redact_current_session_projection(command: str, source: Path, script_dir: P
 
 
 def _redact_current_runtime_collection(command: str, source: Path, thread: str, runtime_evidence: dict | None,
-                                       artifact_root: Path | None, known_children: set[str], script_dir: Path,
+                                       artifact_root: Path | None, known_children: set[str], prior_children: set[str],
+                                       script_dir: Path,
                                        previous_collector: Path | None, prior_started_at: datetime | None) -> str:
     if not runtime_evidence or artifact_root is None:
         return command
@@ -581,7 +582,10 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
                 return command
             if "--worker-thread-id" in values:
                 worker_id = values["--worker-thread-id"]
-                if not UUID.fullmatch(worker_id) or worker_id not in known_children:
+                prior_worker = (prior_started_at is not None
+                                and timestamp(values["--started-at"]) == prior_started_at
+                                and worker_id in prior_children)
+                if not UUID.fullmatch(worker_id) or (worker_id not in known_children and not prior_worker):
                     return command
             else:
                 sessions_root = next((path.resolve() for path in source.resolve().parents
@@ -595,8 +599,11 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
                     worker_header = json.loads(next(stream, ""))
                 worker_payload = worker_header.get("payload") if isinstance(worker_header, dict) else None
                 worker_id = worker_payload.get("id") if isinstance(worker_payload, dict) else None
+                prior_worker = (prior_started_at is not None
+                                and timestamp(values["--started-at"]) == prior_started_at
+                                and worker_id in prior_children)
                 if (worker_header.get("type") != "session_meta" or not isinstance(worker_id, str)
-                        or worker_id not in known_children or len(worker_ids) != 1
+                        or (worker_id not in known_children and not prior_worker) or len(worker_ids) != 1
                         or worker_ids[0].casefold() != worker_id.casefold()):
                     return command
         if "--observation" in values and "--trace" not in values:
@@ -782,7 +789,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                 replacement = _redact_current_session_projection(text, source, script_dir)
                                 if replacement == text:
                                     replacement = _redact_current_runtime_collection(
-                                        text, source, thread, runtime_evidence, artifact_root, known_children, script_dir,
+                                        text, source, thread, runtime_evidence, artifact_root, known_children,
+                                        set(prior_ids), script_dir,
                                         audit_previous_collector, prior_started_at)
                                 if replacement == text:
                                     replacement = _redact_workflow_failure(

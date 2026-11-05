@@ -703,6 +703,7 @@ class ParentContext(unittest.TestCase):
             self.assertIn("forbidden_context_reference:session_log",
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                      runtime_evidence=runtime)["errors"])
+
             closure_command = shlex.join(base_command() + ["--closure", str(artifact_root / "runtime_closure.json")])
             self.rows[-1] = self.call("exec_command", cmd=closure_command, workdir=str(self.root))
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
@@ -719,6 +720,40 @@ class ParentContext(unittest.TestCase):
             self.rows[-1] = self.call("exec_command", cmd=appended, workdir=str(self.root))
             self.assertIn("forbidden_context_reference:session_log",
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
+
+    def test_recovery_audit_allows_only_prior_run_workers_from_the_bound_recovery(self):
+        artifact_root = self.root / ".thoughts" / "ITEM-1"
+        artifact_root.mkdir(parents=True)
+        sessions = self.root / ".codex" / "sessions" / "2026" / "10" / "01"
+        sessions.mkdir(parents=True)
+        self.source = sessions / f"rollout-parent-{PARENT}.jsonl"
+        prior_worker = "00000000-0000-0000-0000-000000000004"
+        unrelated_worker = "00000000-0000-0000-0000-000000000005"
+        prior_started_at = "2026-09-30T23:00:00Z"
+        (artifact_root / "finalization_packet.json").write_text(json.dumps({"recovery": {
+            "Prior run ID": "ITEM-1-20260930T230000000000Z"}}))
+        runtime = {"run_started_at": "2026-10-01T00:00:00Z",
+                   "collector": str(Path(__file__).resolve().parents[1] / "scripts" / "worker_runtime_evidence.py"),
+                   "ledger": str(artifact_root / "runtime_dispatches.json")}
+        command = shlex.join(["python3", runtime["collector"], "--provider-session", str(self.source),
+            "--parent-thread-id", PARENT, "--started-at", prior_started_at, "--ledger", runtime["ledger"],
+            "--worker-thread-id", prior_worker, "--agent", "current_state_investigator",
+            "--trace", str(artifact_root / "prior.trace.json")])
+        self.rows.append(self.call("exec_command", cmd=command, workdir=str(self.root)))
+        with patch("scripts.provider_runtime.read_runtime_events", return_value={"events": [], "thread_mappings": {}}):
+            result = self.audit(artifact_root=artifact_root, related_run_thread_ids=(prior_worker,),
+                                runtime_evidence=runtime)
+            self.assertEqual(result["status"], "passed", result)
+            self.rows[-1] = self.call("exec_command", cmd=command.replace(prior_worker, unrelated_worker),
+                                      workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(prior_worker,),
+                                     runtime_evidence=runtime)["errors"])
+            self.rows[-1] = self.call("exec_command", cmd=command.replace(
+                prior_started_at, runtime["run_started_at"]), workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(prior_worker,),
                                      runtime_evidence=runtime)["errors"])
 
     def test_planning_recovery_command_references_only_current_session(self):
