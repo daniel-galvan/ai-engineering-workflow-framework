@@ -130,7 +130,9 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
                     evidence = row["Closure evidence or blocker"]
                     if (not handles or set(handles) != set(mappings) or len(set(mappings.values())) != len(mappings)
                             or not isinstance(evidence, str)
-                            or not evidence.endswith("; dispatched handles: " + "; ".join(handles))):
+                            or not (evidence.endswith("; dispatched handles: " + "; ".join(handles))
+                                    or (evidence.startswith("Provider closure collection failed: ")
+                                        and len(evidence) > len("Provider closure collection failed: ")))):
                         raise ValueError("worker identity mismatch")
                     for event in ledger["events"]:
                         if mappings.get(event.get("Provider handle")) != event.get("Thread ID"):

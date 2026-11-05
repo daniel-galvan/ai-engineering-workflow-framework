@@ -1030,6 +1030,15 @@ class ParentContext(unittest.TestCase):
                                                    return_value={**ledger, key: value}):
                     with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
                         prior_run_status_thread_ids(root, PARENT)
+            closure["runtime_closure"][0]["Closure evidence or blocker"] = (
+                "Provider closure collection failed: terminal_inventory_unverified")
+            (root / "runtime_closure.json").write_text(json.dumps(closure))
+            self.assertEqual(prior_run_status_thread_ids(root, PARENT), tuple(sorted((CHILD, TURN))))
+            with patch("scripts.provider_runtime.read_runtime_events", return_value={**ledger, "events": []}):
+                with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+                    prior_run_status_thread_ids(root, PARENT)
+            closure["runtime_closure"][0]["Closure evidence or blocker"] = (
+                "worker_runtime_release_unavailable: unavailable; dispatched handles: /root/worker")
             closure["runtime_closure"][0]["Runtime status"] = "Terminal"
             (root / "runtime_closure.json").write_text(json.dumps(closure))
             with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
