@@ -525,7 +525,7 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
         ledger = run_root / "runtime_dispatches.json"
         if (not required.issubset(values)
                 or Path(values["--provider-session"]).resolve() != source.resolve()
-                or values["--parent-thread-id"] != thread
+                or not UUID.fullmatch(values["--parent-thread-id"])
                 or values["--started-at"] != runtime_evidence["run_started_at"]
                 or Path(runtime_evidence["ledger"]).resolve() != ledger
                 or Path(values["--ledger"]).resolve() != ledger
@@ -578,6 +578,28 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
             args[args.index("--worker-session") + 1] = "<current-run-worker-session>"
         return shlex.join(args)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return command
+
+
+def _redact_workflow_failure(command: str, source: Path, thread: str, runtime_evidence: dict | None,
+                             artifact_root: Path | None) -> str:
+    if not runtime_evidence or artifact_root is None:
+        return command
+    try:
+        args = shlex.split(command)
+        if (len(args) != 10 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
+                or Path(args[1]).resolve() != Path(__file__).with_name("finalize_work_record.py").resolve()):
+            return command
+        values = dict(zip(args[2::2], args[3::2]))
+        if (set(values) != {"--workflow-failure", "--packet", "--provider-session", "--parent-thread-id"}
+                or not re.fullmatch(r"[A-Za-z0-9_:.-]+", values["--workflow-failure"])
+                or Path(values["--packet"]).resolve() != artifact_root.resolve() / "finalization_packet.json"
+                or Path(values["--provider-session"]).resolve() != source.resolve()
+                or values["--parent-thread-id"] != thread):
+            return command
+        args[args.index("--provider-session") + 1] = "<current-parent-session>"
+        return shlex.join(args)
+    except (OSError, ValueError, KeyError, TypeError):
         return command
 
 
@@ -715,8 +737,16 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                         if isinstance(command, str):
                             redacted = _redact_current_session_projection(command, source)
                             if redacted == command:
-                                redacted = _redact_current_runtime_collection(
-                                    command, source, thread, runtime_evidence, artifact_root, known_children)
+                                lines = command.splitlines(keepends=True)
+                                if lines:
+                                    first = lines[0].rstrip("\r\n")
+                                    replacement = _redact_current_runtime_collection(
+                                        first, source, thread, runtime_evidence, artifact_root, known_children)
+                                    if replacement != first:
+                                        redacted = replacement + lines[0][len(first):] + "".join(lines[1:])
+                            if redacted == command:
+                                redacted = _redact_workflow_failure(
+                                    command, source, thread, runtime_evidence, artifact_root)
                             if redacted != command:
                                 audit_arguments = {**arguments, "cmd": redacted}
                         operations.append({"type": "function_call", "name": name, "arguments": audit_arguments})

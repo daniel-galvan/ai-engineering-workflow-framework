@@ -647,6 +647,33 @@ class ParentContext(unittest.TestCase):
             self.assertIn("forbidden_context_reference:session_log",
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                      runtime_evidence=runtime)["errors"])
+            mistyped = base_command()
+            mistyped[mistyped.index("--parent-thread-id") + 1] = prior_thread
+            self.rows[-1] = self.call("exec_command", cmd=shlex.join(mistyped), workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            grouped = shlex.join(base_command()) + "\npython3 " + shlex.quote(str(script)) + " --help"
+            self.rows[-1] = self.call("exec_command", cmd=grouped, workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            self.rows[-1] = self.call("exec_command", cmd=grouped + "\ncat " + str(prior_session),
+                                      workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
+            finalizer = script.with_name("finalize_work_record.py")
+            failure = shlex.join(["python3", str(finalizer), "--workflow-failure",
+                "parent_context_nonconformant:forbidden_context_reference:session_log",
+                "--packet", str(artifact_root / "finalization_packet.json"),
+                "--provider-session", str(self.source), "--parent-thread-id", PARENT])
+            self.rows[-1] = self.call("exec_command", cmd=failure, workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            self.rows[-1] = self.call("exec_command", cmd=failure.replace(str(self.source), str(prior_session)),
+                                      workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
             closure_command = shlex.join(base_command() + ["--closure", str(artifact_root / "runtime_closure.json")])
             self.rows[-1] = self.call("exec_command", cmd=closure_command, workdir=str(self.root))
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
