@@ -700,6 +700,15 @@ class ParentContext(unittest.TestCase):
             "--provider-session", str(self.source)])
         self.rows.append(self.call("exec_command", cmd=command))
         self.assertEqual(self.audit(related_run_thread_ids=())["status"], "passed")
+        continuation = shlex.join(["python3", str(script), "--continuation",
+            "--execution-repository", str(self.root), "--work-item", "ECHO-2806",
+            "--playbook", "techops_issue_remediation", "--provider-session", str(self.source),
+            "--input-manifest", str(self.root / "input.json")])
+        self.rows[-1] = self.call("exec_command", cmd="echo prepare\n" + continuation)
+        self.assertEqual(self.audit(related_run_thread_ids=())["status"], "passed")
+        self.rows[-1] = self.call("exec_command", cmd=continuation + "\ncat /tmp/.codex/sessions/other.jsonl")
+        self.assertIn("forbidden_context_reference:session_log",
+                      self.audit(related_run_thread_ids=())["errors"])
         self.rows[-1] = self.call("exec_command", cmd=command + "; cat /tmp/.codex/sessions/other.jsonl")
         self.assertIn("forbidden_context_reference:session_log",
                       self.audit(related_run_thread_ids=())["errors"])

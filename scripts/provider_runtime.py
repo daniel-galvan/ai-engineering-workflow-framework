@@ -482,11 +482,14 @@ def _redact_current_session_projection(command: str, source: Path) -> str:
                 or Path(args[1]).resolve() != Path(__file__).with_name("prepare_run.py").resolve()):
             return command
         recovery = args[2:4] == ["--continuation", "--planning-recovery"]
-        if not recovery and args[2] != "--status-projection":
+        continuation = args[2] == "--continuation" and not recovery
+        if not (recovery or continuation) and args[2] != "--status-projection":
             return command
         values, index = {}, 4 if recovery else 3
         allowed = ({"--execution-repository", "--work-item", "--provider-session", "--playbook",
                     "--approval-reference"} if recovery else
+                   {"--execution-repository", "--work-item", "--provider-session", "--playbook",
+                    "--input-manifest"} if continuation else
                    {"--execution-repository", "--work-item", "--provider-session",
                     "--authorize-prior-parent-thread"})
         while index < len(args):
@@ -498,6 +501,7 @@ def _redact_current_session_projection(command: str, source: Path) -> str:
         if (not {"--execution-repository", "--work-item", "--provider-session"}.issubset(values)
                 or (recovery and (set(values) != allowed or values["--playbook"] != "techops_issue_remediation"
                                   or not values["--approval-reference"].strip()))
+                or (continuation and (set(values) != allowed or values["--playbook"] != "techops_issue_remediation"))
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values["--work-item"])
                 or Path(values["--provider-session"]).resolve() != source.resolve()):
             return command
@@ -743,7 +747,13 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                         audit_arguments = arguments
                         command = arguments.get("cmd")
                         if isinstance(command, str):
-                            redacted = _redact_current_session_projection(command, source)
+                            lines = command.splitlines(keepends=True)
+                            redacted_lines = []
+                            for line in lines:
+                                text = line.rstrip("\r\n")
+                                redacted_lines.append(_redact_current_session_projection(text, source)
+                                                      + line[len(text):])
+                            redacted = "".join(redacted_lines)
                             if redacted == command:
                                 lines = command.splitlines(keepends=True)
                                 if lines:
