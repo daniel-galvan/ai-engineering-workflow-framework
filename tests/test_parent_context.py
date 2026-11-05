@@ -1226,6 +1226,11 @@ class ParentContext(unittest.TestCase):
         self.assertIn("Do not consult host memory, rollout summaries", skill)
         self.assertNotIn("Follow higher-priority host memory instructions", skill)
         self.assertNotIn("host-required read-only memory check may precede it", skill)
+        export_guidance = skill.split("If the latest inventory omits this worker", 1)[1].split(
+            "Do not manually reconstruct a trace", 1)[0]
+        self.assertIn("rerun the collector without `--observation`", export_guidance)
+        self.assertIn("no separate observation file is needed", export_guidance)
+        self.assertNotIn("supply `--observation`", export_guidance)
         section = skill.split("this exact projection", 1)[1]
         snippet = section.split("```javascript\n", 1)[1].split("\n   ```", 1)[0]
         prior_id = "00000000-0000-0000-0000-000000000004"
