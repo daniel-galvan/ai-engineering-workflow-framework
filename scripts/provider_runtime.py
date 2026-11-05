@@ -499,28 +499,28 @@ def _redact_current_session_projection(command: str, source: Path) -> str:
         return command
 
 
-def _redact_current_worker_trace(command: str, source: Path, thread: str, runtime_evidence: dict | None,
-                                 artifact_root: Path | None, known_children: set[str]) -> str:
+def _redact_current_runtime_collection(command: str, source: Path, thread: str, runtime_evidence: dict | None,
+                                       artifact_root: Path | None, known_children: set[str]) -> str:
     if not runtime_evidence or artifact_root is None:
         return command
     try:
         args = shlex.split(command)
         collector = Path(runtime_evidence["collector"]).resolve()
-        if (len(args) < 16 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
+        if (len(args) < 10 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
                 or collector != Path(__file__).with_name("worker_runtime_evidence.py").resolve()
                 or Path(args[1]).resolve() != collector):
             return command
         values, index = {}, 2
         allowed = {"--provider-session", "--parent-thread-id", "--started-at", "--ledger",
-                   "--worker-session", "--observation", "--agent", "--trace"}
+                   "--worker-session", "--worker-thread-id", "--observation", "--agent", "--trace",
+                   "--closure", "--pending-closure", "--blocked-closure", "--blocker"}
         while index < len(args):
             option = args[index]
             if option not in allowed or option in values or index + 1 == len(args):
                 return command
             values[option] = args[index + 1]
             index += 2
-        required = {"--provider-session", "--parent-thread-id", "--started-at", "--ledger",
-                    "--worker-session", "--agent", "--trace"}
+        required = {"--provider-session", "--parent-thread-id", "--started-at", "--ledger"}
         run_root = artifact_root.resolve()
         ledger = run_root / "runtime_dispatches.json"
         if (not required.issubset(values)
@@ -529,30 +529,55 @@ def _redact_current_worker_trace(command: str, source: Path, thread: str, runtim
                 or values["--started-at"] != runtime_evidence["run_started_at"]
                 or Path(runtime_evidence["ledger"]).resolve() != ledger
                 or Path(values["--ledger"]).resolve() != ledger
-                or not re.fullmatch(r"[A-Za-z0-9_.-]+", values["--agent"])):
+                ):
             return command
-        if any(not Path(values[name]).resolve().is_relative_to(run_root)
-               for name in ("--trace", "--observation") if name in values):
-            return command
-        sessions_root = next((path.resolve() for path in source.resolve().parents
-                              if path.name == "sessions" and path.parent.name == ".codex"), None)
-        worker_session = Path(values["--worker-session"]).resolve(strict=True)
-        if (sessions_root is None or worker_session.suffix != ".jsonl"
-                or not worker_session.is_relative_to(sessions_root)):
-            return command
-        worker_ids = UUID.findall(worker_session.name)
-        with worker_session.open() as stream:
-            worker_header = json.loads(next(stream, ""))
-        worker_payload = worker_header.get("payload") if isinstance(worker_header, dict) else None
-        worker_id = worker_payload.get("id") if isinstance(worker_payload, dict) else None
-        if (worker_header.get("type") != "session_meta" or not isinstance(worker_id, str)
-                or worker_id not in known_children
-                or len(worker_ids) != 1 or worker_ids[0].casefold() != worker_id.casefold()):
+        closure_modes = [name for name in ("--closure", "--pending-closure", "--blocked-closure")
+                         if name in values]
+        trace_options = {"--worker-session", "--worker-thread-id", "--observation", "--agent", "--trace"}
+        if closure_modes:
+            mode = closure_modes[0]
+            if (len(closure_modes) != 1 or any(name in values for name in trace_options)
+                    or ("--blocker" in values) != (mode == "--blocked-closure")
+                    or Path(values[mode]).resolve().parent != run_root):
+                return command
+        elif not any(name in values for name in trace_options):
+            if set(values) != required:
+                return command
+        else:
+            if ("--blocker" in values or not {"--agent", "--trace"}.issubset(values)
+                    or ("--worker-session" in values) == ("--worker-thread-id" in values)
+                    or not re.fullmatch(r"[A-Za-z0-9_.-]+", values["--agent"])
+                    or Path(values["--trace"]).resolve().parent != run_root
+                    or ("--observation" in values
+                        and not Path(values["--observation"]).resolve().is_relative_to(run_root))):
+                return command
+            if "--worker-thread-id" in values:
+                worker_id = values["--worker-thread-id"]
+                if not UUID.fullmatch(worker_id) or worker_id not in known_children:
+                    return command
+            else:
+                sessions_root = next((path.resolve() for path in source.resolve().parents
+                                      if path.name == "sessions" and path.parent.name == ".codex"), None)
+                worker_session = Path(values["--worker-session"]).resolve(strict=True)
+                if (sessions_root is None or worker_session.suffix != ".jsonl"
+                        or not worker_session.is_relative_to(sessions_root)):
+                    return command
+                worker_ids = UUID.findall(worker_session.name)
+                with worker_session.open() as stream:
+                    worker_header = json.loads(next(stream, ""))
+                worker_payload = worker_header.get("payload") if isinstance(worker_header, dict) else None
+                worker_id = worker_payload.get("id") if isinstance(worker_payload, dict) else None
+                if (worker_header.get("type") != "session_meta" or not isinstance(worker_id, str)
+                        or worker_id not in known_children or len(worker_ids) != 1
+                        or worker_ids[0].casefold() != worker_id.casefold()):
+                    return command
+        if "--observation" in values and "--trace" not in values:
             return command
         args[args.index("--provider-session") + 1] = "<current-parent-session>"
-        args[args.index("--worker-session") + 1] = "<current-run-worker-session>"
+        if "--worker-session" in values:
+            args[args.index("--worker-session") + 1] = "<current-run-worker-session>"
         return shlex.join(args)
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return command
 
 
@@ -690,7 +715,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                         if isinstance(command, str):
                             redacted = _redact_current_session_projection(command, source)
                             if redacted == command:
-                                redacted = _redact_current_worker_trace(
+                                redacted = _redact_current_runtime_collection(
                                     command, source, thread, runtime_evidence, artifact_root, known_children)
                             if redacted != command:
                                 audit_arguments = {**arguments, "cmd": redacted}

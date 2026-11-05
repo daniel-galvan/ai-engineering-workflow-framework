@@ -150,11 +150,9 @@ invocation: run package preflight first, then the required status projection, be
    exact child session with its fresh provider status observation. Use the canonical binding key as `--agent`, not a
    stage label. For TechOps, the `failure-path` workstream's `--agent` value is `dependency_analyst`; keep it distinct
    from the `failure_path` artifact name and `/root/failure_path` task handle. After the worker completes, call
-   `list_agents`, then export with `--worker-session`, `--agent`, and
-   `--trace`, omitting `--observation`; the collector derives a timestamped receipt from that native inventory.
-   `--worker-session` takes the absolute native worker JSONL path, never a thread UUID or collaboration handle.
-   Locate only filenames matching the ledger's verified child UUID under the native sessions directory, then use
-   the matching current-turn record. Do not read unrelated sessions or guess the rollout timestamp.
+   `list_agents`, then export with `--worker-thread-id <ledger-verified-child-UUID>`, `--agent`, and `--trace`,
+   omitting `--observation`; the collector derives a timestamped receipt from that native inventory. The collector
+   resolves only that current-run child. Never enumerate the native sessions directory or search other session files.
    If the latest inventory omits this worker, use a fresh targeted read and supply `--observation` with `Observed at`
    from the actual read, plus the required thread/turn fields. Never substitute turn completion time for observation
    time. An incomplete targeted receipt can be reconciled from a fresh native inventory without reactivating a worker.
@@ -784,7 +782,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    completed` using observed current status. Run trace validation and fan-in transition validation as separate
    invocations; `--trace` and `--transition` are mutually exclusive. Export tool activity through
    `worker_runtime_evidence.py` with its parent
-   session, start and ledger flags, plus `--worker-session <exact-child-session> --agent <role> --trace <path>`.
+   session, start and ledger flags, plus `--worker-thread-id <verified-child-thread-id> --agent <role> --trace <path>`.
    Prefer omitting `--observation`: the exporter derives the fresh status directly from native inventory or the
    literal targeted status projection below. Alternatively, use `--observation <collector-closure-json>` with the
    prepared collector's receipt. Do not construct or normalize an observation with a custom script, computed tool

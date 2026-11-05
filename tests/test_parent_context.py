@@ -615,10 +615,13 @@ class ParentContext(unittest.TestCase):
             {"Provider handle": "/root/worker", "Thread ID": CHILD,
              "Last dispatch at": runtime["run_started_at"]}]}
 
-        def command(session):
-            return shlex.join(["python3", str(script), "--provider-session", str(self.source),
+        def base_command():
+            return ["python3", str(script), "--provider-session", str(self.source),
                 "--parent-thread-id", PARENT, "--started-at", runtime["run_started_at"],
-                "--ledger", runtime["ledger"], "--worker-session", str(session), "--agent",
+                "--ledger", runtime["ledger"]]
+
+        def command(session):
+            return shlex.join(base_command() + ["--worker-session", str(session), "--agent",
                 "current_state_investigator", "--trace", str(artifact_root / "trace.json")])
 
         self.rows.append(self.call("exec_command", cmd=command(worker_session), workdir=str(self.root)))
@@ -630,6 +633,29 @@ class ParentContext(unittest.TestCase):
             prior_session = sessions / f"rollout-prior-{prior_thread}.jsonl"
             prior_session.write_text(json.dumps({"type": "session_meta", "payload": {"id": prior_thread}}) + "\n")
             self.rows[-1] = self.call("exec_command", cmd=command(prior_session), workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
+            thread_command = shlex.join(base_command() + ["--worker-thread-id", CHILD, "--agent",
+                "current_state_investigator", "--trace", str(artifact_root / "trace.json")])
+            self.rows[-1] = self.call("exec_command", cmd=thread_command, workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            invalid_thread_command = shlex.join(base_command() + ["--worker-thread-id", prior_thread, "--agent",
+                "current_state_investigator", "--trace", str(artifact_root / "trace.json")])
+            self.rows[-1] = self.call("exec_command", cmd=invalid_thread_command, workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
+            closure_command = shlex.join(base_command() + ["--closure", str(artifact_root / "runtime_closure.json")])
+            self.rows[-1] = self.call("exec_command", cmd=closure_command, workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            self.rows[-1] = self.call("exec_command", cmd=shlex.join(base_command()), workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            self.rows[-1] = self.call("exec_command", cmd=closure_command + "; cat " + str(prior_session),
+                                      workdir=str(self.root))
             self.assertIn("forbidden_context_reference:session_log",
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                      runtime_evidence=runtime)["errors"])

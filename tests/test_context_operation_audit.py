@@ -1238,7 +1238,10 @@ class ContextOperationAudit(unittest.TestCase):
         time = lambda seconds: (start + timedelta(seconds=seconds)).isoformat()
         child = "00000000-0000-0000-0000-000000000002"
         handle = "/root/evidence_topology"
-        parent = self.repository / "sentry-parent.jsonl"
+        session_day = (start + timedelta(seconds=1)).astimezone().strftime("%Y/%m/%d")
+        session_dir = self.repository / ".codex" / "sessions" / session_day
+        session_dir.mkdir(parents=True)
+        parent = session_dir / f"rollout-parent-{SOURCE}.jsonl"
         parent.write_text("\n".join(json.dumps(row) for row in [
             {"timestamp": time(0), "type": "session_meta", "payload": {"id": SOURCE}},
             {"timestamp": time(1), "type": "response_item", "payload": {"type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
@@ -1247,7 +1250,7 @@ class ContextOperationAudit(unittest.TestCase):
             {"timestamp": time(1), "type": "event_msg", "payload": {"item": {"type": "SubAgentActivity",
              "kind": "started", "agent_path": handle, "agent_thread_id": child}}},
         ]) + "\n")
-        session = self.repository / "sentry-child.jsonl"
+        session = session_dir / f"rollout-child-{child}.jsonl"
         session.write_text("\n".join(json.dumps(row) for row in [
             {"timestamp": time(1), "type": "session_meta", "payload": {"id": child}},
             {"timestamp": time(2), "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
@@ -1293,15 +1296,22 @@ class ContextOperationAudit(unittest.TestCase):
             "Observed at": time(30), "Status source": "read_thread", "Latest turn started at": time(8),
             "Latest turn completed at": time(20), "Latest turn status": "completed", "Thread status": "idle"}))
         trace_path = root / "trace.json"
-        result = subprocess.run([sys.executable, run["runtime_evidence"]["collector"], "--provider-session", str(parent),
+        collector_command = [sys.executable, run["runtime_evidence"]["collector"], "--provider-session", str(parent),
             "--parent-thread-id", SOURCE, "--started-at", time(0), "--ledger", run["runtime_evidence"]["ledger"],
-            "--worker-session", str(session), "--observation", str(observation), "--agent", role,
-            "--trace", str(trace_path)], capture_output=True, text=True)
+            "--worker-thread-id", child, "--observation", str(observation), "--agent", role,
+            "--trace", str(trace_path)]
+        result = subprocess.run(collector_command, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         exported = json.loads(trace_path.read_text())
         self.assertEqual(exported["audit"], {"status": "passed", "errors": []})
         self.assertNotIn("activation_packet_delivered", exported["spawn"])
         self.assertEqual(runtime.trace_errors(exported, require_freshness=True), [])
+        unassigned = collector_command.copy()
+        unassigned[unassigned.index("--worker-thread-id") + 1] = SOURCE
+        unassigned[unassigned.index("--trace") + 1] = str(root / "unassigned.json")
+        rejected = subprocess.run(unassigned, capture_output=True, text=True)
+        self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
+        self.assertEqual(json.loads(rejected.stdout)["reason"], "worker_thread_id_not_dispatched_in_current_run")
 
     def test_computed_tool_access_cannot_get_the_source_output_exception(self):
         trace = self.dispatch_trace(["codex://threads/" + SOURCE])

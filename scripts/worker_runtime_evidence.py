@@ -703,6 +703,29 @@ def _preserve_closure(path: Path) -> None:
             stream.write(data)
 
 
+def resolve_worker_session(provider_session: Path, worker_thread_id: str, dispatched_at: str) -> Path:
+    if not UUID.fullmatch(worker_thread_id):
+        raise ValueError("worker_thread_id_invalid")
+    sessions_root = next((path.resolve() for path in provider_session.resolve().parents
+                          if path.name == "sessions" and path.parent.name == ".codex"), None)
+    if sessions_root is None:
+        raise ValueError("worker_session_root_unavailable")
+    day = timestamp(dispatched_at).astimezone().strftime("%Y/%m/%d")
+    candidates = tuple((sessions_root / day).glob(f"rollout-*-{worker_thread_id}.jsonl"))
+    if len(candidates) != 1:
+        raise ValueError("worker_session_current_dispatch_unavailable")
+    session = candidates[0].resolve(strict=True)
+    if not session.is_relative_to(sessions_root) or session.suffix != ".jsonl":
+        raise ValueError("worker_session_current_dispatch_invalid")
+    with session.open() as stream:
+        header = strict_json_loads(next(stream, ""))
+    payload = header.get("payload") if isinstance(header, dict) else None
+    if (header.get("type") != "session_meta" or not isinstance(payload, dict)
+            or payload.get("id") != worker_thread_id):
+        raise ValueError("worker_session_current_dispatch_mismatch")
+    return session
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider-session", type=Path, required=True)
@@ -713,6 +736,7 @@ def main() -> int:
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--worker-session", type=Path,
                         help="Absolute native worker JSONL path, not a thread UUID or collaboration handle")
+    parser.add_argument("--worker-thread-id", help="Resolve only the current-run child matched in the dispatch ledger")
     parser.add_argument("--observation", type=Path, help="Targeted receipt; omit to use the latest native inventory")
     parser.add_argument("--agent")
     parser.add_argument("--trace", type=Path)
@@ -728,11 +752,14 @@ def main() -> int:
     if bool(args.blocked_closure) != bool(args.blocker):
         parser.error("--blocked-closure requires --blocker, and --blocker is only valid with --blocked-closure")
     closure_path = args.closure or args.pending_closure or args.blocked_closure
-    if closure_path and any((args.worker_session, args.observation, args.agent, args.trace)):
+    if args.worker_session and args.worker_thread_id:
+        parser.error("choose --worker-session or --worker-thread-id")
+    if closure_path and any((args.worker_session, args.worker_thread_id, args.observation, args.agent, args.trace)):
         parser.error("closure collection and trace export are separate modes")
-    if any((args.worker_session, args.observation, args.agent, args.trace)) and not all(
-            (args.worker_session, args.agent, args.trace)):
-        parser.error("trace export requires --worker-session, --agent and --trace")
+    worker_trace = args.worker_session or args.worker_thread_id
+    if any((worker_trace, args.observation, args.agent, args.trace)) and not all(
+            (worker_trace, args.agent, args.trace)):
+        parser.error("trace export requires a worker identity, --agent and --trace")
     try:
         identity_sessions = list(args.identity_session)
         bindings_path = args.ledger.parent / "role_bindings.json"
@@ -747,6 +774,15 @@ def main() -> int:
                                  + ";received=" + str(args.ledger.resolve()))
         result = read_runtime_events(args.provider_session, args.parent_thread_id, args.started_at,
                                      tuple(dict.fromkeys(identity_sessions)))
+        worker_session = args.worker_session
+        if args.worker_thread_id:
+            dispatches = [row for row in result["events"] if row.get("Operation") == "spawn_agent"
+                          and row.get("Thread ID") == args.worker_thread_id]
+            if not dispatches:
+                raise ValueError("worker_thread_id_not_dispatched_in_current_run")
+            dispatch = min(dispatches, key=lambda row: timestamp(row["Last dispatch at"]))
+            worker_session = resolve_worker_session(args.provider_session, args.worker_thread_id,
+                                                    dispatch["Last dispatch at"])
         if args.ledger.exists():
             pending = json.loads(args.ledger.read_text()).get("rejected_results", {})
             if pending:
@@ -784,10 +820,10 @@ def main() -> int:
             run_id = json.loads(packet_path.read_text())["identity"]["Run ID"] if packet_path.is_file() else None
             observation = json.loads(args.observation.read_text()) if args.observation else None
             if observation is not None and "terminal_observations" in observation:
-                with args.worker_session.open() as stream:
+                with worker_session.open() as stream:
                     thread = json.loads(next(stream))["payload"]["id"]
                 observation = next(row for row in observation["terminal_observations"] if row["Thread ID"] == thread)
-            trace = export_worker_trace(result, args.worker_session, args.agent,
+            trace = export_worker_trace(result, worker_session, args.agent,
                                         observation, run_id=run_id, artifact_root=args.trace.parent)
             if args.trace.is_file():
                 saved = json.loads(args.trace.read_text())
