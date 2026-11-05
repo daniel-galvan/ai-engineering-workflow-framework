@@ -710,7 +710,18 @@ def resolve_worker_session(provider_session: Path, worker_thread_id: str, dispat
                           if path.name == "sessions" and path.parent.name == ".codex"), None)
     if sessions_root is None:
         raise ValueError("worker_session_root_unavailable")
-    day = timestamp(dispatched_at).astimezone().strftime("%Y/%m/%d")
+    with provider_session.open() as stream:
+        starts = []
+        for line in stream:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            item = row.get("payload", {}).get("item", {})
+            if (row.get("type") == "event_msg" and item.get("type") == "SubAgentActivity"
+                    and item.get("kind") == "started" and item.get("agent_thread_id") == worker_thread_id):
+                starts.append(row["timestamp"])
+    day = min((timestamp(value) for value in starts), default=timestamp(dispatched_at)).astimezone().strftime("%Y/%m/%d")
     candidates = tuple((sessions_root / day).glob(f"rollout-*-{worker_thread_id}.jsonl"))
     if len(candidates) != 1:
         raise ValueError("worker_session_current_dispatch_unavailable")
@@ -776,7 +787,7 @@ def main() -> int:
                                      tuple(dict.fromkeys(identity_sessions)))
         worker_session = args.worker_session
         if args.worker_thread_id:
-            dispatches = [row for row in result["events"] if row.get("Operation") == "spawn_agent"
+            dispatches = [row for row in result["events"] if row.get("Operation") in {"spawn_agent", "followup_task"}
                           and row.get("Thread ID") == args.worker_thread_id]
             if not dispatches:
                 raise ValueError("worker_thread_id_not_dispatched_in_current_run")

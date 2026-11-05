@@ -1249,6 +1249,16 @@ class SharedRuntimeAcceptance(unittest.TestCase):
             fixture[1].joinpath("child.jsonl").write_text("\n".join(json.dumps(row) for row in child) + "\n")
             self.assertIn("worker_dispatch_consumption_unverified", runtime.trace_errors(trace, require_freshness=True))
 
+    def test_verified_delivery_ledger_only_exempts_the_bound_session(self):
+        current = "/Users/example/.codex/sessions/current.jsonl"
+        other = "/Users/example/.codex/sessions/other.jsonl"
+        trace = {"tool_trace": [], "delivery_ledger": {"provider_session": current}}
+        self.assertIn("forbidden_context_reference:session_log", runtime.context_trace_errors(trace))
+        self.assertEqual(runtime.context_trace_errors(trace, verified_delivery_paths=(current,)), [])
+        trace["delivery_ledger"]["identity_sessions"] = [other]
+        self.assertIn("forbidden_context_reference:session_log",
+                      runtime.context_trace_errors(trace, verified_delivery_paths=(current,)))
+
     def test_inactive_worker_after_in_turn_message_is_closable_but_not_accepted(self):
         from scripts.worker_runtime_evidence import terminal_closure
         with tempfile.TemporaryDirectory() as directory:

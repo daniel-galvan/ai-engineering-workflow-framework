@@ -252,6 +252,22 @@ class PlanningRecovery(unittest.TestCase):
                 self.assertEqual(ledger["thread_mappings"], {"/root/new": CHILD})
                 self.assertEqual(len(ledger["events"]), 1)
 
+    def test_reused_worker_session_resolution_uses_original_start_day(self):
+        from scripts.worker_runtime_evidence import resolve_worker_session
+        start = datetime.fromisoformat(START.replace("Z", "+00:00"))
+        day = start.astimezone().strftime("%Y/%m/%d")
+        session_dir = self.root / ".codex" / "sessions" / day
+        session_dir.mkdir(parents=True)
+        parent = session_dir / f"rollout-parent-{PARENT}.jsonl"
+        child = session_dir / f"rollout-child-{CHILD}.jsonl"
+        parent.write_text(json.dumps({"timestamp": START, "type": "session_meta", "payload": {"id": PARENT}})
+            + "\n" + json.dumps({"timestamp": START, "type": "event_msg", "payload": {"item": {
+                "type": "SubAgentActivity", "kind": "started", "agent_path": "/root/old",
+                "agent_thread_id": CHILD}}}) + "\n")
+        child.write_text(json.dumps({"type": "session_meta", "payload": {"id": CHILD}}) + "\n")
+        later = (start + timedelta(days=1)).isoformat()
+        self.assertEqual(resolve_worker_session(parent, CHILD, later), child.resolve())
+
     def test_same_chat_redispatch_maps_prior_worker_without_importing_prior_events(self):
         source = self.root / "provider.jsonl"
         rows = [

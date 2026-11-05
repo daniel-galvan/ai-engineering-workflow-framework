@@ -765,25 +765,19 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                         audit_arguments = arguments
                         command = arguments.get("cmd")
                         if isinstance(command, str):
-                            lines = command.splitlines(keepends=True)
                             redacted_lines = []
-                            for line in lines:
+                            for line in command.splitlines(keepends=True):
                                 text = line.rstrip("\r\n")
-                                redacted_lines.append(_redact_current_session_projection(text, source, script_dir)
-                                                      + line[len(text):])
-                            redacted = "".join(redacted_lines)
-                            if redacted == command:
-                                lines = command.splitlines(keepends=True)
-                                if lines:
-                                    first = lines[0].rstrip("\r\n")
+                                replacement = _redact_current_session_projection(text, source, script_dir)
+                                if replacement == text:
                                     replacement = _redact_current_runtime_collection(
-                                        first, source, thread, runtime_evidence, artifact_root, known_children, script_dir,
+                                        text, source, thread, runtime_evidence, artifact_root, known_children, script_dir,
                                         audit_previous_collector)
-                                    if replacement != first:
-                                        redacted = replacement + lines[0][len(first):] + "".join(lines[1:])
-                            if redacted == command:
-                                redacted = _redact_workflow_failure(
-                                    command, source, thread, runtime_evidence, artifact_root, script_dir)
+                                if replacement == text:
+                                    replacement = _redact_workflow_failure(
+                                        text, source, thread, runtime_evidence, artifact_root, script_dir)
+                                redacted_lines.append(replacement + line[len(text):])
+                            redacted = "".join(redacted_lines)
                             if redacted != command:
                                 audit_arguments = {**arguments, "cmd": redacted}
                         operations.append({"type": "function_call", "name": name, "arguments": audit_arguments})

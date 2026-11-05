@@ -2351,7 +2351,8 @@ def _verified_trace_retrieval_path(trace: dict[str, object]) -> Path | None:
 
 def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
                          input_paths: tuple[str, ...] = (), artifact_root: Path | None = None,
-                         verified_trace_retrieval: Path | None = None) -> list[str]:
+                         verified_trace_retrieval: Path | None = None,
+                         verified_delivery_paths: tuple[str, ...] = ()) -> list[str]:
     """Reject unassigned historical input and all historical writes, preserving instruction echoes."""
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
@@ -2388,6 +2389,10 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                          for row in trace.get("tool_trace", []) if root and isinstance(row, dict) and row.get("call_id")
                          and row.get("type") in {"function_call", "custom_tool_call"}}
     for path, value in _trace_strings(trace):
+        if (path[:1] == ("delivery_ledger",) and value in verified_delivery_paths
+                and (path == ("delivery_ledger", "provider_session")
+                     or path[:2] == ("delivery_ledger", "identity_sessions"))):
+            continue
         if path == ("trace_retrieval",) and verified_trace_retrieval is not None:
             if Path(value).resolve() == verified_trace_retrieval:
                 continue
@@ -2626,6 +2631,7 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
     if not isinstance(launch_errors, list) or any(not isinstance(error, str) for error in launch_errors):
         return ["worker_launch_errors_invalid"]
     errors: list[str] = list(launch_errors)
+    verified_delivery_paths = ()
     observation = trace.get("status_observation", {})
     if isinstance(observation, dict) and str(observation.get("Dispatch consumption evidence", "")).startswith("native-message:"):
         try:
@@ -2643,6 +2649,16 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
             verified = native_in_turn_delivery(ledger, Path(trace["trace_retrieval"]), observation)
             if verified != observation["Dispatch consumption evidence"]:
                 raise ValueError("delivery evidence does not match")
+            if _is_codex_session_path(origin["provider_session"]):
+                root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
+                bindings = json.loads((root / "role_bindings.json").read_text())
+                parent, contract = bindings["parent_context"], bindings["runtime_evidence"]
+                if (origin["provider_session"] != parent["provider_session"]
+                        or origin["parent_thread_id"] != parent["parent_thread_id"]
+                        or origin["run_started_at"] != contract["run_started_at"]
+                        or origin["identity_sessions"] != contract.get("identity_sessions", [])):
+                    raise ValueError("delivery ledger does not match current run")
+                verified_delivery_paths = (origin["provider_session"], *origin["identity_sessions"])
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             errors.append("worker_dispatch_consumption_unverified")
     response_errors = trace.get("worker_response_errors", [])
@@ -2709,7 +2725,8 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
             errors.append("analytical_failure_artifact_absent")
     errors.extend(planning_permission_errors(trace))
     errors.extend(context_trace_errors(trace, details=context_details,
-                                       verified_trace_retrieval=verified_retrieval))
+                                       verified_trace_retrieval=verified_retrieval,
+                                       verified_delivery_paths=verified_delivery_paths))
     return list(dict.fromkeys(errors))
 
 

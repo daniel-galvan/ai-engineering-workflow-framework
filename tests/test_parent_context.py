@@ -674,6 +674,15 @@ class ParentContext(unittest.TestCase):
             self.assertIn("forbidden_context_reference:session_log",
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                      runtime_evidence=runtime)["errors"])
+            self.rows[-1] = self.call("exec_command", cmd="echo prepare\n" + command(worker_session),
+                                      workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
+            self.rows[-1] = self.call("exec_command", cmd="echo prepare\n" + command(worker_session)
+                                      + "\ncat " + str(prior_session), workdir=str(self.root))
+            self.assertIn("forbidden_context_reference:session_log",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                     runtime_evidence=runtime)["errors"])
             old_collector = self.root / "old-package" / "scripts" / "worker_runtime_evidence.py"
             old_command = shlex.join(base_command()).replace(str(script), str(old_collector))
             self.rows[-1] = self.call("exec_command", cmd=old_command, workdir=str(self.root))
