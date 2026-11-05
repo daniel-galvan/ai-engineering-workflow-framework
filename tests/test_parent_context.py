@@ -433,6 +433,29 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(example.strip(), projection)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
+    def test_related_status_projection_checks_each_worker_when_wait_returns_only_one(self):
+        projection = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD, TURN))
+        stub = textwrap.dedent("""
+            const calls = [];
+            const tools = {mcp__codex_app__wait_threads: async args => {
+              calls.push(args.targets.map(row => row.threadId));
+              const id = args.targets[0].threadId;
+              return {content: [{text: JSON.stringify({
+                wake: {reason: 'inactiveStatus', threadId: id},
+                polls: [{thread: {id, status: {type: 'notLoaded'}}, latestTurn: {status: 'completed'}}]
+              })}]};
+            }};
+            const text = value => process.stdout.write(JSON.stringify({rows: JSON.parse(value), calls}));
+        """)
+        result = subprocess.run([shutil.which("node"), "--input-type=module", "-"], input=stub + projection,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {
+            "rows": [{"id": CHILD, "status": "completed"}, {"id": TURN, "status": "completed"}],
+            "calls": [[CHILD], [TURN]],
+        })
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
     def test_empty_related_status_projection_makes_no_provider_calls(self):
         projection = related_run_status_projection_source("ECHO-2806", PARENT)
         stub = ("const calls = [];\n"
@@ -1309,7 +1332,7 @@ class ParentContext(unittest.TestCase):
         expected = expected.replace(json.dumps([prior_id]), '["PRIOR-WORKER-THREAD-UUID"]')
         self.assertIn("mcp__codex_app__wait_threads", expected)
         self.assertNotIn("mcp__codex_app__read_thread", expected)
-        self.assertIn("i += 8", expected)
+        self.assertIn("const batches = priorIds.map(id => [id]);", expected)
         self.assertEqual(textwrap.dedent(snippet).strip(), expected)
 
     def test_tool_operations_parse_only_static_string_concatenation(self):

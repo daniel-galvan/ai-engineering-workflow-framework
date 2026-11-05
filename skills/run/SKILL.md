@@ -507,8 +507,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    ```javascript
    const priorIds = ["PRIOR-WORKER-THREAD-UUID"];
    const terminal = new Set(['completed', 'failed', 'stopped', 'interrupted', 'cancelled']);
-   const batches = [];
-   for (let i = 0; i < priorIds.length; i += 8) batches.push(priorIds.slice(i, i + 8));
+   // A multi-target wait may return only the first inactive worker.
+   const batches = priorIds.map(id => [id]);
    const relatedRows = (await Promise.all(batches.map(async ids => {
      try {
        const result = await tools.mcp__codex_app__wait_threads({

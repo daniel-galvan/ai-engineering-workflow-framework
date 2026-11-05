@@ -214,7 +214,7 @@ def scoped_prior_run_status_thread_ids(
 def related_run_status_projection_source(
     work_item: str, current_thread_id: str, prior_thread_ids: tuple[str, ...] = (),
 ) -> str:
-    """Return a redacted, batched status snapshot for explicitly authorized prior threads."""
+    """Return a redacted, per-worker status snapshot for explicitly authorized prior threads."""
     if not isinstance(work_item, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", work_item):
         raise ValueError("stale_run_status_work_item_invalid")
     if not isinstance(current_thread_id, str) or not UUID.fullmatch(current_thread_id):
@@ -224,8 +224,8 @@ def related_run_status_projection_source(
         raise ValueError("stale_run_status_prior_thread_ids_invalid")
     return (f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
             "const terminal = new Set(['completed', 'failed', 'stopped', 'interrupted', 'cancelled']);\n"
-            "const batches = [];\n"
-            "for (let i = 0; i < priorIds.length; i += 8) batches.push(priorIds.slice(i, i + 8));\n"
+            "// A multi-target wait may return only the first inactive worker.\n"
+            "const batches = priorIds.map(id => [id]);\n"
             "const relatedRows = (await Promise.all(batches.map(async ids => {\n"
             "  try {\n"
             "    const result = await tools.mcp__codex_app__wait_threads({\n"
