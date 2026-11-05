@@ -3368,7 +3368,12 @@ def prepare_run(
             manifest["worker_contracts"]["feature_asset_inventory"])
         manifest["worker_contracts"]["current_state_investigator"]["instructions"] += (
             " Include asset_manifest as a third key in the final JSON object using the prepared asset_inventory "
-            "contract. The Coordinator publishes it before the packaged asset gate; do not write the file yourself.")
+            "contract. The Coordinator publishes it before the packaged asset gate; do not write the file yourself. "
+            "Use exactly one jira_issue_attachments source tied to the supplied work-item input, aggregating "
+            "the selected issues' attachment and remote-link inventories there. "
+            "Before downstream design/review consumption, keep all_material_assets_linked false for material assets. "
+            "For an asset-only correction after result acceptance, change only asset_manifest and re-emit the "
+            "accepted output and result tables verbatim. Do not reword evidence summaries or claim statuses.")
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
         manifest["documenter_packet_stager"] = str(ROOT / "scripts/stage_documenter_packet.py")
     if playbook in {"techops_issue_remediation", "sentry_issue_remediation"} or (

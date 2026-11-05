@@ -89,7 +89,9 @@ worker MUST return its inventory in the `asset_manifest` key of its final JSON r
 result merger materializes the file before the packaged gate. The worker MUST inventory the complete Jira
 attachment collections of the supplied issue and selected related issues, and separately query Jira remote links
 for each selected issue. Record the remote-link collection as `empty`,
-`complete`, or an explicit retrieval limitation in the Jira source's `remote_link_inventory`; every discovered link
+`complete`, or an explicit retrieval limitation in the Jira source's `remote_link_inventory`.
+Use exactly one `jira_issue_attachments` source tied to the supplied work-item input; aggregate
+the selected issues' attachment and remote-link inventories in that source. Every discovered link
 needs a supporting source and disposition even when non-material. Inventory each supporting artifact explicitly declared
 as an asset source in the prompt or `run_inputs.json`. Classify source-code roots as `code scope`; do not enter them in
 `asset_manifest.json` or inventory them recursively. A declared supporting directory is inventoried recursively,
@@ -111,6 +113,9 @@ asset may pass this first gate with `all_material_assets_linked: false`; keep it
 references. After design and planning review, update `used_by` and the gate from actual consumption. Terminal
 finalization then requires the material asset's design/review link and a claim backed by its evidence. Never relabel a
 material asset `non_material` merely to pass the early gate.
+For an asset-only correction after context acceptance, correct `asset_manifest` and preserve the accepted output and
+result tables verbatim when resubmitting the response envelope. Do not reword evidence summaries or claim statuses;
+the merger rejects changes to accepted findings even when they accompany a valid manifest correction.
 For an implementation plan, give each material asset its own Asset Baseline row with evidence, observation, and an
 implementation or explicit non-impact consequence. Planning Review verifies those rows against the source assets;
 matching IDs alone is not proof of use.

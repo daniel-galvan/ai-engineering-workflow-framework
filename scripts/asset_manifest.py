@@ -312,7 +312,8 @@ def validate_asset_manifest(
                         errors.append(f"asset source {source_id} must record its remote link retrieval limitation")
                     if "remote" not in remote_method or "link" not in remote_method or not (
                         any(word in remote_method for word in ("read", "retriev", "inventor"))
-                        or "getjiraissueremoteissuelinks" in remote_method
+                        or any(tool in remote_method for tool in (
+                            "getjiraissueremoteissuelinks", "listjiraissueremoteissuelinks"))
                     ):
                         errors.append(f"asset source {source_id} must record a remote link retrieval method")
                     if not isinstance(remote_locators, list) or any(

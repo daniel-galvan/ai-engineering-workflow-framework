@@ -331,6 +331,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    complete coverage only for selected collections and playbook-required gates;
    unselected scopes are not empty collections. Reconcile selected issue and
    asset read states before downstream work; return one correction for omissions.
+   For an asset-only correction after result acceptance, require the worker to preserve its accepted output and result
+   tables verbatim and change only `asset_manifest`. Do not request regenerated evidence summaries or claim statuses.
    Unavailable or unreviewed material stays explicit and prevents a false claim
    of complete context or readiness.
    When the request explicitly names Feature Delivery `specification_assessment`, treat that as the compatible

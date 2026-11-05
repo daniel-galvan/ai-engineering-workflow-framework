@@ -91,6 +91,11 @@ def self_test() -> None:
             manifest, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
             expected_evidence_ids={"E-JIRA-001", "E-FOLDER-001"}, require_jira_source=True, require_passed=True,
         ) == []
+        for tool in ("getJiraIssueRemoteIssueLinks", "listJiraIssueRemoteIssueLinks"):
+            remote_method = json.loads(json.dumps(manifest))
+            remote_method["sources"][0]["remote_link_inventory"]["method"] = (
+                f"Atlassian {tool} queried EXAMPLE-1; returned an empty list.")
+            assert validate_asset_manifest(remote_method, require_jira_source=True) == []
         metadata_only = json.loads(json.dumps(manifest))
         metadata_only["assets"][0]["review_method"] = "metadata_read"
         assert any("requires visual_inspection or rendered_read" in error
