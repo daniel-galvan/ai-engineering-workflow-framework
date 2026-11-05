@@ -747,24 +747,34 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     "function_call", "custom_tool_call"}:
                 raw_source = payload.get("input") if payload.get("type") == "custom_tool_call" else None
                 try:
-                    ids_to_check = [prior_ids]
+                    ids_to_check = [("prior", prior_ids)]
                     if known_children:
                         # Later dispatches cannot retroactively change an earlier exact status query.
                         observed = timestamp(row["timestamp"])
                         at_call = {event["Thread ID"] for event in native_events
                                    if timestamp(event["Last dispatch at"]) <= observed}
                         if at_call:
-                            ids_to_check.extend((tuple(sorted(at_call)), tuple(sorted(set(prior_ids) | at_call))))
-                    matched_projection_ids = next((ids for ids in ids_to_check
+                            ids_to_check.extend((("current", tuple(sorted(at_call)),),
+                                                 ("combined", tuple(sorted(set(prior_ids) | at_call)),)))
+                    matched_projection_scope, matched_projection_ids = next(((scope, ids) for scope, ids in ids_to_check
                         if artifact_root is not None and isinstance(raw_source, str)
                         and raw_source.strip() == related_run_status_projection_source(
-                            artifact_root.name, thread, ids)), None)
+                            artifact_root.name, thread, ids)), (None, None))
                 except (ValueError, KeyError, TypeError):
-                    matched_projection_ids = None
+                    matched_projection_scope, matched_projection_ids = None, None
                 exact_status_projection = matched_projection_ids is not None
                 if exact_status_projection:
                     call_id = payload.get("call_id")
-                    if not isinstance(call_id, str) or not call_id or related_run_probe_attempts:
+                    if not isinstance(call_id, str) or not call_id:
+                        errors.append("parent_related_run_status_probe_invalid")
+                    elif matched_projection_scope == "current":
+                        for identity in matched_projection_ids:
+                            arguments = {"targets": [{"threadId": identity}], "timeoutMs": 0}
+                            sequenced_operations.append({"name": "mcp__codex_app__wait_threads",
+                                                         "arguments": arguments})
+                            operations.append({"type": "function_call", "name": "mcp__codex_app__wait_threads",
+                                               "arguments": arguments})
+                    elif related_run_probe_attempts:
                         errors.append("parent_related_run_status_probe_invalid")
                     else:
                         sequenced_operations.append({"name": "related_run_status_projection", "arguments": {}})

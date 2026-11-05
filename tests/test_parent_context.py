@@ -560,8 +560,11 @@ class ParentContext(unittest.TestCase):
             result = self.audit(artifact_root=artifact_root, related_run_thread_ids=(TURN,), runtime_evidence=runtime)
             self.assertEqual(result["status"], "passed", result)
             self.assertEqual(result["related_run_thread_ids"], [TURN])
-            self.assertIn("stale_run_worker_status_missing:" + TURN,
-                          stale_run_status_errors(result, "in_progress", require_prior_dispatch_ledger=False))
+            self.assertEqual(result["verified_related_run_status_probes"], 0)
+            self.assertEqual(result["related_run_status_probe_attempts"], 0)
+            self.assertEqual(result["related_run_status_rows"], None)
+            self.assertEqual(stale_run_status_errors(result, "in_progress", require_prior_dispatch_ledger=False),
+                             ["stale_run_status_probe_required"])
             call["payload"]["input"] = related_run_status_projection_source("ECHO-2806", PARENT, tuple(sorted((CHILD, TURN))))
             output["payload"]["output"] = [{"type": "text", "text": json.dumps([
                 {"id": CHILD, "status": "completed"}, {"id": TURN, "status": "completed"}])}]
@@ -573,6 +576,38 @@ class ParentContext(unittest.TestCase):
             call["payload"]["input"] = related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,)) + '\ntext("extra");'
             self.assertIn("parent_tool_arguments_unavailable", self.audit(artifact_root=artifact_root,
                 related_run_thread_ids=(TURN,), runtime_evidence=runtime)["errors"])
+
+    def test_current_worker_projection_does_not_repeat_prior_run_probe(self):
+        artifact_root = self.root / ".thoughts" / "ECHO-2806"
+        prior_worker = "00000000-0000-0000-0000-000000000004"
+        prior_call = {"type": "response_item", "timestamp": "2026-10-01T00:00:02Z", "payload": {
+            "type": "custom_tool_call", "name": "exec", "call_id": "prior-status",
+            "input": related_run_status_projection_source("ECHO-2806", PARENT, (prior_worker,))}}
+        prior_output = {"type": "response_item", "timestamp": "2026-10-01T00:00:03Z", "payload": {
+            "type": "custom_tool_call_output", "call_id": "prior-status",
+            "output": [{"type": "text", "text": json.dumps([{"id": prior_worker, "status": "completed"}])}]}}
+        current_call = {"type": "response_item", "timestamp": "2026-10-01T00:00:04Z", "payload": {
+            "type": "custom_tool_call", "name": "exec", "call_id": "current-status",
+            "input": related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,))}}
+        current_output = {"type": "response_item", "timestamp": "2026-10-01T00:00:05Z", "payload": {
+            "type": "custom_tool_call_output", "call_id": "current-status",
+            "output": [{"type": "text", "text": json.dumps([{"id": CHILD, "status": "completed"}])}]}}
+        self.rows.extend([prior_call, prior_output, current_call, current_output])
+        runtime = {"run_started_at": "2026-10-01T00:00:00Z"}
+        native = {"thread_mappings": {"/root/worker": CHILD}, "events": [
+            {"Provider handle": "/root/worker", "Thread ID": CHILD, "Last dispatch at": "2026-10-01T00:00:00Z"}]}
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
+            result = self.audit(artifact_root=artifact_root, related_run_thread_ids=(prior_worker,),
+                                runtime_evidence=runtime)
+            self.assertEqual(result["status"], "passed", result)
+            self.assertEqual(result["related_run_status_probe_attempts"], 1)
+            self.assertEqual(result["verified_related_run_status_probes"], 1)
+            self.assertEqual(result["related_run_status_rows"], [{"id": prior_worker, "status": "completed"}])
+            current_call["payload"]["input"] = related_run_status_projection_source(
+                "ECHO-2806", PARENT, tuple(sorted((prior_worker, CHILD))))
+            self.assertIn("parent_related_run_status_probe_invalid",
+                          self.audit(artifact_root=artifact_root, related_run_thread_ids=(prior_worker,),
+                                     runtime_evidence=runtime)["errors"])
 
     def test_later_worker_dispatch_does_not_invalidate_earlier_status_projection(self):
         root = self.root / ".thoughts" / "ECHO-2806"
