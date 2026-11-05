@@ -28,8 +28,12 @@ execution repository and artifact root. The installed package supplies the frame
 
 The active run skill and shared contract own preflight, source-access gates, input-manifest creation, worker selection,
 artifact placement, validation, and handoff. Do not copy framework commands, worker lists, internal paths, or evaluation
-metadata into an ordinary run prompt. Use only this chat and current-run artifacts. Do not include or rely on other
-chats, sessions, or host memory unless the current user explicitly identifies and authorizes the exact source.
+metadata into an ordinary run prompt. `MEMORY.md` may be read as background guidance only. Current user instructions and
+current-run evidence take precedence.
+Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
+against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
+Use only this chat and current-run artifacts. Do not include or rely on other
+chats, sessions, or other memory files unless the current user explicitly identifies and authorizes the exact source.
 
 ## Optional user context
 

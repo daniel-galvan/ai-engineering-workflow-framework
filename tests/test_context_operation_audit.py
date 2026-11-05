@@ -88,7 +88,7 @@ class ContextOperationAudit(unittest.TestCase):
         source = self.repository / "parent.jsonl"
         header = [{"type": "session_meta", "payload": {"id": SOURCE}},
                   {"type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000002"}}]
-        patch = "*** Begin Patch\n*** Add File: " + str(self.root / "notes.md") + "\n+Do not read MEMORY.md or .thoughts/OLD/runs/analysis.md\n*** End Patch"
+        patch = "*** Begin Patch\n*** Add File: " + str(self.root / "notes.md") + "\n+Do not read raw_memories.md or .thoughts/OLD/runs/analysis.md\n*** End Patch"
         for direct in (False, True):
             with self.subTest(direct=direct):
                 call = {"type": "custom_tool_call", "name": "apply_patch" if direct else "exec",
@@ -102,7 +102,7 @@ class ContextOperationAudit(unittest.TestCase):
                 self.assertIn("forbidden_context_reference:archived_artifact",
                               parent_context_audit(source, artifact_root=self.root,
                                                    related_run_thread_ids=())["errors"])
-        call["input"] = "await tools.apply_patch(" + json.dumps(patch) + "); await tools.exec_command({cmd:'cat /repo/.codex/memories/MEMORY.md'});"
+        call["input"] = "await tools.apply_patch(" + json.dumps(patch) + "); await tools.exec_command({cmd:'cat /repo/.codex/memories/raw_memories.md'});"
         call["name"] = "exec"
         source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
         self.assertIn("forbidden_context_reference:memory_path",
@@ -138,7 +138,7 @@ class ContextOperationAudit(unittest.TestCase):
         source.parent.mkdir(parents=True)
         source.write_text("current source\n")
         instructions = source.parent / "AGENTS.md"
-        policy = ("Do not read /Users/example/.codex/memories/MEMORY.md or "
+        policy = ("Do not read /Users/example/.codex/memories/raw_memories.md or "
                   ".thoughts/ITEM-1/runs/prior/analysis.md.\n")
         instructions.write_text(policy)
         call = 'await tools.exec_command(' + json.dumps({
@@ -224,7 +224,7 @@ class ContextOperationAudit(unittest.TestCase):
                 'tools.mcp__codex_apps__atlassian_getjiraissue({issueIdOrKey:"ITEM-1",view:"evidence"}),'
                 'tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '",turnLimit:10,includeOutputs:false})]);'
                 'text(JSON.stringify({issue,thread}));')
-        quoted = json.dumps({"thread": {"turns": [{"command": "cat /repo/.codex/memories/MEMORY.md"}]}})
+        quoted = json.dumps({"thread": {"turns": [{"command": "cat /repo/.codex/memories/raw_memories.md"}]}})
         trace["tool_trace"] = self.paired(code, [{"type": "text", "text": quoted}])
         self.assertEqual(runtime.context_trace_errors(trace), [])
         trace["tool_trace"][0]["input"] = code.replace(SOURCE, "00000000-0000-0000-0000-000000000099")
@@ -509,12 +509,12 @@ class ContextOperationAudit(unittest.TestCase):
         for command in ("rg --files .", "cat report.md && rg --files ."):
             code = "await tools.exec_command(" + json.dumps({
                 "cmd": command, "workdir": str(self.repository)}) + ")"
-            trace = {"tool_trace": self.paired(code, "Current report\n/Users/example/.codex/memories/MEMORY.md")}
+            trace = {"tool_trace": self.paired(code, "Current report\n/Users/example/.codex/memories/raw_memories.md")}
             self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
 
     def test_memory_and_session_log_reads_require_exact_run_inputs(self):
         for target, error in (
-            ("/repo/.codex/memories/MEMORY.md", "memory_path"),
+            ("/repo/.codex/memories/raw_memories.md", "memory_path"),
             ("/repo/.codex/sessions/prior.jsonl", "session_log"),
         ):
             with self.subTest(target=target):
@@ -526,7 +526,7 @@ class ContextOperationAudit(unittest.TestCase):
                                  runtime.context_trace_errors(trace, input_paths=(target,)))
 
     def test_no_match_memory_search_is_always_forbidden(self):
-        memory = "/repo/.codex/memories/MEMORY.md"
+        memory = "/repo/.codex/memories/raw_memories.md"
         command = "rg -n ITEM " + memory
         trace = {"tool_trace": self.paired(
             "await tools.exec_command(" + json.dumps({"cmd": command}) + ")", "")}
@@ -535,15 +535,15 @@ class ContextOperationAudit(unittest.TestCase):
     def test_worker_response_rejects_memory_citation_suffix(self):
         from scripts.worker_runtime_evidence import worker_response_value
         envelope = {"output": "Current-run evidence only.", "result": {"run_id": "run"}}
-        suffix = "\n<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[context]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>"
+        suffix = "\n<oai-mem-citation>\n<citation_entries>\nraw_memories.md:1-2|note=[context]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>"
         with self.assertRaisesRegex(ValueError, "worker_final_response_json_invalid"):
             worker_response_value(json.dumps(envelope) + suffix, Path("unused-session.jsonl"))
 
     def test_codex_home_memory_paths_are_rejected_when_quoted(self):
         for command, expected in (
-            ('cat "$CODEX_HOME/memories/MEMORY.md"', "memory_path"),
+            ('cat "$CODEX_HOME/memories/raw_memories.md"', "memory_path"),
             ('rg -n issue "${CODEX_HOME}/memories/notes.md"', "memory_directory"),
-            (r'cat "%CODEX_HOME%\memories\MEMORY.md"', "memory_path"),
+            (r'cat "%CODEX_HOME%\memories\raw_memories.md"', "memory_path"),
             (r'rg -n issue "$env:CODEX_HOME\memories\notes.md"', "memory_directory"),
             ('rg -n issue "$CODEX_HOME"/memories/notes.md', "memory_directory"),
             ('rg -n issue "${CODEX_HOME}"/memories/notes.md', "memory_directory"),
@@ -567,7 +567,7 @@ class ContextOperationAudit(unittest.TestCase):
         manifest = self.repository / "run_inputs.json"
         manifest.write_text(json.dumps(default_manifest("ITEM-1", "technical_spike", self.repository)))
         rows = [{"Evidence ID": "SRC-001", "Method or source":
-                 'cat "${CODEX_HOME}/memories/MEMORY.md"'}]
+                 'cat "${CODEX_HOME}/memories/raw_memories.md"'}]
         errors = _spike_report_context_errors(rows, [], manifest)
         self.assertTrue(any("forbidden context: memory_path" in error for error in errors))
 
@@ -611,8 +611,8 @@ class ContextOperationAudit(unittest.TestCase):
     def test_batch_with_an_actual_memory_read_is_never_exempt(self):
         trace = self.dispatch_trace(["codex://threads/" + SOURCE])
         code = ('await Promise.all([tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"}),'
-                'tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})]);')
-        trace["tool_trace"] = self.paired(code, "cat /repo/.codex/memories/MEMORY.md")
+                'tools.exec_command({cmd:"cat /repo/.codex/memories/raw_memories.md"})]);')
+        trace["tool_trace"] = self.paired(code, "cat /repo/.codex/memories/raw_memories.md")
         self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
                             for error in runtime.context_trace_errors(trace)))
 
@@ -638,7 +638,7 @@ class ContextOperationAudit(unittest.TestCase):
         handle, dispatch = "/root/context", "2026-10-13T01:00:01Z"
         notice = 'sha256sum ' + trace["spawn"]["dispatch_file"] + ' && cat ' + trace["spawn"]["dispatch_file"]
         input_code = 'await tools.exec_command(' + json.dumps({"cmd": notice}) + ')'
-        quoted = json.dumps({"thread": {"command": "cat /repo/.codex/memories/MEMORY.md"}})
+        quoted = json.dumps({"thread": {"command": "cat /repo/.codex/memories/raw_memories.md"}})
         trace["tool_trace"] = [{"type": "custom_tool_call", "call_id": "instructions", "input": input_code},
             {"type": "custom_tool_call_output", "call_id": "instructions",
              "output": Path(trace["spawn"]["dispatch_file"]).read_text()}, *self.paired(
@@ -779,7 +779,7 @@ class ContextOperationAudit(unittest.TestCase):
         source.parent.mkdir(parents=True)
         source.write_text("current source")
         instructions = source.parent / "AGENTS.md"
-        policy = ("Do not read /Users/example/.codex/memories/MEMORY.md or "
+        policy = ("Do not read /Users/example/.codex/memories/raw_memories.md or "
                   ".thoughts/ITEM-1/runs/prior/analysis.md.\n")
         instructions.write_text(policy)
         packet = json.loads(Path(trace["spawn"]["dispatch_file"]).read_text().split("\n", 2)[1])
@@ -1317,8 +1317,8 @@ class ContextOperationAudit(unittest.TestCase):
     def test_computed_tool_access_cannot_get_the_source_output_exception(self):
         trace = self.dispatch_trace(["codex://threads/" + SOURCE])
         code = ('await tools.mcp__codex_app__read_thread({threadId:"' + SOURCE + '"}); '
-                'await tools["exec_command"]({cmd:"cat /repo/.codex/memories/MEMORY.md"})')
-        trace["tool_trace"] = self.paired(code, "/repo/.codex/memories/MEMORY.md")
+                'await tools["exec_command"]({cmd:"cat /repo/.codex/memories/raw_memories.md"})')
+        trace["tool_trace"] = self.paired(code, "/repo/.codex/memories/raw_memories.md")
         self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
                             for error in runtime.context_trace_errors(trace)))
 
@@ -1346,7 +1346,7 @@ class ContextOperationAudit(unittest.TestCase):
     def test_unmatched_and_unknown_outputs_remain_audited(self):
         trace = self.dispatch_trace(["codex://threads/" + SOURCE])
         trace["tool_trace"] = self.paired('text("tools.mcp__codex_app__read_thread({threadId:\\"' + SOURCE + '\\"})")',
-                                          "/repo/.codex/memories/MEMORY.md")
+                                          "/repo/.codex/memories/raw_memories.md")
         self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
                             for error in runtime.context_trace_errors(trace)))
 

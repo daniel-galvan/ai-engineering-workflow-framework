@@ -960,7 +960,7 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
             if late_parent_violation:
                 append(parent, "response_item", type="custom_tool_call", name="exec", input=
-                       'await tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})')
+                       'await tools.exec_command({cmd:"cat /repo/.codex/memories/raw_memories.md"})')
                 before = packet_path.read_bytes()
                 late_trace = root / "late-documenter-trace.json"
                 blocked = command("worker_runtime_evidence.py", *collector, "--worker-session", child,

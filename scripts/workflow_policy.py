@@ -2,11 +2,11 @@
 
 import re
 
-_PATH_REFERENCE_END = r"(?=$|[/\\\s\"'`|;&)>}\],.])"
+_PATH_REFERENCE_END = r"(?=$|[/\\\s\"'`|;&)>}\],.:])"
 _CODEX_HOME = r"(?:\$CODEX_HOME|\$\{CODEX_HOME\}|%CODEX_HOME%|\$env:CODEX_HOME|\$\{env:CODEX_HOME\})[\"']?"
 
 FORBIDDEN_MEMORY_CONTEXT_PATTERNS = (
-    ("memory_path", re.compile(r"(?i)(?:^|[/\\])MEMORY\.md" + _PATH_REFERENCE_END)),
+    ("memory_path", re.compile(r"(?i)(?:^|[/\\])(?:MEMORY|raw_memories|memory_summary)\.md" + _PATH_REFERENCE_END)),
     ("memory_directory", re.compile(
         r"(?i)(?:^|[/\\])\.codex[/\\]memories" + _PATH_REFERENCE_END
         + r"|" + _CODEX_HOME + r"[/\\]memories" + _PATH_REFERENCE_END
@@ -17,6 +17,14 @@ FORBIDDEN_MEMORY_CONTEXT_PATTERNS = (
     )),
     ("rollout_summary", re.compile(r"(?i)(?:^|[/\\])rollout_summaries" + _PATH_REFERENCE_END)),
 )
+
+
+def background_memory_evidence_errors(rows: list[dict]) -> list[str]:
+    """Background memory cannot serve as the source of a task evidence record."""
+    return ["background_memory_not_task_evidence:" + str(row.get("Evidence ID", "unknown"))
+            for row in rows if isinstance(row, dict) and any(
+                pattern.search(str(row.get("Source", "")))
+                for label, pattern in FORBIDDEN_MEMORY_CONTEXT_PATTERNS if label in {"memory_path", "memory_directory"})]
 
 PROMPT_TEMPLATES = {
     "feature_delivery": "feature_delivery_run_prompt.md",

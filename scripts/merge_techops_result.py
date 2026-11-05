@@ -11,8 +11,10 @@ from pathlib import Path
 
 try:
     from packet_schema import shape_errors
+    from workflow_policy import background_memory_evidence_errors
 except ModuleNotFoundError:
     from scripts.packet_schema import shape_errors
+    from scripts.workflow_policy import background_memory_evidence_errors
 
 
 WORKERS = {
@@ -117,6 +119,8 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
             errors.extend([f"worker_result_{label}_invalid:{table}", *table_errors])
         else:
             valid_tables.add(table)
+    if "evidence" in valid_tables:
+        errors.extend(background_memory_evidence_errors(result.get("evidence", [])))
     if not summary_errors:
         if summary.get("Worker") != worker or summary.get("Outcome") not in {"complete", "failed", "blocked"}:
             errors.append("worker_result_identity_or_outcome_invalid")

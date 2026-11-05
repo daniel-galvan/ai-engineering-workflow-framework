@@ -659,7 +659,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 "integration_decision": {"decision": "not_required", "reason": "Single component", "evidence_refs": "E-ISS-1"}})
             final = next(row for row in fixture[6] if row.get("payload", {}).get("phase") == "final_answer")
             final["payload"]["content"][0]["text"] += (
-                "\n<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[context]\n"
+                "\n<oai-mem-citation>\n<citation_entries>\nraw_memories.md:1-2|note=[context]\n"
                 "</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>")
             trace, _ = self.export(fixture)
             self.assertTrue(any(error.startswith("worker_final_response_json_invalid")
@@ -1310,7 +1310,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                               arguments=json.dumps({"target": "/root/worker", "message": "Correct the output"}))
             del parent[5:7]
             child.insert(3, event(4, "response_item", type="custom_tool_call", name="exec",
-                                 input='await tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})'))
+                                 input='await tools.exec_command({cmd:"cat /repo/.codex/memories/raw_memories.md"})'))
             child[3]["timestamp"] = fixture[3](1)
             status.update({"Latest turn started at": fixture[3](1), "Dispatch consumed": True,
                            "Dispatch consumption evidence": "Corrected artifact write and validation after dispatch"})
@@ -1331,7 +1331,7 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 input='await tools.exec_command(' + json.dumps({"cmd": "cat " + str(changed)}) + ')'),
                 event(9, "response_item", type="custom_tool_call_output", call_id="new", output=changed.read_text())])
             self.assertEqual(self.export(fixture)[0]["audit"]["status"], "passed")
-            child[2]["payload"]["output"] += "\n/Users/example/.codex/memories/MEMORY.md\n"
+            child[2]["payload"]["output"] += "\n/Users/example/.codex/memories/raw_memories.md\n"
             self.assertIn("forbidden_context_reference:memory_path", self.export(fixture)[0]["audit"]["errors"])
 
     def test_prepared_trace_cannot_satisfy_another_role_or_identity(self):

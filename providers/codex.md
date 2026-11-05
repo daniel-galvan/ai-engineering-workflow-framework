@@ -23,8 +23,12 @@ Context compaction does not start a new invocation. Preserve the current Run ID,
 lifecycle, user decisions, worker handles, and next pending gate in the continuation summary. Resume from the exact
 current-run `role_bindings.json`, `finalization_packet.json`, and `runtime_dispatches.json` when present; query the
 recorded worker handles for fresh status before dispatch or fan-in. Keep `run_inputs.json` and its hash unchanged.
-Do not rerun preflight or preparation, reread the entire launcher, or search plugin caches. Use only this chat and
-current-run artifacts. Do not include or rely on other chats, sessions, or host memory unless the current user
+Do not rerun preflight or preparation, reread the entire launcher, or search plugin caches. `MEMORY.md` may be read as
+background guidance only. Current user instructions and current-run evidence take precedence.
+Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
+against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
+Use only this chat and
+current-run artifacts. Do not include or rely on other chats, sessions, or other memory files unless the current user
 explicitly identifies and authorizes the exact source.
 Use the prepared helper paths and only the instructions needed for the pending gate. If current-run identity cannot
 be recovered from these exact files, stop with that limitation; do not discover another run or waive context audits.

@@ -110,11 +110,25 @@ def native_in_turn_delivery(ledger: dict, source: Path, observation: dict) -> st
 
 
 def worker_response_value(response: str, session: Path) -> dict:
-    """Parse one strict JSON worker envelope and reject trailing presentation text."""
+    """Keep background-memory provenance separate from the strict analytical envelope."""
     try:
         return strict_json_loads(response)
     except (ValueError, json.JSONDecodeError) as error:
-        raise ValueError("worker_final_response_json_invalid") from error
+        try:
+            _, end = json.JSONDecoder().raw_decode(response.lstrip())
+            content = response.lstrip()
+            suffix = content[end:].strip()
+            citation = re.fullmatch(
+                r"<oai-mem-citation>\s*<citation_entries>\s*"
+                r"(?:MEMORY\.md:[0-9]+-[0-9]+\|note=\[[^\]\r\n]*\]\s*)+"
+                r"</citation_entries>\s*<rollout_ids>\s*"
+                r"(?:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\s*)*"
+                r"</rollout_ids>\s*</oai-mem-citation>", suffix)
+            if not citation:
+                raise ValueError("unsupported worker presentation")
+            return strict_json_loads(content[:end])
+        except (ValueError, json.JSONDecodeError):
+            raise ValueError("worker_final_response_json_invalid") from error
 
 
 def worker_final_response(source: Path, dispatch_at: str, observed_at: str,

@@ -16,6 +16,7 @@ try:
         TECHNICAL_SPIKE_DISPOSITIONS as TECHNICAL_SPIKE_DISPOSITIONS,
         NO_ACTIVE_HANDLES as NO_ACTIVE_HANDLES,
         FORBIDDEN_MEMORY_CONTEXT_PATTERNS as FORBIDDEN_MEMORY_CONTEXT_PATTERNS,
+        background_memory_evidence_errors as background_memory_evidence_errors,
     )
 except ModuleNotFoundError:
     from scripts.workflow_policy import (
@@ -23,6 +24,7 @@ except ModuleNotFoundError:
         TECHNICAL_SPIKE_DISPOSITIONS as TECHNICAL_SPIKE_DISPOSITIONS,
         NO_ACTIVE_HANDLES as NO_ACTIVE_HANDLES,
         FORBIDDEN_MEMORY_CONTEXT_PATTERNS as FORBIDDEN_MEMORY_CONTEXT_PATTERNS,
+        background_memory_evidence_errors as background_memory_evidence_errors,
     )
 
 

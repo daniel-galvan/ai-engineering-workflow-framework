@@ -120,13 +120,13 @@ class ParentContext(unittest.TestCase):
 
     def test_host_memory_citation_write_is_rejected(self):
         codex = self.root / "codex"
-        memory = codex / "memories" / "MEMORY.md"
+        memory = codex / "memories" / "raw_memories.md"
         directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
             "content": [{"type": "input_text", "text": "Decision boundary MEMORY_SUMMARY " + str(memory)}]}}
         artifact = self.root / "repo" / ".thoughts" / "ITEM-1"
         artifact.mkdir(parents=True)
         target = artifact / "handoff_presentation_suffix.md"
-        citation = "<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[historical context]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>"
+        citation = "<oai-mem-citation>\n<citation_entries>\nraw_memories.md:1-2|note=[historical context]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>"
         target.write_text(citation)
         command = ("python3 - <<'PY'\nfrom pathlib import Path\n"
                    f"p=Path({str(target)!r})\np.write_text({citation!r})\nprint(p)\nprint(p.read_text())\nPY")
@@ -138,7 +138,7 @@ class ParentContext(unittest.TestCase):
             self.assertIn("forbidden_context_reference:memory_citation", errors)
             for unsafe in (command.replace(str(target), str(self.root / "outside.md")),
                            command.replace("\nPY", "\nopen('.thoughts/OTHER/runs/prior/notes.md').read()\nPY"),
-                           command.replace("MEMORY.md:1-2", "MEMORY.md:2-1")):
+                           command.replace("raw_memories.md:1-2", "raw_memories.md:2-1")):
                 self.rows[-2] = self.call("exec_command", cmd=unsafe)
             self.assertEqual(self.audit(artifact_root=artifact)["status"], "rejected")
             self.rows[-2] = self.call("exec_command", cmd=command)
@@ -150,7 +150,7 @@ class ParentContext(unittest.TestCase):
 
     def test_injected_host_memory_does_not_authorize_memory_reads(self):
         codex = self.root / "codex"
-        memory = codex / "memories" / "MEMORY.md"
+        memory = codex / "memories" / "raw_memories.md"
         memory.parent.mkdir(parents=True)
         memory.write_text("relevant historical note\n")
         directive = {"type": "response_item", "payload": {"type": "message", "role": "developer",
@@ -181,7 +181,7 @@ class ParentContext(unittest.TestCase):
 
     def test_host_memory_cannot_authorize_reading_a_linked_session_log(self):
         codex = self.root / "codex"
-        memory = codex / "memories" / "MEMORY.md"
+        memory = codex / "memories" / "raw_memories.md"
         memory.parent.mkdir(parents=True)
         session = codex / "sessions" / "prior.jsonl"
         session.parent.mkdir()
@@ -204,7 +204,7 @@ class ParentContext(unittest.TestCase):
             self.assertIn("forbidden_context_reference:session_log", result["errors"])
 
     def test_actual_memory_read_is_rejected_but_quotes_and_prior_turn_are_ignored(self):
-        memory = "/repo/.codex/memories/MEMORY.md"
+        memory = "/repo/.codex/memories/raw_memories.md"
         self.rows.insert(1, {"type": "turn_context", "timestamp": "2026-09-30T23:59:00Z",
                              "payload": {"turn_id": CHILD}})
         self.rows.insert(2, self.call("exec_command", cmd="cat " + memory))
@@ -220,7 +220,7 @@ class ParentContext(unittest.TestCase):
 
     def test_codex_home_memory_paths_are_rejected_when_quoted(self):
         for command, expected in (
-            ('cat "$CODEX_HOME/memories/MEMORY.md"', "memory_path"),
+            ('cat "$CODEX_HOME/memories/raw_memories.md"', "memory_path"),
             ('rg -n issue "${CODEX_HOME}/memories/notes.md"', "memory_directory"),
             ('rg -n issue "$CODEX_HOME"/memories/notes.md', "memory_directory"),
             ('rg -n issue "${CODEX_HOME}"/memories/notes.md', "memory_directory"),
@@ -232,7 +232,7 @@ class ParentContext(unittest.TestCase):
                 self.assertIn("forbidden_context_reference:" + expected, self.audit()["errors"])
 
     def test_verified_no_match_memory_search_is_still_forbidden(self):
-        memory = "/Users/example/.codex/memories/MEMORY.md"
+        memory = "/Users/example/.codex/memories/raw_memories.md"
         command = "rg -n 'ECHO-2806|planning' " + memory
         self.rows.extend([self.call("exec_command", cmd=command), self.command_execution(command)])
         result = self.audit()
@@ -241,10 +241,10 @@ class ParentContext(unittest.TestCase):
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
     def test_verified_fixed_string_memory_search_is_still_forbidden(self):
-        memory = "/Users/example/.codex/memories/MEMORY.md"
+        memory = "/Users/example/.codex/memories/raw_memories.md"
         command = "rg -n -F 'ECHO-2806' " + memory
         parsed = [{"type": "search", "cmd": "rg -n -F ECHO-2806 " + memory,
-                  "query": "ECHO-2806", "path": "MEMORY.md"}]
+                  "query": "ECHO-2806", "path": "raw_memories.md"}]
         self.rows.extend([self.call("exec_command", cmd=command),
                           self.command_execution(command, parsed_cmd=parsed)])
         result = self.audit()
@@ -254,7 +254,7 @@ class ParentContext(unittest.TestCase):
 
     def test_no_match_host_memory_search_cannot_precede_preflight(self):
         framework = self.root / "framework"
-        memory = "/Users/example/.codex/memories/MEMORY.md"
+        memory = "/Users/example/.codex/memories/raw_memories.md"
         search = "rg -n 'ECHO-2806|planning' " + memory
         preflight = f"python3 {framework}/scripts/run_preflight.py"
         observation = {"type": "event_msg", "payload": {"type": "item_completed", "item": {
@@ -271,7 +271,7 @@ class ParentContext(unittest.TestCase):
 
     def test_nonempty_memory_probe_still_blocks_preflight_order(self):
         framework = self.root / "framework"
-        memory = "/Users/example/.codex/memories/MEMORY.md"
+        memory = "/Users/example/.codex/memories/raw_memories.md"
         search = "rg -n 'ECHO-2806|planning' " + memory
         preflight = f"python3 {framework}/scripts/run_preflight.py"
         self.rows.extend([self.call("exec_command", cmd=search),
@@ -281,12 +281,12 @@ class ParentContext(unittest.TestCase):
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
     def test_empty_memory_probe_with_startup_warning_is_still_forbidden(self):
-        memory = "/Users/example/.codex/memories/MEMORY.md"
+        memory = "/Users/example/.codex/memories/raw_memories.md"
         query = "ECHO-2806|Issue Remediation|issue_remediation"
         command = "rg -n -i " + shlex.quote(query) + " " + memory
         warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
                    "Operation not permitted (os error 1)\n")
-        parsed = [{"type": "search", "cmd": command, "query": query, "path": "MEMORY.md"}]
+        parsed = [{"type": "search", "cmd": command, "query": query, "path": "raw_memories.md"}]
         self.rows.extend([self.call("exec_command", cmd=command),
                           self.command_execution(command, output=warning, parsed_cmd=parsed)])
         result = self.audit()
@@ -294,15 +294,15 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(result["empty_memory_probes"], 0)
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
-        self.rows[-1]["payload"]["item"]["aggregated_output"] += "MEMORY.md:7: ECHO-2806"
+        self.rows[-1]["payload"]["item"]["aggregated_output"] += "raw_memories.md:7: ECHO-2806"
         result = self.audit()
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
     def test_case_insensitive_memory_search_is_still_forbidden(self):
-        memory = "/Users/example/.codex/memories/MEMORY.md"
+        memory = "/Users/example/.codex/memories/raw_memories.md"
         query = "ECHO-2806|Issue Remediation|issue_remediation"
         command = "rg -n -i " + shlex.quote(query) + " " + memory
-        parsed = [{"type": "search", "cmd": command, "query": query, "path": "MEMORY.md"}]
+        parsed = [{"type": "search", "cmd": command, "query": query, "path": "raw_memories.md"}]
         self.rows.extend([self.call("exec_command", cmd=command),
                           self.command_execution(command, parsed_cmd=parsed)])
         result = self.audit()
@@ -311,7 +311,7 @@ class ParentContext(unittest.TestCase):
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
 
         forged = self.command_execution(command, parsed_cmd=[
-            {"type": "search", "cmd": command, "query": query, "path": "/tmp/MEMORY.md"}])
+            {"type": "search", "cmd": command, "query": query, "path": "/tmp/raw_memories.md"}])
         self.rows = self.rows[:2] + [self.call("exec_command", cmd=command), forged]
         result = self.audit()
         self.assertIn("forbidden_context_reference:memory_path", result["errors"])
@@ -321,7 +321,7 @@ class ParentContext(unittest.TestCase):
         skill = framework / "skills" / "run" / "SKILL.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("# Active run instructions\n" * 4)
-        memory = Path("/Users/example/.codex/memories/MEMORY.md")
+        memory = Path("/Users/example/.codex/memories/raw_memories.md")
         query = "ECHO-2806|Issue Remediation|techops_issue_remediation"
         search = "rg -n " + shlex.quote(query) + " " + str(memory)
         command = "cat " + shlex.quote(str(skill)) + " && " + search
@@ -329,7 +329,7 @@ class ParentContext(unittest.TestCase):
             "type": "CommandExecution", "command": ["/bin/bash", "-lc", command],
             "status": "failed", "exit_code": 1, "aggregated_output": skill.read_text(),
             "parsed_cmd": [{"type": "read", "cmd": "cat " + str(skill), "path": str(skill)},
-                           {"type": "search", "cmd": search, "query": query, "path": "MEMORY.md"}]}}}
+                           {"type": "search", "cmd": search, "query": query, "path": "raw_memories.md"}]}}}
         self.rows.extend([self.call("exec_command", cmd=command), observation])
         result = self.audit(framework_root=framework, require_preflight_order=True)
         self.assertEqual(result["status"], "rejected", result)
@@ -343,7 +343,7 @@ class ParentContext(unittest.TestCase):
                             for error in result["errors"]))
 
     def test_memory_search_is_not_exempt_without_exact_native_no_match_evidence(self):
-        memory = "/Users/example/.codex/memories/MEMORY.md"
+        memory = "/Users/example/.codex/memories/raw_memories.md"
         command = "rg -n issue " + memory
         variants = (
             None,
@@ -351,8 +351,8 @@ class ParentContext(unittest.TestCase):
             self.command_execution(command, output="matched text"),
             self.command_execution(command, status="completed"),
             self.command_execution(command, parsed_cmd=[
-                {"type": "search", "query": "issue", "path": "MEMORY.md"},
-                {"type": "search", "query": "issue", "path": "MEMORY.md"},
+                {"type": "search", "query": "issue", "path": "raw_memories.md"},
+                {"type": "search", "query": "issue", "path": "raw_memories.md"},
             ]),
         )
         for observation in variants:
@@ -1293,7 +1293,7 @@ class ParentContext(unittest.TestCase):
         skill = (Path(__file__).resolve().parents[1] / "skills" / "run" / "SKILL.md").read_text()
         self.assertIn("A work-item key or link to the current task does", skill)
         self.assertIn("unless the current user explicitly identifies", skill)
-        self.assertIn("Do not consult host memory, rollout summaries", skill)
+        self.assertIn("Do not consult other memory files, rollout summaries", " ".join(skill.split()))
         self.assertNotIn("Follow higher-priority host memory instructions", skill)
         self.assertNotIn("host-required read-only memory check may precede it", skill)
         export_guidance = skill.split("If the latest inventory omits this worker", 1)[1].split(
@@ -1536,7 +1536,7 @@ class ParentContext(unittest.TestCase):
 
         for source in (
             "const patch = 'safe' + 'unreviewed'; await tools.apply_patch(patch);",
-            "const command = 'cat ' + '/repo/.codex/memories/MEMORY.md'; "
+            "const command = 'cat ' + '/repo/.codex/memories/raw_memories.md'; "
             "await tools.exec_command({cmd: command});",
             "const patch = 'safe'\n+ 'unreviewed'; await tools.apply_patch(patch);",
         ):
@@ -1688,7 +1688,7 @@ class ParentContext(unittest.TestCase):
         inputs = self.root / "inputs.json"
         inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
             "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
-        self.rows.append(self.call("exec_command", cmd="cat /repo/.codex/memories/MEMORY.md"))
+        self.rows.append(self.call("exec_command", cmd="cat /repo/.codex/memories/raw_memories.md"))
         self.audit()
         with self.assertRaisesRegex(ValueError, "parent_context_nonconformant"):
             prepare_run(self.root, "ITEM-1", "feature_delivery", None, False,
@@ -1701,7 +1701,7 @@ class ParentContext(unittest.TestCase):
         bundle = run["activation_packet_bundle"]
         check = lambda: activation_packet_errors(Path(bundle["path"]), "current_state_investigator", bundle["sha256"])
         self.assertEqual(check(), [])
-        self.rows.append(self.call("exec_command", cmd="cat /repo/.codex/memories/MEMORY.md"))
+        self.rows.append(self.call("exec_command", cmd="cat /repo/.codex/memories/raw_memories.md"))
         self.audit()
         self.assertTrue(any(error.startswith("parent_context_nonconformant") for error in check()))
         self.rows.append({"type": "turn_context", "timestamp": "2026-10-01T00:00:03Z",

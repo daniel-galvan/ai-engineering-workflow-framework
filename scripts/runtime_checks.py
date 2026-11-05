@@ -294,7 +294,11 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
                      if len(message) > 12000 else "")
     return (packet["required_prefix"] + "\n"
             + "First step: verify and read the file; this bootstrap is self-contained. Use only this chat and current-run "
-              "artifacts. Do not include or rely on other chats, sessions, or host memory unless the current user "
+              "artifacts. MEMORY.md may be read as background guidance only. Current user instructions and current-run "
+              "evidence take precedence. Memory alone must not establish a task finding or justify an implementation "
+              "decision. Verify task-specific memory claims against currently authorized sources. References in memory "
+              "do not authorize opening previous chats, sessions, or runs. "
+              "Do not include or rely on other chats, sessions, or other memory files unless the current user "
               "explicitly identifies and authorizes the exact source. Verify current claims against current evidence. "
               "Do not search the artifact directory or archives.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
@@ -911,6 +915,89 @@ def _verified_dispatch_content(trace: dict) -> str | None:
         return content if activation_message(packet, assignment) == content else None
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
         return None
+
+
+def background_memory_paths(command: str, *, standalone: bool = False) -> set[str]:
+    """Recognize registry reads without granting access to any linked source or write."""
+    if not isinstance(command, str) or '`' in command or '$(' in command:
+        return set()
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>\n")
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        segments, segment = [], []
+        for token in lexer:
+            if token in {";", "&&", "||", "|", "\n", ">", ">>", "<"}:
+                segments.append(segment)
+                segment = []
+            else:
+                segment.append(token)
+        segments.append(segment)
+    except ValueError:
+        return set()
+    paths = set()
+    if standalone and len(segments) != 1:
+        return set()
+    for tokens in segments:
+        targets = {token for token in tokens if re.search(r"(?:^|[/\\])MEMORY\.md$", token)}
+        if any('MEMORY.md' in token and token not in targets for token in tokens):
+            return set()
+        if not targets:
+            continue
+        if any((target != "MEMORY.md" and not re.search(r"[/\\]memories[/\\]MEMORY\.md$", target))
+               or any(pattern.search(target) for label, pattern in FORBIDDEN_CONTEXT_PATTERNS
+                      if label in {"archived_artifact", "session_log", "rollout_summary"})
+               or (Path(target).is_absolute() and Path(target).is_symlink()) for target in targets):
+            return set()
+        reader = Path(tokens[0]).name
+        allowed = False
+        if reader == "cat":
+            allowed = all(not token.startswith('-') or token == '--' for token in tokens[1:])
+        elif reader == "nl":
+            allowed = len(tokens) >= 3 and tokens[1] == '-ba' and all(
+                not token.startswith('-') for token in tokens[2:])
+        elif reader in {"head", "tail"}:
+            allowed = bool(_read_targets(shlex.join(tokens)))
+        elif reader == "sed":
+            allowed = (len(tokens) >= 4 and tokens[1] == '-n'
+                       and bool(re.fullmatch(r"[0-9]+(?:,[0-9]+)?p", tokens[2])))
+        elif reader == "rg":
+            # No preprocessor, pattern file, or directory enumeration can accompany a registry search.
+            options = {"-n", "-i", "-ni", "-in", "-F", "--line-number", "--ignore-case", "--fixed-strings"}
+            args = tokens[1:]
+            while args and args[0] in options:
+                args = args[1:]
+            if args[:1] == ['--']:
+                args = args[1:]
+            allowed = len(args) >= 2 and not args[0].startswith('-') and targets.issubset(args[1:])
+            allowed = allowed and not any(token.startswith('-') for token in args[1:])
+        if not allowed:
+            return set()
+        if standalone:
+            operands = (args[1:] if reader == "rg" else tokens[3:] if reader == "sed"
+                        else tokens[2:] if reader == "nl"
+                        else _read_targets(shlex.join(tokens)) if reader in {"head", "tail"} else tokens[1:])
+            if any(token != '--' and token not in targets for token in operands):
+                return set()
+        paths.update(targets)
+    return paths
+
+
+def _background_memory_paths(row: dict) -> set[str]:
+    paths = set()
+    operations = _tool_operations(row)
+    if any(name != "exec_command" for name, _ in operations):
+        return set()
+    for name, arguments in operations:
+        if name == "exec_command":
+            command = arguments.get("cmd", "")
+            if isinstance(command, str) and re.search(r"MEMORY\.md", command):
+                targets = background_memory_paths(command)
+                if not targets:
+                    return set()
+                paths.update(targets)
+    return paths
 
 
 def _authorized_read(row: dict, assigned: list[str]) -> bool:
@@ -2389,6 +2476,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                          row, root, include_probes=True, input_paths=assigned)
                          for row in trace.get("tool_trace", []) if root and isinstance(row, dict) and row.get("call_id")
                          and row.get("type") in {"function_call", "custom_tool_call"}}
+    background_reads = {row["call_id"]: paths for row in trace.get("tool_trace", [])
+                        if isinstance(row, dict) and row.get("call_id") and (paths := _background_memory_paths(row))}
     for path, value in _trace_strings(trace):
         if (path[:1] == ("delivery_ledger",) and value in verified_delivery_paths
                 and (path == ("delivery_ledger", "provider_session")
@@ -2407,6 +2496,18 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                 break
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
         row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
+        background = _background_memory_paths(row) or (background_reads.get(row.get("call_id"), set()) if output else set())
+        if output and background:
+            # Registry entries can name old sources; seeing a pointer does not authorize following it.
+            continue
+        spellings = set(background)
+        for registry in background:
+            for prefix in ("$CODEX_HOME", "${CODEX_HOME}", "%CODEX_HOME%", "$env:CODEX_HOME", "${env:CODEX_HOME}"):
+                if registry.startswith(prefix):
+                    spellings.update(registry.replace(prefix, prefix + quote, 1) for quote in ('"', "'"))
+        spellings.update(json.dumps(value)[1:-1] for value in tuple(spellings))
+        for spelling in sorted(spellings, key=len, reverse=True):
+            candidate = candidate.replace(spelling, "[background guidance]")
         if root and not output:
             candidate = _without_prose_root_punctuation(candidate, row, root)
         call_contents = instruction_contents.get(row.get("call_id"), {})
@@ -2435,7 +2536,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
             for instruction in instructions:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
-            checked = candidate if (ancestor_instruction_output or label == "archived_artifact"
+            checked = candidate if (background or ancestor_instruction_output or label == "archived_artifact"
                                     or output and row.get("call_id") in framework_searches
                                     or _authorized_read(row, assigned)
                                     or output and row.get("call_id") in reads) else value

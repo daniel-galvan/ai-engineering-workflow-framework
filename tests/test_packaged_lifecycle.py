@@ -40,7 +40,7 @@ class PackagedLifecycle(unittest.TestCase):
             rows = [{"timestamp": stamp, "type": "session_meta", "payload": {"id": "00000000-0000-0000-0000-000000000001"}},
                     {"timestamp": stamp, "type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000002"}}]
             forbidden = {"timestamp": stamp, "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
-                "input": 'await tools.exec_command({"cmd":"cat /repo/.codex/memories/MEMORY.md"})'}}
+                "input": 'await tools.exec_command({"cmd":"cat /repo/.codex/memories/raw_memories.md"})'}}
 
             def save(events):
                 source.write_text("".join(json.dumps(row) + "\n" for row in events))

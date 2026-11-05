@@ -14,8 +14,12 @@ lifecycle, user decisions, worker handles, and next pending gate in the continua
 current-run `role_bindings.json`, `finalization_packet.json`, and `runtime_dispatches.json` when present; query the
 recorded worker handles for fresh status before dispatch or fan-in. Keep `run_inputs.json` and its hash unchanged.
 Do not rerun preflight or preparation, reread this entire launcher, or search plugin caches. Preserve the work-item ID
-in the continuation summary. Use only this chat and current-run artifacts. Do not include or rely on other chats,
-sessions, or host memory unless the current user explicitly identifies and authorizes the exact source. Verify
+in the continuation summary. `MEMORY.md` may be read as background guidance only. Current user instructions and
+current-run evidence take precedence.
+Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
+against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
+Use only this chat and current-run artifacts. Do not include or rely on other chats,
+sessions, or other memory files unless the current user explicitly identifies and authorizes the exact source. Verify
 current-state claims against evidence from this chat and its current-run artifacts.
 Use helper paths from the prepared role bindings and read only the section needed for the pending gate. Compaction
 does not authorize another worker, restart, lifecycle change, or import of historical evidence. If the current-run
@@ -37,8 +41,10 @@ invocation: run package preflight first, then the required status projection, be
 2. Invocation gate: do not begin with repository discovery, status checks, `AGENTS.md`, or playbook reads.
    If the host has not already provided this active skill's contents, read only the active installed `SKILL.md`.
    The first framework tool call after this skill is loaded MUST be the package preflight command by itself. Do not
-   search host memory, rollout summaries, session logs, or other chats before or after preflight unless the current
-   user identifies the exact source and explicitly authorizes its use. A work-item key or link to the current task does
+   search other memory files, rollout summaries, session logs, or other chats before or after preflight unless the
+   current user identifies the exact source and explicitly authorizes its use. A standalone read-only `MEMORY.md`
+   lookup is background guidance and may precede preflight; do not combine it with repository or task discovery.
+   A work-item key or link to the current task does
    not authorize lookup of previous attempts. Never combine the skill read with repository guidance, a playbook, or
    another command. After preflight, never call `list_threads` directly: its raw output includes
    unassigned chat content.
@@ -148,7 +154,8 @@ invocation: run package preflight first, then the required status projection, be
    Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
-   Treat every new framework run as current-chat and current-run only. Do not consult host memory, rollout summaries,
+   Treat every new framework run as current-chat and current-run only. Do not consult other memory files, rollout
+   summaries,
    session logs, or other chats unless the current user explicitly identifies and authorizes that exact source. Do not
    open an unassigned `.thoughts` run archive because a historical note references it.
    Before analytical fan-in for Sentry, TechOps, or Feature Delivery, use the prepared `runtime_evidence.collector` and
@@ -685,7 +692,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    durable artifact validates the supplied handle.
 8. Keep the prepared `work_record.md` skeleton unchanged until deterministic finalization on every path. Populate
    `finalization_packet.json` from supplied and discoverable context; only `finalize_work_record.py` writes the
-   terminal record. Use only this chat and current-run artifacts. Do not search or read host memory, session logs, or
+   terminal record. Use only this chat and current-run artifacts. Do not search or read other memory files, session
+   logs, or
    another chat/session unless the current user identifies and authorizes that exact source. Do not read unassigned
    historical `.thoughts` artifacts. The execution repository's `.codex/agents/` runtime view is
    optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
@@ -1254,6 +1262,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    A verified prepared file is not proof that the final chat response retained that line or the remaining bytes.
    Independent proposed-response files may use `--verify-response`. Only a single terminal LF is optional; internal
    whitespace, labels and content must match. Do not introduce Markdown hard-break spaces.
+   Host-required background-memory citations belong in separately recorded `--presentation-suffix` text, never in
+   task Evidence or the canonical report. Worker JSON may have one trailing host citation block referencing only
+   `MEMORY.md`; the exporter parses the strict JSON separately and retains the raw response in provider evidence.
    Do not silently correct apparent evidence-ID typos in the chat response. Correct the owning packet before
    successful finalization where permitted; a provisional failure report must retain its recorded text verbatim.
    The receipt retains both byte hashes and the comparison policy.

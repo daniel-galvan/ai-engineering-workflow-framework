@@ -14,8 +14,13 @@ These fields define run-specific plugin inputs. Invoke `$ai-engineering-workflow
 context. The shared contract and selected playbook own execution behavior. Preserve supplied context and place explicit
 decisions in the authoritative confirmed-input section.
 Populate the prompt only from the current user request, references explicitly named for this run, and facts retrieved
-from those references. Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or
-host memory unless the current user explicitly identifies and authorizes the exact source. Verify material current-state
+from those references. `MEMORY.md` may be read as background guidance only. Current user instructions and current-run
+evidence take precedence.
+Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
+against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
+Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or
+other memory files unless the current user explicitly identifies and authorizes the exact source. Verify material
+current-state
 claims against current evidence. Do not open unassigned `.thoughts` run archives. Use `None` for unused optional fields.
 
 Run-input rules:
@@ -196,7 +201,8 @@ Runtime bootstrap:
   local source cannot supply fails the gate.
 - Before any repository becomes evidence, record its role, branch, full revision, clean status, selected ref, release
   mapping, and evidence eligibility. Reject undeclared feature-branch behavior as baseline or production evidence.
-- Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or host memory unless
+- Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or other memory files
+unless
   the current user explicitly identifies and authorizes the exact source. Keep authorized historical context distinct
   from current evidence and verify current-state claims against current evidence.
 - Before analytical fan-in, audit each exposed provider tool trace with `validate_worker_runtime.py --trace`. Reject or

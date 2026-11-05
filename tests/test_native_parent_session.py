@@ -86,7 +86,7 @@ class NativeParentSession(unittest.TestCase):
         with source.open("a") as stream:
             stream.write(json.dumps({"timestamp": "2026-10-20T00:00:01Z", "type": "response_item", "payload": {
                 "type": "custom_tool_call", "name": "exec", "input":
-                'await tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})'}}) + "\n")
+                'await tools.exec_command({cmd:"cat /repo/.codex/memories/raw_memories.md"})'}}) + "\n")
         rejected = command("run_preflight.py", expected=2)
         self.assertEqual(rejected["reason"], "parent_context_nonconformant")
         rejected = command("prepare_run.py", *arguments, "--work-item", "ITEM-2", expected=2)
@@ -211,7 +211,7 @@ class NativeParentSession(unittest.TestCase):
         with earlier.open("a") as stream:
             stream.write(json.dumps({"timestamp": "2026-10-20T00:00:01Z", "type": "response_item", "payload": {
                 "type": "custom_tool_call", "name": "exec", "input":
-                'await tools.exec_command({cmd:"cat /repo/.codex/memories/MEMORY.md"})'}}) + "\n")
+                'await tools.exec_command({cmd:"cat /repo/.codex/memories/raw_memories.md"})'}}) + "\n")
             if not reopened:
                 stream.write(json.dumps({"timestamp": "2026-10-20T00:00:02Z", "type": "turn_context",
                     "payload": {"turn_id": "00000000-0000-0000-0000-000000000003"}}) + "\n")

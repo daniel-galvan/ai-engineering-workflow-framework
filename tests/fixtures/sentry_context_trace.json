@@ -11,7 +11,7 @@
     {
       "tool": "exec_command",
       "arguments": {
-        "cmd": "rg -n 'J3V|Supervision' /Users/dgalvan/.codex/memories/MEMORY.md"
+        "cmd": "rg -n 'J3V|Supervision' /Users/dgalvan/.codex/memories/raw_memories.md"
       }
     },
     {

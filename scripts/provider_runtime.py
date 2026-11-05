@@ -649,9 +649,9 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                          audit_previous_collector: Path | None = None) -> dict:
     """Audit current-turn operations without importing messages or previous analytical content."""
     try:
-        from runtime_checks import _tool_operations, context_trace_errors
+        from runtime_checks import _tool_operations, background_memory_paths, context_trace_errors
     except ModuleNotFoundError:
-        from scripts.runtime_checks import _tool_operations, context_trace_errors
+        from scripts.runtime_checks import _tool_operations, background_memory_paths, context_trace_errors
     script_dir = audit_script_dir or Path(__file__).resolve().parent
     prior_started_at = None
     if artifact_root and (artifact_root / "finalization_packet.json").is_file():
@@ -843,7 +843,10 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                                       input_paths=input_paths, artifact_root=artifact_root))
     return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
             "parent_thread_id": thread, "turn_id": turn, "errors": list(dict.fromkeys(errors)),
-            "context_violations": details, "empty_memory_probes": 0, "host_memory_reads": 0,
+            "context_violations": details, "empty_memory_probes": 0,
+            "host_memory_reads": sum(bool(background_memory_paths(args.get("cmd", "")))
+                                     for row in operations for name, args in _tool_operations(row)
+                                     if name == "exec_command"),
             "verified_related_run_status_probes": verified_related_run_status_probes,
             "related_run_status_probe_attempts": related_run_probe_attempts,
             "related_run_status_rows": related_run_status_rows,
@@ -853,6 +856,10 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
 def _preflight_order_errors(operations: list[dict], framework_root: Path,
                             command_observations: dict[str, list[dict]]) -> list[str]:
     """Require package preflight before current-turn repository or workflow operations."""
+    try:
+        from runtime_checks import background_memory_paths
+    except ModuleNotFoundError:
+        from scripts.runtime_checks import background_memory_paths
     preflight_path = (framework_root.expanduser().resolve() / "scripts" / "run_preflight.py").resolve()
     skill_path = (framework_root.expanduser().resolve() / "skills" / "run" / "SKILL.md").resolve()
     completed_preflight = False
@@ -863,6 +870,8 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
             continue
         command = operation.get("arguments", {}).get("cmd")
         if not isinstance(command, str):
+            continue
+        if background_memory_paths(command, standalone=True):
             continue
         try:
             argv = shlex.split(command)

@@ -16,8 +16,12 @@ or instruction paths does not require reading guidance for every listed project.
 worker, reuse complete instructions still in context unless the shared policy requires a fresh check.
 
 Use the typed assignment, supplied artifacts, and references authorized for
-this run. Use only this chat and current-run artifacts. Do not include or rely
-on other chats, sessions, or host memory unless the current user explicitly
+this run. `MEMORY.md` may be read as background guidance only. Current user instructions and current-run evidence take
+precedence.
+Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
+against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
+Use only this chat and current-run artifacts. Do not include or rely
+on other chats, sessions, or other memory files unless the current user explicitly
 identifies and authorizes the exact source. Verify material current-state claims against current evidence.
 
 For an explicitly authorized Feature Delivery continuity source, use the selected decision ledger and named historical

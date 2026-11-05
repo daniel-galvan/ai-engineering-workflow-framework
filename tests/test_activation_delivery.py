@@ -627,7 +627,7 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(unknown))
 
     def test_listing_exception_never_masks_memory_access(self):
-        trace = self.trace("rg --files .", "/Users/example/.codex/memories/MEMORY.md")
+        trace = self.trace("rg --files .", "/Users/example/.codex/memories/raw_memories.md")
         self.assertIn("forbidden_context_reference:memory_path", runtime.context_trace_errors(trace))
         trace = self.trace("rg --files .", "/Users/example/.codex/memories/notes.md")
         self.assertIn("forbidden_context_reference:memory_directory", runtime.context_trace_errors(trace))

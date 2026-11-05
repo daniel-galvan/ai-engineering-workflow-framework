@@ -1567,7 +1567,7 @@ class TechOpsCorrections(unittest.TestCase):
             self.assertIn("worker_fan_in_guard_receipt_required:fix-design",
                           finalizer._techops_planning_contract_errors(packet, packet_path))
             trace["events"] = [{"action": "fan_in", "provider_status": "completed"}]
-            trace["tool_trace"] = [{"tool": "exec_command", "arguments": {"cmd": "cat /tmp/.codex/memories/MEMORY.md"}}]
+            trace["tool_trace"] = [{"tool": "exec_command", "arguments": {"cmd": "cat /tmp/.codex/memories/raw_memories.md"}}]
             trace_path.write_text(json.dumps(trace))
             self.assertTrue(any("forbidden_context_reference" in error
                                 for error in finalizer._techops_planning_contract_errors(packet, packet_path)))

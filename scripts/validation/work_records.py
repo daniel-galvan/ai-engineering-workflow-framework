@@ -26,6 +26,7 @@ from .common import (
     UNOBSERVED_MODEL_VALUES,
     WORKER_OUTCOMES,
     fail,
+    background_memory_evidence_errors,
 )
 from .contracts import (
     RFC3339_TIMESTAMP,
@@ -848,6 +849,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
         for error in input_provenance_errors(row):
             fail(f"{path}: {error}")
     for row in markdown_table(text, "# Evidence"):
+        for error in background_memory_evidence_errors([row]):
+            fail(f"{path}: {error}")
         if "preflight" in " ".join(row.values()).lower() and _mentions_user_source(row.get("Source", "")):
             fail(f"{path}: preflight evidence must cite the Coordinator/provider observation, not the user")
     if evaluation_run:
