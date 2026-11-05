@@ -732,6 +732,16 @@ class ParentContext(unittest.TestCase):
         self.rows[-1] = self.call("exec_command", cmd=pinned_command)
         self.assertIn("forbidden_context_reference:session_log", self.audit(related_run_thread_ids=())["errors"])
         self.assertEqual(self.audit(related_run_thread_ids=(), audit_script_dir=pinned_scripts)["status"], "passed")
+        family = self.root / ".codex/plugins/cache/market/plugin"
+        older = family / "0.5.33+codex.123" / "scripts"
+        newer = family / "0.5.33+codex.456" / "scripts"
+        refreshed_command = command.replace(str(script), str(newer / "prepare_run.py"))
+        self.rows[-1] = self.call("exec_command", cmd=refreshed_command)
+        self.assertEqual(self.audit(related_run_thread_ids=(), audit_script_dir=older)["status"], "passed")
+        bad_command = refreshed_command.replace("0.5.33+codex.456", "untrusted")
+        self.rows[-1] = self.call("exec_command", cmd=bad_command)
+        self.assertIn("forbidden_context_reference:session_log",
+                      self.audit(related_run_thread_ids=(), audit_script_dir=older)["errors"])
         self.rows[-1] = self.call("exec_command", cmd=command + "; cat /tmp/.codex/sessions/other.jsonl")
         self.assertIn("forbidden_context_reference:session_log",
                       self.audit(related_run_thread_ids=())["errors"])

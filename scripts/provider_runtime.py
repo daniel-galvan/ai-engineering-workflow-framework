@@ -474,12 +474,25 @@ def _incomplete_literal_command(source: str) -> list[tuple[str, dict]] | None:
         return None
 
 
+def _same_cached_package_script(candidate: Path, script_dir: Path, filename: str) -> bool:
+    candidate = candidate.resolve()
+    anchor = script_dir.resolve()
+    if candidate == anchor / filename:
+        return True
+    if anchor.name != "scripts" or candidate.name != filename or candidate.parent.name != "scripts":
+        return False
+    family = anchor.parent.parent
+    return (candidate.parent.parent.parent == family
+            and ".codex/plugins/cache/" in str(family) + "/"
+            and bool(re.fullmatch(r"[0-9]+(?:\.[0-9]+)*\+codex\.[0-9]+", candidate.parent.parent.name)))
+
+
 def _redact_current_session_projection(command: str, source: Path, script_dir: Path) -> str:
     """Allow the exact current session path only as the status-projection input."""
     try:
         args = shlex.split(command)
         if (len(args) < 5 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
-                or Path(args[1]).resolve() != (script_dir / "prepare_run.py").resolve()):
+                or not _same_cached_package_script(Path(args[1]), script_dir, "prepare_run.py")):
             return command
         flags = {"--status-projection", "--continuation", "--planning-recovery"}
         allowed = {"--execution-repository", "--work-item", "--provider-session", "--playbook",
@@ -521,7 +534,8 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
             allowed_collectors.add(Path(previous_collector).resolve())
         if (len(args) < 10 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
                 or collector != (script_dir / "worker_runtime_evidence.py").resolve()
-                or Path(args[1]).resolve() not in allowed_collectors):
+                or (Path(args[1]).resolve() not in allowed_collectors
+                    and not _same_cached_package_script(Path(args[1]), script_dir, "worker_runtime_evidence.py"))):
             return command
         values, index = {}, 2
         allowed = {"--provider-session", "--parent-thread-id", "--started-at", "--ledger",
@@ -601,7 +615,7 @@ def _redact_workflow_failure(command: str, source: Path, thread: str, runtime_ev
     try:
         args = shlex.split(command)
         if (len(args) != 10 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
-                or Path(args[1]).resolve() != (script_dir / "finalize_work_record.py").resolve()):
+                or not _same_cached_package_script(Path(args[1]), script_dir, "finalize_work_record.py")):
             return command
         values = dict(zip(args[2::2], args[3::2]))
         if (set(values) != {"--workflow-failure", "--packet", "--provider-session", "--parent-thread-id"}
