@@ -91,11 +91,20 @@ def self_test() -> None:
             manifest, work_item="EXAMPLE-1", expected_input_ids=inputs, expected_inputs=inputs,
             expected_evidence_ids={"E-JIRA-001", "E-FOLDER-001"}, require_jira_source=True, require_passed=True,
         ) == []
-        for tool in ("getJiraIssueRemoteIssueLinks", "listJiraIssueRemoteIssueLinks"):
+        for method in ("getJiraIssueRemoteIssueLinks", "listJiraIssueRemoteIssueLinks",
+                       "fetchIssueLinks", "searchIssueLinks", "Jira remote links queried"):
             remote_method = json.loads(json.dumps(manifest))
-            remote_method["sources"][0]["remote_link_inventory"]["method"] = (
-                f"Atlassian {tool} queried EXAMPLE-1; returned an empty list.")
+            remote_method["sources"][0]["remote_link_inventory"]["method"] = method
+            remote_method["sources"][0]["discovery_method"] = "Atlassian fetchIssueFiles returned no files"
             assert validate_asset_manifest(remote_method, require_jira_source=True) == []
+        for method in (None, "", "   ", 42, ["getJiraIssueRemoteIssueLinks"]):
+            invalid_method = json.loads(json.dumps(manifest))
+            invalid_method["sources"][0]["remote_link_inventory"]["method"] = method
+            assert any("remote link retrieval method" in error for error in
+                       validate_asset_manifest(invalid_method, require_jira_source=True))
+            invalid_method = json.loads(json.dumps(manifest))
+            invalid_method["sources"][0]["discovery_method"] = method
+            assert any("discovery_method" in error for error in validate_asset_manifest(invalid_method))
         metadata_only = json.loads(json.dumps(manifest))
         metadata_only["assets"][0]["review_method"] = "metadata_read"
         assert any("requires visual_inspection or rendered_read" in error
@@ -240,7 +249,7 @@ def self_test() -> None:
                 manifest_path, inputs_path, "EXAMPLE-1",
             ))
             invalid = json.loads(json.dumps(manifest))
-            invalid["sources"][0]["remote_link_inventory"]["method"] = "Jira remote links queried"
+            invalid["sources"][0]["remote_link_inventory"]["method"] = ""
             invalid["assets"][0]["review_method"] = "provider read"
             invalid["assets"][0]["relevance"] = "supporting"
             manifest_path.write_text(json.dumps(invalid))

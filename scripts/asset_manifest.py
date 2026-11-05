@@ -291,18 +291,15 @@ def validate_asset_manifest(
         )):
             errors.append(f"asset source {source_id} URL locator must use http, https, or codex://threads/")
         if source["kind"] == "jira_issue_attachments":
-            method = source["discovery_method"].lower()
             if not JIRA_KEY.search(source["locator"]):
                 errors.append(f"asset source {source_id} Jira locator must identify an issue key")
-            if "attachment" not in method or not any(word in method for word in ("read", "retriev", "inventor")):
-                errors.append(f"asset source {source_id} must record an attachment retrieval/inventory method")
             if require_jira_source:
                 remote = raw.get("remote_link_inventory")
                 if not isinstance(remote, dict):
                     errors.append(f"asset source {source_id} requires a Jira remote link inventory")
                 else:
                     remote_status = remote.get("status")
-                    remote_method = str(remote.get("method", "")).lower()
+                    remote_method = remote.get("method")
                     remote_locators = remote.get("locators")
                     if remote_status not in SOURCE_STATUSES:
                         errors.append(f"asset source {source_id} remote link inventory has invalid status")
@@ -310,11 +307,8 @@ def validate_asset_manifest(
                         "none", "no limitation",
                     }:
                         errors.append(f"asset source {source_id} must record its remote link retrieval limitation")
-                    if "remote" not in remote_method or "link" not in remote_method or not (
-                        any(word in remote_method for word in ("read", "retriev", "inventor"))
-                        or any(tool in remote_method for tool in (
-                            "getjiraissueremoteissuelinks", "listjiraissueremoteissuelinks"))
-                    ):
+                    # Retrieval descriptions vary by provider; tool-name vocabulary does not prove execution.
+                    if not isinstance(remote_method, str) or not remote_method.strip():
                         errors.append(f"asset source {source_id} must record a remote link retrieval method")
                     if not isinstance(remote_locators, list) or any(
                         not isinstance(locator, str) or not locator.startswith(("http://", "https://"))
