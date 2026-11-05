@@ -692,6 +692,18 @@ class ParentContext(unittest.TestCase):
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                      runtime_evidence=runtime)["errors"])
 
+    def test_planning_recovery_command_references_only_current_session(self):
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        command = shlex.join(["python3", str(script), "--continuation", "--planning-recovery",
+            "--approval-reference", "user authorized recovery", "--execution-repository", str(self.root),
+            "--work-item", "ECHO-2806", "--playbook", "techops_issue_remediation",
+            "--provider-session", str(self.source)])
+        self.rows.append(self.call("exec_command", cmd=command))
+        self.assertEqual(self.audit(related_run_thread_ids=())["status"], "passed")
+        self.rows[-1] = self.call("exec_command", cmd=command + "; cat /tmp/.codex/sessions/other.jsonl")
+        self.assertIn("forbidden_context_reference:session_log",
+                      self.audit(related_run_thread_ids=())["errors"])
+
     def test_status_projection_helper_includes_prior_parent_and_worker_without_writing(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
         artifact_root.mkdir(parents=True)

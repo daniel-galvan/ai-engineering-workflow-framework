@@ -479,12 +479,16 @@ def _redact_current_session_projection(command: str, source: Path) -> str:
     try:
         args = shlex.split(command)
         if (len(args) < 9 or not re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(args[0]).name)
-                or Path(args[1]).resolve() != Path(__file__).with_name("prepare_run.py").resolve()
-                or args[2] != "--status-projection"):
+                or Path(args[1]).resolve() != Path(__file__).with_name("prepare_run.py").resolve()):
             return command
-        values, index = {}, 3
-        allowed = {"--execution-repository", "--work-item", "--provider-session",
-                   "--authorize-prior-parent-thread"}
+        recovery = args[2:4] == ["--continuation", "--planning-recovery"]
+        if not recovery and args[2] != "--status-projection":
+            return command
+        values, index = {}, 4 if recovery else 3
+        allowed = ({"--execution-repository", "--work-item", "--provider-session", "--playbook",
+                    "--approval-reference"} if recovery else
+                   {"--execution-repository", "--work-item", "--provider-session",
+                    "--authorize-prior-parent-thread"})
         while index < len(args):
             option = args[index]
             if option not in allowed or option in values or index + 1 == len(args):
@@ -492,6 +496,8 @@ def _redact_current_session_projection(command: str, source: Path) -> str:
             values[option] = args[index + 1]
             index += 2
         if (not {"--execution-repository", "--work-item", "--provider-session"}.issubset(values)
+                or (recovery and (set(values) != allowed or values["--playbook"] != "techops_issue_remediation"
+                                  or not values["--approval-reference"].strip()))
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values["--work-item"])
                 or Path(values["--provider-session"]).resolve() != source.resolve()):
             return command

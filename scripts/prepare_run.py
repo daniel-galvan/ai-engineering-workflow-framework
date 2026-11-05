@@ -2901,6 +2901,11 @@ def prepare_run(
                 assigned.append(str(row.get("Source or path", "")))
         previous_parent = previous_run_bindings.get("parent_context", {})
         control = dict(previous_run_bindings.get("runtime_evidence", {}))
+        if planning_recovery and not control and (artifact_root / "role_bindings.json").is_file():
+            saved_bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+            control = dict(saved_bindings.get("runtime_evidence", {}))
+            if control:
+                control["collector"] = str(Path(__file__).with_name("worker_runtime_evidence.py"))
         related_thread_ids = (tuple(previous_parent["related_run_thread_ids"])
                               if "related_run_thread_ids" in previous_parent else None)
         if authorize_prior_parent_thread is not None:
