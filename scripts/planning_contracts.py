@@ -959,7 +959,10 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
         candidate["identity"].update({"State": "awaiting_input", "Workflow outcome": "completed",
                                       "Engineering outcome": "partially_solved"})
         errors.extend(_feature_delivery_packet_contract_errors(candidate, pre_handoff=True))
-        errors.extend(_worker_runtime_audit_errors(packet, packet_path, {
+        dependencies = {**packet, "runtime_audits": [
+            row for row in packet.get("runtime_audits", []) if row.get("Worker") != "handoff"
+        ], "terminal_observations": []}
+        errors.extend(_worker_runtime_audit_errors(dependencies, packet_path, {
             row.get("Worker") for row in packet.get("worker_results", [])
             if row.get("Outcome") == "complete" and row.get("Worker") != "handoff"
         }))

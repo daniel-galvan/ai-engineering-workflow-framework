@@ -415,6 +415,17 @@ class PlanningCommandPath(unittest.TestCase):
                                  "--ledger", run["runtime_evidence"]["ledger"])
                     append(parent, "response_item", type="function_call", name="mcp__codex_app__read_thread",
                            call_id="continued-worker-status", arguments=json.dumps({"threadId": child_id}))
+            if playbook == "feature_delivery":
+                followup_guard = ("--activation-packet-bundle", run["activation_packet_bundle"]["path"],
+                                  "--expected-agent", "documenter", "--expected-bundle-sha256",
+                                  run["activation_packet_bundle"]["sha256"])
+                command("validate_worker_runtime.py", *followup_guard)
+                accepted_packet = packet_path.read_bytes()
+                stale_packet = json.loads(accepted_packet)
+                stale_packet["runtime_audits"][0]["Last dispatch at"] = "2020-01-01T00:00:00Z"
+                packet_path.write_text(json.dumps(stale_packet))
+                self.assertIn("dispatch_mismatch", command("validate_worker_runtime.py", *followup_guard, expected=2))
+                packet_path.write_bytes(accepted_packet)
             closure = root / "runtime_closure.json"
             pending_closure = closure
             if playbook == "techops_issue_remediation":
