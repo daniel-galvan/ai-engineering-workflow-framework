@@ -47,7 +47,7 @@ UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 def blocked_collector_result(error: Exception, thread_mappings: dict | None = None) -> dict:
     result = {"status": "blocked", "reason": str(error)}
     if str(error).startswith(("terminal_inventory_unverified:", "terminal_observation_not_terminal:",
-                              "terminal_observation_timestamp_invalid:")):
+                              "terminal_observation_timestamp_invalid:", "terminal_observation_predates_pre_release:")):
         result["next_action"] = (
             "Use the documented targeted status-only read_thread or wait_threads projection for each "
             "unverified worker, then refresh the collector. Do not send workers status pings or no-op "
@@ -499,7 +499,7 @@ def _native_terminal_observations(ledger: dict, handles: list[str], *, require_t
     return observations
 
 
-def terminal_closure(ledger: dict) -> dict:
+def terminal_closure(ledger: dict, *, observed_after: str | None = None) -> dict:
     """Project latest native status evidence into the canonical Terminal receipt."""
     handles = dispatched_worker_handles(ledger)
     if not handles:
@@ -515,6 +515,10 @@ def terminal_closure(ledger: dict) -> dict:
             "Closure evidence or blocker": "verified current provider ledger shows no worker handles were activated"}],
             "terminal_observations": []}
     observations = _native_terminal_observations(ledger, handles)
+    stale = ["terminal_observation_predates_pre_release:" + row["Provider handle"] for row in observations
+             if observed_after is not None and timestamp(row["Observed at"]) < timestamp(observed_after)]
+    if stale:
+        raise ValueError(";".join(stale))
     observed_at = max(row["Observed at"] for row in observations)
     return {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
         "Completed worker handles": "; ".join(handles), "Runtime status": "Terminal", "Remaining active handles": "0",
@@ -839,7 +843,16 @@ def main() -> int:
                 if (previous.get("terminal_observations") or not previous.get("runtime_closure")
                         or any(row.get("Runtime status") != "Pending" for row in previous["runtime_closure"])):
                     raise ValueError("runtime_blocked_closure_would_replace_evidence")
-            receipt = (terminal_closure(result) if args.closure else
+            observed_after = None
+            pre_release = args.ledger.parent / "pre_release_check.json"
+            if args.closure and pre_release.is_file():
+                checked = json.loads(pre_release.read_text())
+                packet = args.ledger.parent / "finalization_packet.json"
+                if (checked.get("status") != "passed"
+                        or checked.get("packet_sha256") != hashlib.sha256(packet.read_bytes()).hexdigest()):
+                    raise ValueError("terminal_closure_requires_current_passed_pre_release")
+                observed_after = checked["validated_at"]
+            receipt = (terminal_closure(result, observed_after=observed_after) if args.closure else
                        blocked_runtime_closure(result, args.blocker) if args.blocked_closure else
                        {"runtime_closure": [{
                            "Run or stage": "Current run", "Receipt owner": "Coordinator",

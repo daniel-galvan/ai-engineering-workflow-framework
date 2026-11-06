@@ -439,6 +439,12 @@ class PlanningCommandPath(unittest.TestCase):
                         preflight["framework_revision"], "--framework-status", "clean")
             command("finalize_work_record.py", *finalize, "--check-packet")
             command("finalize_work_record.py", *finalize, "--pre-release")
+            if playbook == "feature_delivery":
+                saved_closure = closure.read_bytes()
+                stale = json.loads(command("worker_runtime_evidence.py", *collector, "--closure", closure, expected=2))
+                self.assertIn("terminal_observation_predates_pre_release:", stale["reason"])
+                self.assertTrue(stale["status_projections"])
+                self.assertEqual(closure.read_bytes(), saved_closure)
             if pending_closure != closure:
                 self.assertEqual(closure.read_bytes(), blocked)
                 snapshot = root / ("runtime_closure.blocked." + hashlib.sha256(blocked).hexdigest() + ".json")

@@ -1056,6 +1056,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    through pre-release when the provider may reclaim worker-owned artifact state on close.
    Every close/release instruction below uses the applicable provider route. When no close operation exists,
    collect the fresh Terminal snapshot after pre-release instead of issuing a nonexistent close command.
+   If the collector returns `terminal_observation_predates_pre_release` with `status_projections`, execute each
+   emitted source unchanged, then retry closure collection before terminal finalization. The collector preserves
+   the existing receipt until every worker has a post-pre-release observation. A terminal finalization failure
+   with an unchanged packet can continue in the same run; preserve its failure receipt and accepted analysis.
    For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
    use `Runtime status: Released` only after all run workers are released and no active handles remain.
    For Codex collaboration runtimes without a close operation, collect fresh status reads after pre-release and the last

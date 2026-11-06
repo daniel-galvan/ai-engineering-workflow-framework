@@ -61,6 +61,35 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 self.assertIn("without modification", receipt["next_action"])
                 self.assertFalse((root / "pending.trace.json").exists())
 
+    def test_terminal_collection_requires_observations_after_pre_release(self):
+        from scripts import worker_runtime_evidence as collector
+        from scripts.provider_runtime import targeted_wait_projection_source
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, _, time, *_ = fixture
+            _, ledger = self.export(fixture)
+            closure = root / "runtime_closure.json"
+            ledger["inventories"] = [{"Observed at": time(20), "raw_response": {"agents": [
+                {"agent_name": "/root/worker", "agent_status": "completed"}]}}]
+            closure.write_text('{"preserved": true}')
+            packet = root / "finalization_packet.json"
+            (root / "pre_release_check.json").write_text(json.dumps({"status": "passed",
+                "packet_sha256": hashlib.sha256(packet.read_bytes()).hexdigest(), "validated_at": time(30)}))
+            arguments = ["collector", "--provider-session", str(root / "parent.jsonl"),
+                "--parent-thread-id", PARENT, "--started-at", run["runtime_evidence"]["run_started_at"],
+                "--ledger", run["runtime_evidence"]["ledger"], "--closure", str(closure)]
+            output = io.StringIO()
+            with patch.object(sys, "argv", arguments), \
+                 patch.object(collector, "read_runtime_events", return_value=ledger), redirect_stdout(output):
+                self.assertEqual(collector.main(), 2)
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt["reason"], "terminal_observation_predates_pre_release:/root/worker")
+            self.assertEqual(receipt["status_projections"], [targeted_wait_projection_source(CHILD)])
+            self.assertEqual(closure.read_text(), '{"preserved": true}')
+            for inventory in ledger["inventories"]:
+                inventory["Observed at"] = time(31)
+            collector.terminal_closure(ledger, observed_after=time(30))
+
     def test_idle_wait_snapshot_does_not_require_an_event_wake(self):
         from scripts.provider_runtime import targeted_thread_observation
         raw = {"wake": None, "polls": [{"thread": {"id": CHILD, "status": {"type": "idle", "activeFlags": []}},

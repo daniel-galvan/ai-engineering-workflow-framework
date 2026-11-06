@@ -1,5 +1,6 @@
 """Native identity resolution uses controlled metadata, never this editing chat's history."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -246,6 +247,20 @@ class NativeParentSession(unittest.TestCase):
             prepare_run(repository, 'ITEM-1', 'feature_delivery', None, True,
                         input_manifest=Path(run['run_input_manifest']['path']))
         self.assertEqual(packet_path.read_bytes(), before)
+
+        failure = record.parent / 'finalization_failure.json'
+        receipt = {'status': 'failed', 'phase': 'terminal', 'terminal_failure': True,
+                   'attempt_count': 0, 'handoff_packet_sha256': hashlib.sha256(before).hexdigest()}
+        record.write_text('| Run ID | ' + run['run_id'] + ' |\n| State | blocked |\n')
+        failure.write_text(json.dumps({**receipt, 'handoff_packet_sha256': '0' * 64}))
+        with self.assertRaisesRegex(ValueError, 'planning_recovery_required:terminal_execution'):
+            prepare_run(repository, 'ITEM-1', 'feature_delivery', None, True,
+                        input_manifest=Path(run['run_input_manifest']['path']))
+        failure.write_text(json.dumps(receipt))
+        continued = prepare_run(repository, 'ITEM-1', 'feature_delivery', None, True,
+                                input_manifest=Path(run['run_input_manifest']['path']))
+        self.assertEqual(continued['run_id'], run['run_id'])
+        self.assertEqual(json.loads(failure.read_text()), receipt)
 
     def test_continuation_preserves_feature_run_after_formatted_worker_status_read(self):
         from scripts.prepare_run import prepare_run

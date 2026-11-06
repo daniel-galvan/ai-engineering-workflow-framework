@@ -2979,9 +2979,14 @@ def prepare_run(
             identity = json.loads(existing_packet.read_text())["identity"]
             record_path = artifact_root / "work_record.md"
             record_text = record_path.read_text() if record_path.is_file() else ""
+            failure_path = artifact_root / "finalization_failure.json"
+            failure = json.loads(failure_path.read_text()) if failure_path.is_file() else {}
+            failed_terminal = (isinstance(failure, dict) and failure.get("status") == "failed"
+                               and failure.get("phase") == "terminal" and failure.get("terminal_failure") is True
+                               and failure.get("handoff_packet_sha256") == hashlib.sha256(existing_packet.read_bytes()).hexdigest())
             if (identity.get("Lifecycle") == "planning" and identity.get("Workflow outcome") == "completed"
                     and _table_value(record_text, "Run ID") == identity.get("Run ID")
-                    and _table_value(record_text, "State") in TERMINAL_STATES):
+                    and _table_value(record_text, "State") in TERMINAL_STATES and not failed_terminal):
                 raise ValueError("planning_recovery_required:terminal_execution")
         failure_path = artifact_root / "finalization_failure.json"
         if failure_path.is_file():
