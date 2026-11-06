@@ -1706,7 +1706,7 @@ def _python_packet_projection(tokens: list[str], root: Path, cwd: Path) -> set[s
                 for key in mapping.keys):
             return None
         fields = [key.value for key in mapping.keys]
-        if len(fields) != len(set(fields)) or "reentry" not in fields:
+        if len(fields) != len(set(fields)) or not set(fields) & {"reentry", "runtime_audits"}:
             return None
         projection = ",".join(f"{field!r}:{data_var}.get({field!r})" for field in fields)
         expected = (f"import json; {var}={str(packet)!r}; {data_var}=json.load(open({var})); "
@@ -1782,20 +1782,18 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 cwd = Path(arguments.get("workdir", root.parent.parent))
                 fields = _python_packet_projection(tokens, root, cwd)
                 if fields is not None:
-                    reentry = json.loads((root / "finalization_packet.json").read_text()).get("reentry")
-                    if isinstance(reentry, dict) and isinstance(reentry.get("Prior artifacts"), str):
-                        packet_projections.setdefault(row["call_id"], []).append((fields, reentry))
+                    metadata = json.loads((root / "finalization_packet.json").read_text())
+                    packet_projections.setdefault(row["call_id"], []).append((fields, metadata))
                     continue
                 if (len(tokens) == 3 and tokens[0] == "jq"
                         and re.fullmatch(r"\{\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*\s*\}", tokens[1])):
                     fields = {field.strip() for field in tokens[1][1:-1].split(",")}
                     packet = Path(tokens[2])
                     packet = packet if packet.is_absolute() else cwd / packet
-                    if ("reentry" in fields and not packet.is_symlink()
+                    if (fields & {"reentry", "runtime_audits"} and not packet.is_symlink()
                             and packet.resolve() == root / "finalization_packet.json"):
-                        reentry = json.loads(packet.read_text()).get("reentry")
-                        if isinstance(reentry, dict) and isinstance(reentry.get("Prior artifacts"), str):
-                            packet_projections.setdefault(row["call_id"], []).append((fields, reentry))
+                        metadata = json.loads(packet.read_text())
+                        packet_projections.setdefault(row["call_id"], []).append((fields, metadata))
                     continue
                 if len(tokens) == 3 and tokens[:2] == ["jq", ".reentry"]:
                     packet = Path(tokens[2])
@@ -1863,11 +1861,17 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                     result = _tool_output_json(item["text"])
                 except (ValueError, TypeError):
                     continue
-                if isinstance(result, dict) and any(
-                        set(result) == fields and result.get("reentry") == reentry
-                        for fields, reentry in packet_projections.get(row.get("call_id"), [])):
-                    outputs.add(("tool_trace", str(index), "output", str(item_index), "text",
-                                 "reentry", "Prior artifacts"))
+                for fields, metadata in packet_projections.get(row.get("call_id"), []):
+                    if not isinstance(result, dict) or set(result) != fields:
+                        continue
+                    prefix = ("tool_trace", str(index), "output", str(item_index), "text")
+                    if isinstance(metadata.get("reentry"), dict) and result.get("reentry") == metadata["reentry"]:
+                        outputs.add(prefix + ("reentry", "Prior artifacts"))
+                    audits = result.get("runtime_audits", [])
+                    if isinstance(audits, list) and isinstance(metadata.get("runtime_audits"), list):
+                        for audit_index, audit in enumerate(audits):
+                            if isinstance(audit, dict) and audit in metadata["runtime_audits"]:
+                                outputs.add(prefix + ("runtime_audits", str(audit_index), "Trace retrieval"))
                 if ((isinstance(result, dict) and result.get("exit_code") == 0
                      and isinstance(result.get("output"), str)
                      and result["output"] in exact_cat_outputs.get(row.get("call_id"), set()))

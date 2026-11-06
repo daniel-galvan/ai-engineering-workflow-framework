@@ -831,6 +831,41 @@ class ContextOperationAudit(unittest.TestCase):
         other["tool_trace"][-2]["input"] = other["tool_trace"][-2]["input"].replace(str(packet_path), str(self.root / "runs" / "prior" / "finalization_packet.json"))
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(other))
 
+    def test_packet_audit_projection_is_metadata_and_does_not_authorize_log_reads(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / 'finalization_packet.json'
+        packet = json.loads(packet_path.read_text())
+        session = '/Users/example/.codex/sessions/worker.jsonl'
+        audit = {'Worker': 'feature-context', 'Trace retrieval': session}
+        packet['runtime_audits'] = [audit]
+        packet_path.write_text(json.dumps(packet))
+        command = "jq '{identity,runtime_audits}' " + str(packet_path)
+        call = 'const r = await tools.exec_command(' + json.dumps({'cmd': command}) + '); text(r.output);'
+        projected = {key: packet[key] for key in ('identity', 'runtime_audits')}
+        rows = self.paired(call, [{'type': 'input_text', 'text': json.dumps(projected)}])
+        rows[0]['call_id'] = rows[1]['call_id'] = 'audit-projection'
+        trace['tool_trace'].extend(rows)
+        self.assertEqual(runtime.trace_errors(trace), [])
+        # Later audit registration must not invalidate the earlier metadata read.
+        packet['runtime_audits'].append({'Worker': 'handoff', 'Trace retrieval': 'trace.json'})
+        packet_path.write_text(json.dumps(packet))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        changed = json.loads(json.dumps(trace))
+        changed['tool_trace'].append({'type': 'function_call', 'name': 'exec_command', 'arguments': {'cmd': 'cat ' + session}})
+        self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(changed))
+        for altered in ('audit', 'other_field', 'source'):
+            changed = json.loads(json.dumps(trace))
+            value = json.loads(changed['tool_trace'][-1]['output'][0]['text'])
+            if altered == 'audit':
+                value['runtime_audits'][0]['Trace retrieval'] = session + '.other'
+            elif altered == 'other_field':
+                value['identity']['leaked'] = session
+            else:
+                changed['tool_trace'][-2]['input'] = changed['tool_trace'][-2]['input'].replace(
+                    str(packet_path), str(self.root / 'runs/prior/finalization_packet.json'))
+            changed['tool_trace'][-1]['output'][0]['text'] = json.dumps(value)
+            self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(changed))
+
     def test_packet_object_projection_exempts_only_verified_reentry_path(self):
         trace = self.instruction_read_trace()
         packet_path = self.root / "finalization_packet.json"
