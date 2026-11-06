@@ -135,6 +135,12 @@ invocation: run package preflight first, then the required status projection, be
    checkout. Use returned `execution_repository`, `source_checkout`, and `artifact_root` paths unchanged. Never create
    `.thoughts` in a linked worktree, even when that worktree was named explicitly. Non-Git record folders retain their
    declared path. Do not ask for an Execution repository field when the current repository is unambiguous.
+   A managed worktree may lack permission to write the main checkout's artifact root. If preparation returns
+   `artifact_root_permission_denied`, rerun the same command and complete manifest through the provider's scoped
+   filesystem approval mechanism for that exact root. On Codex use `exec_command` with
+   `sandbox_permissions: "require_escalated"` and a path-specific justification. This applies only to a local artifact
+   permission denial; it never bypasses a connector or source-access restriction. Keep both returned roots unchanged.
+   If scoped approval is unavailable or rejected, report the exact restriction and stop; do not relocate artifacts.
    All run-created files, including temporary command output, diagnostic files, and recovery files, must stay inside
    the returned artifact root. Never redirect them to `/tmp`, a repository root, or another directory. Before the
    artifact root is prepared, use tool output or this chat's context only; do not create temporary files. Include this

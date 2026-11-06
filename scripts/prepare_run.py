@@ -3678,6 +3678,20 @@ def main() -> int:
             input_data,
             args.authorize_prior_parent_thread,
         )
+    except PermissionError as error:
+        root = resolve_repository_paths(args.execution_repository)[0] / ".thoughts" / args.work_item
+        denied = Path(error.filename).resolve() if error.filename else None
+        receipt = {"status": "blocked", "reason": str(error)}
+        if denied in {root, root.parent}:
+            receipt.update(reason="artifact_root_permission_denied", artifact_root=str(root),
+                           denied_path=str(denied), next_action=(
+                               "Rerun the same preparation command with the complete input manifest through the "
+                               "provider's scoped filesystem approval mechanism for this artifact root. On Codex, "
+                               "use exec_command with sandbox_permissions=require_escalated and a path-specific "
+                               "justification. Keep the artifact root and source checkout unchanged. If approval is "
+                               "unavailable or rejected, report that exact restriction; do not retry or relocate artifacts."))
+        print(json.dumps(receipt, sort_keys=True))
+        return 2
     except (OSError, ValueError) as error:
         print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
         return 2

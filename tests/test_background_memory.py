@@ -41,6 +41,19 @@ class BackgroundMemory(unittest.TestCase):
                    'rg -n "ECHO-2364|workflow-framework" ' + MEMORY + ' | head -20')
         self.assertEqual(context_trace_errors(self.trace(command)), [])
 
+    def test_context_display_options_are_background_reads_before_preflight(self):
+        for option in ('-C 2', '-C2', '--context 2', '--context=2',
+                       '-A 3', '-A3', '--after-context=3', '-B 1', '--before-context 1'):
+            command = 'rg -n ' + option + ' "ECHO-2364|ContactAudienceNodeDrawer|useSenderEligibleEntityIds" ' + MEMORY
+            with self.subTest(option=option):
+                self.assertEqual(background_memory_paths(command, standalone=True), {MEMORY})
+                self.assertEqual(context_trace_errors(self.trace(command)), [])
+                self.assertEqual(_preflight_order_errors(
+                    [{'name': 'exec_command', 'arguments': {'cmd': command}}], Path('/framework'), {}), [])
+        for option in ('-C /tmp/helper', '--context=-1', '-C2 --pre /tmp/helper', '-C2 -f /tmp/patterns'):
+            self.assertEqual(background_memory_paths('rg ' + option + ' issue ' + MEMORY), set())
+        self.assertEqual(background_memory_paths('rg -C 2 issue ' + MEMORY + ' /repo', standalone=True), set())
+
     def test_registry_does_not_authorize_following_a_pointer(self):
         for path, label in (('/repo/.codex/sessions/old.jsonl', 'session_log'),
                             ('/repo/.codex/memories/rollout_summaries/old.md', 'memory_directory'),

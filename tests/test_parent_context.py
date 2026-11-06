@@ -1,5 +1,6 @@
 """Native parent context boundaries before preparation and worker activation."""
 
+import io
 import json
 import sys
 import os
@@ -9,6 +10,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1789,6 +1791,29 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(rejected.returncode, 2)
         self.assertIn("Extra data", json.loads(rejected.stdout)["reason"])
         self.assertEqual(Path(run["finalization_packet"]).read_bytes(), before)
+
+    def test_preparation_write_denial_returns_scoped_retry_guidance(self):
+        from scripts import prepare_run as preparation
+        root = self.root / '.thoughts/ITEM-1'
+        arguments = ['prepare_run.py', '--execution-repository', str(self.root), '--work-item', 'ITEM-1',
+                     '--playbook', 'feature_delivery', '--input-json', json.dumps({'inputs': [{
+                         'Input ID': 'IN-001', 'Input or artifact': 'Current issue', 'Source or path': 'User',
+                         'Authority': 'User', 'Status': 'Verified'}]})]
+        for denied in (root, self.root / 'private-guide.md', root / 'private-input.json'):
+            output = io.StringIO()
+            with patch.object(sys, 'argv', arguments), patch.object(preparation, 'prepare_run',
+                    side_effect=PermissionError(1, 'Operation not permitted', str(denied))), redirect_stdout(output):
+                self.assertEqual(preparation.main(), 2)
+            receipt = json.loads(output.getvalue())
+            if denied == root:
+                self.assertEqual(receipt['reason'], 'artifact_root_permission_denied')
+                self.assertEqual(receipt['artifact_root'], str(root.resolve()))
+                self.assertIn('scoped', receipt['next_action'])
+                self.assertIn('same preparation command', receipt['next_action'])
+            else:
+                self.assertNotIn('next_action', receipt)
+                self.assertIn('Operation not permitted', receipt['reason'])
+        self.assertFalse(root.exists())
 
     def test_preparation_is_transactional_and_activation_rechecks_later_reads(self):
         inputs = self.root / "inputs.json"

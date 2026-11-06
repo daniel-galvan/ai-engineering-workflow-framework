@@ -966,8 +966,15 @@ def background_memory_paths(command: str, *, standalone: bool = False) -> set[st
             # No preprocessor, pattern file, or directory enumeration can accompany a registry search.
             options = {"-n", "-i", "-ni", "-in", "-F", "--line-number", "--ignore-case", "--fixed-strings"}
             args = tokens[1:]
-            while args and args[0] in options:
-                args = args[1:]
+            context_options = {"-A", "-B", "-C", "--after-context", "--before-context", "--context"}
+            while args:
+                if args[0] in options or re.fullmatch(
+                        r"(?:-[ABC][0-9]+|--(?:after-context|before-context|context)=[0-9]+)", args[0]):
+                    args = args[1:]
+                elif args[0] in context_options and len(args) > 1 and re.fullmatch(r"[0-9]+", args[1]):
+                    args = args[2:]
+                else:
+                    break
             if args[:1] == ['--']:
                 args = args[1:]
             allowed = len(args) >= 2 and not args[0].startswith('-') and targets.issubset(args[1:])
