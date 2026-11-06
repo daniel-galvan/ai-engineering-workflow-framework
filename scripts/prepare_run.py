@@ -3385,6 +3385,10 @@ def prepare_run(
             "Before downstream design/review consumption, keep all_material_assets_linked false for material assets. "
             "For an asset-only correction after result acceptance, change only asset_manifest and re-emit the "
             "accepted output and result tables verbatim. Do not reword evidence summaries or claim statuses.")
+        documenter = manifest["worker_contracts"].setdefault("documenter", {})
+        documenter["output"] = str(artifact_root / "finalization_packet.json")
+        if manifest["lifecycle"] == "planning" and workflow_objective == "implementation_planning":
+            documenter["implementation_plan"] = str(artifact_root / "implementation_plan.md")
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
         manifest["documenter_packet_stager"] = str(ROOT / "scripts/stage_documenter_packet.py")
     if playbook in {"techops_issue_remediation", "sentry_issue_remediation"} or (

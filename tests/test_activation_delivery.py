@@ -1,6 +1,7 @@
 """Replay shortened delivery, listing-only trace rejection and bounded activation repair."""
 
 import hashlib
+import io
 import json
 import os
 import shlex
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from contextlib import redirect_stdout
 
 from scripts import prepare_run as prepare
 from scripts import runtime_checks
@@ -658,6 +660,52 @@ class ActivationDelivery(unittest.TestCase):
         path = self.artifacts / "context_rejected_trace.json"
         path.write_text(json.dumps(trace))
         return path, trace
+
+    def test_documenter_recovery_with_null_contract_preserves_packet(self):
+        path, trace = self.rejected_trace()
+        trace['spawn']['agent'] = 'documenter'
+        path.write_text(json.dumps(trace))
+        packet_path = Path(self.run['finalization_packet'])
+        saved = packet_path.read_bytes()
+        bundle_path = Path(self.bundle['path'])
+        bundle = json.loads(bundle_path.read_text())
+        bundle['packets']['documenter']['worker_contract'] = None
+        bundle_path.write_text(json.dumps(bundle))
+        assignment = self.artifacts / 'documenter_retry.json'
+        assignment.write_text(json.dumps({'objective': 'Correct the rejected handoff only'}))
+        args = ['validate_worker_runtime.py', '--activation-packet-bundle', str(bundle_path),
+            '--expected-agent', 'documenter', '--expected-bundle-sha256', hashlib.sha256(bundle_path.read_bytes()).hexdigest(),
+            '--assignment', str(assignment), '--dispatch-file', str(self.artifacts / 'documenter_retry.txt'),
+            '--provider-status', 'completed', '--rejected-trace', str(path),
+            '--provider-handle', HANDLE, '--last-dispatch-at', DISPATCH]
+        output = io.StringIO()
+        # Upstream fan-in is covered separately; exercise the real rejected-result and dispatch branches here.
+        with patch.object(sys, 'argv', args), patch.object(runtime, 'activation_packet_errors', return_value=[]), \
+             redirect_stdout(output):
+            self.assertEqual(runtime.main(), 0, output.getvalue())
+        self.assertEqual(packet_path.with_name('finalization_packet.rejected.json').read_bytes(), saved)
+        current = json.loads(packet_path.read_text())
+        self.assertEqual(current['activation_repairs']['documenter']['Attempt'], 1)
+        self.assertEqual(json.loads(path.read_text()), trace)
+        blocked = self.command(*args[1:])
+        self.assertIn('activation_repair_limit_reached', blocked.stdout)
+
+    def test_prepared_documenter_declares_its_planning_outputs(self):
+        from scripts.runtime_checks import planning_permission_errors
+        packet = json.loads(Path(self.bundle['path']).read_text())['packets']['documenter']
+        contract = packet['worker_contract']
+        self.assertEqual(contract['output'], self.run['finalization_packet'])
+        self.assertEqual(contract['implementation_plan'], str(self.artifacts / 'implementation_plan.md'))
+        trace = {'spawn': {'dispatch_file': str(self.artifacts / 'dispatch.txt')}, 'tool_trace': []}
+        content = 'Coordinator initialization: complete\n' + json.dumps(packet) + '\n'
+        with patch('scripts.runtime_checks._verified_dispatch_content', return_value=content):
+            for target in (contract['output'], contract['implementation_plan']):
+                trace['tool_trace'] = [{'type': 'function_call', 'name': 'apply_patch', 'arguments': {
+                    'patch': '*** Begin Patch\n*** Update File: ' + target + '\n@@\n-old\n+new\n*** End Patch'}}]
+                self.assertEqual(planning_permission_errors(trace), [])
+            trace['tool_trace'][0]['arguments']['patch'] = trace['tool_trace'][0]['arguments']['patch'].replace(
+                contract['implementation_plan'], str(self.artifacts / 'unassigned.md'))
+            self.assertIn('planning_write_target_not_assigned', planning_permission_errors(trace))
 
     def test_recovery_preserves_packet_when_it_is_the_worker_output(self):
         path, trace = self.rejected_trace()

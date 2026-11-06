@@ -663,9 +663,11 @@ def main() -> int:
                             result["accepted_refresh_authorization"] = refresh
                         if rejection_hash:
                             quarantine = []
-                            contract = packet.get("worker_contract", {})
-                            for output in dict.fromkeys(contract.get(field) for field in ("output", "result")
-                                                        if contract.get(field)):
+                            contract = packet.get("worker_contract") or {}
+                            outputs = [contract.get(field) for field in ("output", "result")]
+                            if packet.get("agent") == "documenter":
+                                outputs.append(packet["finalization_packet"])
+                            for output in dict.fromkeys(output for output in outputs if output):
                                 target = Path(output)
                                 root = args.activation_packet_bundle.resolve().parent
                                 if target.resolve().parent != root or target.is_symlink():
