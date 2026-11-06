@@ -531,6 +531,26 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
     if not runtime_evidence or artifact_root is None:
         return command
     try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        parts, current = [], []
+        for token in lexer:
+            if token in {";", "&&", "||", "|", "&"}:
+                parts.extend([shlex.join(current), token])
+                current = []
+            else:
+                current.append(token)
+        if parts:
+            parts.append(shlex.join(current))
+            changed = False
+            for index in range(0, len(parts), 2):
+                redacted = _redact_current_runtime_collection(
+                    parts[index], source, thread, runtime_evidence, artifact_root, known_children,
+                    prior_children, script_dir, previous_collector, prior_started_at)
+                changed |= redacted != parts[index]
+                parts[index] = redacted
+            return " ".join(parts) if changed else command
         args = shlex.split(command)
         collector = Path(runtime_evidence["collector"]).resolve()
         allowed_collectors = {collector}

@@ -711,6 +711,17 @@ class ParentContext(unittest.TestCase):
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                         runtime_evidence=runtime)["status"], "passed")
             grouped = shlex.join(base_command()) + "\npython3 " + shlex.quote(str(script)) + " --help"
+            for separator in (" && ", "; ", " | "):
+                checksum = shlex.join(["shasum", "-a", "256", str(artifact_root / "worker_activation_packets.json")])
+                self.rows[-1] = self.call("exec_command", cmd=shlex.join(base_command()) + separator + checksum)
+                self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                            runtime_evidence=runtime)["status"], "passed")
+                for session in (self.source, prior_session):
+                    self.rows[-1] = self.call("exec_command", cmd=shlex.join(base_command()) + separator
+                                             + shlex.join(["cat", str(session)]))
+                    self.assertIn("forbidden_context_reference:session_log",
+                                  self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                             runtime_evidence=runtime)["errors"])
             self.rows[-1] = self.call("exec_command", cmd=grouped, workdir=str(self.root))
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                         runtime_evidence=runtime)["status"], "passed")
