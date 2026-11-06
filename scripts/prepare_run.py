@@ -2977,7 +2977,11 @@ def prepare_run(
         existing_packet = artifact_root / "finalization_packet.json"
         if playbook == "feature_delivery" and existing_packet.is_file():
             identity = json.loads(existing_packet.read_text())["identity"]
-            if identity.get("Lifecycle") == "planning" and identity.get("Workflow outcome") == "completed":
+            record_path = artifact_root / "work_record.md"
+            record_text = record_path.read_text() if record_path.is_file() else ""
+            if (identity.get("Lifecycle") == "planning" and identity.get("Workflow outcome") == "completed"
+                    and _table_value(record_text, "Run ID") == identity.get("Run ID")
+                    and _table_value(record_text, "State") in TERMINAL_STATES):
                 raise ValueError("planning_recovery_required:terminal_execution")
         failure_path = artifact_root / "finalization_failure.json"
         if failure_path.is_file():

@@ -194,6 +194,59 @@ class NativeParentSession(unittest.TestCase):
         self.assertEqual(continued["run_id"], run["run_id"])
         self.assertEqual(prepared_package_errors(Path(run["artifact_root"])), [])
 
+    def test_restore_unstarted_recovery_uses_real_native_identity(self):
+        from scripts.prepare_run import prepare_run, _archive_recovery
+        from scripts.restore_prepared_recovery import restore
+        self.record('current')
+        repository = self.root / 'repository'
+        repository.mkdir()
+        run = prepare_run(repository, 'ITEM-1', 'feature_delivery', None, False,
+                          input_data={'inputs': [{'Input ID': 'IN-001', 'Input or artifact': 'Current request',
+                              'Source or path': 'User', 'Authority': 'User', 'Status': 'Verified'}]})
+        root = Path(run['artifact_root'])
+        packet_path, binding_path = root / 'finalization_packet.json', root / 'role_bindings.json'
+        original = packet_path.read_bytes(), binding_path.read_bytes()
+        archive = _archive_recovery(root, run['run_id'])
+        current = run['run_id'] + '-recovery'
+        packet = json.loads(original[0])
+        packet['identity'].update({'Run ID': current, 'State': 'in_progress'})
+        packet['recovery'] = {'Prior run ID': run['run_id'], 'Prior artifacts': str(archive)}
+        bindings = json.loads(original[1])
+        bindings['run_id'] = bindings['parent_context']['run_id'] = current
+        packet_path.write_text(json.dumps(packet))
+        binding_path.write_text(json.dumps(bindings))
+        prepared_bytes = packet_path.read_bytes(), binding_path.read_bytes()
+        with patch.dict(os.environ, {'CODEX_THREAD_ID': '00000000-0000-0000-0000-000000000099'}):
+            with self.assertRaisesRegex(ValueError, 'provider_current_session'):
+                restore(root, current, run['run_id'])
+        self.assertEqual((packet_path.read_bytes(), binding_path.read_bytes()), prepared_bytes)
+        self.assertFalse((root / 'runs' / current).exists())
+        self.assertEqual(restore(root, current, run['run_id'])['status'], 'restored')
+        self.assertEqual((packet_path.read_bytes(), binding_path.read_bytes()), original)
+
+    def test_staged_feature_handoff_continues_until_terminal_record_exists(self):
+        from scripts.prepare_run import prepare_run
+        self.record('current')
+        repository = self.root / 'repository'
+        repository.mkdir()
+        run = prepare_run(repository, 'ITEM-1', 'feature_delivery', None, False,
+                          input_data={'inputs': [{'Input ID': 'IN-001', 'Input or artifact': 'Current request',
+                              'Source or path': 'User', 'Authority': 'User', 'Status': 'Verified'}]})
+        packet_path = Path(run['finalization_packet'])
+        packet = json.loads(packet_path.read_text())
+        packet['identity'].update({'State': 'ready_for_implementation', 'Workflow outcome': 'completed'})
+        packet_path.write_text(json.dumps(packet))
+        continued = prepare_run(repository, 'ITEM-1', 'feature_delivery', None, True,
+                                input_manifest=Path(run['run_input_manifest']['path']))
+        self.assertEqual(continued['run_id'], run['run_id'])
+        record = Path(run['artifact_root']) / 'work_record.md'
+        record.write_text('| Run ID | ' + run['run_id'] + ' |\n| State | ready_for_implementation |\n')
+        before = packet_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'planning_recovery_required:terminal_execution'):
+            prepare_run(repository, 'ITEM-1', 'feature_delivery', None, True,
+                        input_manifest=Path(run['run_input_manifest']['path']))
+        self.assertEqual(packet_path.read_bytes(), before)
+
     def test_continuation_preserves_feature_run_after_formatted_worker_status_read(self):
         from scripts.prepare_run import prepare_run
         earlier = self.record("earlier")

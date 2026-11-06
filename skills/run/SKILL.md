@@ -417,7 +417,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    unaccepted input for the new delivery workers; retain the prior failure and do not claim the rejected validation.
    Preparation does not grant approval or replace the Delivery Activation Barrier.
    An ordinary continuation cannot reopen a completed Feature Delivery planning execution or bypass exhausted
-   finalization attempts. For explicitly authorized Feature Delivery planning recovery, or TechOps recovery after a
+   finalization attempts. A staged packet's completed Workflow outcome is not terminal execution while its matching
+   work record is still in progress; continue that same run through the remaining handoff gates.
+   For explicitly authorized Feature Delivery planning recovery, or TechOps recovery after a
    terminal workflow failure, reconcile prior actual worker rows and fresh Coordinator closure first, then pass
    `--continuation --planning-recovery` with
    `--approval-reference <recovery authorization>`.
@@ -429,6 +431,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `--timebox-minutes` otherwise; do not invent a deadline or explicit goal overrides. Use the playbook defaults.
    Preparation preserves the prior invocation under `runs/`, starts a new planning identity, and clears current
    execution/closure rows. The archived retry counters remain intact. This is not implementation approval.
+   If a recovery was prepared accidentally and has no native dispatch, use `scripts/restore_prepared_recovery.py`
+   with `--artifact-root`, `--current-run-id` and `--prior-run-id`, first with `--check-only`. Run the write operation
+   only in the original chat. It verifies the archive hashes and absence of dispatches, preserves the unused recovery,
+   and restores the prior artifact bytes. Then rebind through ordinary `--continuation`; never edit Run IDs by hand.
    Supply accepted prior findings as named current inputs; recovery workers check their applicability and investigate
    only changed inputs or concrete gaps. Do not repeat completed discovery merely because execution identity changed.
    On every follow-up in a selected playbook, read its current packet and saved decisions before choosing an action.
