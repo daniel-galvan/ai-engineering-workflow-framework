@@ -2305,13 +2305,46 @@ def _without_verified_search_lines(value: str, targets: list[Path]) -> str:
     return "".join(remaining)
 
 
-def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
-    """Recognize root punctuation only in serialized objectives and bound failure-reason text."""
+def _without_prose_root_punctuation(text: str, row: dict, root: Path,
+                                   field_path: tuple[str, ...] = ()) -> str:
+    """Recognize root punctuation in typed prose without changing executable path arguments."""
     if str(root) + "." not in text and ".thoughts/" + root.name + "." not in text:
         return text
     punctuation = re.compile(r"(" + re.escape(str(root)) + "|" + re.escape(".thoughts/" + root.name)
                              + r")\.(?=\s|$)")
-    for tool, arguments in _tool_operations(row):
+    operations = _tool_operations(row)
+    justifications = {args['justification'] for tool, args in operations
+                      if tool == 'exec_command' and isinstance(args.get('justification'), str)}
+    if field_path[-2:] == ('arguments', 'justification') and text in justifications:
+        return punctuation.sub(r'\1', text)
+    if justifications and field_path[-1:] == ('arguments',):
+        try:
+            arguments = json.loads(text)
+            if isinstance(arguments, dict) and arguments.get('justification') in justifications:
+                arguments['justification'] = punctuation.sub(r'\1', arguments['justification'])
+                return json.dumps(arguments)
+        except (ValueError, TypeError):
+            pass
+    if justifications and field_path[-1:] == ('input',):
+        try:
+            tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+            offsets = [0]
+            for line in text.splitlines(keepends=True):
+                offsets.append(offsets[-1] + len(line))
+            edits = []
+            for key, colon, value in zip(tokens, tokens[1:], tokens[2:]):
+                if (key.string not in {'justification', '"justification"', "'justification'"}
+                        or colon.string != ':' or value.type != tokenize.STRING):
+                    continue
+                prose = ast.literal_eval(value.string)
+                if prose in justifications:
+                    begin, end = (offsets[line - 1] + column for line, column in (value.start, value.end))
+                    edits.append((begin, end, json.dumps(punctuation.sub(r'\1', prose))))
+            for begin, end, replacement in reversed(edits):
+                text = text[:begin] + replacement + text[end:]
+        except (ValueError, SyntaxError, TypeError, tokenize.TokenError):
+            pass
+    for tool, arguments in operations:
         command = arguments.get("cmd") if tool == "exec_command" else None
         if not isinstance(command, str):
             continue
@@ -2520,7 +2553,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         for spelling in sorted(spellings, key=len, reverse=True):
             candidate = candidate.replace(spelling, "[background guidance]")
         if root and not output:
-            candidate = _without_prose_root_punctuation(candidate, row, root)
+            candidate = _without_prose_root_punctuation(candidate, row, root, path)
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:

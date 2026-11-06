@@ -257,6 +257,26 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn("forbidden_context_reference:archived_artifact",
                       runtime.context_trace_errors(trace, artifact_root=self.root))
 
+    def test_approval_justification_punctuation_does_not_change_command_paths(self):
+        justification = 'Allow creating current-run artifacts inside ' + str(self.root) + '.'
+        def audit(command, reason=justification):
+            arguments = {'cmd': command, 'sandbox_permissions': 'require_escalated', 'justification': reason}
+            rows = [
+                {'type': 'function_call', 'name': 'exec_command', 'arguments': arguments},
+                {'type': 'function_call', 'name': 'exec_command', 'arguments': json.dumps(arguments)},
+                {'type': 'custom_tool_call', 'name': 'exec',
+                 'input': 'const r=await tools.exec_command(' + json.dumps(arguments) + '); text(r.output);'},
+            ]
+            return [runtime.context_trace_errors({'tool_trace': [row]}, artifact_root=self.root) for row in rows]
+        self.assertEqual(audit('cat ' + str(self.root / 'run_inputs.json')), [[], [], []])
+        for command, reason in (
+                ('cat ' + str(self.root) + '.', justification),
+                ('cat ' + str(self.root / 'runs/prior/notes.md'), justification),
+                (justification, justification),
+                ('cat current_source.txt', justification.replace(self.root.name, 'OTHER'))):
+            for errors in audit(command, reason):
+                self.assertIn('forbidden_context_reference:archived_artifact', errors)
+
     def test_serialized_objective_punctuation_does_not_hide_executable_artifact_paths(self):
         objective = "Keep café artifacts inside " + str(self.root) + ". Do not read prior runs."
         body = ("import json\nfrom pathlib import Path\nr=Path(" + repr(str(self.root)) + ")\n"
