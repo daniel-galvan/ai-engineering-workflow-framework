@@ -811,7 +811,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    session, start and ledger flags, plus `--worker-thread-id <verified-child-thread-id> --agent <role> --trace <path>`.
    Prefer omitting `--observation`: the exporter derives the fresh status directly from native inventory or the
    literal targeted status projection below. Alternatively, use `--observation <collector-closure-json>` with the
-   prepared collector's receipt. Do not construct or normalize an observation with a custom script, computed tool
+   prepared collector's receipt. If collection returns `status_projections`, execute each complete source through
+   `functions.exec` without modification, then rerun the same collector; do not reformat the returned status metadata.
+   Do not construct or normalize an observation with a custom script, computed tool
    arguments, or hand-written timestamps. Follow the literal status projections below if the latest inventory omits
    the worker. The collector and exporter must establish the last dispatch and fresh terminal status themselves.
    Optional `Binding evidence` must be a JSON object containing provider-observed role or path metadata.

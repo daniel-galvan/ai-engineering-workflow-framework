@@ -23,6 +23,7 @@ try:
         worker_binding,
         strict_json_loads,
         validate_prepared_provider_source,
+        targeted_wait_projection_source,
     )
 except ModuleNotFoundError:
     from scripts.provider_runtime import (
@@ -36,21 +37,30 @@ except ModuleNotFoundError:
         worker_binding,
         strict_json_loads,
         validate_prepared_provider_source,
+        targeted_wait_projection_source,
     )
 
 
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
-def blocked_collector_result(error: Exception) -> dict:
+def blocked_collector_result(error: Exception, thread_mappings: dict | None = None) -> dict:
     result = {"status": "blocked", "reason": str(error)}
-    if str(error).startswith("terminal_inventory_unverified:"):
+    if str(error).startswith(("terminal_inventory_unverified:", "terminal_observation_not_terminal:",
+                              "terminal_observation_timestamp_invalid:")):
         result["next_action"] = (
             "Use the documented targeted status-only read_thread or wait_threads projection for each "
             "unverified worker, then refresh the collector. Do not send workers status pings or no-op "
             "follow-ups: those are new dispatches and may invalidate accepted results. If a later message "
             "is already unconsumed, preserve the evidence and use only a supported guarded correction."
         )
+        handles = set(re.findall(r"terminal_observation_[a-z_]+:([^;]+)", str(error)))
+        projections = [targeted_wait_projection_source(thread) for handle, thread in (thread_mappings or {}).items()
+                       if handle in handles and isinstance(thread, str) and UUID.fullmatch(thread)]
+        if projections:
+            result["status_projections"] = projections
+            result["next_action"] = ("Execute each status_projections entry as functions.exec source without modification, "
+                                     "then rerun the same collector command. " + result["next_action"])
     return result
 
 
@@ -785,6 +795,7 @@ def main() -> int:
     if any((worker_trace, args.observation, args.agent, args.trace)) and not all(
             (worker_trace, args.agent, args.trace)):
         parser.error("trace export requires a worker identity, --agent and --trace")
+    result = {}
     try:
         identity_sessions = list(args.identity_session)
         bindings_path = args.ledger.parent / "role_bindings.json"
@@ -911,7 +922,7 @@ def main() -> int:
                 return 2
         profile_activation = activate_verified_remediation(packet_path, result) if packet_path.is_file() else None
     except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration) as error:
-        print(json.dumps(blocked_collector_result(error)))
+        print(json.dumps(blocked_collector_result(error, result.get("thread_mappings"))))
         return 2
     output = {"status": "recorded", "ledger": str(args.ledger),
               "thread_mappings": result["thread_mappings"], "dispatch_count": len(result["events"])}

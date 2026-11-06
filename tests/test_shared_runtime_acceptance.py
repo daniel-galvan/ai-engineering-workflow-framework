@@ -37,6 +37,30 @@ class SharedRuntimeAcceptance(unittest.TestCase):
         self.assertIn("Do not send workers status pings", result["next_action"])
         self.assertNotIn("next_action", blocked_collector_result(ValueError("worker_trace_session_mismatch")))
 
+    def test_export_status_failure_returns_the_exact_supported_projection(self):
+        from scripts import worker_runtime_evidence as collector
+        from scripts.provider_runtime import targeted_wait_projection_source
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            run, root, role, *_ = fixture
+            _, ledger = self.export(fixture)
+            arguments = [str(preparation.ROOT / "scripts/worker_runtime_evidence.py"),
+                "--provider-session", str(root / "parent.jsonl"), "--parent-thread-id", PARENT,
+                "--started-at", run["runtime_evidence"]["run_started_at"], "--ledger", run["runtime_evidence"]["ledger"],
+                "--worker-session", str(root / "child.jsonl"), "--agent", role, "--trace", str(root / "pending.trace.json")]
+            for prefix in ("terminal_observation_not_terminal", "terminal_observation_timestamp_invalid"):
+                reason = prefix + ":/root/worker"
+                output = io.StringIO()
+                with self.subTest(prefix=prefix), patch.object(sys, "argv", arguments), \
+                     patch.object(collector, "read_runtime_events", return_value=ledger), \
+                     patch.object(collector, "export_worker_trace", side_effect=ValueError(reason)), redirect_stdout(output):
+                    self.assertEqual(collector.main(), 2)
+                receipt = json.loads(output.getvalue())
+                self.assertEqual(receipt["reason"], reason)
+                self.assertEqual(receipt["status_projections"], [targeted_wait_projection_source(CHILD)])
+                self.assertIn("without modification", receipt["next_action"])
+                self.assertFalse((root / "pending.trace.json").exists())
+
     def test_idle_wait_snapshot_does_not_require_an_event_wake(self):
         from scripts.provider_runtime import targeted_thread_observation
         raw = {"wake": None, "polls": [{"thread": {"id": CHILD, "status": {"type": "idle", "activeFlags": []}},
