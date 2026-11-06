@@ -3587,7 +3587,8 @@ def main() -> int:
     parser.add_argument("--work-item")
     parser.add_argument("--playbook")
     parser.add_argument("--runtime-agents", type=Path)
-    parser.add_argument("--provider-session", type=Path, help="Assert the automatically resolved current native parent record")
+    parser.add_argument("--provider-session", type=Path,
+                        help="Optional assertion of the current native parent record; normally omit for automatic binding")
     parser.add_argument("--lifecycle", choices=("planning", "remediation"),
                         help="Declared lifecycle; must match the initial planning stage or approved continuation/reentry")
     parser.add_argument("--execution-profile", choices=("standard", "deep"),

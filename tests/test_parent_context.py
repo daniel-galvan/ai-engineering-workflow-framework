@@ -814,6 +814,21 @@ class ParentContext(unittest.TestCase):
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(prior_worker,),
                                      runtime_evidence=runtime)["errors"])
 
+    def test_planning_recovery_wrapper_uses_automatic_native_binding(self):
+        skill = (Path(__file__).resolve().parents[1] / "skills/run/SKILL.md").read_text()
+        self.assertIn("Normal preflight and preparation commands omit `--provider-session`", skill)
+        self.assertIn("do not embed\n   a session-log path in that wrapper", skill)
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        command = ("python3 - <<'PY'\nimport json, subprocess\n"
+                   "manifest = {'inputs': []}\n"
+                   f"args = ['python3', {str(script)!r}, '--continuation', '--planning-recovery', "
+                   "'--approval-reference', 'current user message', '--input-json', json.dumps(manifest)]\n"
+                   "subprocess.run(args, check=True)\nPY\n")
+        self.rows.append(self.call("exec_command", cmd=command))
+        self.assertEqual(self.audit(related_run_thread_ids=())["status"], "passed")
+        self.rows[-1] = self.call("exec_command", cmd=command + "cat /tmp/.codex/sessions/other.jsonl")
+        self.assertIn("forbidden_context_reference:session_log", self.audit(related_run_thread_ids=())["errors"])
+
     def test_planning_recovery_command_references_only_current_session(self):
         self.source = self.root / ".codex" / "sessions" / "parent.jsonl"
         self.source.parent.mkdir(parents=True)
