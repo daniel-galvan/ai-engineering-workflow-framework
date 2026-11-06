@@ -1508,6 +1508,16 @@ class ParentContext(unittest.TestCase):
         result = self.audit()
         self.assertEqual(result["status"], "passed", result)
 
+        for predicate in ('x=>x.type==="text"', "part => part.type === 'text'"):
+            with self.subTest(predicate=predicate):
+                formatted = source.replace('text(JSON.stringify({handle, result: r}));',
+                    f'const raw = r.content?.find({predicate})?.text || ""; '
+                    'const data = JSON.parse(raw); text(JSON.stringify({handle, thread: data.thread}));')
+                self.rows[-1]["payload"]["input"] = formatted
+                self.assertEqual(self.audit()["status"], "passed")
+                self.rows[-1]["payload"]["input"] = formatted.replace(predicate, 'x=>eval(x)')
+                self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
         self.rows[-1]["payload"]["input"] = source.replace(child_two, TURN)
         result = self.audit()
         self.assertIn("parent_unassigned_thread_read:" + TURN, result["errors"])

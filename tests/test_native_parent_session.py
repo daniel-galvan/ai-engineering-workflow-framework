@@ -194,6 +194,35 @@ class NativeParentSession(unittest.TestCase):
         self.assertEqual(continued["run_id"], run["run_id"])
         self.assertEqual(prepared_package_errors(Path(run["artifact_root"])), [])
 
+    def test_continuation_preserves_feature_run_after_formatted_worker_status_read(self):
+        from scripts.prepare_run import prepare_run
+        earlier = self.record("earlier")
+        repository = self.root / "repository"
+        repository.mkdir()
+        run = prepare_run(repository, "ITEM-1", "feature_delivery", None, False,
+                          input_data={"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current request",
+                              "Source or path": "User", "Authority": "User", "Status": "Verified"}]})
+        inputs = Path(run["artifact_root"]) / "run_inputs.json"
+        before = inputs.read_bytes()
+        child = "00000000-0000-0000-0000-000000000004"
+        source = (f'const ids = [["{child}","/root/worker"]];\n'
+                  'for(const [threadId,handle] of ids){\n'
+                  'const r = await tools.mcp__codex_app__read_thread({threadId,turnLimit:1,'
+                  'includeOutputs:false,maxOutputCharsPerItem:1});\n'
+                  'const raw = r.content?.find(x=>x.type==="text")?.text||"";\n'
+                  'const data = JSON.parse(raw); text(JSON.stringify({thread_status:data.thread?.status?.type}));\n}')
+        with earlier.open("a") as stream:
+            for kind, payload in (
+                ("event_msg", {"item": {"type": "SubAgentActivity", "kind": "started",
+                    "agent_path": "/root/worker", "agent_thread_id": child}}),
+                ("response_item", {"type": "custom_tool_call", "name": "exec", "input": source}),
+                ("turn_context", {"turn_id": "00000000-0000-0000-0000-000000000003"}),
+            ):
+                stream.write(json.dumps({"timestamp": "2026-10-20T00:00:01Z", "type": kind, "payload": payload}) + "\n")
+        continued = prepare_run(repository, "ITEM-1", "feature_delivery", None, True, input_manifest=inputs)
+        self.assertEqual(continued["run_id"], run["run_id"])
+        self.assertEqual(inputs.read_bytes(), before)
+
     def test_reopening_cannot_clear_a_prior_parent_context_violation(self):
         self.continuation_context_violation(reopened=True)
 

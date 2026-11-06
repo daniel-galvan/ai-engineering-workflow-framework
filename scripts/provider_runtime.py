@@ -421,9 +421,12 @@ def _literal_parent_thread_read_batch(source: str) -> list[tuple[str, dict]] | N
         r'const r\s*=\s*await tools\.mcp__codex_app__read_thread\('
         r'\{threadId,\s*turnLimit:\s*1,\s*includeOutputs:\s*false,\s*maxOutputCharsPerItem:\s*1\}\);'
         r'(?P<body>[\s\S]*)\}\s*', source)
+    # Selecting the text block does not change the literal tool call being audited.
+    body = re.sub(r'\.find\(\s*(?P<item>[A-Za-z_$][\w$]*)\s*=>\s*(?P=item)\.type\s*===\s*'
+                  r'(?P<quote>[\'"])text(?P=quote)\s*\)', '.find_text()', match["body"]) if match else ""
     if (not match or source.count("tools.") != 1 or len(re.findall(r"\bids\b", source)) != 2
             or re.search(r"\b(?:ids|threadId|for|while|function|eval|Function|globalThis|constructor|"
-                         r"return|throw|break|continue)\b|=>", match["body"])):
+                         r"return|throw|break|continue)\b|=>", body)):
         return None
     try:
         identities = json.loads(match[1])
