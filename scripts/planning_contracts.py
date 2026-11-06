@@ -967,6 +967,9 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
         if manifest:
             errors.extend(validate_asset_manifest(manifest, expected_evidence_ids={
                 row.get("Evidence ID") for row in packet.get("evidence", [])
+            }, material_claim_evidence_ids={
+                reference for row in packet.get("claims", [])
+                for reference in REFERENCE_ID.findall(str(row.get("Evidence refs", "")))
             }))
         return list(dict.fromkeys(errors))
     if remediation:

@@ -379,6 +379,24 @@ class PlanningRecovery(unittest.TestCase):
                 result.update(plan_readiness='awaiting_input', implementation_plan_action='omit')
             Path(bindings['worker_contracts'][role]['result']).write_text(json.dumps(result))
         self.assertEqual(finalizer.feature_delivery_pre_handoff_errors(self.packet_path), [])
+        asset['sources'][0].update(discovery_status='complete', asset_ids=['ASSET-FC-001'])
+        asset['assets'] = [{
+            'asset_id': 'ASSET-FC-001', 'source_id': 'SRC-JIRA', 'name': 'requirements.md', 'kind': 'file',
+            'locator': 'https://example.invalid/requirements.md', 'availability': 'available',
+            'requiredness': 'required', 'review_method': 'text_read', 'review_status': 'consumed',
+            'relevance': 'material', 'observation': 'Reviewed requirement used in design',
+            'used_by': ['feature-context', 'feature-design'], 'evidence_refs': ['E-FC-001'],
+            'disposition': 'Applied to the planned design',
+        }]
+        manifest.write_text(json.dumps(asset))
+        self.assertEqual(finalizer.feature_delivery_pre_handoff_errors(self.packet_path), [])
+        asset['assets'][0]['used_by'] = ['feature-context']
+        asset['gate']['all_material_assets_linked'] = False
+        manifest.write_text(json.dumps(asset))
+        self.assertIn('material asset ASSET-FC-001 must reach feature-design or planning-review',
+                      finalizer.feature_delivery_pre_handoff_errors(self.packet_path))
+        asset['assets'][0]['used_by'].append('feature-design')
+        asset['gate']['all_material_assets_linked'] = True
         asset['sources'][0]['evidence_refs'] = ['E-OLD-001']
         manifest.write_text(json.dumps(asset))
         self.assertTrue(any('E-OLD-001' in error for error in
