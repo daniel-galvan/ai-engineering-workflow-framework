@@ -2305,23 +2305,18 @@ def _without_verified_search_lines(value: str, targets: list[Path]) -> str:
     return "".join(remaining)
 
 
-def _without_prose_root_punctuation(text: str, row: dict, root: Path,
-                                   field_path: tuple[str, ...] = ()) -> str:
-    """Recognize root punctuation in typed prose without changing executable path arguments."""
-    if str(root) + "." not in text and ".thoughts/" + root.name + "." not in text:
-        return text
-    punctuation = re.compile(r"(" + re.escape(str(root)) + "|" + re.escape(".thoughts/" + root.name)
-                             + r")\.(?=\s|$)")
+def _without_approval_justification(text: str, row: dict, field_path: tuple[str, ...]) -> str:
+    """Approval prose is not an executed source read; preserve every executable argument."""
     operations = _tool_operations(row)
     justifications = {args['justification'] for tool, args in operations
                       if tool == 'exec_command' and isinstance(args.get('justification'), str)}
     if field_path[-2:] == ('arguments', 'justification') and text in justifications:
-        return punctuation.sub(r'\1', text)
+        return '[approval metadata]'
     if justifications and field_path[-1:] == ('arguments',):
         try:
             arguments = json.loads(text)
             if isinstance(arguments, dict) and arguments.get('justification') in justifications:
-                arguments['justification'] = punctuation.sub(r'\1', arguments['justification'])
+                arguments['justification'] = '[approval metadata]'
                 return json.dumps(arguments)
         except (ValueError, TypeError):
             pass
@@ -2339,12 +2334,21 @@ def _without_prose_root_punctuation(text: str, row: dict, root: Path,
                 prose = ast.literal_eval(value.string)
                 if prose in justifications:
                     begin, end = (offsets[line - 1] + column for line, column in (value.start, value.end))
-                    edits.append((begin, end, json.dumps(punctuation.sub(r'\1', prose))))
+                    edits.append((begin, end, json.dumps('[approval metadata]')))
             for begin, end, replacement in reversed(edits):
                 text = text[:begin] + replacement + text[end:]
         except (ValueError, SyntaxError, TypeError, tokenize.TokenError):
             pass
-    for tool, arguments in operations:
+    return text
+
+
+def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
+    """Recognize root punctuation only in serialized objectives and bound failure-reason text."""
+    if str(root) + "." not in text and ".thoughts/" + root.name + "." not in text:
+        return text
+    punctuation = re.compile(r"(" + re.escape(str(root)) + "|" + re.escape(".thoughts/" + root.name)
+                             + r")\.(?=\s|$)")
+    for tool, arguments in _tool_operations(row):
         command = arguments.get("cmd") if tool == "exec_command" else None
         if not isinstance(command, str):
             continue
@@ -2540,6 +2544,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                 break
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
         row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
+        operational = _without_approval_justification(candidate, row, path) if not output else candidate
+        metadata_only = operational != candidate
+        candidate = operational
         background = _background_memory_paths(row) or (background_reads.get(row.get("call_id"), set()) if output else set())
         if output and background:
             # Registry entries can name old sources; seeing a pointer does not authorize following it.
@@ -2553,7 +2560,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         for spelling in sorted(spellings, key=len, reverse=True):
             candidate = candidate.replace(spelling, "[background guidance]")
         if root and not output:
-            candidate = _without_prose_root_punctuation(candidate, row, root, path)
+            candidate = _without_prose_root_punctuation(candidate, row, root)
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:
@@ -2580,7 +2587,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
             for instruction in instructions:
                 candidate = re.sub(r"(?<![\w./-])" + re.escape(instruction) + r"(?![\w./-])", "", candidate, count=1)
         for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
-            checked = candidate if (background or ancestor_instruction_output or label == "archived_artifact"
+            checked = candidate if (metadata_only or background or ancestor_instruction_output or label == "archived_artifact"
                                     or output and row.get("call_id") in framework_searches
                                     or _authorized_read(row, assigned)
                                     or output and row.get("call_id") in reads) else value

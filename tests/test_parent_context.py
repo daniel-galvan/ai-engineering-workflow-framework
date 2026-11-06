@@ -1835,6 +1835,98 @@ class ParentContext(unittest.TestCase):
         (root / 'runtime_closure.json').unlink()
         self.assertIsNone(closed_zero_dispatch_run_id(root))
 
+    def test_closed_run_archive_rechecks_the_current_fragment_of_the_original_chat(self):
+        for later_dispatch in (False, True):
+            with self.subTest(later_dispatch=later_dispatch):
+                root, run_id = self.closed_zero_dispatch_fixture()
+                old_source, current_source = self.root / 'previous-fragment.jsonl', self.root / 'current-fragment.jsonl'
+                def write_source(path, rows):
+                    path.write_text('\n'.join(json.dumps(row) for row in rows) + '\n')
+                write_source(old_source, [
+                    {'type': 'session_meta', 'timestamp': '2026-09-30T00:00:00Z', 'payload': {'id': CHILD}},
+                    {'type': 'event_msg', 'timestamp': '2026-09-30T00:00:01Z', 'payload': {'item': {
+                        'type': 'SubAgentActivity', 'kind': 'started', 'agent_path': '/root/previous_run',
+                        'agent_thread_id': TURN}}}])
+                rows = [{'type': 'session_meta', 'timestamp': '2026-10-01T00:01:00Z', 'payload': {'id': CHILD}}]
+                if later_dispatch:
+                    rows.extend([
+                        {'type': 'response_item', 'timestamp': '2026-10-01T00:01:01Z', 'payload': {
+                            'type': 'function_call', 'namespace': 'collaboration', 'name': 'spawn_agent',
+                            'arguments': json.dumps({'task_name': 'new_writer', 'message': 'Current run work'})}},
+                        {'type': 'event_msg', 'timestamp': '2026-10-01T00:01:02Z', 'payload': {'item': {
+                            'type': 'SubAgentActivity', 'kind': 'started', 'agent_path': '/root/new_writer',
+                            'agent_thread_id': TURN}}}])
+                write_source(current_source, rows)
+                for name in ('role_bindings.json', 'runtime_dispatches.json'):
+                    data = json.loads((root / name).read_text())
+                    target = data['parent_context'] if name == 'role_bindings.json' else data
+                    target['provider_session'] = str(old_source)
+                    (root / name).write_text(json.dumps(data))
+                before = {path.name: path.read_bytes() for path in root.iterdir()}
+                context = {'parent_thread_id': CHILD, 'provider_session': str(current_source), 'closed_run_id': run_id,
+                    'verified_related_run_status_probes': 1, 'related_run_status_probe_attempts': 1,
+                    'related_run_status_rows': [], 'related_run_thread_ids': [], 'prior_run_dispatch_ledger_present': True}
+                if later_dispatch:
+                    with self.assertRaisesRegex(ValueError, 'prior_run_archive_blocked:runtime_dispatch_ledger_stale'):
+                        _archive_existing_run(root, False, parent_context=context)
+                    self.assertEqual({path.name: path.read_bytes() for path in root.iterdir()}, before)
+                else:
+                    archive = Path(_archive_existing_run(root, False, parent_context=context))
+                    for name, content in before.items():
+                        self.assertEqual((archive / name).read_bytes(), content)
+                shutil.rmtree(root)
+
+    def test_published_worker_failure_uses_local_closure_and_rejects_inconsistent_receipts(self):
+        from scripts.provider_runtime import closed_run_id
+        from scripts.worker_runtime_evidence import terminal_closure
+        root, run_id = self.closed_zero_dispatch_fixture()
+        handle = '/root/check'
+        ledger = json.loads((root / 'runtime_dispatches.json').read_text())
+        ledger.update(events=[{'Operation': 'spawn_agent', 'Provider handle': handle,
+                              'Thread ID': TURN, 'Last dispatch at': '2026-10-01T00:00:01Z'}],
+                      thread_mappings={handle: TURN}, inventories=[{'Observed at': '2026-10-01T00:00:02Z',
+                          'raw_response': {'agents': [{'agent_name': handle, 'agent_status': 'completed'}]}}])
+        ledger['timing']['open_worker_intervals'] = 1  # Missing activity-end events cannot override native status.
+        (root / 'runtime_dispatches.json').write_text(json.dumps(ledger))
+        (root / 'runtime_closure.json').write_text(json.dumps(terminal_closure(ledger)))
+        packet = json.loads((root / 'finalization_packet.json').read_text())
+        packet['runtime_audits'] = [{'Provider handle': handle}]
+        (root / 'finalization_packet.json').write_text(json.dumps(packet))
+        frozen = (root / 'finalization_packet.json').read_bytes()
+        (root / 'snapshot.json').write_bytes(frozen)
+        digest = hashlib.sha256(frozen).hexdigest()
+        failure = json.loads((root / 'finalization_failure.json').read_text())
+        failure.update(snapshot_sha256=digest, packet_sha256=digest, handoff_packet_sha256=digest)
+        (root / 'finalization_failure.json').write_text(json.dumps(failure))
+        delivery = json.loads((root / 'handoff_delivery.json').read_text())
+        names = ('role_bindings.json', 'finalization_packet.json', 'runtime_dispatches.json', 'runtime_closure.json')
+        delivery['control_sha256'] = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names}
+        (root / 'handoff_delivery.json').write_text(json.dumps(delivery))
+        originals = {path.name: path.read_bytes() for path in root.iterdir()}
+        with patch('scripts.provider_runtime.read_runtime_events', side_effect=AssertionError('No previous chat reads')):
+            self.assertEqual(closed_run_id(root), run_id)
+            self.assertEqual(scoped_prior_run_status_thread_ids(root, PARENT), ())
+        changes = (
+            ('runtime_dispatches.json', lambda d: d['inventories'][0]['raw_response']['agents'][0].update(agent_status='running')),
+            ('runtime_dispatches.json', lambda d: d['events'][0].update({'Last dispatch at': '2026-10-01T00:00:03Z'})),
+            ('runtime_dispatches.json', lambda d: d['thread_mappings'].update({handle: PARENT})),
+            ('runtime_closure.json', lambda d: d['terminal_observations'][0].update({'Provider status': 'running'})),
+            ('finalization_packet.json', lambda d: d.update(claims=[{'Claim': 'Changed after publication'}])),
+        )
+        for name, change in changes:
+            with self.subTest(name=name):
+                data = json.loads(originals[name]); change(data)
+                (root / name).write_text(json.dumps(data))
+                self.assertIsNone(closed_run_id(root))
+                # Even a matching file hash cannot conceal invalid worker closure evidence.
+                if name != 'finalization_packet.json':
+                    resealed = json.loads(originals['handoff_delivery.json'])
+                    resealed['control_sha256'][name] = hashlib.sha256((root / name).read_bytes()).hexdigest()
+                    (root / 'handoff_delivery.json').write_text(json.dumps(resealed))
+                    self.assertIsNone(closed_run_id(root))
+                for restore, content in originals.items():
+                    (root / restore).write_bytes(content)
+
     def test_inline_manifest_command_passes_parent_audit_and_prepares(self):
         inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "User's current issue",
             "Source or path": "User", "Authority": "User", "Status": "Verified"}]}

@@ -82,7 +82,7 @@ class PlanningCommandPath(unittest.TestCase):
                       native_continuation=False, continue_to_remediation=False,
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
-                      recover_context_block=False, missing_mapping=False):
+                      recover_context_block=False, missing_mapping=False, start_next_run=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -484,7 +484,7 @@ class PlanningCommandPath(unittest.TestCase):
                     "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
                     "--remediation-reentry", "--approval-reference", "Explicit approval of the exact plan",
                     "--input-manifest", run["run_input_manifest"]["path"],
-                    *(("--provider-session", parent) if recover_unactivated_remediation or recover_interrupted_delivery
+                    *(("--provider-session", parent) if start_next_run or recover_unactivated_remediation or recover_interrupted_delivery
                       or recover_context_block else ())))
                 self.assertNotEqual(run["run_id"], prior_run_id)
                 self.assertEqual((root / "implementation_plan.md").read_bytes(), approved_plan)
@@ -1012,6 +1012,52 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual({row["Provider handle"]: row["Provider status"] for row in planning_receipt["terminal_observations"]}["/root/failed_original"], "failed")
             if not continue_to_remediation:
                 self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), source_hash)
+            if start_next_run:
+                from scripts.provider_runtime import closed_run_id
+                prior_run_id = run["run_id"]
+                self.assertEqual(closed_run_id(root), prior_run_id)
+                packet_before = packet_path.read_bytes()
+                altered = json.loads(packet_before)
+                altered["handoff"]["workflow_result"] = "Changed after publication"
+                packet_path.write_text(json.dumps(altered))
+                self.assertIsNone(closed_run_id(root))
+                packet_path.write_bytes(packet_before)
+                prefix, suffix = root / "presentation-prefix.md", root / "presentation-suffix.md"
+                prefix.write_text("Current user introduction.\n")
+                suffix.write_text("\nCurrent user closing.\n")
+                canonical = response.read_bytes()
+                composed = command("finalize_work_record.py", "--packet", packet_path, "--publish-response", response,
+                    "--presentation-prefix", prefix, "--presentation-suffix", suffix)
+                self.assertEqual(composed.encode(), prefix.read_bytes() + canonical + suffix.read_bytes())
+                self.assertEqual(response.read_bytes(), canonical)
+                self.assertEqual(closed_run_id(root), prior_run_id)
+                saved = {path.relative_to(root): path.read_bytes() for path in root.rglob("*")
+                         if path.is_file() and not path.is_relative_to(root / "runs")}
+                history = {path: path.read_bytes() for path in (root / "runs").rglob("*") if path.is_file()}
+                parent.unlink()  # A fresh run must succeed even when the previous chat is unavailable.
+                new_parent = provider / "next-parent.jsonl"
+                append(new_parent, "session_meta", id=str(UUID(int=999)), cwd=str(repository))
+                append(new_parent, "turn_context", turn_id=str(UUID(int=998)))
+                append(new_parent, "response_item", role="user", content=[{"type": "input_text", "text":
+                    "Start an independent planning run using only my supplied inputs."}])
+                command("run_preflight.py", "--provider-session", new_parent)
+                projection = json.loads(command("prepare_run.py", "--status-projection", "--execution-repository",
+                    repository, "--work-item", "DEMO-1", "--provider-session", new_parent))
+                self.assertEqual(projection["prior_thread_ids"], [])
+                append(new_parent, "response_item", type="custom_tool_call", name="exec", call_id="new-status",
+                       input=projection["projection"])
+                append(new_parent, "response_item", type="custom_tool_call_output", call_id="new-status",
+                       output=[{"type": "text", "text": "[]"}])
+                fresh = json.loads(command("prepare_run.py", "--execution-repository", repository,
+                    "--work-item", "DEMO-1", "--playbook", playbook, "--input-manifest", inputs,
+                    "--provider-session", new_parent))
+                self.assertNotEqual(fresh["run_id"], prior_run_id)
+                archive = Path(fresh["archived_prior_run"])
+                for name, content in saved.items():
+                    self.assertEqual((archive / name).read_bytes(), content)
+                for path, content in history.items():
+                    self.assertEqual(path.read_bytes(), content)
+                self.assertNotIn("reentry", json.loads(Path(fresh["finalization_packet"]).read_text()))
             changed = subprocess.run(["git", "-C", str(repository), "status", "--porcelain"], capture_output=True, text=True, check=True)
             if continue_to_remediation:
                 self.assertEqual({line[3:] for line in changed.stdout.splitlines()},

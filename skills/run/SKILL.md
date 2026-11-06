@@ -398,6 +398,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Missing or ambiguous native records block preparation. `--provider-session <path>` asserts the resolved path;
    an older fragment cannot override it. Preparation repeats the parent audit before changing artifacts.
    Same-chat continuation retains current-run control metadata automatically, without analytical imports.
+   After a published control failure before worker dispatch, use ordinary `--continuation` with the unchanged inputs.
+   Preparation preserves the original failure and closure, verifies fresh native zero-dispatch evidence, and clears
+   the active failure for every playbook. Keep the existing Run ID and pending gate; this grants no new permissions.
    Activation, result acceptance, finalization, and successful publication recheck the bound parent turn.
    A new forbidden read blocks success; report it through the packaged workflow-failure path and collect closure.
    Runtime collection must use the bound parent identity and exact native record, including on failure paths.
@@ -568,11 +571,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    with no worker thread ID is exempt because the provider never created an observable worker task.
    The status projection excludes the current parent thread by its exact provider ID. A fresh chat must not use a prior
    session's state to decide whether to reuse its artifact root unless the current user authorizes that exact parent
-   thread. A published terminal control failure with zero dispatched workers has a local-only archival path: preparation
-   verifies matching packet, failure, publication, ledger and closure receipts, then preserves its files under `runs/`
-   without opening the previous chat or importing findings. The projection returns no prior thread IDs for this case.
-   Active, incomplete or inconsistent receipts do not qualify. If the helper blocks, leave the old artifact root
-   untouched; ask the user for an explicit decision
+   thread. Published terminal runs have a local-only archival path: preparation verifies matching identities,
+   publication hashes, sealed control files, and terminal closure for every dispatched worker, then preserves files
+   under `runs/` without opening the previous chat or importing findings. Legacy published zero-dispatch control
+   failures may use their matching packet, failure, publication, ledger and closure receipts. The projection returns
+   no prior thread IDs when this proof passes. Active, incomplete or inconsistent receipts do not qualify.
+   If the helper blocks, leave the old artifact root untouched; ask the user for an explicit decision
    before reading or using that run. When authorized status rows show the prior parent and every known worker are
    terminal, rerun with `--archive-stale-run` and the same `--authorize-prior-parent-thread` value. This preserves old
    artifacts under `runs/stale-<timestamp>/` and creates a fresh run.

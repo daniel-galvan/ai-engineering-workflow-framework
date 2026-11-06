@@ -54,7 +54,8 @@ Because the plugin packages this repository, every tracked content change affect
    cache-busting suffix before packaging or installing the changed snapshot;
 3. run the framework validator and preflight self-test; they reject changed package content that reuses a plugin build
    identity;
-4. reinstall the plugin and test it in a new Codex task.
+4. pass the focused lifecycle gate below before reinstalling the plugin. Use live runs to verify provider integration;
+   a fresh user ticket must not be the first test of shared startup, closure, recovery, or subsequent-run behavior.
 
 Do not change framework document versions merely because the plugin cache-buster changed.
 
@@ -71,18 +72,27 @@ Do not change framework document versions merely because the plugin cache-buster
 
 ## Validation
 
-From the repository root, run:
+Build the package with `python3 scripts/validate_library.py`, then run tests focused on the changed contracts.
+For shared runtime changes, use this bounded lifecycle gate from the repository root:
 
 ```bash
-python3 scripts/validate_library.py --self-test
-python3 scripts/run_preflight.py --self-test
-python3 scripts/prepare_run.py --self-test
-python3 scripts/finalize_work_record.py --self-test
-env -u CODEX_THREAD_ID -u CODEX_SESSION_ID python3 -m unittest discover -s tests -p 'test_*.py'
+env -u CODEX_THREAD_ID -u CODEX_SESSION_ID python3 -m unittest tests.test_runtime_lifecycle_contract tests.test_context_operation_audit tests.test_parent_context.ParentContext.test_published_worker_failure_uses_local_closure_and_rejects_inconsistent_receipts tests.test_parent_context.ParentContext.test_closed_zero_dispatch_archive_rejects_changed_or_incomplete_receipts
 ```
 
-The regression suite uses synthetic provider records. Clear the editing chat's native identity as shown above;
-native-binding tests supply their own controlled identity and records. Packaged self-checks isolate this automatically.
+The gate uses a clean package, synthetic provider records, real Git main checkouts and worktrees, and shipped CLI
+commands. It covers both profiles across every playbook's planning startup, pre-dispatch failure publication,
+same-chat recovery, and subsequent fresh run, including Feature specification assessment. Worker-bearing success
+through planning and remediation publication is exercised for Feature Delivery and TechOps. It checks archive bytes,
+input transport, run identity, control-file changes, and status projection without previous-chat access. It does not
+certify live connectors, every playbook's full success path, or Vulnerability remediation reentry.
+
+Keep additions reusable across playbooks and input shapes; do not add ticket-specific exceptions. Change only the
+relevant self-check fixtures when a contract changes. Do not run all suites for a focused fix; use broader suites
+when the change scope or unresolved evidence requires them. Avoid importing a `TestCase` class into another test
+module: unittest also discovers that imported class and may run its unrelated tests.
+
+The regression tests supply controlled provider identities. Clear the editing chat's native identity as shown above;
+native-binding tests supply their own identity and records. Packaged self-checks isolate this automatically.
 
 To validate a terminal work record's identity and referential integrity, supply its path:
 

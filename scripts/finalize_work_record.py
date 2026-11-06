@@ -1703,10 +1703,7 @@ def collect_failure_closure(packet_path: Path, provider_session: Path | None = N
     if not bindings_path.is_file():
         return "unverified"
     bindings = json.loads(bindings_path.read_text())
-    supported = bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}
-    supported = supported or (bindings.get("playbook") == "sentry_issue_remediation"
-                              and bindings.get("lifecycle") == "remediation")
-    if not supported:
+    if not bindings.get("runtime_evidence"):
         return "unverified"
     ledger_path = Path(bindings.get("runtime_evidence", {}).get("ledger", root / "runtime_dispatches.json"))
     try:
@@ -2267,6 +2264,9 @@ def main() -> int:
                        "proposed_response": str(args.verify_response.resolve()),
                        "record_sha256": hashlib.sha256(record.read_bytes()).hexdigest() if
                            (record := packet_path.parent / "work_record.md").is_file() else None,
+                       "control_sha256": {name: hashlib.sha256((packet_path.parent / name).read_bytes()).hexdigest()
+                           for name in ("role_bindings.json", "finalization_packet.json", "runtime_dispatches.json",
+                                        "runtime_closure.json") if (packet_path.parent / name).is_file()},
                        "comparison_policy": "Exact UTF-8 canonical report plus declared prefix/suffix with one optional terminal LF; internal whitespace is significant",
                        "scope": "prepared response bytes; actual chat delivery is not observable by this CLI"}
             if composed:

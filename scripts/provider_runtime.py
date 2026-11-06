@@ -173,52 +173,137 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
     return tuple(sorted(identities))
 
 
-def closed_zero_dispatch_run_id(artifact_root: Path) -> str | None:
-    """Authenticate a published, closed pre-dispatch failure using local control receipts only."""
+def closed_run_id(artifact_root: Path, *, zero_dispatch_only: bool = False) -> str | None:
+    """Verify published terminal control receipts locally, without opening a prior provider session."""
     names = ('role_bindings.json', 'finalization_packet.json', 'runtime_dispatches.json',
-             'runtime_closure.json', 'finalization_failure.json', 'handoff_delivery.json',
-             'work_record.md', 'handoff_failure.md', 'handoff_response.md')
+             'runtime_closure.json', 'handoff_delivery.json', 'work_record.md')
     try:
         if artifact_root.is_symlink() or any((artifact_root / name).is_symlink() for name in names):
             return None
         raw = {name: (artifact_root / name).read_bytes() for name in names}
         data = {name: strict_json_loads(value.decode()) for name, value in raw.items() if name.endswith('.json')}
-        bindings, packet, ledger, closure, failure, delivery = (data[name] for name in names[:6])
+        bindings, packet, ledger, closure, delivery = (data[name] for name in names[:5])
+        response = artifact_root / 'handoff_response.md'
+        proposed = delivery.get('proposed_response')
+        if isinstance(proposed, str) and Path(proposed).is_absolute():
+            response = Path(proposed)
+        if response.is_symlink() or response.resolve().parent != artifact_root.resolve():
+            return None
+        response_bytes = response.read_bytes()
+        if delivery.get('presentation_composed') is True:
+            response_bytes = (delivery['presentation_prefix'].encode() + response_bytes
+                              + delivery['presentation_suffix'].encode())
         run_id = packet['identity']['Run ID']
         if (not isinstance(run_id, str) or not re.fullmatch(r'[A-Za-z0-9._-]+', run_id)
                 or not run_id.startswith(artifact_root.name + '-')
                 or packet['work_item']['ID'] != artifact_root.name
-                or any(item.get('run_id') != run_id for item in (bindings, failure, delivery))
+                or any(item.get('run_id') != run_id for item in (bindings, delivery))
                 or ledger.get('parent_thread_id') != bindings['parent_context']['parent_thread_id']
                 or not UUID.fullmatch(ledger['parent_thread_id'])
                 or ledger.get('run_started_at') != bindings['runtime_evidence']['run_started_at']
-                or ledger.get('events') != [] or ledger.get('failed_dispatches') != []
-                or ledger.get('thread_mappings') != {}
-                or type(ledger['timing']['open_worker_intervals']) is not int
-                or ledger['timing']['open_worker_intervals'] != 0
-                or any(packet.get(field, []) != [] for field in ('workers', 'worker_results', 'runtime_audits'))
-                or closure.get('terminal_observations') != [] or len(closure['runtime_closure']) != 1
-                or closure['runtime_closure'][0].get('Runtime status') != 'Terminal'
-                or closure['runtime_closure'][0].get('Remaining active handles') != '0'
-                or closure['runtime_closure'][0].get('Completed worker handles') != 'None dispatched'
-                or failure.get('status') != 'failed' or failure.get('stage') != 'workflow'
-                or failure.get('reported_by') != 'Coordinator' or failure.get('runtime_closure') != 'terminal'
-                or delivery.get('status') != 'verified'):
-            return None
-        packet_hash = hashlib.sha256(raw['finalization_packet.json']).hexdigest()
-        snapshot = Path(failure['packet_snapshot'])
-        if (snapshot.is_symlink() or snapshot.resolve().parent != artifact_root.resolve()
-                or snapshot.read_bytes() != raw['finalization_packet.json']
-                or any(failure.get(field) != packet_hash for field in
-                       ('snapshot_sha256', 'packet_sha256', 'handoff_packet_sha256'))
+                or delivery.get('status') != 'verified'
                 or hashlib.sha256(raw['work_record.md']).hexdigest() != delivery.get('record_sha256')
-                or hashlib.sha256(raw['handoff_failure.md']).hexdigest() != failure.get('handoff_sha256')
-                or delivery.get('canonical_sha256') != failure.get('handoff_sha256')
-                or hashlib.sha256(raw['handoff_response.md']).hexdigest() != delivery.get('proposed_sha256')):
+                or hashlib.sha256(response_bytes).hexdigest() != delivery.get('proposed_sha256')):
+            return None
+        handles = dispatched_worker_handles(ledger)
+        seals = delivery.get('control_sha256', {})
+        if not isinstance(seals, dict) or any(
+                name not in raw or hashlib.sha256(raw[name]).hexdigest() != digest for name, digest in seals.items()):
+            return None
+        required_seals = {'role_bindings.json', 'finalization_packet.json', 'runtime_dispatches.json', 'runtime_closure.json'}
+        for row in ledger['events']:
+            handle = row.get('Provider handle')
+            if (handle not in handles or row.get('Thread ID') != ledger['thread_mappings'][handle]
+                    or row.get('Operation') not in {'spawn_agent', 'followup_task', 'send_message'}):
+                return None
+        for row in ledger.get('failed_dispatches', []):
+            if row.get('Status') != 'failed' or (row.get('Provider handle') is None and row.get('Operation') != 'spawn_agent'):
+                return None
+        if zero_dispatch_only and (handles or ledger.get('events') != [] or ledger.get('failed_dispatches') != []):
+            return None
+        if set(ledger['thread_mappings']) != set(handles) or any(
+                not isinstance(value, str) or not UUID.fullmatch(value) for value in ledger['thread_mappings'].values()):
+            return None
+        if not handles:
+            if (type(ledger['timing']['open_worker_intervals']) is not int
+                    or ledger['timing']['open_worker_intervals'] != 0
+                    or any(packet.get(field, []) != [] for field in ('workers', 'worker_results', 'runtime_audits'))
+                    or closure.get('terminal_observations') != [] or len(closure['runtime_closure']) != 1
+                    or closure['runtime_closure'][0].get('Runtime status') != 'Terminal'
+                    or closure['runtime_closure'][0].get('Remaining active handles') != '0'
+                    or closure['runtime_closure'][0].get('Completed worker handles') != 'None dispatched'):
+                return None
+        else:
+            # Native terminal status proves inactivity even when the activity-event timing stream is incomplete.
+            try:
+                from worker_runtime_evidence import terminal_closure
+            except ModuleNotFoundError:
+                from scripts.worker_runtime_evidence import terminal_closure
+            projected = terminal_closure(ledger)
+            if any(closure.get(field) != projected[field] for field in ('runtime_closure', 'terminal_observations')):
+                return None
+            if any(row.get('Provider handle') not in handles for row in packet.get('runtime_audits', [])):
+                return None
+        failure_path = artifact_root / 'finalization_failure.json'
+        if failure_path.is_symlink():
+            return None
+        failure = strict_json_loads(failure_path.read_text()) if failure_path.is_file() else {}
+        if (handles or failure.get('status') != 'failed') and set(seals) != required_seals:
+            return None
+        if failure.get('status') == 'failed':
+            snapshot = Path(failure['packet_snapshot'])
+            report = artifact_root / 'handoff_failure.md'
+            if snapshot.is_symlink() or report.is_symlink() or snapshot.resolve().parent != artifact_root.resolve():
+                return None
+            frozen = snapshot.read_bytes()
+            packet_hash = hashlib.sha256(raw['finalization_packet.json']).hexdigest()
+            if (failure.get('run_id') != run_id or failure.get('runtime_closure') != 'terminal'
+                    or hashlib.sha256(frozen).hexdigest() != failure.get('snapshot_sha256')
+                    or failure.get('packet_sha256') != packet_hash or failure.get('handoff_packet_sha256') != packet_hash
+                    or strict_json_loads(frozen.decode())['identity']['Run ID'] != run_id
+                    or hashlib.sha256(report.read_bytes()).hexdigest() != failure.get('handoff_sha256')
+                    or delivery.get('canonical_sha256') != failure.get('handoff_sha256')):
+                return None
+            canonical = report.read_bytes()
+            if zero_dispatch_only and (failure.get('stage') != 'workflow'
+                                       or failure.get('reported_by') != 'Coordinator' or frozen != raw['finalization_packet.json']):
+                return None
+        else:
+            if zero_dispatch_only:
+                return None
+            reference = re.search(r'<!-- workflow-state: (finalization_snapshot\.([0-9a-f]{64})\.json) -->',
+                                  raw['work_record.md'].decode())
+            if not reference:
+                return None
+            snapshot = artifact_root / reference[1]
+            if snapshot.is_symlink():
+                return None
+            frozen = snapshot.read_bytes()
+            terminal = strict_json_loads(frozen.decode())
+            if (hashlib.sha256(frozen).hexdigest() != reference[2]
+                    or terminal['identity']['Run ID'] != run_id or terminal['work_item']['ID'] != artifact_root.name
+                    or terminal['identity']['State'] not in {'awaiting_input', 'blocked', 'ready_for_implementation', 'completed'}
+                    or terminal.get('runtime_receipt') != 'runtime_closure.json'
+                    or any(terminal.get(field, []) != closure.get(field, [])
+                           for field in ('runtime_closure', 'terminal_observations'))):
+                return None
+            try:
+                from work_record_format import render_handoff
+            except ModuleNotFoundError:
+                from scripts.work_record_format import render_handoff
+            canonical = (render_handoff(terminal).removeprefix('```text\n').removesuffix('```').strip() + '\n').encode()
+            if hashlib.sha256(canonical).hexdigest() != delivery.get('canonical_sha256'):
+                return None
+        composed = delivery.get('presentation_prefix', '').encode() + canonical + delivery.get('presentation_suffix', '').encode()
+        if response_bytes.removesuffix(b'\n') != composed.removesuffix(b'\n'):
             return None
         return run_id
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
+
+
+def closed_zero_dispatch_run_id(artifact_root: Path) -> str | None:
+    return closed_run_id(artifact_root, zero_dispatch_only=True)
 
 
 def scoped_prior_run_status_thread_ids(
@@ -255,9 +340,9 @@ def scoped_prior_run_status_thread_ids(
         raise ValueError("stale_run_thread_identity_invalid")
     if authorized_prior_parent_thread_id is not None and authorized_prior_parent_thread_id != prior_parent:
         raise ValueError("stale_run_status_authorization_mismatch")
+    if closed_run_id(artifact_root) is not None:
+        return ()
     if prior_parent != current_thread_id and authorized_prior_parent_thread_id != prior_parent:
-        if closed_zero_dispatch_run_id(artifact_root) is not None:
-            return ()
         raise ValueError("prior_run_status_requires_user_authorization")
     return prior_run_status_thread_ids(artifact_root, current_thread_id)
 
@@ -925,7 +1010,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             "related_run_status_probe_attempts": related_run_probe_attempts,
             "related_run_status_rows": related_run_status_rows,
             "related_run_thread_ids": list(prior_ids),
-            "closed_zero_dispatch_run_id": closed_zero_dispatch_run_id(artifact_root) if artifact_root else None,
+            "closed_run_id": closed_run_id(artifact_root) if artifact_root else None,
             "prior_run_dispatch_ledger_present": bool(ledger_present)}
 
 def _preflight_order_errors(operations: list[dict], framework_root: Path,
@@ -1303,6 +1388,8 @@ def read_runtime_events(
                     raise ValueError("provider_session_parent_mismatch")
                 for line in identity_stream:
                     row = json.loads(line)
+                    if timestamp(row["timestamp"]) < started:
+                        continue
                     item = row.get("payload", {}).get("item", {})
                     if row.get("type") != "event_msg" or item.get("type") != "SubAgentActivity" or item.get("kind") != "started":
                         continue

@@ -273,9 +273,28 @@ class ContextOperationAudit(unittest.TestCase):
                 ('cat ' + str(self.root) + '.', justification),
                 ('cat ' + str(self.root / 'runs/prior/notes.md'), justification),
                 (justification, justification),
-                ('cat current_source.txt', justification.replace(self.root.name, 'OTHER'))):
+                ('cat ' + str(self.root.parent / 'OTHER/runs/old.md'), justification)):
             for errors in audit(command, reason):
                 self.assertIn('forbidden_context_reference:archived_artifact', errors)
+
+    def test_approval_metadata_never_authorizes_or_counts_as_source_access(self):
+        paths = ['/repo/.codex/sessions/old.jsonl', '/repo/.codex/memories/raw_memories.md',
+                 '/repo/.thoughts/OTHER/runs/old/report.md']
+        for target in paths:
+            for punctuation in ('', '.', ':', ' (read permission requested)'):
+                args = {'cmd': 'pwd', 'justification': 'Permission for ' + target + punctuation}
+                rows = [
+                    {'type': 'function_call', 'name': 'exec_command', 'arguments': args},
+                    {'type': 'function_call', 'name': 'exec_command', 'arguments': json.dumps(args)},
+                    {'type': 'custom_tool_call', 'name': 'exec',
+                     'input': 'await tools.exec_command(' + json.dumps(args) + ')'},
+                ]
+                for row in rows:
+                    with self.subTest(target=target, punctuation=punctuation, shape=row['type']):
+                        self.assertEqual(runtime.context_trace_errors({'tool_trace': [row]}), [])
+                args['cmd'] = 'cat ' + target
+                self.assertTrue(runtime.context_trace_errors({'tool_trace': [rows[0]]}))
+            self.assertTrue(runtime.context_trace_errors({'evidence': target}))
 
     def test_serialized_objective_punctuation_does_not_hide_executable_artifact_paths(self):
         objective = "Keep café artifacts inside " + str(self.root) + ". Do not read prior runs."

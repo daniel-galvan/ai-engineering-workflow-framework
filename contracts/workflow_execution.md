@@ -1374,11 +1374,19 @@ is idle, every visible child worker is terminal, and no artifact writer remains.
 make that prior run complete; the new run must confirm capacity by activating its own required worker. The Coordinator
 records this isolation decision before activation.
 
-A fresh run MAY preserve a published terminal control failure with zero dispatched workers using only local control
-receipts. Preparation MUST verify matching run identities, intact packet and publication hashes, a terminal closure,
-and an empty dispatch ledger with no open worker intervals. It MUST preserve the closed invocation under
-`.thoughts/<WORK-ITEM-ID>/runs/<RUN-ID>/`, without opening the prior chat or importing its findings into the fresh run.
-Missing or inconsistent proof does not authorize archival or access to another chat.
+A fresh run MAY preserve a published terminal run using only local control receipts. Preparation MUST verify matching
+run identities, intact packet and publication hashes, and native terminal closure for every dispatched worker.
+Activity timing alone does not establish worker status. Publication MUST seal the prepared bindings, packet, dispatch
+ledger, and closure bytes. A legacy published control failure with zero dispatched workers MAY use its matching
+packet, failure, publication, ledger, and closure receipts with no open worker intervals. Preparation MUST preserve the
+closed invocation under `.thoughts/<WORK-ITEM-ID>/runs/<RUN-ID>/`, without opening the prior chat or importing its
+findings into the fresh run. Missing or inconsistent proof does not authorize archival or access to another chat.
+
+Every playbook MUST prepare the shared runtime-evidence contract and retain provider closure on failure. A published
+pre-dispatch control failure MAY resume through ordinary same-chat continuation when the current parent audit passes
+and fresh native evidence still proves zero dispatches. Preserve the original failure and closure before clearing
+the active failure; keep the Run ID, provider start, and accepted inputs. This does not approve implementation or
+change lifecycle, and it does not authorize recovery of worker-bearing failures through the pre-dispatch path.
 
 Before recording `None` for an active related run, the Coordinator MUST check available provider tasks and sibling
 work-item artifact roots, then record the method and timestamp. When neither can be checked, record

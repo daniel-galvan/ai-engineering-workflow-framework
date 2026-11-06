@@ -2679,12 +2679,12 @@ def _archive_existing_run(
     parent_context: dict | None = None, input_manifest: Path | None = None,
 ) -> str | None:
     try:
-        from provider_runtime import closed_zero_dispatch_run_id
+        from provider_runtime import closed_run_id as published_run_id
     except ModuleNotFoundError:
-        from scripts.provider_runtime import closed_zero_dispatch_run_id
-    closed_run_id = closed_zero_dispatch_run_id(artifact_root)
-    if (parent_context and parent_context.get("closed_zero_dispatch_run_id")
-            and parent_context["closed_zero_dispatch_run_id"] != closed_run_id):
+        from scripts.provider_runtime import closed_run_id as published_run_id
+    closed_run_id = published_run_id(artifact_root)
+    observed_closed_id = (parent_context or {}).get("closed_run_id") or (parent_context or {}).get("closed_zero_dispatch_run_id")
+    if observed_closed_id and observed_closed_id != closed_run_id:
         raise ValueError("prior_run_archive_blocked:closed_run_receipts_changed")
     record = artifact_root / "work_record.md"
     if not record.is_file():
@@ -2697,6 +2697,29 @@ def _archive_existing_run(
     text = record.read_text() if record.is_file() else ""
     state = _table_value(text, "State") if text else None
     if closed_run_id:
+        bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+        if (parent_context and bindings.get("parent_context", {}).get("parent_thread_id")
+                == parent_context.get("parent_thread_id")):
+            try:
+                from provider_runtime import read_runtime_events
+                from worker_runtime_evidence import terminal_closure
+            except ModuleNotFoundError:
+                from scripts.provider_runtime import read_runtime_events
+                from scripts.worker_runtime_evidence import terminal_closure
+            try:
+                saved = json.loads((artifact_root / "runtime_dispatches.json").read_text())
+                source = Path(parent_context["provider_session"])
+                sources = list(saved.get("identity_sessions", []))
+                if Path(saved["provider_session"]).resolve() != source.resolve():
+                    sources.append(saved["provider_session"])
+                current = read_runtime_events(source, parent_context["parent_thread_id"], saved["run_started_at"],
+                                              tuple(Path(value) for value in dict.fromkeys(sources)))
+                if any(saved.get(field, []) != current.get(field, [])
+                       for field in ("events", "thread_mappings", "failed_dispatches")):
+                    raise ValueError("runtime_dispatch_ledger_stale")
+                terminal_closure(current)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                raise ValueError("prior_run_archive_blocked:" + str(error)) from error
         state = "blocked"
     if record.is_file() and state not in TERMINAL_STATES:
         if not archive_stale_run:
@@ -3006,7 +3029,20 @@ def prepare_run(
                 raise ValueError("finalization_receipt_invalid")
             if failure.get("status") == "failed" and int(failure.get("attempt_count", 0)) >= 2:
                 raise ValueError("finalization_recovery_required:exhausted_attempts")
-            if (playbook == "techops_issue_remediation" and provider_session is not None
+            try:
+                from provider_runtime import closed_zero_dispatch_run_id
+                from worker_runtime_evidence import dispatch_audit_errors
+            except ModuleNotFoundError:
+                from scripts.provider_runtime import closed_zero_dispatch_run_id
+                from scripts.worker_runtime_evidence import dispatch_audit_errors
+            if (provider_session is not None and previous_run_bindings.get("parent_context")
+                    and closed_zero_dispatch_run_id(artifact_root) == previous_run_bindings.get("run_id")):
+                errors = dispatch_audit_errors({"runtime_audits": []}, existing_packet, closure_only=True)
+                if errors:
+                    raise ValueError("continuation_runtime_nonconformant:" + ";".join(errors))
+                unactivated_failure = (failure_path, failure_path.read_bytes(),
+                                       (artifact_root / "runtime_closure.json").read_bytes())
+            elif (playbook == "techops_issue_remediation" and provider_session is not None
                     and previous_run_bindings.get("parent_context")):
                 unactivated_failure = _recover_unactivated_remediation(artifact_root, previous_run_bindings)
     if planning_recovery and (workflow_objective, requested_outcome) != ("implementation_planning", "implementation_plan"):
@@ -3411,30 +3447,28 @@ def prepare_run(
             documenter["implementation_plan"] = str(artifact_root / "implementation_plan.md")
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
         manifest["documenter_packet_stager"] = str(ROOT / "scripts/stage_documenter_packet.py")
-    if playbook in {"techops_issue_remediation", "sentry_issue_remediation"} or (
-            playbook == "feature_delivery" and workflow_objective != "specification_assessment"):
-        manifest["runtime_evidence"] = {
-            "launch_binding_required": True,
-            "collector": str(ROOT / "scripts" / "worker_runtime_evidence.py"),
-            "ledger": str(artifact_root / "runtime_dispatches.json"),
-            "run_started_at": manifest["prepared_at"],
-        }
-        if continuation and not prior and (artifact_root / "role_bindings.json").is_file():
-            previous = json.loads((artifact_root / "role_bindings.json").read_text()).get("runtime_evidence", {})
-            if previous.get("run_started_at"):
-                manifest["runtime_evidence"]["run_started_at"] = previous["run_started_at"]
-            sources = list(previous.get("identity_sessions", []))
-            previous_source = previous_run_bindings.get("parent_context", {}).get("provider_session")
-            if previous_source and provider_session and Path(previous_source).resolve() != provider_session.resolve():
-                sources.append(previous_source)
-            if sources:
-                manifest["runtime_evidence"]["identity_sessions"] = list(dict.fromkeys(sources))
+    manifest["runtime_evidence"] = {
+        "launch_binding_required": True,
+        "collector": str(ROOT / "scripts" / "worker_runtime_evidence.py"),
+        "ledger": str(artifact_root / "runtime_dispatches.json"),
+        "run_started_at": manifest["prepared_at"],
+    }
+    if continuation and not prior and (artifact_root / "role_bindings.json").is_file():
+        previous = json.loads((artifact_root / "role_bindings.json").read_text()).get("runtime_evidence", {})
+        if previous.get("run_started_at"):
+            manifest["runtime_evidence"]["run_started_at"] = previous["run_started_at"]
+        sources = list(previous.get("identity_sessions", []))
+        previous_source = previous_run_bindings.get("parent_context", {}).get("provider_session")
+        if previous_source and provider_session and Path(previous_source).resolve() != provider_session.resolve():
+            sources.append(previous_source)
+        if sources:
+            manifest["runtime_evidence"]["identity_sessions"] = list(dict.fromkeys(sources))
     manifest["worker_runtime_guard"] = str(WORKER_RUNTIME_GUARD)
     packet_path = artifact_root / "finalization_packet.json"
     if continuation and not prior and packet_path.is_file():
         manifest["run_id"] = json.loads(packet_path.read_text())["identity"]["Run ID"]
     else:
-        started_at = str(manifest.get("run_budget", {}).get("started_at") or manifest["prepared_at"])
+        started_at = manifest["prepared_at"]
         manifest["run_id"] = work_item + "-" + re.sub(r"[^0-9A-Za-z]", "", started_at)
     if parent_context:
         manifest["parent_context"] = {**parent_context, "run_id": manifest["run_id"], "input_paths": assigned}
