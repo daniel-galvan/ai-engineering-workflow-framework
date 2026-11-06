@@ -35,7 +35,9 @@ be recovered from these exact files, stop with that limitation; do not discover 
 These continuation rules apply only while that run is active. An authorized reentry after terminal closure is a new
 invocation: run package preflight first, then the required status projection, before reading or searching run artifacts.
 
-Before initialization, a plugin-backed launcher MUST make package and framework preflight its first framework tool call.
+Before initialization, a plugin-backed launcher's first framework tool call for repository reads, run preparation or
+worker dispatch MUST follow passing standalone package and framework preflight. Launcher reads and packaged CLI
+`--help`/`-h` requests may precede preflight, including together in one command.
 It MUST derive the package root from the active installed skill, verify its catalog and manifest, compare any declared
 framework revision, and check framework clean status before loading cache directories, the selected playbook,
 contracts, provider definitions, templates, or sibling artifacts. A stale plugin path or an unavailable, dirty, or

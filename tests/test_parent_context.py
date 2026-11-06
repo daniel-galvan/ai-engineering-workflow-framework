@@ -1252,6 +1252,27 @@ class ParentContext(unittest.TestCase):
             self.assertEqual((archived / "previous-artifact.txt").read_text(), "preserve this")
             self.assertFalse((root / "previous-artifact.txt").exists())
 
+    def test_preflight_allows_launcher_and_packaged_cli_help_only(self):
+        framework = self.root / 'framework'
+        scripts = framework / 'scripts'
+        scripts.mkdir(parents=True)
+        helper = scripts / 'prepare_run.py'
+        helper.write_text('# Packaged CLI fixture\n')
+        skill = framework / 'skills/run/SKILL.md'
+        for command in (f'python3 {helper} --help', f'python3 {helper} -h',
+                        f'cat {skill} && python3 {helper} --help'):
+            with self.subTest(command=command):
+                self.rows = self.rows[:2] + [self.call('exec_command', cmd=command)]
+                self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)['status'], 'passed')
+        for command in (f'cat {skill} && python3 {helper} --work-item ITEM-1',
+                        f'python3 {self.root}/prepare_run.py --help',
+                        f'python3 {helper} --help && cat /repo/source.py',
+                        f'python3 {helper} --help; cat /repo/source.py'):
+            with self.subTest(command=command):
+                self.rows = self.rows[:2] + [self.call('exec_command', cmd=command)]
+                self.assertIn('parent_framework_content_before_preflight',
+                              self.audit(framework_root=framework, require_preflight_order=True)['errors'])
+
     def test_preflight_order_blocks_workflow_reads_until_preflight_call(self):
         framework = self.root / "framework"
         skill = framework / "skills" / "run" / "SKILL.md"

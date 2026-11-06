@@ -878,14 +878,21 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
             continue
         try:
             argv = shlex.split(command)
+            metadata_commands = [shlex.split(part) for part in re.split(r"\s+&&\s+", command)]
         except ValueError:
             argv = []
-        skill_read = (len(argv) == 2 and argv[0] == "cat" or
-                      len(argv) == 4 and argv[:2] == ["sed", "-n"]
-                      and re.fullmatch(r"[1-9][0-9]*(?:,[1-9][0-9]*)?p", argv[2]))
-        bootstrap = bool(skill_read and (
-            argv[-1] == "skills/run/SKILL.md"
-            or Path(argv[-1]).is_absolute() and Path(argv[-1]).resolve() == skill_path))
+            metadata_commands = []
+        bootstrap = bool(metadata_commands)
+        for tokens in metadata_commands:
+            skill_read = (len(tokens) == 2 and tokens[0] == "cat" or len(tokens) == 4
+                          and tokens[:2] == ["sed", "-n"]
+                          and re.fullmatch(r"[1-9][0-9]*(?:,[1-9][0-9]*)?p", tokens[2]))
+            launcher = bool(skill_read and (tokens[-1] == "skills/run/SKILL.md"
+                            or Path(tokens[-1]).is_absolute() and Path(tokens[-1]).resolve() == skill_path))
+            help_read = (len(tokens) == 3 and re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(tokens[0]).name)
+                         and tokens[2] in {"-h", "--help"} and Path(tokens[1]).suffix == ".py"
+                         and Path(tokens[1]).resolve().parent == preflight_path.parent and Path(tokens[1]).is_file())
+            bootstrap = bootstrap and bool(launcher or help_read)
         is_preflight = (
             len(argv) >= 2 and bool(re.fullmatch(r"python(?:3(?:\.\d+)*)?", Path(argv[0]).name))
             and Path(argv[1]).name == "run_preflight.py"

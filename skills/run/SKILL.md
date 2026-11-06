@@ -40,13 +40,15 @@ invocation: run package preflight first, then the required status projection, be
    version. Do not ask the user for a framework checkout path.
 2. Invocation gate: do not begin with repository discovery, status checks, `AGENTS.md`, or playbook reads.
    If the host has not already provided this active skill's contents, read only the active installed `SKILL.md`.
-   The first framework tool call after this skill is loaded MUST be the package preflight command by itself. Do not
+   The first framework tool call that reads the repository, prepares a run or dispatches a worker must follow a
+   passing standalone package preflight. Launcher reads and packaged CLI `--help`/`-h` requests are permitted
+   beforehand, including together in one command. Do not
    search other memory files, rollout summaries, session logs, or other chats before or after preflight unless the
    current user identifies the exact source and explicitly authorizes its use. A standalone read-only `MEMORY.md`
    lookup is background guidance and may precede preflight; do not combine it with repository or task discovery.
    A work-item key or link to the current task does
-   not authorize lookup of previous attempts. Never combine the skill read with repository guidance, a playbook, or
-   another command. After preflight, never call `list_threads` directly: its raw output includes
+   not authorize lookup of previous attempts. Never combine the skill read with repository guidance or a playbook.
+   After preflight, never call `list_threads` directly: its raw output includes
    unassigned chat content.
    For the related-run check, execute only step 7's exact status-only JavaScript projection through `functions.exec`.
    A direct inventory call makes preparation reject this turn with `parent_unassigned_thread_discovery`.
