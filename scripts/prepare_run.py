@@ -2504,15 +2504,8 @@ def _configure_remediation_result_contracts(artifact_root: Path, worker_contract
             "result": str(artifact_root / f"{worker}_result.json"),
             "result_hash_required": True,
             "result_response": "strict_json_final_answer",
-            "response_builder": str(ROOT / "scripts" / "prepare_worker_response.py"),
             "result_fields": result_fields,
             "result_instructions": (
-                "Before the final answer, put the result object and output text in separate scratch files inside the run artifact root, "
-                "not the assigned output paths. Run response_builder with --packet finalization_packet, "
-                "--agent set to your prepared agent, --result-draft and --output-draft set to those scratch "
-                "files; read-only roles can instead pipe their JSON draft to --response-stdin without writing files. "
-                "Correct any reported schema or reference errors and rerun it. Return its successful "
-                "stdout unchanged as the JSON portion of your final answer; this preview does not accept or merge your result. "
                 "Do not edit Coordinator-owned packet rows or write assigned output files directly. "
                 "Before ending, return exactly one strict JSON final answer with output (the assigned "
                 "worker artifact contents) and result (the current run_id, one worker_result object with "
@@ -3309,14 +3302,9 @@ def prepare_run(
                 "result": str(artifact_root / f"{worker.replace('-', '_')}_result.json"),
                 "result_hash_required": True,
                 "result_response": "strict_json_final_answer",
-                "response_builder": str(ROOT / "scripts" / "prepare_worker_response.py"),
                 "result_fields": {name: list(result_template[name][0])
                                   for name in ("worker_results", *TABLES)},
                 "result_instructions": (
-                    f"Before your final answer, pipe the complete draft JSON to response_builder with --packet "
-                    f"{artifact_root / 'finalization_packet.json'} --agent {agent} --response-stdin. "
-                    "Correct any validation errors and rerun it; return its successful stdout unchanged as the JSON. "
-                    "This read-only preview does not accept or merge the result. "
                     "Do not write the assigned output or result files directly; return their contents only in this "
                     "JSON response, and let the Coordinator merger publish them after acceptance. "
                     "Return exactly one strict JSON object with keys "
@@ -3447,6 +3435,22 @@ def prepare_run(
             documenter["implementation_plan"] = str(artifact_root / "implementation_plan.md")
         manifest["worker_result_merger"] = str(ROOT / "scripts/merge_techops_result.py")
         manifest["documenter_packet_stager"] = str(ROOT / "scripts/stage_documenter_packet.py")
+    for agent, contract in manifest.get("worker_contracts", {}).items():
+        if contract.get("result_response") != "strict_json_final_answer":
+            continue
+        contract["response_builder"] = str(ROOT / "scripts" / "prepare_worker_response.py")
+        contract["result_instructions"] = (
+            "Before your final answer, pipe the complete declared JSON envelope to response_builder with --packet "
+            f"{artifact_root / 'finalization_packet.json'} --agent {agent} --response-stdin. "
+            "Correct reported draft errors and rerun this read-only preview before ending; return its successful "
+            "stdout unchanged. If a truthful repair is unavailable, return a valid blocked result with the limitation. "
+            "Draft validation does not accept results or consume a dispatch correction. "
+            "At completed planning synthesis and afterward, it checks the entire merged reasoning graph: "
+            "link every evidence row to a claim, every claim to a decision, and every decision to an action. "
+            "New correction rows must also reach an action; fixing only the previously listed IDs is insufficient. "
+            "Preserve accepted upstream rows and factual meaning; do not invent reasoning or actions just to pass. "
+            + contract.get("result_instructions", "")
+        )
     manifest["runtime_evidence"] = {
         "launch_binding_required": True,
         "collector": str(ROOT / "scripts" / "worker_runtime_evidence.py"),

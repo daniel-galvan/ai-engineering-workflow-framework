@@ -245,7 +245,8 @@ ROLE_AGENTS = {
 }
 
 
-def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[str]:
+def reasoning_graph_errors(packet: dict[str, object], *, playbook: str = "Technical Spike") -> list[str]:
+    """Validate the complete reasoning chain, including rows added by a correction."""
     specs = (
         ("evidence", "Evidence ID", "evidence"),
         ("claims", "Claim ID", "claim"),
@@ -258,10 +259,8 @@ def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[s
         rows = _material_rows(packet.get(field), identity_field)
         ids = [str(row.get(identity_field, "")).strip() for row in rows]
         for duplicate in sorted({value for value in ids if ids.count(value) > 1}):
-            errors.append(f"Technical Spike packet contains duplicate {label} {duplicate}")
+            errors.append(f"{playbook} packet contains duplicate {label} {duplicate}")
         records[field] = {str(row.get(identity_field, "")).strip(): row for row in rows}
-    if not all(records.values()):
-        return errors
 
     evidence_used: set[str] = set()
     claims_used: set[str] = set()
@@ -275,12 +274,12 @@ def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[s
         for source_id, row in records[source].items():
             refs = set(REFERENCE_ID.findall(str(row.get(ref_field, ""))))
             if source == "actions" and len(refs) != 1:
-                errors.append(f"Technical Spike packet {source_id} must reference exactly one decision")
+                errors.append(f"{playbook} packet {source_id} must reference exactly one decision")
             elif not refs:
-                errors.append(f"Technical Spike packet {source_id} has no {target_label} refs")
+                errors.append(f"{playbook} packet {source_id} has no {target_label} refs")
             for ref in refs:
                 if ref not in records[target]:
-                    errors.append(f"Technical Spike packet {source_id} references missing {target_label} {ref}")
+                    errors.append(f"{playbook} packet {source_id} references missing {target_label} {ref}")
                 else:
                     used.add(ref)
     for label, rows, used in (
@@ -295,10 +294,13 @@ def _technical_spike_reasoning_graph_errors(packet: dict[str, object]) -> list[s
                 "decision": "an action's Decision ref",
             }[label]
             errors.append(
-                f"Technical Spike packet contains orphaned {label} {orphan}; add {orphan} to {parent} "
+                f"{playbook} packet contains orphaned {label} {orphan}; add {orphan} to {parent} "
                 f"or remove the {label} row and all report references"
             )
     return errors
+
+
+_technical_spike_reasoning_graph_errors = reasoning_graph_errors
 
 
 def _planning_runtime_closure_errors(
@@ -950,8 +952,7 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
         root / ASSET_MANIFEST_FILENAME, root / "run_inputs.json", str(packet["work_item"]["ID"]),
     ))
     if planning:
-        errors.extend(error.replace("Technical Spike", "Feature Delivery")
-                      for error in _technical_spike_reasoning_graph_errors(packet))
+        errors.extend(reasoning_graph_errors(packet, playbook="Feature Delivery"))
         for name in ("feature_context.md", "impact_analysis.md", "feature_design.md"):
             if not (root / name).is_file():
                 errors.append(f"Feature Delivery pre-handoff requires {name}")

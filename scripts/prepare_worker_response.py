@@ -23,9 +23,14 @@ def validate_response(packet_path: Path, agent: str, response: dict) -> str:
     bindings = json.loads((packet_path.parent / "role_bindings.json").read_text())
     if bindings.get("run_id") != packet.get("identity", {}).get("Run ID"):
         raise ValueError("worker_response_binding_run_mismatch")
-    if (not isinstance(response, dict) or set(response) != {"output", "result"}
-            or not isinstance(response["output"], str) or not response["output"].strip()):
+    contract = bindings.get("worker_contracts", {}).get(agent, {})
+    allowed = {"output", "result"} | ({"asset_manifest"} if contract.get("asset_inventory") else set())
+    if (not isinstance(response, dict) or set(response) - allowed
+            or not isinstance(response.get("output"), str) or not response["output"].strip()
+            or not isinstance(response.get("result"), dict)):
         raise ValueError("worker_response_envelope_invalid")
+    if contract.get("asset_inventory") and not isinstance(response.get("asset_manifest"), dict):
+        raise ValueError("worker_asset_manifest_response_required")
     validated_result(packet, response["result"], bindings, agent)
     if (agent == "reviewer" and bindings.get("lifecycle") == "remediation"
             and bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}

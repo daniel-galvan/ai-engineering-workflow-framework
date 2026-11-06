@@ -225,6 +225,12 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
             from scripts.validate_worker_runtime import techops_check_errors
         errors.extend(techops_check_errors(result.get("techops_checks"), {row["Evidence ID"] for row in packet["evidence"]}))
         packet["techops_checks"] = result.get("techops_checks")
+    if not errors and lifecycle == "planning" and packet.get("planning_disposition") and summary.get("Outcome") == "complete":
+        try:
+            from planning_contracts import reasoning_graph_errors
+        except ModuleNotFoundError:
+            from scripts.planning_contracts import reasoning_graph_errors
+        errors.extend(reasoning_graph_errors(packet, playbook=bindings["playbook"].replace("_", " ").title()))
     if errors:
         raise ValueError("; ".join(dict.fromkeys(errors)))
     return packet

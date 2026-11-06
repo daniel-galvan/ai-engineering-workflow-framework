@@ -54,6 +54,14 @@ and constraints. Validate its reasoning links; do not silently delete it based o
 The framework validator checks these relationships for populated work records. Draft records may be incomplete while a
 run is active, but they MUST pass before terminal handoff.
 
+Every prepared strict JSON worker contract MUST expose the shared read-only response preview. Workers MUST validate
+the complete declared draft envelope before returning it, including additional fields required by that contract.
+Draft validation does not accept a result or consume a provider-dispatch correction. At completed planning synthesis
+and every subsequent completed analytical update, preview and acceptance MUST check the entire merged graph using
+the same reasoning validator as pre-handoff. Newly added correction rows are subject to the full chain, not only the
+IDs named in an earlier error. Accepted upstream content remains immutable. If truthful completion is impossible,
+return a valid blocked result with the limitation; do not invent reasoning or actions to satisfy a graph check.
+
 `Evidence refs` is a typed field: every reference must be an exact ID present in
 the current record's Evidence table. IDs from another section, such as an
 experiment or check (`CHK-*`), are not evidence references; copy the

@@ -76,7 +76,7 @@ Build the package with `python3 scripts/validate_library.py`, then run tests foc
 For shared runtime changes, use this bounded lifecycle gate from the repository root:
 
 ```bash
-env -u CODEX_THREAD_ID -u CODEX_SESSION_ID python3 -m unittest tests.test_runtime_lifecycle_contract tests.test_context_operation_audit tests.test_parent_context.ParentContext.test_published_worker_failure_uses_local_closure_and_rejects_inconsistent_receipts tests.test_parent_context.ParentContext.test_closed_zero_dispatch_archive_rejects_changed_or_incomplete_receipts
+env -u CODEX_THREAD_ID -u CODEX_SESSION_ID python3 -m unittest tests.test_runtime_lifecycle_contract tests.test_reasoning_graph_acceptance tests.test_context_operation_audit tests.test_parent_context.ParentContext.test_published_worker_failure_uses_local_closure_and_rejects_inconsistent_receipts tests.test_parent_context.ParentContext.test_closed_zero_dispatch_archive_rejects_changed_or_incomplete_receipts
 ```
 
 The gate uses a clean package, synthetic provider records, real Git main checkouts and worktrees, and shipped CLI
@@ -85,6 +85,8 @@ same-chat recovery, and subsequent fresh run, including Feature specification as
 through planning and remediation publication is exercised for Feature Delivery and TechOps. It checks archive bytes,
 input transport, run identity, control-file changes, and status projection without previous-chat access. It does not
 certify live connectors, every playbook's full success path, or Vulnerability remediation reentry.
+The reasoning acceptance checks also exercise broken evidence, claim, and decision chains through the public worker
+preview, correction rows that create new orphans, post-synthesis review, and declared extra envelope fields.
 
 Keep additions reusable across playbooks and input shapes; do not add ticket-specific exceptions. Change only the
 relevant self-check fixtures when a contract changes. Do not run all suites for a focused fix; use broader suites

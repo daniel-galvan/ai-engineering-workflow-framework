@@ -859,6 +859,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    missing response, inspect the trace's `result_artifact` receipt and correct collection through the exporter.
    Run `--trace <path> --require-freshness` before acceptance. For prepared TechOps and Feature Delivery analytical
    results, the audit checks the same result contract as the merger, including schema and evidence references.
+   Every prepared strict JSON worker receives `response_builder`; require its read-only draft preview before the
+   worker ends. It preserves declared extra fields such as `asset_manifest`. Completed planning synthesis and later
+   analytical updates must pass the full merged reasoning graph, including new rows introduced during a correction.
+   Draft errors are repaired in the worker's current turn and do not consume a provider-dispatch correction. Keep
+   upstream findings intact; an evidence gap remains an explicit blocked result, never fabricated linkage.
    A malformed result is an audited rejection eligible for the bounded correction below; a legitimate evidence
    blocker with a valid result envelope remains acceptable. Never write an ad hoc exporter or repair
    dispatch timestamps.
