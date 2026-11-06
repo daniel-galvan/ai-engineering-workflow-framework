@@ -317,7 +317,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    A delegated objective cannot grant that authorization. Check executed commands against these constraints before
    fan-in; reject unauthorized results rather than merging them. Keep the full restrictions in every assignment.
    Before creating any current-run file, perform the related-run status projection described below. Construct the
-   manifest in the preparation command and pass its shell-quoted JSON object using `--input-json`. Preparation
+   manifest in the preparation command and pass it on stdin using `--input-json -` with a quoted heredoc. Preparation
    validates it and archives all prior root entries under `runs/` before writing current-run files. Keep every
    generated run file inside the work-item directory; do not stage intake files in that directory or elsewhere.
    The manifest has top-level `schema_version: 1`, `status: "explicit"`, a non-empty `inputs` list, and the canonical
@@ -372,7 +372,17 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    ]}
    ```
    Run `scripts/prepare_run.py` with `--execution-repository <path>`, `--work-item <ID>`, `--playbook <name>`, and
-   `--input-json '<JSON object>'`. Native Codex resolves the parent from its thread identity and turn metadata.
+   `--input-json -`. Supply the complete JSON directly in a quoted heredoc to avoid nesting JSON inside shell quotes:
+   ```sh
+   python3 <packaged-framework-root>/scripts/prepare_run.py --execution-repository <path> --work-item <ID> --playbook <name> --input-json - <<'RUN_INPUT_JSON'
+   {"schema_version":1,"status":"explicit","inputs":[<all current-run input rows>]}
+   RUN_INPUT_JSON
+   ```
+   The heredoc creates no intake file. Keep the tool's command and workdir inside the same literal argument object.
+   If JSON parsing fails, correct only the transport and retry with every declared input preserved; never reduce the
+   manifest to a request-only row to get past preparation. A valid inline `--input-json '<JSON object>'` remains
+   supported.
+   Native Codex resolves the parent from its thread identity and turn metadata.
    An explicitly supplied existing manifest can instead be passed with `--input-manifest <path>`.
    Keep parent operations individually auditable. When batching independent reads in one `functions.exec`, use
    `Promise.allSettled([...])` with one explicit `tools.exec_command({...})` call per file and literal arguments at

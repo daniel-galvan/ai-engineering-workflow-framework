@@ -10,6 +10,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
 from datetime import UTC, datetime, timedelta
@@ -3629,7 +3630,7 @@ def main() -> int:
         type=Path,
         help="JSON file containing current-run context, decisions, and supporting artifacts",
     )
-    inputs.add_argument("--input-json", help="Current-run input manifest as a JSON object")
+    inputs.add_argument("--input-json", help="Current-run input manifest as a JSON object; use - to read JSON from stdin")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -3649,7 +3650,9 @@ def main() -> int:
     if not args.execution_repository or not args.work_item or not args.playbook:
         parser.error("--execution-repository, --work-item, and --playbook are required")
     try:
-        input_data = json.loads(args.input_json) if args.input_json is not None else None
+        input_data = None
+        if args.input_json is not None:
+            input_data = json.load(sys.stdin) if args.input_json == "-" else json.loads(args.input_json)
         if args.input_json is not None and not isinstance(input_data, dict):
             raise ValueError("run_input_manifest_invalid")
         result = prepare_run(

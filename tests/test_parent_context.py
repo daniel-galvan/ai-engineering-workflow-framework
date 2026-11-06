@@ -1764,6 +1764,32 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(prior, {p.relative_to(self.root): p.read_bytes()
                                  for p in (self.root / ".thoughts").rglob("*") if p.is_file()})
 
+    def test_stdin_manifest_preserves_json_without_shell_quoting(self):
+        from scripts.runtime_checks import _tool_operations
+        inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "User's \"quoted\" request — café",
+            "Source or path": "User", "Authority": "User", "Status": "Verified"}]}
+        script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
+        command = shlex.join([sys.executable, str(script), "--execution-repository", str(self.root),
+            "--work-item", "ITEM-1", "--playbook", "feature_delivery", "--input-json", "-",
+            "--provider-session", str(self.source)]) + " <<'RUN_INPUT_JSON'\n" + json.dumps(inputs, ensure_ascii=False) + "\nRUN_INPUT_JSON"
+        source = 'const r=await tools.exec_command({cmd:' + json.dumps(command) + '}); text(r.output);'
+        calls = _tool_operations({"type": "custom_tool_call", "name": "exec", "input": source})
+        self.assertEqual(calls, [("exec_command", {"cmd": command})])
+        self.rows.append({"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "exec", "input": source}})
+        self.assertEqual(self.audit(artifact_root=self.root / ".thoughts/ITEM-1")["status"], "passed")
+        result = subprocess.run(["bash", "-c", command], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        run = json.loads(result.stdout)
+        saved = json.loads(Path(run["run_input_manifest"]["path"]).read_text())
+        self.assertEqual({key: saved["inputs"][0][key] for key in inputs["inputs"][0]}, inputs["inputs"][0])
+        before = Path(run["finalization_packet"]).read_bytes()
+        invalid = command.replace(json.dumps(inputs, ensure_ascii=False), json.dumps(inputs) + "}")
+        rejected = subprocess.run(["bash", "-c", invalid], capture_output=True, text=True, timeout=30)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("Extra data", json.loads(rejected.stdout)["reason"])
+        self.assertEqual(Path(run["finalization_packet"]).read_bytes(), before)
+
     def test_preparation_is_transactional_and_activation_rechecks_later_reads(self):
         inputs = self.root / "inputs.json"
         inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current issue",
