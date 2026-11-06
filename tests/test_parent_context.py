@@ -1,6 +1,7 @@
 """Native parent context boundaries before preparation and worker activation."""
 
 import io
+import hashlib
 import json
 import sys
 import os
@@ -1743,6 +1744,96 @@ class ParentContext(unittest.TestCase):
                     self.assertEqual(run["status"], "prepared")
                     self.assertTrue(inputs.is_file())
                     self.assertTrue((inputs.parent / "run_inputs.json").is_file())
+
+    def closed_zero_dispatch_fixture(self):
+        root = self.root / '.thoughts/ITEM-1'
+        root.mkdir(parents=True)
+        run_id = 'ITEM-1-closed'
+        started = '2026-10-01T00:00:00Z'
+        def write(name, value):
+            (root / name).write_text(json.dumps(value))
+        write('role_bindings.json', {'run_id': run_id, 'lifecycle': 'planning',
+              'parent_context': {'parent_thread_id': CHILD, 'provider_session': '/never-open/old-chat.jsonl'},
+              'runtime_evidence': {'run_started_at': started}})
+        write('finalization_packet.json', {'work_item': {'ID': 'ITEM-1'}, 'identity': {
+              'Run ID': run_id, 'Lifecycle': 'planning', 'State': 'in_progress'},
+              'workers': [], 'worker_results': [], 'runtime_audits': []})
+        packet = (root / 'finalization_packet.json').read_bytes()
+        (root / 'snapshot.json').write_bytes(packet)
+        packet_hash = hashlib.sha256(packet).hexdigest()
+        write('runtime_dispatches.json', {'parent_thread_id': CHILD, 'run_started_at': started,
+              'events': [], 'failed_dispatches': [], 'thread_mappings': {}, 'timing': {'open_worker_intervals': 0}})
+        write('runtime_closure.json', {'runtime_closure': [{'Runtime status': 'Terminal',
+              'Completed worker handles': 'None dispatched', 'Remaining active handles': '0'}],
+              'terminal_observations': []})
+        (root / 'work_record.md').write_text('Uninitialized record; the failure is recorded separately.\n')
+        (root / 'handoff_failure.md').write_text('Closed control failure; no workers dispatched.\n')
+        (root / 'handoff_response.md').write_bytes((root / 'handoff_failure.md').read_bytes())
+        report_hash = hashlib.sha256((root / 'handoff_failure.md').read_bytes()).hexdigest()
+        write('finalization_failure.json', {'status': 'failed', 'stage': 'workflow', 'run_id': run_id,
+              'reported_by': 'Coordinator', 'runtime_closure': 'terminal',
+              'packet_snapshot': str(root / 'snapshot.json'), 'snapshot_sha256': packet_hash,
+              'packet_sha256': packet_hash, 'handoff_packet_sha256': packet_hash, 'handoff_sha256': report_hash})
+        write('handoff_delivery.json', {'status': 'verified', 'run_id': run_id,
+              'canonical_sha256': report_hash, 'proposed_sha256': report_hash,
+              'record_sha256': hashlib.sha256((root / 'work_record.md').read_bytes()).hexdigest()})
+        return root, run_id
+
+    def test_fresh_run_preserves_closed_zero_dispatch_artifacts_without_reading_old_chat(self):
+        root, prior_id = self.closed_zero_dispatch_fixture()
+        (root / 'old_findings.md').write_text('OLD_FINDINGS_MUST_NOT_BECOME_CURRENT_EVIDENCE')
+        self.assertEqual(scoped_prior_run_status_thread_ids(root, PARENT), ())
+        projection = related_run_status_projection_source('ITEM-1', PARENT, ())
+        self.rows.extend([
+            {'type': 'response_item', 'payload': {'type': 'custom_tool_call', 'name': 'exec',
+             'call_id': 'status', 'input': projection}},
+            {'type': 'response_item', 'payload': {'type': 'custom_tool_call_output',
+             'call_id': 'status', 'output': [{'type': 'text', 'text': '[]'}]}},
+        ])
+        self.assertEqual(self.audit(artifact_root=root)['status'], 'passed')
+        with patch('scripts.provider_runtime.read_runtime_events', side_effect=AssertionError('No old chat reads')):
+            run = prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, False,
+                provider_session=self.source, input_data={'inputs': [{'Input ID': 'IN-001',
+                    'Input or artifact': 'Fresh request', 'Source or path': 'User',
+                    'Authority': 'User', 'Status': 'Verified'}]})
+        self.assertEqual(Path(run['archived_prior_run']), (root / 'runs' / prior_id).resolve())
+        self.assertEqual((root / 'runs' / prior_id / 'old_findings.md').read_text(),
+                         'OLD_FINDINGS_MUST_NOT_BECOME_CURRENT_EVIDENCE')
+        self.assertFalse((root / 'old_findings.md').exists())
+        self.assertNotEqual(run['run_id'], prior_id)
+        self.assertNotIn('OLD_FINDINGS_MUST_NOT_BECOME_CURRENT_EVIDENCE', Path(run['finalization_packet']).read_text())
+
+    def test_closed_zero_dispatch_archive_rejects_changed_or_incomplete_receipts(self):
+        from scripts.provider_runtime import closed_zero_dispatch_run_id
+        root, run_id = self.closed_zero_dispatch_fixture()
+        original = {p.name: p.read_bytes() for p in root.iterdir()}
+        self.assertEqual(closed_zero_dispatch_run_id(root), run_id)
+        changes = (
+            ('runtime_dispatches.json', lambda d: d.update(events=[{'Operation': 'spawn_agent'}])),
+            ('runtime_dispatches.json', lambda d: d['timing'].update(open_worker_intervals=1)),
+            ('runtime_dispatches.json', lambda d: d.update(parent_thread_id=TURN)),
+            ('runtime_closure.json', lambda d: d['runtime_closure'][0].update({'Runtime status': 'Blocked'})),
+            ('finalization_failure.json', lambda d: d.update(packet_sha256='0' * 64)),
+            ('handoff_delivery.json', lambda d: d.update(status='pending')),
+            ('finalization_packet.json', lambda d: d.update(workers=[{'Worker': 'unclosed'}])),
+        )
+        for name, change in changes:
+            with self.subTest(name=name, change=change):
+                data = json.loads(original[name]); change(data)
+                (root / name).write_text(json.dumps(data))
+                self.assertIsNone(closed_zero_dispatch_run_id(root))
+                with self.assertRaises(ValueError):
+                    scoped_prior_run_status_thread_ids(root, PARENT)
+                (root / name).write_bytes(original[name])
+        (root / 'handoff_failure.md').write_text('Changed report')
+        self.assertIsNone(closed_zero_dispatch_run_id(root))
+        before = (root / 'finalization_packet.json').read_bytes()
+        with self.assertRaisesRegex(ValueError, 'closed_run_receipts_changed'):
+            _archive_existing_run(root, False, parent_context={'closed_zero_dispatch_run_id': run_id})
+        self.assertEqual((root / 'finalization_packet.json').read_bytes(), before)
+        (root / 'handoff_failure.md').write_bytes(original['handoff_failure.md'])
+        (root / 'runtime_closure.json').unlink()
+        self.assertIsNone(closed_zero_dispatch_run_id(root))
 
     def test_inline_manifest_command_passes_parent_audit_and_prepares(self):
         inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "User's current issue",

@@ -1374,6 +1374,12 @@ is idle, every visible child worker is terminal, and no artifact writer remains.
 make that prior run complete; the new run must confirm capacity by activating its own required worker. The Coordinator
 records this isolation decision before activation.
 
+A fresh run MAY preserve a published terminal control failure with zero dispatched workers using only local control
+receipts. Preparation MUST verify matching run identities, intact packet and publication hashes, a terminal closure,
+and an empty dispatch ledger with no open worker intervals. It MUST preserve the closed invocation under
+`.thoughts/<WORK-ITEM-ID>/runs/<RUN-ID>/`, without opening the prior chat or importing its findings into the fresh run.
+Missing or inconsistent proof does not authorize archival or access to another chat.
+
 Before recording `None` for an active related run, the Coordinator MUST check available provider tasks and sibling
 work-item artifact roots, then record the method and timestamp. When neither can be checked, record
 `Unknown; detection unavailable`, not `None`. A stale artifact root is not proof of an active writer, and a read-only

@@ -568,7 +568,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    with no worker thread ID is exempt because the provider never created an observable worker task.
    The status projection excludes the current parent thread by its exact provider ID. A fresh chat must not use a prior
    session's state to decide whether to reuse its artifact root unless the current user authorizes that exact parent
-   thread. If the helper blocks, stop and leave the old artifact root untouched; ask the user for an explicit decision
+   thread. A published terminal control failure with zero dispatched workers has a local-only archival path: preparation
+   verifies matching packet, failure, publication, ledger and closure receipts, then preserves its files under `runs/`
+   without opening the previous chat or importing findings. The projection returns no prior thread IDs for this case.
+   Active, incomplete or inconsistent receipts do not qualify. If the helper blocks, leave the old artifact root
+   untouched; ask the user for an explicit decision
    before reading or using that run. When authorized status rows show the prior parent and every known worker are
    terminal, rerun with `--archive-stale-run` and the same `--authorize-prior-parent-thread` value. This preserves old
    artifacts under `runs/stale-<timestamp>/` and creates a fresh run.

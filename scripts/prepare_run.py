@@ -2678,6 +2678,14 @@ def _archive_existing_run(
     artifact_root: Path, archive_stale_run: bool, run_inputs: dict[str, object] | None = None,
     parent_context: dict | None = None, input_manifest: Path | None = None,
 ) -> str | None:
+    try:
+        from provider_runtime import closed_zero_dispatch_run_id
+    except ModuleNotFoundError:
+        from scripts.provider_runtime import closed_zero_dispatch_run_id
+    closed_run_id = closed_zero_dispatch_run_id(artifact_root)
+    if (parent_context and parent_context.get("closed_zero_dispatch_run_id")
+            and parent_context["closed_zero_dispatch_run_id"] != closed_run_id):
+        raise ValueError("prior_run_archive_blocked:closed_run_receipts_changed")
     record = artifact_root / "work_record.md"
     if not record.is_file():
         if artifact_root.is_dir() and any((artifact_root / name).is_file() for name in ORPHANED_RUN_RECEIPTS):
@@ -2688,6 +2696,8 @@ def _archive_existing_run(
             return None
     text = record.read_text() if record.is_file() else ""
     state = _table_value(text, "State") if text else None
+    if closed_run_id:
+        state = "blocked"
     if record.is_file() and state not in TERMINAL_STATES:
         if not archive_stale_run:
             raise ValueError("existing_run_not_terminal")
@@ -2707,7 +2717,7 @@ def _archive_existing_run(
     if state not in TERMINAL_STATES:
         run_id = datetime.now(UTC).strftime("stale-%Y%m%dT%H%M%S%fZ")
     else:
-        run_id = _table_value(text, "Run ID")
+        run_id = closed_run_id or _table_value(text, "Run ID")
     if not run_id or run_id in {"Unknown", "None"}:
         run_id = datetime.now(UTC).strftime("run-%Y%m%dT%H%M%S%fZ")
     destination = artifact_root / "runs" / re.sub(r"[^A-Za-z0-9._-]", "_", run_id)

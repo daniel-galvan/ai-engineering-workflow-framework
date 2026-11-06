@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -172,6 +173,54 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
     return tuple(sorted(identities))
 
 
+def closed_zero_dispatch_run_id(artifact_root: Path) -> str | None:
+    """Authenticate a published, closed pre-dispatch failure using local control receipts only."""
+    names = ('role_bindings.json', 'finalization_packet.json', 'runtime_dispatches.json',
+             'runtime_closure.json', 'finalization_failure.json', 'handoff_delivery.json',
+             'work_record.md', 'handoff_failure.md', 'handoff_response.md')
+    try:
+        if artifact_root.is_symlink() or any((artifact_root / name).is_symlink() for name in names):
+            return None
+        raw = {name: (artifact_root / name).read_bytes() for name in names}
+        data = {name: strict_json_loads(value.decode()) for name, value in raw.items() if name.endswith('.json')}
+        bindings, packet, ledger, closure, failure, delivery = (data[name] for name in names[:6])
+        run_id = packet['identity']['Run ID']
+        if (not isinstance(run_id, str) or not re.fullmatch(r'[A-Za-z0-9._-]+', run_id)
+                or not run_id.startswith(artifact_root.name + '-')
+                or packet['work_item']['ID'] != artifact_root.name
+                or any(item.get('run_id') != run_id for item in (bindings, failure, delivery))
+                or ledger.get('parent_thread_id') != bindings['parent_context']['parent_thread_id']
+                or not UUID.fullmatch(ledger['parent_thread_id'])
+                or ledger.get('run_started_at') != bindings['runtime_evidence']['run_started_at']
+                or ledger.get('events') != [] or ledger.get('failed_dispatches') != []
+                or ledger.get('thread_mappings') != {}
+                or type(ledger['timing']['open_worker_intervals']) is not int
+                or ledger['timing']['open_worker_intervals'] != 0
+                or any(packet.get(field, []) != [] for field in ('workers', 'worker_results', 'runtime_audits'))
+                or closure.get('terminal_observations') != [] or len(closure['runtime_closure']) != 1
+                or closure['runtime_closure'][0].get('Runtime status') != 'Terminal'
+                or closure['runtime_closure'][0].get('Remaining active handles') != '0'
+                or closure['runtime_closure'][0].get('Completed worker handles') != 'None dispatched'
+                or failure.get('status') != 'failed' or failure.get('stage') != 'workflow'
+                or failure.get('reported_by') != 'Coordinator' or failure.get('runtime_closure') != 'terminal'
+                or delivery.get('status') != 'verified'):
+            return None
+        packet_hash = hashlib.sha256(raw['finalization_packet.json']).hexdigest()
+        snapshot = Path(failure['packet_snapshot'])
+        if (snapshot.is_symlink() or snapshot.resolve().parent != artifact_root.resolve()
+                or snapshot.read_bytes() != raw['finalization_packet.json']
+                or any(failure.get(field) != packet_hash for field in
+                       ('snapshot_sha256', 'packet_sha256', 'handoff_packet_sha256'))
+                or hashlib.sha256(raw['work_record.md']).hexdigest() != delivery.get('record_sha256')
+                or hashlib.sha256(raw['handoff_failure.md']).hexdigest() != failure.get('handoff_sha256')
+                or delivery.get('canonical_sha256') != failure.get('handoff_sha256')
+                or hashlib.sha256(raw['handoff_response.md']).hexdigest() != delivery.get('proposed_sha256')):
+            return None
+        return run_id
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
 def scoped_prior_run_status_thread_ids(
     artifact_root: Path, current_thread_id: str, authorized_prior_parent_thread_id: str | None = None,
 ) -> tuple[str, ...]:
@@ -207,6 +256,8 @@ def scoped_prior_run_status_thread_ids(
     if authorized_prior_parent_thread_id is not None and authorized_prior_parent_thread_id != prior_parent:
         raise ValueError("stale_run_status_authorization_mismatch")
     if prior_parent != current_thread_id and authorized_prior_parent_thread_id != prior_parent:
+        if closed_zero_dispatch_run_id(artifact_root) is not None:
+            return ()
         raise ValueError("prior_run_status_requires_user_authorization")
     return prior_run_status_thread_ids(artifact_root, current_thread_id)
 
@@ -874,6 +925,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             "related_run_status_probe_attempts": related_run_probe_attempts,
             "related_run_status_rows": related_run_status_rows,
             "related_run_thread_ids": list(prior_ids),
+            "closed_zero_dispatch_run_id": closed_zero_dispatch_run_id(artifact_root) if artifact_root else None,
             "prior_run_dispatch_ledger_present": bool(ledger_present)}
 
 def _preflight_order_errors(operations: list[dict], framework_root: Path,
