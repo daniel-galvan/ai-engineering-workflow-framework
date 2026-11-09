@@ -1893,6 +1893,8 @@ not receive the read-output exception; actual unassigned reads and historical wr
 Read provenance also covers mixed source searches and packet reads within an assigned source directory. Comparison
 strings in verified read-only JSON inspection are search data; file operands remain audited. These rules apply equally
 to fresh and recovered runs and grant no authority to open a referenced session.
+Read verification resolves literal Python paths and fixed file lists, including `Path` joins, before classifying output.
+Computed reads through packet locators remain unverified; metadata never grants authority to follow those locators.
 
 The canonical launch message names its SHA256 and makes verification and reading the supplied file the self-contained
 first task. The worker reads the full file before analysis. Source access is limited to exact sources the current user

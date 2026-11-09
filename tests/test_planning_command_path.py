@@ -320,10 +320,11 @@ class PlanningCommandPath(unittest.TestCase):
                        arguments=json.dumps({"cmd": "cat " + str(source), "workdir": str(repository)}))
                 append(child, "response_item", type="function_call_output", call_id="source", output=source.read_text())
                 if parallel_integration and index > 0:
+                    reader = ("git -C " + str(repository) + " status --short --branch && cat " + str(packet_path)
+                              if index % 2 else "python3 - <<'PY'\nfrom pathlib import Path\nbase=Path("
+                              + repr(str(root)) + ")\nfor name in ('finalization_packet.json',):\n print((base/name).read_text())\nPY")
                     append(child, "response_item", type="function_call", name="exec_command", call_id="current-packet",
-                           arguments=json.dumps({"cmd": "rg -n 'increment|value' " + str(source)
-                                                 + " | head -n 20; git status --short --branch && git rev-parse HEAD && cat "
-                                                 + str(packet_path), "workdir": str(repository)}))
+                           arguments=json.dumps({"cmd": reader, "workdir": str(repository)}))
                     append(child, "response_item", type="function_call_output", call_id="current-packet",
                            output="## main\nrevision\n" + packet_path.read_text())
                 if role == "repository_integrator":

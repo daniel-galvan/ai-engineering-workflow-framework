@@ -905,6 +905,51 @@ class ContextOperationAudit(unittest.TestCase):
             changed['tool_trace'][-1]['output'][0]['text'] = json.dumps(value)
             self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(changed))
 
+    def test_packet_read_provenance_resolves_fixed_paths_but_not_locator_dereferences(self):
+        base = self.instruction_read_trace()
+        path = self.root / 'finalization_packet.json'
+        packet = json.loads(path.read_text())
+        session = '/Users/example/.codex/sessions/current-worker.jsonl'
+        packet['runtime_audits'] = [{'Worker': 'context', 'Trace retrieval': session}]
+        path.write_text(json.dumps(packet))
+        program = ("from pathlib import Path\nbase=Path(" + repr(str(self.root))
+                   + ")\nfor name in ('finalization_packet.json',):\n print((base/name).read_text())")
+        readers = ('git -C ' + str(self.repository) + ' status --short && cat ' + str(path),
+                   "python3 - <<'PY'\n" + program + "\nPY", shlex.join([sys.executable, '-c', program]))
+        for command in readers:
+            for nested in (False, True):
+                with self.subTest(command=command, nested=nested):
+                    output = json.dumps(packet, indent=2)
+                    if nested:
+                        output = json.dumps({'output': output, 'exit_code': 0})
+                    call = 'const r = await tools.exec_command(' + json.dumps({'cmd': command}) + '); text(r.output);'
+                    trace = json.loads(json.dumps(base))
+                    trace['tool_trace'].extend(self.paired(call, [{'type': 'input_text', 'text': output}]))
+                    self.assertEqual(runtime.trace_errors(trace), [])
+                    for suffix in ('; cat ' + session, '; cat /repo/.thoughts/OTHER/runs/old.md'):
+                        changed = json.loads(json.dumps(trace))
+                        changed['tool_trace'][-2]['input'] = 'await tools.exec_command(' + json.dumps({'cmd': command + suffix}) + ')'
+                        self.assertTrue(runtime.trace_errors(changed))
+                    from scripts.runtime_checks import _read_targets
+                    inline = shlex.join([sys.executable, '-c', program])
+                    self.assertEqual(_read_targets(inline + '|cat<foreign'), [])
+                    self.assertEqual(_read_targets(shlex.join(['/tmp/python3', '-c', program])), [])
+                    for unsafe in (
+                        "import json\np=json.load(open(" + repr(str(path))
+                            + "))\nprint(json.load(open(p['runtime_audits'][0]['Trace retrieval'])))",
+                        "from pathlib import Path\nbase=Path(" + repr(str(self.root))
+                            + ")\nname=json.load(open('input.json'))['file']\nprint((base/name).read_text())",
+                        "from pathlib import Path\nPath=eval\nprint(Path('input.json').read_text())",
+                        *('from pathlib import Path\nimport json\np=json.load(open(' + repr(str(path))
+                          + '))\npaths=[' + repr(str(path)) + ']\n' + mutation
+                          + "\nfor name in paths:\n print(Path(name).read_text())" for mutation in (
+                              "paths[:] += [p['runtime_audits'][0]['Trace retrieval']]",
+                              "for paths[0] in [p['runtime_audits'][0]['Trace retrieval']]: pass"))):
+                        changed = json.loads(json.dumps(trace))
+                        changed['tool_trace'][-2]['input'] = 'await tools.exec_command(' + json.dumps({
+                            'cmd': "python3 - <<'PY'\n" + unsafe + "\nPY"}) + ')'
+                        self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(changed))
+
     def test_packet_metadata_reads_compose_with_repository_checks_without_allowing_log_reads(self):
         base = self.instruction_read_trace()
         path = self.root / 'finalization_packet.json'

@@ -731,6 +731,8 @@ def _listing_command(command: object) -> bool:
             args = part
             if not args:
                 continue
+            if args[:2] == ["git", "-C"] and len(args) > 3:
+                args = ["git", *args[3:]]
             tool = Path(args[0]).name
             listing = ((args[:2] == ["git", "status"]
                         and set(args[2:]) <= {"--short", "--branch", "--porcelain", "-s", "-b"})
@@ -1425,36 +1427,54 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
 
 
 def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, ...] = ()) -> list[str]:
-    """Recognize the recorded JSON inspection form; other Python remains unaudited."""
+    """Resolve read-only inspection paths from literals and fixed file lists without executing Python."""
     tree = ast.parse(source)
     targets, constants = [], {}
     stores = [node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)]
     builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted", "range"}
-    protected = builtins | {"open", "json", "pprint", "sys"}
+    protected = builtins | {"open", "json", "pprint", "sys", "Path"}
+    def literal_paths(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return [node.value]
+        if isinstance(node, ast.Name) and stores.count(node.id) == 1:
+            return constants.get(node.id, [])
+        if isinstance(node, (ast.Tuple, ast.List)):
+            values = [literal_paths(item) for item in node.elts]
+            return [value for items in values for value in items] if all(values) else []
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Path"
+                and len(node.args) == 1 and not node.keywords):
+            return literal_paths(node.args[0])
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            return [str(Path(base) / name) for base in literal_paths(node.left) for name in literal_paths(node.right)]
+        return []
     called_attributes = {id(node.func) for node in ast.walk(tree)
                          if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in protected:
             return []
-        if pretty and (isinstance(node, (ast.AugAssign, ast.AnnAssign, ast.NamedExpr, ast.With, ast.AsyncWith,
-                                        ast.Delete, ast.Try, ast.AsyncFor, ast.AsyncFunctionDef))
-                       or isinstance(node, ast.Attribute) and id(node) not in called_attributes):
+        if (isinstance(node, (ast.AugAssign, ast.AnnAssign, ast.NamedExpr, ast.With, ast.AsyncWith,
+                             ast.Delete, ast.Try, ast.AsyncFor, ast.AsyncFunctionDef))
+                or pretty and isinstance(node, ast.Attribute) and id(node) not in called_attributes):
             return []
-        if pretty and isinstance(node, (ast.For, ast.comprehension)) and (
+        if isinstance(node, (ast.For, ast.comprehension)) and (
                 not isinstance(node.target, ast.Name) or node.target.id in protected):
             return []
         if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json", "sys"})
                                                 or item.asname for item in node.names):
             return []
-        if isinstance(node, (ast.ImportFrom, ast.FunctionDef, ast.ClassDef, ast.Lambda)):
+        if isinstance(node, ast.ImportFrom) and (pretty or node.module != "pathlib" or node.level
+                or [(item.name, item.asname) for item in node.names] != [("Path", None)]):
+            return []
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.Lambda)):
             return []
         if isinstance(node, ast.Assign) and any(not isinstance(target, ast.Name)
                 or target.id in protected for target in node.targets):
             return []
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+        if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name):
-                    constants[target.id] = node.value.value
+                constants[target.id] = literal_paths(node.value)
+        if isinstance(node, ast.For) and isinstance(node.target, ast.Name):
+            constants[node.target.id] = literal_paths(node.iter)
         if not isinstance(node, ast.Call):
             continue
         if isinstance(node.func, ast.Name):
@@ -1464,16 +1484,18 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                 argument = node.args[0]
                 if pretty and not isinstance(argument, ast.Constant):
                     return []
-                path = argument.value if isinstance(argument, ast.Constant) else constants.get(
-                    argument.id if isinstance(argument, ast.Name) and stores.count(argument.id) == 1 else "")
+                paths = literal_paths(argument)
                 if (isinstance(argument, ast.Subscript) and isinstance(argument.value, ast.Attribute)
                         and isinstance(argument.value.value, ast.Name) and argument.value.value.id == "sys"
                         and argument.value.attr == "argv" and isinstance(argument.slice, ast.Constant)
                         and type(argument.slice.value) is int and 0 < argument.slice.value < len(argv)):
-                    path = argv[argument.slice.value]
-                if not isinstance(path, str):
+                    paths = [argv[argument.slice.value]]
+                if not paths:
                     return []
-                targets.append(path)
+                targets.extend(paths)
+            elif node.func.id == "Path" and not pretty:
+                if not literal_paths(node):
+                    return []
             elif node.func.id not in builtins:
                 return []
             elif pretty:
@@ -1484,6 +1506,12 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                         len(node.args) != (2 if node.func.id == "isinstance" else 1)):
                     return []
         elif isinstance(node.func, ast.Attribute):
+            if not pretty and node.func.attr == "read_text":
+                paths = literal_paths(node.func.value)
+                if node.args or node.keywords or not paths:
+                    return []
+                targets.extend(paths)
+                continue
             json_load = (isinstance(node.func.value, ast.Name) and node.func.value.id == "json"
                          and node.func.attr in {"load", "dumps"})
             pretty_print = (pretty and isinstance(node.func.value, ast.Name) and node.func.value.id == "pprint"
@@ -1584,10 +1612,27 @@ def _read_targets(command: str) -> list[str]:
     chunk = _chunked_dispatch_read(command)
     if chunk:
         return [chunk[0]]
-    python = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*", command, re.S)
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>\n")
+        lexer.whitespace_split, lexer.commenters = True, ""
+        args = list(lexer)
+        if (len(args) == 3 and (re.fullmatch(r"python(?:3(?:\.[0-9]+)?)?", args[0])
+                or Path(args[0]).resolve() == Path(sys.executable).resolve())
+                and args[1] == "-c" and not any(char in command for char in '$`')):
+            # JSON projections retain their existing field-level output verification.
+            if any(isinstance(node, ast.Import) and any(item.name == "json" for item in node.names)
+                   for node in ast.walk(ast.parse(args[2]))):
+                return []
+            return _python_read_targets(args[2])
+    except (ValueError, SyntaxError):
+        return []
+    python = re.fullmatch(r"(\S+) - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\2\s*", command, re.S)
     if python:
         try:
-            return _python_read_targets(python[2])
+            if (not re.fullmatch(r"python(?:3(?:\.[0-9]+)?)?", python[1])
+                    and Path(python[1]).resolve() != Path(sys.executable).resolve()):
+                return []
+            return _python_read_targets(python[3])
         except (SyntaxError, TypeError, ValueError):
             return []
     hashed_read = re.fullmatch(r"(?:sha256sum|shasum -a 256) ([^\s;&|<>]+) && cat \1", command)
