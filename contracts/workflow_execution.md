@@ -281,13 +281,15 @@ For Feature Delivery, mark supplied supporting artifacts `Asset source: true`. D
 A code-scope input marked as an asset source is a conflicting classification and MUST be corrected before the
 asset gate runs.
 
-When the user supplies instructions on how to perform code, test, build, infrastructure or repository work, use
-`Classification: engineering guidance`, its stated purpose and access status. Purpose governs even if supplied under
-a supporting-artifacts heading; do not infer purpose from its filename or reclassify task evidence, requirements or
-acceptance evidence. Do not mark engineering guidance as `Asset source: true` or require its review for the early asset
-gate. A legacy asset marker does not change its explicit engineering purpose. Confirm readability without displaying
-the document; preparation preserves local file snapshots and hashes. Carry Input IDs and snapshot references through
-assignments. An assigned engineering question, including source investigation during planning, triggers reading only
+The Coordinator MUST classify supplied materials from their stated purpose or a bounded outline/content inspection;
+the user need not provide routing instructions or classification labels. A filename or generic supporting-artifacts
+heading alone is insufficient. Instructions on how to perform code, test, build, infrastructure or repository work use
+`Classification: engineering guidance`, their purpose and access status. Task evidence, requirements and acceptance
+evidence retain the asset gate, including in mixed-purpose documents. Do not mark engineering guidance as
+`Asset source: true` or require its review for the early asset gate. A legacy asset marker does not change its
+engineering purpose. Confirm readability without loading the full document; preparation preserves local file snapshots
+and hashes. Carry Input IDs and snapshot references through assignments. An assigned engineering question, including
+source investigation during planning, triggers reading only
 relevant sections; reuse complete sections already in that worker's context. Issue-only workers may leave guidance
 deferred with that disposition. Documenter consumes accepted findings and references unless its task needs a section.
 Do not copy a whole guide into each payload or claim deferred content was reviewed. This applies to every playbook.
@@ -1242,6 +1244,11 @@ workers from completing diagnosis and fix design. If recovery delegation is unav
 `not_executed`; do not substitute a generic workflow or claim success.
 
 ## Run Identity and Continuation
+
+Ordinary end-to-end execution MUST NOT depend on recovery mode or additional user instructions that compensate for
+framework defects. The framework owns intake classification, routing and stage behavior. Recovery preserves progress
+after an exceptional failure or resumes interrupted work; it does not establish that the ordinary path is fixed.
+Genuine safety failures retain their stop and recovery requirements.
 
 Every run records its provider run ID when available. Evaluation identity, role-policy baseline, detailed
 provider-action history, and timing are required only when the request explicitly declares an evaluation or benchmark

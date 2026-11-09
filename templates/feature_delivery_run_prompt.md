@@ -92,18 +92,14 @@ Additional code scopes (optional):
   Intended ref: <USER-SELECTED-BRANCH-REVISION-OR-UNKNOWN>
   Corresponding input row: `Classification: code scope`; do not set `Asset source: true`
 
-Supporting artifacts to inventory (optional):
+Supporting materials (optional):
 - Source ID: <OPTIONAL-ID>
   Path or URL: <ABSOLUTE-FILE-OR-FOLDER-PATH-OR-URL>
-  Intended use: <DESCRIPTION>
-  Corresponding input row: `Classification: supporting artifact`; `Asset source: true`
+  Intended use: <DESCRIPTION-OR-UNKNOWN>
 
-Engineering guidance (optional; code, tests, builds, infrastructure or repository work):
-- Path or URL: <REFERENCE-OR-NONE>
-  Intended use: <ENGINEERING-PURPOSE>
-  Corresponding input row: `Classification: engineering guidance`; do not set `Asset source: true`
-  Register availability and preserve a snapshot; read relevant sections only when an assigned task needs them.
-  Stated engineering purpose takes precedence over a generic supporting-artifacts heading.
+The Coordinator classifies supplied materials under the shared input contract; the user need not label or route them.
+Inventory task evidence as supporting assets. Register engineering guidance and defer its contents until an assigned
+engineering question needs relevant sections. When purpose is unclear, inspect a bounded outline or content sample.
 
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>
@@ -121,7 +117,7 @@ Feature context and constraints (unverified until reconciled):
 - Explicit non-goals: <NONE-OR-DESCRIPTION>
 - Constraints, dependencies, or release timing: <NONE-OR-DESCRIPTION>
 
-For each listed supporting artifact, add a corresponding current-run input row with `Asset source: true`; do not hide an
+For each supplied task-evidence artifact, add a current-run input row with `Asset source: true`; do not hide an
 asset source in free-form context. A supplied `codex://threads/` reference is a URL asset source even when used only as
 prior-decision context.
 

@@ -338,12 +338,14 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    attempt files automatically, including incomplete or unpublished attempts; missing old closure receipts do not
    turn Start into recovery. Archive entries remain history and are not current-run inputs. Explicitly recorded
    active workers or writers block a conflicting archive with `run_already_active` before files move.
-   Classify inputs by the user's stated purpose, regardless of the heading used to supply them. Instructions supplied
-   to guide code, tests, builds, infrastructure or repository work use `Classification: engineering guidance`.
-   Keep their path, purpose and access status in the manifest; do not set `Asset source: true`. Do not infer
-   this classification from a filename or use it for task evidence, specifications, requirements or acceptance evidence.
+   The Coordinator MUST classify supplied materials without requiring user routing instructions or classification
+   labels. Use their stated purpose when available; otherwise inspect a bounded outline or content sample to determine
+   their role. A filename or supporting-artifacts heading alone does not determine that role. Instructions on how to
+   perform code, test, build, infrastructure or repository work use `Classification: engineering guidance`.
+   Keep their path, purpose and access status in the manifest; do not set `Asset source: true`. Task evidence,
+   specifications, requirements and acceptance evidence retain the asset gate, including in mixed-purpose documents.
    Before preparation, confirm access to each declared file, folder, URL or attachment. For engineering guidance,
-   verify readability without displaying its contents; preparation captures and hashes local file snapshots. Defer
+   verify readability without loading the full document; preparation captures and hashes local file snapshots. Defer
    content to a worker with a relevant engineering question, including code investigation during planning, and read
    only the needed sections. Carry Input IDs and snapshot references forward instead of copying document text into
    each payload. Issue-only workers keep it deferred; Documenter uses accepted findings and references unless its

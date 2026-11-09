@@ -25,7 +25,9 @@ class PlanningCommandPath(unittest.TestCase):
         self.planning_path("techops_issue_remediation")
 
     def test_feature_ready_plan_through_actual_shipped_commands(self):
-        self.planning_path("feature_delivery")
+        commands = self.planning_path("feature_delivery")
+        self.assertFalse(any(str(arg).startswith(("--recover", "--planning-recovery"))
+                             for _, arguments in commands for arg in arguments))
 
     def test_feature_remediation_through_actual_shipped_commands(self):
         self.planning_path("feature_delivery", continue_to_remediation=True)
@@ -119,11 +121,16 @@ class PlanningCommandPath(unittest.TestCase):
 
             append(parent, "session_meta", id=parent_id, cwd=str(repository))
             append(parent, "turn_context", turn_id=turn_id)
+            guide = Path(directory) / "development-guide.md"
+            guide.write_text("# Testing\nUse the existing focused counter fixture.\n# Deployment\nUNNEEDED_GUIDE_SECTION\n")
             append(parent, "response_item", role="user", content=[{"type": "input_text", "text":
                 "Use only this controlled offline case and supplied source. Plan DEMO-1 in standard/planning: increment(2) returns 1 and must return 3. "
-                "Read-only source inspection; do not run product tests or builds."}])
+                "Read-only source inspection; do not run product tests or builds.\n"
+                "Supporting artifacts to inventory:\n- Development Guide: " + str(guide)}])
 
+            commands = []
             def command(script, *arguments, expected=0):
+                commands.append((script, arguments))
                 result = subprocess.run([sys.executable, str(package / "scripts" / script), *map(str, arguments)],
                                         cwd=package, capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, expected, script + "\n" + result.stdout + result.stderr)
@@ -134,16 +141,28 @@ class PlanningCommandPath(unittest.TestCase):
 
             parent_option = () if native_continuation else ("--provider-session", parent)
             preflight = json.loads(command("run_preflight.py", *parent_option))
+            append(parent, "response_item", type="function_call", name="exec_command", call_id="guide-outline",
+                   arguments=json.dumps({"cmd": "rg -n '^#' " + str(guide), "workdir": str(repository)}))
+            append(parent, "response_item", type="function_call_output", call_id="guide-outline",
+                   output="1:# Testing\n3:# Deployment\n")
             inputs = Path(directory) / "inputs.json"
             inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact":
                 "Counter defect: increment(2) returns 1; expected 3. Planning only, standard profile.",
                 "Source or path": "User", "Authority": "User", "Status": "Verified"},
                 {"Input ID": "IN-002", "Input or artifact": "Jira DEMO-1 supplied offline record: no attachments or remote links",
-                 "Source or path": "Jira DEMO-1", "Authority": "User supplied fixture", "Status": "Verified"}]}))
+                 "Source or path": "Jira DEMO-1", "Authority": "User supplied fixture", "Status": "Verified"},
+                # Simulated Coordinator intake classifies the outline; the user supplied only the reference.
+                {"Input ID": "IN-003", "Input or artifact": "Development Guide", "Source or path": str(guide),
+                 "Authority": "User-supplied context", "Classification": "engineering guidance",
+                 "Status": "Readable; engineering outline identified; full content deferred"}]}))
             run = json.loads(command("prepare_run.py", "--execution-repository", repository, "--work-item", "DEMO-1",
                 "--playbook", playbook, "--input-manifest", inputs,
                 *parent_option, "--lifecycle", "planning"))
             root, packet_path = Path(run["artifact_root"]), Path(run["finalization_packet"])
+            guide_row = next(row for row in json.loads((root / "run_inputs.json").read_text())["inputs"]
+                             if row["Input ID"] == "IN-003")
+            guide_snapshot = Path(guide_row["path"])
+            self.assertEqual(guide_snapshot.read_bytes(), guide.read_bytes())
             self.assertEqual(Path(run["documenter_packet_stager"]).name, "stage_documenter_packet.py")
             if playbook == "techops_issue_remediation":
                 documenter_instructions = run["worker_contracts"]["documenter"]["instructions"]
@@ -191,11 +210,14 @@ class PlanningCommandPath(unittest.TestCase):
                     self.assertEqual(packet["synchronization"][-1]["Barrier status"].split(";")[0], "Passed")
                 assignment = root / (worker + "-assignment.json")
                 assignment.write_text(json.dumps({"objective": "Complete the current counter planning stage: " + worker,
-                    "input_paths": [str(packet_path), str(source)]}))
+                    "input_paths": [str(packet_path), str(source)]
+                    + ([str(guide_snapshot)] if role == "solution_architect" else [])}))
                 activation = root / (worker + "-activation.txt")
                 guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
                     run["activation_packet_bundle"]["path"], "--expected-agent", role, "--expected-bundle-sha256",
                     run["activation_packet_bundle"]["sha256"], "--assignment", assignment, "--dispatch-file", activation))
+                self.assertIn(str(guide_snapshot), activation.read_text())
+                self.assertNotIn("UNNEEDED_GUIDE_SECTION", activation.read_text())
                 if recover_failed_worker and index == 0:
                     failed_handle, failed_id = "/root/failed_original", str(UUID(int=900))
                     append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
@@ -251,6 +273,11 @@ class PlanningCommandPath(unittest.TestCase):
                 append(child, "response_item", type="function_call_output", call_id="instructions",
                        output=instructions.read_text())
                 if role == "solution_architect":
+                    append(child, "response_item", type="function_call", name="exec_command", call_id="guide-section",
+                           arguments=json.dumps({"cmd": "sed -n '1,2p' " + str(guide_snapshot),
+                                                 "workdir": str(repository)}))
+                    append(child, "response_item", type="function_call_output", call_id="guide-section",
+                           output="# Testing\nUse the existing focused counter fixture.\n")
                     fixture_path = source.parent / "test_counter.py"
                     append(child, "response_item", type="function_call", name="exec_command", call_id="fixture",
                            arguments=json.dumps({"cmd": "cat " + str(fixture_path), "workdir": str(repository)}))
@@ -1064,6 +1091,7 @@ class PlanningCommandPath(unittest.TestCase):
                     {str(source.relative_to(repository)), "src/counter/test_counter.py"})
             else:
                 self.assertEqual(changed.stdout, "")
+            return commands
 
 
 if __name__ == "__main__":

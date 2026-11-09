@@ -94,6 +94,12 @@ relevant self-check fixtures when a contract changes. Do not run all suites for 
 when the change scope or unresolved evidence requires them. Avoid importing a `TestCase` class into another test
 module: unittest also discovers that imported class and may run its unrelated tests.
 
+For a framework defect, validate the affected ordinary path through its normal terminal handoff with representative
+inputs. No recovery flags or extra user prompts that restate framework responsibilities may be required. Check that
+the default launcher, shared contracts and worker packets carry the behavior. A successful recovery test or replay
+is supplemental evidence, not proof of ordinary end-to-end execution. When provider behavior is simulated, say so;
+do not claim live playbook stability from synthetic fixtures alone.
+
 The regression tests supply controlled provider identities. Clear the editing chat's native identity as shown above;
 native-binding tests supply their own identity and records. Packaged self-checks isolate this automatically.
 
