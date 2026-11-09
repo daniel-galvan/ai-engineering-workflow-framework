@@ -358,6 +358,8 @@ def related_run_status_projection_source(
     if (not isinstance(prior_thread_ids, tuple)
             or any(not isinstance(value, str) or not UUID.fullmatch(value) for value in prior_thread_ids)):
         raise ValueError("stale_run_status_prior_thread_ids_invalid")
+    if not prior_thread_ids:
+        return 'text("[]");'
     return (f"const priorIds = {json.dumps(list(prior_thread_ids))};\n"
             "const terminal = new Set(['completed', 'failed', 'stopped', 'interrupted', 'cancelled']);\n"
             "// A multi-target wait may return only the first inactive worker.\n"

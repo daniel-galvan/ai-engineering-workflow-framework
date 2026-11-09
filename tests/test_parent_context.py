@@ -431,9 +431,8 @@ class ParentContext(unittest.TestCase):
         self.assertNotIn("private", result.stdout)
         self.assertNotIn("mcp__codex_app__read_thread", projection)
         skill = (Path(__file__).resolve().parents[1] / "skills/run/SKILL.md").read_text()
-        example = textwrap.dedent(skill.split("   ```javascript\n", 1)[1].split("   ```", 1)[0])
-        example = example.replace("PRIOR-WORKER-THREAD-UUID", CHILD)
-        self.assertEqual(example.strip(), projection)
+        self.assertIn("Use the emitted source verbatim", skill)
+        self.assertNotIn("const priorIds =", skill)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required to execute the provider JavaScript")
     def test_related_status_projection_checks_each_worker_when_wait_returns_only_one(self):
@@ -522,7 +521,9 @@ class ParentContext(unittest.TestCase):
             {"type": "input_text", "text": "Script completed\nWall time 0.6 seconds\nOutput:\n"},
             {"type": "input_text", "text": "[]"}]
         self.assertEqual(self.audit(artifact_root=artifact_root)["status"], "passed")
-        self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        unscoped = self.audit()
+        self.assertEqual(unscoped["status"], "passed")
+        self.assertEqual(unscoped["verified_related_run_status_probes"], 0)
 
         self.rows.extend([
             {"type": "response_item", "payload": {
@@ -537,10 +538,10 @@ class ParentContext(unittest.TestCase):
         self.rows = self.rows[:2] + [{"type": "response_item", "payload": {
             "type": "custom_tool_call", "name": "exec",
             "call_id": "bad-status-call",
-            "input": projection.replace("text(JSON.stringify(relatedRows));",
+            "input": projection.replace('text("[]");',
                                          "text(response.content[0].text);")}}]
         result = self.audit(artifact_root=artifact_root)
-        self.assertIn("parent_tool_arguments_unavailable", result["errors"])
+        self.assertEqual(result["verified_related_run_status_probes"], 0)
 
         self.rows = self.rows[:2] + [status_call, status_output,
             self.call("mcp__codex_app__read_thread", threadId=CHILD)]
@@ -927,6 +928,13 @@ class ParentContext(unittest.TestCase):
         self.assertEqual(rejected.returncode, 2)
         self.assertIn("stale_run_thread_identity_invalid", json.loads(rejected.stdout)["reason"])
         self.assertEqual(ledger.read_text(), '{"thread_mappings": {"/root/prior-worker": "invalid"}, "events": []}')
+
+    def test_empty_status_projection_is_a_single_literal_output(self):
+        self.assertEqual(related_run_status_projection_source('ITEM-1', PARENT), 'text("[]");')
+        self.assertEqual(related_run_status_projection_source('ITEM-1', PARENT, ()), 'text("[]");')
+        nonempty = related_run_status_projection_source('ITEM-1', PARENT, (CHILD,))
+        self.assertIn('mcp__codex_app__wait_threads', nonempty)
+        self.assertIn(CHILD, nonempty)
 
     def test_fresh_status_projection_does_not_request_unapproved_prior_parent(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
@@ -1374,16 +1382,16 @@ class ParentContext(unittest.TestCase):
         self.assertIn("rerun the collector without `--observation`", export_guidance)
         self.assertIn("no separate observation file is needed", export_guidance)
         self.assertNotIn("supply `--observation`", export_guidance)
-        section = skill.split("this exact projection", 1)[1]
-        snippet = section.split("```javascript\n", 1)[1].split("\n   ```", 1)[0]
-        prior_id = "00000000-0000-0000-0000-000000000004"
-        expected = related_run_status_projection_source("ECHO-2806", PARENT, (prior_id,))
-        expected = expected.replace(json.dumps(PARENT), '"PARENT-THREAD-UUID"')
-        expected = expected.replace(json.dumps([prior_id]), '["PRIOR-WORKER-THREAD-UUID"]')
-        self.assertIn("mcp__codex_app__wait_threads", expected)
-        self.assertNotIn("mcp__codex_app__read_thread", expected)
-        self.assertIn("const batches = priorIds.map(id => [id]);", expected)
-        self.assertEqual(textwrap.dedent(snippet).strip(), expected)
+        self.assertIn('the complete program is `text("[]");`', skill)
+        self.assertNotIn('PRIOR-WORKER-THREAD-UUID', skill)
+        expected = related_run_status_projection_source("ITEM-1", PARENT, (CHILD,))
+        self.rows.extend([
+            {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+                "call_id": "generated-status", "input": expected}},
+            {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "generated-status",
+                "output": [{"type": "text", "text": json.dumps([{"id": CHILD, "status": "completed"}])}]}}])
+        result = self.audit(artifact_root=self.root / '.thoughts' / 'ITEM-1', related_run_thread_ids=(CHILD,))
+        self.assertEqual(result["status"], "passed", result)
 
     def test_tool_operations_parse_only_static_string_concatenation(self):
         from scripts.runtime_checks import _tool_operations

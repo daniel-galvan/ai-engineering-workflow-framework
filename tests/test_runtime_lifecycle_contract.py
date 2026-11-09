@@ -134,6 +134,42 @@ class RuntimeLifecycleContract(unittest.TestCase):
         ]}
         return inputs
 
+    def test_failed_script_can_retry_startup_in_the_same_chat(self):
+        with tempfile.TemporaryDirectory() as directory:
+            inputs = self.workspace(directory)
+            item = 'RETRY-42'
+            artifact_root = self.main / '.thoughts' / item
+            artifact_root.mkdir(parents=True)
+            (artifact_root / 'role_bindings.json').write_text(json.dumps({'run_id': item + '-prior',
+                'parent_context': {'parent_thread_id': str(uuid4()), 'provider_session': '/never/open/old-chat.jsonl'}}))
+            (artifact_root / 'work_record.md').write_text('Prior incomplete record; preserve without importing.')
+            previous = {p.name: p.read_bytes() for p in artifact_root.iterdir()}
+            self.new_turn(new_chat=True)
+            parent = self.parent
+            self.command('run_preflight.py')
+            call = str(uuid4())
+            self.append('response_item', type='custom_tool_call', name='exec', call_id=call,
+                input='const ids=[]; try { await tools.mcp__codex_app__wait_threads({targets:ids.map(threadId=>({threadId}))}); }')
+            self.append('response_item', type='custom_tool_call_output', call_id=call, output=[
+                {'type': 'input_text', 'text': 'Script failed\nWall time 0.0 seconds\nOutput:\n'},
+                {'type': 'input_text', 'text': 'Script error:\nSyntaxError: Missing catch or finally after try'}])
+            self.projection(item)
+            blocked = json.loads(self.command('prepare_run.py', '--execution-repository', self.main,
+                '--work-item', item, '--playbook', 'feature_delivery', '--input-json', '-',
+                stdin=json.dumps(inputs), expected=2))
+            self.assertIn('parent_tool_arguments_unavailable', blocked['reason'])
+            self.assertEqual({p.name: p.read_bytes() for p in artifact_root.iterdir()}, previous)
+            self.new_turn()
+            self.command('run_preflight.py')
+            self.projection(item)
+            run = self.prepare('feature_delivery', item, 'standard', inputs)
+            self.assertEqual(run['parent_context']['parent_thread_id'], parent)
+            self.assertEqual(run['parent_context']['status'], 'passed')
+            archive = Path(run['archived_prior_run'])
+            for name, content in previous.items():
+                self.assertEqual((archive / name).read_bytes(), content)
+            self.assertEqual(run['artifact_root'], str(self.main / '.thoughts' / item))
+
     def test_fresh_start_archives_incomplete_attempts_across_playbooks_and_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
             inputs = self.workspace(directory)

@@ -531,36 +531,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `--authorize-prior-parent-thread <exact-thread-id>`. Its generated projection emits status metadata only.
    Execute the helper's complete `projection` value as the `functions.exec` source exactly once, even for an empty
    ID list; an empty list makes no provider call. If the helper or projection blocks, stop without creating run
-   artifacts. The following shows this exact projection example, with placeholders for the current parent and any
-   authorized prior thread IDs:
-   ```javascript
-   const priorIds = ["PRIOR-WORKER-THREAD-UUID"];
-   const terminal = new Set(['completed', 'failed', 'stopped', 'interrupted', 'cancelled']);
-   // A multi-target wait may return only the first inactive worker.
-   const batches = priorIds.map(id => [id]);
-   const relatedRows = (await Promise.all(batches.map(async ids => {
-     try {
-       const result = await tools.mcp__codex_app__wait_threads({
-         targets: ids.map(threadId => ({threadId})), timeoutMs: 0
-       });
-       if (result.isError || !Array.isArray(result.content) || result.content.length !== 1)
-         return ids.map(id => ({id, status: 'unavailable'}));
-       const snapshot = JSON.parse(result.content[0].text);
-       const polls = Array.isArray(snapshot.polls) ? snapshot.polls : [];
-       const byId = new Map(polls.map(poll => [poll.thread?.id, poll]));
-       return ids.map(id => {
-         const poll = byId.get(id);
-         const latestTurn = poll?.latestTurn;
-         const threadStatus = poll?.thread?.status;
-         const inactive = ['idle', 'ready'].includes(threadStatus?.type) && !threadStatus.activeFlags?.length
-           || snapshot.wake?.threadId === id && snapshot.wake.reason === 'inactiveStatus';
-         return {id, status: inactive && terminal.has(latestTurn?.status)
-           ? latestTurn.status : 'unavailable'};
-       });
-     } catch { return ids.map(id => ({id, status: 'unavailable'})); }
-   }))).flat();
-   text(JSON.stringify(relatedRows));
-   ```
+   artifacts. Use the emitted source verbatim; do not recreate it from an example or edit its control flow.
+   With no prior IDs, the complete program is `text("[]");`. No async wrapper, batch, or provider query is needed.
+   A transport failure before preparation leaves startup pending. After correcting it, retry on the next turn of the
+   same chat with the original inputs; a new chat or recovery mode is not required. Actual context violations retain
+   their failure handling and must not be relabeled as transport failures.
    Direct inventory output, extra tool calls in the wrapper, a different projection, or a query before the initial
    passing preflight remains an unassigned discovery and must stop the run. The provider result must be correlated to
    that exact call and contain only status metadata. Fresh archival uses local control metadata and preserves prior
