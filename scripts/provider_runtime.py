@@ -705,7 +705,11 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
                    "--closure", "--pending-closure", "--blocked-closure", "--blocker"}
         while index < len(args):
             option = args[index]
-            if option not in allowed or option in values or index + 1 == len(args):
+            if option not in allowed:
+                # CLI mistakes remain visible; only verified session argument slots are redacted below.
+                index += 1
+                continue
+            if option in values or index + 1 == len(args):
                 return command
             values[option] = args[index + 1]
             index += 2

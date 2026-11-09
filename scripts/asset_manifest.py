@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Iterable
 
 try:
-    from run_input_manifest import is_code_scope, load_manifest, local_input_paths
+    from run_input_manifest import is_code_scope, is_engineering_guidance, load_manifest, local_input_paths
 except ModuleNotFoundError:  # Imported as scripts.asset_manifest from the repository root.
-    from scripts.run_input_manifest import is_code_scope, load_manifest, local_input_paths
+    from scripts.run_input_manifest import is_code_scope, is_engineering_guidance, load_manifest, local_input_paths
 
 
 try:
@@ -182,7 +182,8 @@ def _expected_jira_input_ids(expected_inputs: object, work_item: str) -> set[str
         return set()
     result = set()
     for input_id, row in expected_inputs.items():
-        if not isinstance(row, dict) or str(row.get("Classification", "")).strip().lower() == "decision continuity":
+        if (not isinstance(row, dict) or is_engineering_guidance(row)
+                or str(row.get("Classification", "")).strip().lower() == "decision continuity"):
             continue
         text = " ".join(str(row.get(field, "")) for field in ("Input or artifact", "Source or path"))
         if "jira" in text.lower() or "atlassian" in text.lower() or work_item in text:
@@ -196,7 +197,7 @@ def _expected_asset_input_ids(expected_inputs: object) -> set[str]:
     return {
         str(input_id)
         for input_id, row in expected_inputs.items()
-        if isinstance(row, dict) and not is_code_scope(row)
+        if isinstance(row, dict) and not is_code_scope(row) and not is_engineering_guidance(row)
         and (row.get("Asset source") is True or _supplied_asset_reference(row))
     }
 
@@ -204,7 +205,7 @@ def _expected_asset_input_ids(expected_inputs: object) -> set[str]:
 def _supplied_asset_reference(row: dict[str, object]) -> bool:
     """Do not let a directly supplied artifact bypass inventory by omitting its marker."""
     classification = str(row.get("Classification", "")).strip().lower()
-    if is_code_scope(row) or classification in {"work item", "decision continuity"}:
+    if is_code_scope(row) or is_engineering_guidance(row) or classification in {"work item", "decision continuity"}:
         return False
     locator = str(row.get("Source or path", "")).strip()
     direct = locator.startswith(("/", "https://", "http://", "codex://threads/"))

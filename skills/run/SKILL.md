@@ -338,8 +338,16 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    attempt files automatically, including incomplete or unpublished attempts; missing old closure receipts do not
    turn Start into recovery. Archive entries remain history and are not current-run inputs. Explicitly recorded
    active workers or writers block a conflicting archive with `run_already_active` before files move.
-   Before preparation, try to open each declared file, folder, URL, or attachment and confirm its contents can be
-   passed to the assigned worker. Keep the original locator in `Source or path` and record the access result in that
+   Classify inputs by the user's stated purpose, regardless of the heading used to supply them. Instructions supplied
+   to guide code, tests, builds, infrastructure or repository work use `Classification: engineering guidance`.
+   Keep their path, purpose and access status in the manifest; do not set `Asset source: true`. Do not infer
+   this classification from a filename or use it for task evidence, specifications, requirements or acceptance evidence.
+   Before preparation, confirm access to each declared file, folder, URL or attachment. For engineering guidance,
+   verify readability without displaying its contents; preparation captures and hashes local file snapshots. Defer
+   content to a worker with a relevant engineering question, including code investigation during planning, and read
+   only the needed sections. Carry Input IDs and snapshot references forward instead of copying document text into
+   each payload. Issue-only workers keep it deferred; Documenter uses accepted findings and references unless its
+   own task needs a section. Keep the original locator in `Source or path` and record the access result in that
    input row's `Status`; do not leave an inaccessible artifact marked only `Registered`. If unavailable, record the
    attempted route and its impact, tell the user promptly, and continue only if independent evidence can still produce
    a useful partial result; otherwise stop for the indispensable input. Required Jira or Sentry source-access
@@ -876,6 +884,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    or live runtime source is also supplied, use it as additive evidence unless the user explicitly selected live-only
    analysis; never replace named supporting artifacts with live results. Every material input must be consumed by an
    assigned worker or explicitly marked unavailable, conflicting, or out of scope before Fix Design can reach readiness.
+   Engineering guidance may instead remain deferred when no current task needs it; record that disposition rather
+   than claiming it was reviewed or forcing an early full-document read.
    For Standard Sentry planning, activate Evidence Topology first with the exact `normalized_evidence_contract` and
    output paths returned by `prepare_run.py`. Validate its completed `normalized_evidence.md`, then run any playbook-
    required conditional analytical worker. Activate Fix Design with every validated analytical input, the exact

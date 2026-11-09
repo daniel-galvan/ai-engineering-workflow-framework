@@ -25,6 +25,10 @@ def is_code_scope(row: dict[str, object]) -> bool:
     return str(row.get("Classification", "")).strip().lower() in CODE_SCOPE_CLASSIFICATIONS
 
 
+def is_engineering_guidance(row: dict[str, object]) -> bool:
+    return str(row.get("Classification", "")).strip().lower() == "engineering guidance"
+
+
 def _provider_text(value: object):
     if isinstance(value, dict):
         if value.get("isError") is True:
@@ -193,7 +197,10 @@ def _normalize_input(row: object, index: int) -> dict[str, object]:
                                             for value in denied)):
         raise ValueError(f"run_input_manifest_denied_operations_invalid:{input_id}")
     normalized.setdefault("Classification", "supporting current-run input")
-    normalized.setdefault("Expected use", "Consume or explicitly disposition before finalization")
+    normalized.setdefault("Expected use", (
+        "Read relevant sections when code, test, build, infrastructure or repository work needs them; otherwise defer"
+        if is_engineering_guidance(normalized) else "Consume or explicitly disposition before finalization"
+    ))
     source_path = normalized.get("path") or normalized.get("paths")
     if not source_path:
         candidate = str(normalized["Source or path"])

@@ -134,6 +134,23 @@ class RuntimeLifecycleContract(unittest.TestCase):
         ]}
         return inputs
 
+    def test_rejected_collector_syntax_can_retry_with_the_same_audited_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            inputs = self.workspace(directory)
+            self.new_turn(new_chat=True)
+            self.projection('COLLECTOR-42')
+            run = self.prepare('feature_delivery', 'COLLECTOR-42', 'standard', inputs)
+            bindings = json.loads((Path(run['artifact_root']) / 'role_bindings.json').read_text())
+            runtime = bindings['runtime_evidence']
+            args = ['--provider-session', self.source, '--parent-thread-id', self.parent,
+                    '--started-at', runtime['run_started_at'], '--ledger', runtime['ledger']]
+            rejected = self.command('worker_runtime_evidence.py', '--unsupported-option', *args, expected=2)
+            self.assertEqual(rejected, '')
+            self.command('worker_runtime_evidence.py', *args)
+            self.end_failure(run)
+            failure = json.loads((Path(run['artifact_root']) / 'finalization_failure.json').read_text())
+            self.assertNotIn('parent_context_nonconformant', json.dumps(failure))
+
     def test_failed_script_can_retry_startup_in_the_same_chat(self):
         with tempfile.TemporaryDirectory() as directory:
             inputs = self.workspace(directory)

@@ -98,6 +98,13 @@ Supporting artifacts to inventory (optional):
   Intended use: <DESCRIPTION>
   Corresponding input row: `Classification: supporting artifact`; `Asset source: true`
 
+Engineering guidance (optional; code, tests, builds, infrastructure or repository work):
+- Path or URL: <REFERENCE-OR-NONE>
+  Intended use: <ENGINEERING-PURPOSE>
+  Corresponding input row: `Classification: engineering guidance`; do not set `Asset source: true`
+  Register availability and preserve a snapshot; read relevant sections only when an assigned task needs them.
+  Stated engineering purpose takes precedence over a generic supporting-artifacts heading.
+
 Confirmed user decisions and constraints (authoritative; do not reopen):
 - <NONE-OR-DECISION-OR-CONSTRAINT>
 

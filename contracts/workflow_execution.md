@@ -272,7 +272,7 @@ deliver its contents to a fresh worker; a locator or summary alone is insufficie
 workflow-artifact work do not initiate additional source-instruction discovery. Honor explicit instruction-read
 requirements. A guide listing possible project paths does not require loading every project's instructions.
 
-Classify separately supplied materials such as guides, specifications, logs, screenshots, recordings, or payloads with
+Classify separately supplied product evidence such as specifications, logs, screenshots, recordings, or payloads with
 `Classification: supporting artifact`. They may relate to the code but remain separate from source-code scope.
 Register each path in `run_inputs.json` and inventory its contents under the selected playbook. For a supporting
 directory, list its files and symlinks recursively, including hidden entries, in the playbook's inventory or evidence
@@ -280,6 +280,17 @@ artifact. Review the listed items or record why review is incomplete.
 For Feature Delivery, mark supplied supporting artifacts `Asset source: true`. Do not set it on a code-scope input.
 A code-scope input marked as an asset source is a conflicting classification and MUST be corrected before the
 asset gate runs.
+
+When the user supplies instructions on how to perform code, test, build, infrastructure or repository work, use
+`Classification: engineering guidance`, its stated purpose and access status. Purpose governs even if supplied under
+a supporting-artifacts heading; do not infer purpose from its filename or reclassify task evidence, requirements or
+acceptance evidence. Do not mark engineering guidance as `Asset source: true` or require its review for the early asset
+gate. A legacy asset marker does not change its explicit engineering purpose. Confirm readability without displaying
+the document; preparation preserves local file snapshots and hashes. Carry Input IDs and snapshot references through
+assignments. An assigned engineering question, including source investigation during planning, triggers reading only
+relevant sections; reuse complete sections already in that worker's context. Issue-only workers may leave guidance
+deferred with that disposition. Documenter consumes accepted findings and references unless its task needs a section.
+Do not copy a whole guide into each payload or claim deferred content was reviewed. This applies to every playbook.
 
 ## Feature Delivery Asset Gate
 

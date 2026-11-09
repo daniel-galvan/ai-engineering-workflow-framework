@@ -784,6 +784,34 @@ class ParentContext(unittest.TestCase):
             self.rows[-1] = self.call("exec_command", cmd=shlex.join(base_command()), workdir=str(self.root))
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                         runtime_evidence=runtime)["status"], "passed")
+            for position in (2, len(base_command())):
+                rejected = base_command()
+                rejected.insert(position, "--unsupported-option")
+                self.rows[-1] = self.call("exec_command", cmd=shlex.join(rejected))
+                self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                            runtime_evidence=runtime)["status"], "passed")
+                for extra in (["--unknown-source", str(prior_session)], [str(self.source)]):
+                    self.rows[-1] = self.call("exec_command", cmd=shlex.join(rejected + extra))
+                    self.assertIn("forbidden_context_reference:session_log", self.audit(
+                        artifact_root=artifact_root, related_run_thread_ids=(), runtime_evidence=runtime)["errors"])
+                for session in (self.source, prior_session):
+                    self.rows[-1] = self.call("exec_command", cmd=shlex.join(rejected) + "; "
+                                             + shlex.join(["cat", str(session)]))
+                    self.assertIn("forbidden_context_reference:session_log", self.audit(
+                        artifact_root=artifact_root, related_run_thread_ids=(), runtime_evidence=runtime)["errors"])
+                for option, value in (("--provider-session", str(prior_session)),
+                                      ("--started-at", "2026-09-29T23:00:00Z"),
+                                      ("--ledger", str(self.root / "runtime_dispatches.json"))):
+                    invalid = rejected.copy()
+                    invalid[invalid.index(option) + 1] = value
+                    self.rows[-1] = self.call("exec_command", cmd=shlex.join(invalid))
+                    self.assertIn("forbidden_context_reference:session_log", self.audit(
+                        artifact_root=artifact_root, related_run_thread_ids=(), runtime_evidence=runtime)["errors"])
+                invalid = rejected.copy()
+                invalid[1] = str(old_collector)
+                self.rows[-1] = self.call("exec_command", cmd=shlex.join(invalid))
+                self.assertIn("forbidden_context_reference:session_log", self.audit(
+                    artifact_root=artifact_root, related_run_thread_ids=(), runtime_evidence=runtime)["errors"])
             self.rows[-1] = self.call("exec_command", cmd=closure_command + "; cat " + str(prior_session),
                                       workdir=str(self.root))
             self.assertIn("forbidden_context_reference:session_log",

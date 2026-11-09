@@ -98,6 +98,11 @@ as an asset source in the prompt or `run_inputs.json`. Classify source-code root
 including hidden entries and symlinks; an empty filtered search is not a complete inventory. Each source must record
 `complete`, `empty`, `unavailable`, `permission_denied`, `partial`, or `conflict` explicitly.
 
+References explicitly supplied for code, tests, builds, infrastructure or repository work are `engineering guidance`
+under the shared input contract. Register and snapshot them without requiring early asset review. Read only relevant
+sections when an assigned engineering question needs them, including code investigation during planning. Product
+requirements, specifications and acceptance evidence retain the complete asset inventory and review gate.
+
 Feature Delivery requires an explicit current-run `run_inputs.json`; a generated-minimum manifest cannot establish the
 complete set of additional asset sources and therefore cannot reach planning readiness.
 

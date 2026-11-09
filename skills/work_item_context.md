@@ -67,6 +67,10 @@ Review each available image or visual asset directly. Classify every asset as ma
 observation, disposition, and downstream consumer. Missing or inaccessible assets remain explicit unknowns; they are
 not silently treated as empty.
 
+References classified as `engineering guidance` remain registered and deferred until an assigned code, test, build,
+infrastructure or repository question needs relevant sections. Issue-only recovery does not require reading them.
+Record deferral honestly; do not classify product requirements or acceptance evidence as engineering guidance.
+
 ## Completion Criteria
 
 The work can be described without relying on memory or unstated assumptions, or its remaining clarification questions

@@ -1438,6 +1438,24 @@ class ContextOperationAudit(unittest.TestCase):
         inputs["HIST-001"]["Asset source"] = True
         self.assertEqual(assets._expected_asset_input_ids(inputs), {"HIST-001"})
 
+    def test_engineering_guidance_is_not_a_required_product_asset_or_jira_source(self):
+        inputs = {
+            "GUIDE": {"Input or artifact": "ITEM-1 Jira development guidance",
+                     "Classification": "engineering guidance", "Asset source": True,
+                     "Source or path": str(self.repository / "guide.md"),
+                     "Authority": "User-supplied context"},
+            "SPEC": {"Input or artifact": "Product specification", "Classification": "supporting artifact",
+                     "Source or path": str(self.repository / "requirements.md"),
+                     "Authority": "User-supplied context"},
+        }
+        self.assertFalse(assets._supplied_asset_reference(inputs["GUIDE"]))
+        self.assertEqual(assets._expected_jira_input_ids(inputs, "ITEM-1"), set())
+        self.assertEqual(assets._expected_asset_input_ids(inputs), {"SPEC"})
+        inputs["SPEC"]["Asset source"] = True
+        self.assertEqual(assets._expected_asset_input_ids(inputs), {"SPEC"})
+        inputs["GUIDE"]["Classification"] = "supporting artifact"
+        self.assertEqual(assets._expected_asset_input_ids(inputs), {"SPEC", "GUIDE"})
+
     def test_code_scope_is_excluded_from_asset_inventory_and_directory_scans(self):
         code_dir = self.repository / "journeys"
         code_dir.mkdir()
