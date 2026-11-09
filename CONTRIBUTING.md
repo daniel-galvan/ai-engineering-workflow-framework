@@ -76,12 +76,13 @@ Build the package with `python3 scripts/validate_library.py`, then run tests foc
 For shared runtime changes, use this bounded lifecycle gate from the repository root:
 
 ```bash
-env -u CODEX_THREAD_ID -u CODEX_SESSION_ID python3 -m unittest tests.test_runtime_lifecycle_contract tests.test_reasoning_graph_acceptance tests.test_context_operation_audit tests.test_parent_context.ParentContext.test_published_worker_failure_uses_local_closure_and_rejects_inconsistent_receipts tests.test_parent_context.ParentContext.test_closed_zero_dispatch_archive_rejects_changed_or_incomplete_receipts
+env -u CODEX_THREAD_ID -u CODEX_SESSION_ID python3 -m unittest tests.test_runtime_lifecycle_contract tests.test_fresh_start_archival tests.test_reasoning_graph_acceptance tests.test_context_operation_audit tests.test_parent_context.ParentContext.test_published_worker_failure_uses_local_closure_and_rejects_inconsistent_receipts tests.test_parent_context.ParentContext.test_closed_zero_dispatch_archive_rejects_changed_or_incomplete_receipts
 ```
 
 The gate uses a clean package, synthetic provider records, real Git main checkouts and worktrees, and shipped CLI
 commands. It covers both profiles across every playbook's planning startup, pre-dispatch failure publication,
-same-chat recovery, and subsequent fresh run, including Feature specification assessment. Worker-bearing success
+same-chat recovery, and subsequent fresh run, including Feature specification assessment. It also starts fresh over
+incomplete, unpublished attempt records without opening the previous chat. Worker-bearing success
 through planning and remediation publication is exercised for Feature Delivery and TechOps. It checks archive bytes,
 input transport, run identity, control-file changes, and status projection without previous-chat access. It does not
 certify live connectors, every playbook's full success path, or Vulnerability remediation reentry.

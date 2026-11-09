@@ -39,14 +39,14 @@ class V6Recovery(unittest.TestCase):
                         "Source or path": "Current request", "Authority": "User",
                         "Classification": "work item", "Expected use": "Investigate", "Status": "Registered"}]}))
 
-    def prepare(self, continuation=False, archive=False, status_rows=None):
+    def prepare(self, continuation=False, archive=False):
         start = datetime.fromisoformat(START.replace("Z", "+00:00")) + timedelta(microseconds=self.preparation_count)
         self.preparation_count += 1
         provider_session = None
         if archive:
             artifact_root = self.root / ".thoughts" / "ISSUE-1"
             provider_session = write_parent_status_session(
-                self.root / "parent-status.jsonl", artifact_root, status_rows,
+                self.root / "parent-status.jsonl", artifact_root, fresh_start=True,
                 timestamp=(datetime.fromisoformat(START.replace("Z", "+00:00")).replace(microsecond=0)
                            - timedelta(seconds=1)).isoformat(),
             )
@@ -92,30 +92,21 @@ class V6Recovery(unittest.TestCase):
         messages = json.loads(Path(continued["activation_packet_bundle"]["path"]).read_text())["packets"]
         self.assertTrue(all(row["run_id"] == envelope["run_id"] for row in messages.values()))
 
-    def test_stale_archive_requires_correlated_terminal_status_for_each_ledger_worker(self):
+    def test_fresh_archive_preserves_recorded_workers_without_importing_their_status(self):
         prior = self.prepare()
         root = Path(prior["artifact_root"])
-        record = root / "work_record.md"
-        original = record.read_text()
-        record.write_text(original.replace("| State | intake |", "| State | active |"))
-        (root / "runtime_dispatches.json").write_text(json.dumps({
-            "thread_mappings": {HANDLE: CHILD}, "events": [], "failed_dispatches": [],
-        }))
+        ledger = {"thread_mappings": {HANDLE: CHILD}, "events": [], "failed_dispatches": [],
+                  "timing": {"open_worker_intervals": 1}}
+        (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
         before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
-
-        for rows, expected in (
-            ([{"id": CHILD, "status": "running"}], "stale_run_related_task_active:" + CHILD),
-            ([], "stale_run_worker_status_missing:" + CHILD),
-        ):
-            with self.subTest(expected=expected), self.assertRaisesRegex(ValueError, expected):
-                self.prepare(archive=True, status_rows=rows)
-            self.assertEqual(before, {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()})
-            self.assertFalse(any(path.name.startswith("stale-") for path in (root / "runs").glob("*")))
-
-        archived = self.prepare(archive=True, status_rows=[{"id": CHILD, "status": "completed"}])
+        with self.assertRaisesRegex(ValueError, "run_already_active"):
+            self.prepare(archive=True)
+        self.assertEqual(before, {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()})
+        ledger["timing"]["open_worker_intervals"] = 0
+        (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+        archived = self.prepare(archive=True)
         stale = Path(archived["archived_prior_run"])
-        archived_ledger = json.loads((stale / "runtime_dispatches.json").read_text())
-        self.assertEqual(archived_ledger["thread_mappings"], {HANDLE: CHILD})
+        self.assertEqual(json.loads((stale / "runtime_dispatches.json").read_text())["thread_mappings"], {HANDLE: CHILD})
         self.assertNotEqual(Path(archived["work_record"]).resolve(), (stale / "work_record.md").resolve())
 
     def test_terminal_work_record_cannot_hide_an_active_worker_during_archive(self):
@@ -129,35 +120,32 @@ class V6Recovery(unittest.TestCase):
         ))
         (root / "runtime_dispatches.json").write_text(json.dumps({
             "thread_mappings": {HANDLE: CHILD}, "events": [], "failed_dispatches": [],
+            "timing": {"open_worker_intervals": 1},
         }))
         before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
-        with self.assertRaisesRegex(ValueError, "prior_run_archive_blocked:stale_run_related_task_active"):
-            self.prepare(archive=True, status_rows=[{"id": CHILD, "status": "running"}])
+        with self.assertRaisesRegex(ValueError, "run_already_active"):
+            self.prepare(archive=True)
         self.assertEqual(before, {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()})
         self.assertFalse(any(path.name.startswith("stale-") for path in (root / "runs").glob("*")))
 
-        archived = self.prepare(archive=True, status_rows=[{"id": CHILD, "status": "completed"}])
+        ledger = json.loads((root / "runtime_dispatches.json").read_text())
+        ledger["timing"]["open_worker_intervals"] = 0
+        (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
+        archived = self.prepare(archive=True)
         self.assertTrue(Path(archived["archived_prior_run"]).is_dir())
 
-    def test_orphaned_run_receipts_without_record_block_fresh_preparation(self):
+    def test_fresh_preparation_archives_orphaned_receipts_without_importing_them(self):
         root = self.root / ".thoughts" / "ISSUE-1"
         root.mkdir(parents=True)
-        for name, content in (
-            ("runtime_dispatches.json", json.dumps({"thread_mappings": {HANDLE: CHILD},
-                "events": [], "failed_dispatches": []})),
-            ("run_inputs.json", json.dumps({"schema_version": 1, "inputs": []})),
-        ):
-            with self.subTest(name=name):
-                receipt = root / name
-                receipt.write_text(content)
-                before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
-
-                with self.assertRaisesRegex(ValueError, "orphaned_run_control_receipts_without_work_record"):
-                    self.prepare()
-
-                self.assertEqual(before, {path.relative_to(root): path.read_bytes()
-                                          for path in root.rglob("*") if path.is_file()})
-                receipt.unlink()
+        (root / "runtime_dispatches.json").write_text(json.dumps({"thread_mappings": {HANDLE: CHILD},
+            "events": [], "failed_dispatches": []}))
+        (root / "run_inputs.json").write_text(json.dumps({"schema_version": 1, "inputs": []}))
+        before = {path.name: path.read_bytes() for path in root.iterdir()}
+        run = self.prepare()
+        archive = Path(run["archived_prior_run"])
+        for name, content in before.items():
+            self.assertEqual((archive / name).read_bytes(), content)
+        self.assertNotEqual(json.loads((root / "run_inputs.json").read_text())["inputs"], [])
 
     def test_activation_rejects_missing_and_wrong_run_identity(self):
         run = self.prepare()

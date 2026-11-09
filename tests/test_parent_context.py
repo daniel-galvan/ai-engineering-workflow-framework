@@ -928,7 +928,7 @@ class ParentContext(unittest.TestCase):
         self.assertIn("stale_run_thread_identity_invalid", json.loads(rejected.stdout)["reason"])
         self.assertEqual(ledger.read_text(), '{"thread_mappings": {"/root/prior-worker": "invalid"}, "events": []}')
 
-    def test_fresh_status_projection_blocks_unapproved_prior_parent(self):
+    def test_fresh_status_projection_does_not_request_unapproved_prior_parent(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
         artifact_root.mkdir(parents=True)
         (artifact_root / "role_bindings.json").write_text(json.dumps({
@@ -941,8 +941,8 @@ class ParentContext(unittest.TestCase):
         result = subprocess.run(["python3", str(script), "--status-projection", "--execution-repository",
                                  str(self.root), "--work-item", "ECHO-2806", "--provider-session", str(self.source)],
                                 capture_output=True, text=True, timeout=30)
-        self.assertEqual(result.returncode, 2)
-        self.assertEqual(json.loads(result.stdout)["reason"], "prior_run_status_requires_user_authorization")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["prior_thread_ids"], [])
 
     def test_unapproved_parent_blocks_before_reading_prior_run_receipts(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
@@ -966,7 +966,7 @@ class ParentContext(unittest.TestCase):
             "thread_mappings": {"/root/prior-worker": CHILD}, "events": [], "failed_dispatches": []}))
         self.audit()
         script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
-        base = ["python3", str(script), "--status-projection", "--execution-repository", str(self.root),
+        base = ["python3", str(script), "--status-projection", "--continuation", "--execution-repository", str(self.root),
                 "--work-item", "ECHO-2806", "--provider-session", str(self.source)]
         blocked = subprocess.run(base, capture_output=True, text=True, timeout=30)
         self.assertEqual(blocked.returncode, 2)
@@ -992,7 +992,7 @@ class ParentContext(unittest.TestCase):
             "terminal_observations": [{"Thread ID": CHILD, "Provider status": "completed"}]}))
         self.audit()
         script = Path(__file__).resolve().parents[1] / "scripts/prepare_run.py"
-        result = subprocess.run(["python3", str(script), "--status-projection", "--execution-repository",
+        result = subprocess.run(["python3", str(script), "--status-projection", "--continuation", "--execution-repository",
                                  str(self.root), "--work-item", "ECHO-2806", "--provider-session", str(self.source)],
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 2)
@@ -1025,7 +1025,7 @@ class ParentContext(unittest.TestCase):
         (root / "finalization_failure.json").write_text(json.dumps({"status": "failed"}))
         before = {path.name: path.read_bytes() for path in root.iterdir()}
         with patch("scripts.provider_runtime.current_parent_session", return_value=self.source):
-            output = status_projection(self.root, "ECHO-2806", self.source)
+            output = status_projection(self.root, "ECHO-2806", self.source, continuation=True)
         self.assertEqual(output["prior_thread_ids"], [CHILD])
         self.assertEqual(output["projection"], related_run_status_projection_source("ECHO-2806", PARENT, (CHILD,)))
         self.assertEqual(before, {path.name: path.read_bytes() for path in root.iterdir()})
@@ -1040,7 +1040,7 @@ class ParentContext(unittest.TestCase):
                          {"Run ID": "run-1", "State": "completed"}):
             (root / "finalization_packet.json").write_text(json.dumps({"identity": identity}))
             with patch("scripts.provider_runtime.current_parent_session", return_value=self.source):
-                self.assertEqual(status_projection(self.root, "ECHO-2806", self.source)["prior_thread_ids"], [])
+                self.assertEqual(status_projection(self.root, "ECHO-2806", self.source, continuation=True)["prior_thread_ids"], [])
 
     def test_related_status_probe_requires_correlated_minimal_output(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"

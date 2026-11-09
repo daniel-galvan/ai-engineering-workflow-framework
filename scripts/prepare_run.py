@@ -2669,27 +2669,70 @@ def _archive_recovery(artifact_root: Path, run_id: str) -> Path:
 
 def _archive_existing_run(
     artifact_root: Path, archive_stale_run: bool, run_inputs: dict[str, object] | None = None,
-    parent_context: dict | None = None, input_manifest: Path | None = None,
+    parent_context: dict | None = None, input_manifest: Path | None = None, *, fresh_start: bool = False,
 ) -> str | None:
     try:
         from provider_runtime import closed_run_id as published_run_id
     except ModuleNotFoundError:
         from scripts.provider_runtime import closed_run_id as published_run_id
-    closed_run_id = published_run_id(artifact_root)
+    archive_run_id = None if fresh_start else published_run_id(artifact_root)
     observed_closed_id = (parent_context or {}).get("closed_run_id") or (parent_context or {}).get("closed_zero_dispatch_run_id")
-    if observed_closed_id and observed_closed_id != closed_run_id:
+    if observed_closed_id and observed_closed_id != archive_run_id:
         raise ValueError("prior_run_archive_blocked:closed_run_receipts_changed")
     record = artifact_root / "work_record.md"
     if not record.is_file():
-        if artifact_root.is_dir() and any((artifact_root / name).is_file() for name in ORPHANED_RUN_RECEIPTS):
+        if not fresh_start and artifact_root.is_dir() and any((artifact_root / name).is_file() for name in ORPHANED_RUN_RECEIPTS):
             raise ValueError("orphaned_run_control_receipts_without_work_record")
         if not artifact_root.is_dir() or not any(
                 path.name != "runs" and (input_manifest is None or path != input_manifest)
                 for path in artifact_root.iterdir()):
             return None
-    text = record.read_text() if record.is_file() else ""
+    text = record.read_text() if not fresh_start and record.is_file() else ""
     state = _table_value(text, "State") if text else None
-    if closed_run_id:
+    if fresh_start:
+        # Start preserves prior bytes; their outcome and findings do not become current evidence.
+        for name in ("role_bindings.json", "runtime_dispatches.json"):
+            path = artifact_root / name
+            if path.is_symlink():
+                raise ValueError("prior_run_control_symlink:" + name)
+            if not path.is_file():
+                continue
+            try:
+                saved = json.loads(path.read_text())
+            except (ValueError, UnicodeError):
+                continue  # Incomplete control records are preserved, not interpreted as closure.
+            if not isinstance(saved, dict):
+                continue
+            if name == "role_bindings.json":
+                candidate = saved.get("run_id")
+                if isinstance(candidate, str) and re.fullmatch(re.escape(artifact_root.name) + r"-[A-Za-z0-9._-]+", candidate):
+                    archive_run_id = candidate
+                continue
+            timing = saved.get("timing", {})
+            open_intervals = timing.get("open_worker_intervals", 0) if isinstance(timing, dict) else 0
+            inventory = saved.get("inventories", [])
+            latest = inventory[-1] if isinstance(inventory, list) and inventory and isinstance(inventory[-1], dict) else {}
+            agents = latest.get("raw_response", {}).get("agents", []) if isinstance(latest.get("raw_response", {}), dict) else []
+            active = type(open_intervals) is int and open_intervals > 0
+            mappings = saved.get("thread_mappings", {})
+            if isinstance(agents, list) and isinstance(mappings, dict):
+                for row in agents:
+                    if not isinstance(row, dict) or row.get("agent_name") not in mappings:
+                        continue
+                    status = row.get("agent_status")
+                    if isinstance(status, dict) and len(status) == 1:
+                        status = next(iter(status))
+                    active = active or isinstance(status, str) and status in {"running", "pending_init", "waiting"}
+            if active:
+                try:
+                    from worker_runtime_evidence import terminal_closure
+                except ModuleNotFoundError:
+                    from scripts.worker_runtime_evidence import terminal_closure
+                try:
+                    terminal_closure(saved)
+                except (ValueError, KeyError, TypeError, AttributeError):
+                    raise ValueError("run_already_active: prior control evidence records active workers") from None
+    if archive_run_id and not fresh_start:
         bindings = json.loads((artifact_root / "role_bindings.json").read_text())
         if (parent_context and bindings.get("parent_context", {}).get("parent_thread_id")
                 == parent_context.get("parent_thread_id")):
@@ -2714,7 +2757,7 @@ def _archive_existing_run(
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
                 raise ValueError("prior_run_archive_blocked:" + str(error)) from error
         state = "blocked"
-    if record.is_file() and state not in TERMINAL_STATES:
+    if not fresh_start and record.is_file() and state not in TERMINAL_STATES:
         if not archive_stale_run:
             raise ValueError("existing_run_not_terminal")
     try:
@@ -2724,20 +2767,28 @@ def _archive_existing_run(
     unstarted_template = (state == UNINITIALIZED_WORK_RECORD_STATE
                           and not _table_value(text, "Run ID")
                           and not (artifact_root / "runtime_dispatches.json").is_file())
-    status_errors = stale_run_status_errors(
-        parent_context, state, require_prior_dispatch_ledger=bool(text) and not (state == "intake" or unstarted_template),
-    )
+    status_errors = ([] if fresh_start and parent_context is None else stale_run_status_errors(
+        parent_context, state, require_prior_dispatch_ledger=not fresh_start and bool(text)
+        and not (state == "intake" or unstarted_template),
+    ))
     if status_errors:
         reason = "stale_run_archive_blocked" if state not in TERMINAL_STATES else "prior_run_archive_blocked"
         raise ValueError(reason + ":" + ";".join(status_errors))
-    if state not in TERMINAL_STATES:
+    if fresh_start:
+        run_id = archive_run_id or datetime.now(UTC).strftime("stale-%Y%m%dT%H%M%S%fZ")
+    elif state not in TERMINAL_STATES:
         run_id = datetime.now(UTC).strftime("stale-%Y%m%dT%H%M%S%fZ")
     else:
-        run_id = closed_run_id or _table_value(text, "Run ID")
+        run_id = archive_run_id or _table_value(text, "Run ID")
     if not run_id or run_id in {"Unknown", "None"}:
         run_id = datetime.now(UTC).strftime("run-%Y%m%dT%H%M%S%fZ")
     destination = artifact_root / "runs" / re.sub(r"[^A-Za-z0-9._-]", "_", run_id)
-    if destination.exists():
+    if fresh_start:
+        suffix = 2
+        while destination.exists():
+            destination = artifact_root / "runs" / (run_id + "." + str(suffix))
+            suffix += 1
+    elif destination.exists():
         raise ValueError("prior_run_archive_exists")
     directories = {path for row in (run_inputs or {}).get("inputs", []) if not is_code_scope(row)
                    for path in local_input_paths(row)
@@ -2955,6 +3006,8 @@ def prepare_run(
             control["collector"] = str(Path(__file__).with_name("worker_runtime_evidence.py"))
         related_thread_ids = (tuple(previous_parent["related_run_thread_ids"])
                               if "related_run_thread_ids" in previous_parent else None)
+        if not continuation:
+            related_thread_ids = ()
         if authorize_prior_parent_thread is not None:
             if previous_parent:
                 if authorize_prior_parent_thread != previous_parent.get("parent_thread_id"):
@@ -3070,7 +3123,7 @@ def prepare_run(
     artifact_root.mkdir(parents=True, exist_ok=True)
     archived = None if continuation else _archive_existing_run(
         artifact_root, archive_stale_run, validated_supplied, parent_context,
-        input_manifest.resolve() if input_manifest else None,
+        input_manifest.resolve() if input_manifest else None, fresh_start=True,
     )
     recovered_candidate = prior.get("_recovered_candidate") if prior else continued_candidate
     if recovered_candidate and prior:
@@ -3607,7 +3660,7 @@ def self_test() -> None:
 
 
 def status_projection(execution_repository: Path, work_item: str, provider_session: Path | None,
-                      authorize_prior_parent_thread: str | None = None) -> dict:
+                      authorize_prior_parent_thread: str | None = None, *, continuation: bool = False) -> dict:
     try:
         from provider_runtime import (current_parent_session, related_run_status_projection_source,
                                       scoped_prior_run_status_thread_ids)
@@ -3628,10 +3681,11 @@ def status_projection(execution_repository: Path, work_item: str, provider_sessi
     parent = header.get("payload", {}).get("id")
     repository, _ = resolve_repository_paths(execution_repository)
     root = repository / ".thoughts" / work_item
-    ids = scoped_prior_run_status_thread_ids(root, parent, authorize_prior_parent_thread)
+    ids = (scoped_prior_run_status_thread_ids(root, parent, authorize_prior_parent_thread)
+           if continuation or authorize_prior_parent_thread is not None else ())
     bindings_path = root / "role_bindings.json"
     packet_path = root / "finalization_packet.json"
-    if (not ids and bindings_path.is_file() and packet_path.is_file()
+    if (continuation and not ids and bindings_path.is_file() and packet_path.is_file()
             and not (root / "finalization_failure.json").exists()):
         bindings = json.loads(bindings_path.read_text())
         identity = json.loads(packet_path.read_text()).get("identity", {})
@@ -3689,7 +3743,7 @@ def main() -> int:
             parser.error("--status-projection requires --execution-repository and --work-item")
         try:
             print(json.dumps(status_projection(args.execution_repository, args.work_item, args.provider_session,
-                                               args.authorize_prior_parent_thread),
+                                               args.authorize_prior_parent_thread, continuation=args.continuation),
                              sort_keys=True))
         except (OSError, ValueError, TypeError, AttributeError) as error:
             print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))

@@ -72,14 +72,14 @@ class CandidateRecoveryTest(unittest.TestCase):
         with patch(prefix + ".current_parent_session", return_value=self.session), \
              patch(prefix + ".prior_run_status_thread_ids", return_value=()), \
              patch.object(prepare, "resolve_repository_paths", return_value=(self.repo, None)):
-            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session)["prior_thread_ids"], [worker])
+            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session, continuation=True)["prior_thread_ids"], [worker])
             (root / "finalization_failure.json").write_text("{}")
-            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session)["prior_thread_ids"], [])
+            self.assertEqual(prepare.status_projection(self.repo, "ITEM-1", self.session, continuation=True)["prior_thread_ids"], [])
             (root / "finalization_failure.json").unlink()
             bindings["parent_context"]["parent_thread_id"] = worker
             (root / "role_bindings.json").write_text(json.dumps(bindings))
             with self.assertRaisesRegex(ValueError, "prior_run_status_requires_user_authorization"):
-                prepare.status_projection(self.repo, "ITEM-1", self.session)
+                prepare.status_projection(self.repo, "ITEM-1", self.session, continuation=True)
 
     def test_followup_replays_only_authorized_snapshot_updates(self):
         initial = {"tracked.txt": b"one\nthree\n", "new.txt": b"new\n"}

@@ -281,12 +281,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    input row. Preserve every `Observed releases` value with its Input ID in normalized evidence, compare named source
    revisions for the inspected paths, and keep receiver deployment mapping distinct from client release identity.
 5d. For an explicit continuation or remediation reentry, after the applicable source-access gate and before repository
-   discovery, artifact-tree searches, manifest creation, or provider status calls, run the `--status-projection`
-   helper and execute its complete emitted projection exactly as described in the current-task rule below. Use exact
+   discovery, artifact-tree searches, manifest creation, or provider status calls, run the helper with
+   `--status-projection --continuation` and execute its complete projection as described below. Use exact
    current artifact paths; never recursively list the artifact root or search its `runs/` archives. Do not issue a
    direct `list_threads` call. If the status-projection helper or its provider status projection blocks, stop before
    preparation. This does not mean stopping on the separate preparation result `existing_run_not_terminal`: for a
-   fresh-run request with terminal-status proof, apply the one-time `--archive-stale-run` retry below. When reentering
+   fresh-run request, use ordinary Start preparation and its automatic archival path below. When reentering
    a terminal run from a different chat, do not run the old parent's live evidence collector from the new chat;
    remediation reentry verifies the saved native ledger and terminal closure against their original parent.
    For an approved remediation reentry from a terminal run, prepare with both `--continuation` and
@@ -334,10 +334,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Manifest keys are case-sensitive. Use `schema_version: 1`, `status: "explicit"`, the canonical `precedence_rule`,
    and `inputs` rows with `Input ID`, `Input or artifact`, `Source or path`, `Authority`, `Classification`,
    `Expected use`, and `Status`; add one row for every material current-run input.
-   For a fresh-run request, if preparation returns `existing_run_not_terminal`, use the already-required status
-   projection to verify the prior parent is idle, every child is terminal, and no writer remains. Then rerun the same
-   preparation once with `--archive-stale-run`; preserve the input manifest and all prior evidence. Stop on missing
-   closure proof or a blocked retry. This preparation recovery is distinct from a blocked status projection.
+   A fresh request uses ordinary preparation without continuation or recovery flags. Preparation archives prior
+   attempt files automatically, including incomplete or unpublished attempts; missing old closure receipts do not
+   turn Start into recovery. Archive entries remain history and are not current-run inputs. Explicitly recorded
+   active workers or writers block a conflicting archive with `run_already_active` before files move.
    Before preparation, try to open each declared file, folder, URL, or attachment and confirm its contents can be
    passed to the assigned worker. Keep the original locator in `Source or path` and record the access result in that
    input row's `Status`; do not leave an inaccessible artifact marked only `Registered`. If unavailable, record the
@@ -524,13 +524,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    python3 <framework-root>/scripts/prepare_run.py --status-projection \
      --execution-repository <path> --work-item <ID> --provider-session <preflight-provider-session>
    ```
-   The helper reads the bound parent identity first. If it belongs to another chat, the helper stops before reading
-   prior worker, closure, or session records. Do not continue from that run or query its chat. Only when the current
-   user explicitly authorizes that exact parent may you rerun the helper with
-   `--authorize-prior-parent-thread <exact-thread-id>`. The generated projection then uses `wait_threads` and emits
-   only IDs and terminal status values; it never reads chat messages, summaries, or tool output. A same-chat
-   continuation may check its own recorded worker threads. Never query status for another thread from a fresh chat by
-   default. Pass the same authorization option to preparation if the user authorized stale-run reuse.
+   For Start, the helper returns an empty prior-ID projection without inspecting old chat identities or requesting
+   access to them. The empty projection makes no provider call. Do not query an old chat to decide how to start fresh.
+   For an explicit Continue, recovery, or reentry, add `--continuation` to the helper command. That path retains source
+   identity checks; another chat may be queried only when the user explicitly authorizes that exact parent using
+   `--authorize-prior-parent-thread <exact-thread-id>`. Its generated projection emits status metadata only.
    Execute the helper's complete `projection` value as the `functions.exec` source exactly once, even for an empty
    ID list; an empty list makes no provider call. If the helper or projection blocks, stop without creating run
    artifacts. The following shows this exact projection example, with placeholders for the current parent and any
@@ -565,30 +563,15 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    ```
    Direct inventory output, extra tool calls in the wrapper, a different projection, or a query before the initial
    passing preflight remains an unassigned discovery and must stop the run. The provider result must be correlated to
-   that exact call and contain only status metadata. Before `--archive-stale-run` can move a nonterminal run, an
-   explicitly authorized status projection must prove the prior parent and all known workers terminal. A missing,
-   active, malformed, or unavailable status blocks archival and preserves old artifacts. Only a failed `spawn_agent`
-   with no worker thread ID is exempt because the provider never created an observable worker task.
-   The status projection excludes the current parent thread by its exact provider ID. A fresh chat must not use a prior
-   session's state to decide whether to reuse its artifact root unless the current user authorizes that exact parent
-   thread. Published terminal runs have a local-only archival path: preparation verifies matching identities,
-   publication hashes, sealed control files, and terminal closure for every dispatched worker, then preserves files
-   under `runs/` without opening the previous chat or importing findings. Legacy published zero-dispatch control
-   failures may use their matching packet, failure, publication, ledger and closure receipts. The projection returns
-   no prior thread IDs when this proof passes. Active, incomplete or inconsistent receipts do not qualify.
-   If the helper blocks, leave the old artifact root untouched; ask the user for an explicit decision
-   before reading or using that run. When authorized status rows show the prior parent and every known worker are
-   terminal, rerun with `--archive-stale-run` and the same `--authorize-prior-parent-thread` value. This preserves old
-   artifacts under `runs/stale-<timestamp>/` and creates a fresh run.
-   Apply this supported retry to `existing_run_not_terminal` when the required terminal-status proof is present.
-   The first transactional block is not, by itself, a reason to end the fresh-run request. Dispatch remains prohibited
-   until preparation succeeds; a failed retry or missing terminal proof still blocks the run.
-   An unavailable old release receipt keeps the old run blocked but does not by itself prove an active worker or bar a
-   separate read-only planning run. Such a run must use a separate execution repository and artifact root; it does not
-   authorize deleting, resetting, or reusing the blocked work-item root. For a run that reuses that root, preserve the
-   old files and satisfy the stale-archive checks above first. Confirm new-run capacity by activating its first required
-   worker; if that fails, stop with the exact runtime reason. If worker or writer activity is present or cannot be
-   verified, stop with `run_already_active`. Do not tell the user to request continuation when they requested a new run.
+   that exact call and contain only status metadata. Fresh archival uses local control metadata and preserves prior
+   files without asserting that the old run completed. It does not require a dispatch ledger, a work record, closure
+   proof, publication, or a prior-parent authorization. Missing or incomplete records are archived unchanged; they
+   must not become evidence for the new run. Existing archives remain intact, including repeated prior Run IDs.
+   A recorded active worker or writer blocks preparation before mutation. Do not bypass an actual activity blocker,
+   overwrite files manually, or change artifact roots. Do not tell a user requesting Start to request Continue or
+   recovery because an earlier attempt is incomplete. The legacy `--archive-stale-run` flag is not required for Start.
+   Continuation and authorized reuse still require their existing identity and evidence checks. A blocked status
+   check in those modes does not authorize opening an old chat or silently switching to Start.
    Record the method, RFC 3339 time, and result of this work-item-scoped check in `Related-run check`. An empty list
    means this run requires no provider status query; it does not establish that no unrelated chat is active. If a
    required receipt or status is unavailable, record `Unknown; detection unavailable`.

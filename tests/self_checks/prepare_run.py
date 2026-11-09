@@ -177,13 +177,13 @@ def self_test() -> None:
         bindings["parent_context"] = {"parent_thread_id": PARENT_THREAD_ID}
         bindings_path.write_text(json.dumps(bindings))
         parent_session = write_parent_status_session(
-            execution / "parent-status.jsonl", Path(first["artifact_root"]),
+            execution / "parent-status.jsonl", Path(first["artifact_root"]), fresh_start=True,
         )
         second = prepare_run(
             execution, "ITEM-1", "sentry_issue_remediation", None, False,
             input_manifest=input_source, provider_session=parent_session,
         )
-        assert second["archived_prior_run"].endswith("runs/run-1")
+        assert Path(second["archived_prior_run"]).is_dir()
         assert Path(second["work_record"]).is_file()
         stale = prepare_run(
             execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
@@ -191,26 +191,18 @@ def self_test() -> None:
         )
         stale_artifact = Path(stale["artifact_root"]) / "normalized_evidence.md"
         stale_artifact.write_text("preserved stale evidence\n")
-        try:
-            prepare_run(
-                execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
-                input_manifest=input_source,
-            )
-        except ValueError as error:
-            assert str(error) == "existing_run_not_terminal"
-        else:
-            raise AssertionError("unverified nonterminal run must block")
-        try:
-            prepare_run(
-                execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
-                archive_stale_run=True, input_manifest=input_source,
-            )
-        except ValueError as error:
-            assert str(error) == "stale_run_archive_blocked:stale_run_status_probe_required"
-        else:
-            raise AssertionError("stale archive without provider status evidence must block")
-        assert stale_artifact.read_text() == "preserved stale evidence\n"
-        assert not list((Path(stale["artifact_root"]) / "runs").glob("stale-*"))
+        fresh = prepare_run(
+            execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
+            input_manifest=input_source,
+        )
+        assert fresh["run_id"] != stale["run_id"]
+        assert (Path(fresh["archived_prior_run"]) / "normalized_evidence.md").read_text() == "preserved stale evidence\n"
+        assert not stale_artifact.exists()
+        again = prepare_run(
+            execution, "ITEM-STALE", "sentry_issue_remediation", None, False,
+            archive_stale_run=True, input_manifest=input_source,
+        )
+        assert Path(again["archived_prior_run"]).is_dir()
         try:
             prepare_run(execution, "ITEM-2", "playbooks/unknown.md", None, False)
         except ValueError as error:

@@ -109,30 +109,75 @@ class RuntimeLifecycleContract(unittest.TestCase):
         self.assertEqual(published.encode(), response.read_bytes())
         self.assertEqual(json.loads((root / 'handoff_delivery.json').read_text())['status'], 'verified')
 
+    def workspace(self, directory):
+        root = Path(directory).resolve()
+        self.package = packaging.PackagedLifecycle().package(directory)
+        self.started_at = datetime.now(timezone.utc).isoformat()
+        self.main = root / 'project with spaces'
+        self.main.mkdir()
+        self.worktree = root / 'active worktree'
+        self.sessions = root / 'native' / 'sessions'
+        self.sessions.mkdir(parents=True)
+        for args in (('init', '-q'), ('config', 'user.name', 'Contract fixture'),
+                     ('config', 'user.email', 'fixture@example.invalid'),
+                     ('commit', '--allow-empty', '-qm', 'Contract baseline'),
+                     ('worktree', 'add', '--detach', str(self.worktree))):
+            subprocess.run(['git', '-C', str(self.main), *args], check=True, capture_output=True)
+        guide = root / "guide's notes.md"
+        guide.write_text('Current supplied guidance — keep quoted inputs intact.\n')
+        inputs = {'schema_version': 1, 'status': 'explicit', 'inputs': [
+            {'Input ID': 'IN-001', 'Input or artifact': 'Current independent request',
+             'Source or path': 'Current user request', 'Authority': 'User', 'Status': 'Verified'},
+            {'Input ID': 'IN-002', 'Input or artifact': 'Current supplied guidance',
+             'Source or path': str(guide), 'Authority': 'User', 'Status': 'Readable',
+             'Classification': 'supporting artifact', 'Asset source': True},
+        ]}
+        return inputs
+
+    def test_fresh_start_archives_incomplete_attempts_across_playbooks_and_profiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            inputs = self.workspace(directory)
+            for index, (playbook, objective) in enumerate(PLAYBOOKS):
+                for profile in ('standard', 'deep'):
+                    with self.subTest(playbook=playbook, profile=profile, objective=objective):
+                        item = f'NEW-{index}-{profile}'
+                        artifact_root = self.main / '.thoughts' / item
+                        artifact_root.mkdir(parents=True)
+                        old_id = item + '-prior'
+                        (artifact_root / 'role_bindings.json').write_text(json.dumps({'run_id': old_id,
+                            'parent_context': {'parent_thread_id': str(uuid4()), 'provider_session': '/never/open/old-chat.jsonl'}}))
+                        (artifact_root / 'finalization_packet.json').write_text(json.dumps({'identity': {
+                            'Run ID': old_id, 'State': '', 'Workflow outcome': ''}, 'workers': []}))
+                        (artifact_root / 'work_record.md').write_text('PREVIOUS_FINDINGS_MUST_NOT_BECOME_INPUTS')
+                        (artifact_root / 'unfinished.bin').write_bytes(b'preserve incomplete bytes\xff')
+                        previous = {p.name: p.read_bytes() for p in artifact_root.iterdir()}
+                        self.new_turn(new_chat=True)
+                        self.command('run_preflight.py')
+                        self.projection(item)
+                        supplied = json.loads(json.dumps(inputs))
+                        if objective:
+                            supplied['inputs'].append({'Input ID': 'RUN-GOAL-001',
+                                'Input or artifact': 'Requested outcome: ' + objective,
+                                'Source or path': 'Current user request', 'Authority': 'Explicit user outcome',
+                                'Classification': 'requested outcome', 'Expected use': 'Validate playbook and objective selection',
+                                'Status': 'Registered'})
+                        run = self.prepare(playbook, item, profile, supplied, objective=objective)
+                        self.assertEqual(run['artifact_root'], str(artifact_root))
+                        self.assertEqual(run['source_checkout'], str(self.worktree))
+                        self.assertNotEqual(run['run_id'], old_id)
+                        archive = Path(run['archived_prior_run'])
+                        self.assertEqual(archive, artifact_root / 'runs' / old_id)
+                        for name, content in previous.items():
+                            self.assertEqual((archive / name).read_bytes(), content)
+                        packet = json.loads(Path(run['finalization_packet']).read_text())
+                        self.assertNotIn('recovery', packet)
+                        self.assertNotIn('reentry', packet)
+                        self.assertNotIn('PREVIOUS_FINDINGS', json.dumps(packet))
+                        self.assertFalse((self.worktree / '.thoughts').exists())
+
     def test_start_end_recover_and_start_again_across_playbooks_and_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve()
-            self.package = packaging.PackagedLifecycle().package(directory)
-            self.started_at = datetime.now(timezone.utc).isoformat()
-            self.main = root / 'project with spaces'
-            self.main.mkdir()
-            self.worktree = root / 'active worktree'
-            self.sessions = root / 'native' / 'sessions'
-            self.sessions.mkdir(parents=True)
-            for args in (('init', '-q'), ('config', 'user.name', 'Contract fixture'),
-                         ('config', 'user.email', 'fixture@example.invalid'),
-                         ('commit', '--allow-empty', '-qm', 'Contract baseline'),
-                         ('worktree', 'add', '--detach', str(self.worktree))):
-                subprocess.run(['git', '-C', str(self.main), *args], check=True, capture_output=True)
-            guide = root / "guide's notes.md"
-            guide.write_text('Current supplied guidance — keep quoted inputs intact.\n')
-            inputs = {'schema_version': 1, 'status': 'explicit', 'inputs': [
-                {'Input ID': 'IN-001', 'Input or artifact': 'Current independent request',
-                 'Source or path': 'Current user request', 'Authority': 'User', 'Status': 'Verified'},
-                {'Input ID': 'IN-002', 'Input or artifact': 'Current supplied guidance',
-                 'Source or path': str(guide), 'Authority': 'User', 'Status': 'Readable',
-                 'Classification': 'supporting artifact', 'Asset source': True},
-            ]}
+            inputs = self.workspace(directory)
             for index, (playbook, objective) in enumerate(PLAYBOOKS):
                 for profile in ('standard', 'deep'):
                     with self.subTest(playbook=playbook, objective=objective, profile=profile):

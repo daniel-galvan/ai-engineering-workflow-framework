@@ -14,9 +14,10 @@ STATUS_CALL_ID = "status-call-001"
 
 def write_parent_status_session(
     path: Path, artifact_root: Path, rows: list[dict] | None = None, *, timestamp: str | None = None,
+    fresh_start: bool = False,
 ) -> Path:
-    """Write one correlated status-only call using identity metadata from the old run."""
-    prior_ids = prior_run_status_thread_ids(artifact_root, PARENT_THREAD_ID)
+    """Write a fresh empty projection or an explicitly scoped prior-run status call."""
+    prior_ids = () if fresh_start else prior_run_status_thread_ids(artifact_root, PARENT_THREAD_ID)
     source = related_run_status_projection_source(artifact_root.name, PARENT_THREAD_ID, prior_ids)
     start = (datetime.fromisoformat(timestamp.replace("Z", "+00:00")) if timestamp else
              datetime.now(UTC) - timedelta(seconds=1))

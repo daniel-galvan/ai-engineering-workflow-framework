@@ -813,7 +813,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         from scripts.runtime_checks import _tool_operations, background_memory_paths, context_trace_errors
     script_dir = audit_script_dir or Path(__file__).resolve().parent
     prior_started_at = None
-    if artifact_root and (artifact_root / "finalization_packet.json").is_file():
+    if artifact_root and (runtime_evidence or related_run_thread_ids is None) and (artifact_root / "finalization_packet.json").is_file():
         try:
             packet = json.loads((artifact_root / "finalization_packet.json").read_text())
             prior_id = packet.get("recovery", {}).get("Prior run ID", "")
@@ -1010,7 +1010,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             "related_run_status_probe_attempts": related_run_probe_attempts,
             "related_run_status_rows": related_run_status_rows,
             "related_run_thread_ids": list(prior_ids),
-            "closed_run_id": closed_run_id(artifact_root) if artifact_root else None,
+            "closed_run_id": closed_run_id(artifact_root) if artifact_root and related_run_thread_ids is None else None,
             "prior_run_dispatch_ledger_present": bool(ledger_present)}
 
 def _preflight_order_errors(operations: list[dict], framework_root: Path,

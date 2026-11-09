@@ -1236,10 +1236,14 @@ Every run records its provider run ID when available. Evaluation identity, role-
 provider-action history, and timing are required only when the request explicitly declares an evaluation or benchmark
 run.
 
-`Start` creates a new run. It MUST NOT patch or consume a prior terminal run as current evidence. Before replacing the
-canonical artifact root, preserve the prior terminal artifacts under `.thoughts/<WORK-ITEM-ID>/runs/<RUN-ID>/`; then
-initialize a fresh canonical record. `Continue` reuses the current durable record and adds only the new inputs and
-activity. When the request does not say continue, treat it as start.
+`Start` creates a new run from the current inputs. Before replacing the canonical artifact root, it MUST preserve
+all prior attempt files under `.thoughts/<WORK-ITEM-ID>/runs/<RUN-ID>/`, including incomplete, failed, unpublished, or
+malformed records. Use a generated archive ID when the prior ID is unavailable and a distinct suffix on collision.
+Archival preserves history; it does not certify the old outcome or import old findings. A fresh start MUST NOT require
+recovery flags, old closure/publication receipts, or permission to read an old chat. Explicit recorded worker or writer
+activity still blocks a conflicting archive. `Continue` reuses the current durable record and adds only new inputs and
+activity; its identity, source authorization, and recovery gates remain applicable. When the request does not say
+continue, treat it as start.
 
 Normal runs record material worker outcomes and control failures, but do not reconstruct provider metrics. Evaluation
 runs additionally maintain chronological continuation, activation, and timing ledgers using provider-observed values.
@@ -1368,19 +1372,18 @@ Different read-only planning runs may inspect the same clean, immutable source r
 run artifact roots and record the shared repository and revision in each run. A run that can write source,
 lockfiles, tests, generated files, or external work-item state MUST NOT share a checkout with another active run; it
 requires a separate managed worktree and a distinct durable artifact root. A second run for the same work item MUST stop
-with `run_already_active` while a prior worker or artifact writer is active, unless it uses an explicit continuation or
-recovery identity. A fresh read-only planning run MAY archive a prior nonterminal artifact root when the provider task
-is idle, every visible child worker is terminal, and no artifact writer remains. Missing old release receipts do not
-make that prior run complete; the new run must confirm capacity by activating its own required worker. The Coordinator
-records this isolation decision before activation.
+with `run_already_active` when explicit provider control evidence records a prior worker or artifact writer as active.
+Do not infer an active writer solely from an incomplete work record or missing closure receipts. A requested fresh
+start archives prior attempt files transactionally, then creates its own run identity and records. It checks only
+local control metadata for recorded activity and archive naming; it MUST NOT read previous chats, collect their native
+sessions, or import historical analytical content. Unknown prior outcomes stay unknown in the preserved files.
+Current input and parent-context validation MUST pass before archival mutates the work-item folder. On a move failure,
+restore the prior files before returning an error. Fresh startup uses the main repository's `.thoughts/<WORK-ITEM-ID>/`,
+even when source work occurs in a worktree. Confirm current capacity through the new run's own worker activation.
 
-A fresh run MAY preserve a published terminal run using only local control receipts. Preparation MUST verify matching
-run identities, intact packet and publication hashes, and native terminal closure for every dispatched worker.
-Activity timing alone does not establish worker status. Publication MUST seal the prepared bindings, packet, dispatch
-ledger, and closure bytes. A legacy published control failure with zero dispatched workers MAY use its matching
-packet, failure, publication, ledger, and closure receipts with no open worker intervals. Preparation MUST preserve the
-closed invocation under `.thoughts/<WORK-ITEM-ID>/runs/<RUN-ID>/`, without opening the prior chat or importing its
-findings into the fresh run. Missing or inconsistent proof does not authorize archival or access to another chat.
+Continuation, approved reentry, and explicit evidence reuse remain distinct from fresh archival. Verify their source
+identities, user authorization and required closure/publication receipts before consuming prior work. Starting fresh
+does not grant permission to read another chat or inherit its findings.
 
 Every playbook MUST prepare the shared runtime-evidence contract and retain provider closure on failure. A published
 pre-dispatch control failure MAY resume through ordinary same-chat continuation when the current parent audit passes
