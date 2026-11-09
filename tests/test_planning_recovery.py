@@ -56,6 +56,17 @@ class PlanningRecovery(unittest.TestCase):
         }]}))
 
     def test_exhaustion_blocks_before_mutation_and_recovery_archives_counters(self):
+        self.packet["work_item"]["Title"] = "Accepted planning finding"
+        self.packet["evidence"] = [{"Evidence ID": "E-FC-001", "Source": "Current source inspection",
+            "Summary": "Counter decrements instead of incrementing", "Confidence": "High",
+            "Uncertainty": "None", "Status": "Verified"}]
+        self.packet["claims"] = [{"Claim ID": "C-FC-001", "Claim": "Increment arithmetic is incorrect",
+            "Evidence refs": "E-FC-001", "Confidence": "High", "Uncertainty": "None", "Status": "Supported"}]
+        self.packet["decisions"] = [{"Decision ID": "D-FC-001", "Decision": "Correct the arithmetic",
+            "Claim refs": "C-FC-001", "Owner": "Designer", "Status": "Proposed"}]
+        self.packet["actions"] = [{"Action ID": "A-FC-001", "Action": "Prepare the focused counter change",
+            "Decision ref": "D-FC-001", "Owner": "Implementer", "Status": "Pending"}]
+        findings = {key: self.packet[key] for key in ("evidence", "claims", "decisions", "actions")}
         self.close_prior()
         failure = self.artifacts / "finalization_failure.json"
         receipt = {"status": "failed", "attempt_count": 2, "errors": ["Earlier template error"]}
@@ -81,6 +92,9 @@ class PlanningRecovery(unittest.TestCase):
         self.assertEqual(current["workers"], [])
         self.assertEqual(current["worker_results"], [])
         self.assertEqual(current["runtime_audits"], [])
+        self.assertEqual(current["work_item"]["Title"], "Accepted planning finding")
+        for key, rows in findings.items():
+            self.assertEqual(current[key], rows)
         self.assertEqual((self.artifacts / "implementation_plan.md").read_text(), DRAFT)
         contracts = json.loads(Path(result["activation_packet_bundle"]["path"]).read_text())["packets"]
         self.assertIn("result_fields", contracts["current_state_investigator"]["worker_contract"])

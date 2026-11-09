@@ -1890,6 +1890,9 @@ The trace exporter MUST attach the current Run ID and derive dispatch path/hash 
 parent launch. It pairs provider calls with their outputs. Quoted commands inside an authorized transcript and locators
 inside a current-run inventory are source data, not newly executed operations. Unknown or mixed unsafe operations do
 not receive the read-output exception; actual unassigned reads and historical writes remain rejected.
+Read provenance also covers mixed source searches and packet reads within an assigned source directory. Comparison
+strings in verified read-only JSON inspection are search data; file operands remain audited. These rules apply equally
+to fresh and recovered runs and grant no authority to open a referenced session.
 
 The canonical launch message names its SHA256 and makes verification and reading the supplied file the self-contained
 first task. The worker reads the full file before analysis. Source access is limited to exact sources the current user

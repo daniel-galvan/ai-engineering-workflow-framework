@@ -786,7 +786,7 @@ def _listing_read_prefix(command: str, cwd: Path) -> str | None:
                 limit = int(pipe[1][1:])
                 part = part[:split]
             content = ""
-            targets = _read_targets(shlex.join(part))
+            targets = _read_targets(shlex.join(part)) if Path(part[0]).name != 'rg' else []
             if targets:
                 for target in targets:
                     path = Path(target)
@@ -1424,15 +1424,18 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
     return verified
 
 
-def _python_read_targets(source: str, *, pretty: bool = False) -> list[str]:
+def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, ...] = ()) -> list[str]:
     """Recognize the recorded JSON inspection form; other Python remains unaudited."""
     tree = ast.parse(source)
     targets, constants = [], {}
-    builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted"}
-    protected = builtins | {"open", "json", "pprint"} if pretty else {"open", "json", "print"}
+    stores = [node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)]
+    builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted", "range"}
+    protected = builtins | {"open", "json", "pprint", "sys"}
     called_attributes = {id(node.func) for node in ast.walk(tree)
                          if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
     for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in protected:
+            return []
         if pretty and (isinstance(node, (ast.AugAssign, ast.AnnAssign, ast.NamedExpr, ast.With, ast.AsyncWith,
                                         ast.Delete, ast.Try, ast.AsyncFor, ast.AsyncFunctionDef))
                        or isinstance(node, ast.Attribute) and id(node) not in called_attributes):
@@ -1440,7 +1443,7 @@ def _python_read_targets(source: str, *, pretty: bool = False) -> list[str]:
         if pretty and isinstance(node, (ast.For, ast.comprehension)) and (
                 not isinstance(node.target, ast.Name) or node.target.id in protected):
             return []
-        if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json"})
+        if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json", "sys"})
                                                 or item.asname for item in node.names):
             return []
         if isinstance(node, (ast.ImportFrom, ast.FunctionDef, ast.ClassDef, ast.Lambda)):
@@ -1462,7 +1465,12 @@ def _python_read_targets(source: str, *, pretty: bool = False) -> list[str]:
                 if pretty and not isinstance(argument, ast.Constant):
                     return []
                 path = argument.value if isinstance(argument, ast.Constant) else constants.get(
-                    argument.id if isinstance(argument, ast.Name) else "")
+                    argument.id if isinstance(argument, ast.Name) and stores.count(argument.id) == 1 else "")
+                if (isinstance(argument, ast.Subscript) and isinstance(argument.value, ast.Attribute)
+                        and isinstance(argument.value.value, ast.Name) and argument.value.value.id == "sys"
+                        and argument.value.attr == "argv" and isinstance(argument.slice, ast.Constant)
+                        and type(argument.slice.value) is int and 0 < argument.slice.value < len(argv)):
+                    path = argv[argument.slice.value]
                 if not isinstance(path, str):
                     return []
                 targets.append(path)
@@ -1600,10 +1608,10 @@ def _read_targets(command: str) -> list[str]:
         r"printf 'SHA256 mismatch: %s\\{1,2}n' (\\?\"?)\$actual\4; exit 2; fi; cat \1", command)
     if checked_read:
         return [checked_read[1]]
-    if any(value in command for value in ("$(", "`", "<", ">", "|")):
+    if any(value in command for value in ("$(", "`")):
         return []
     try:
-        lexer = shlex.shlex(command.strip(), posix=True, punctuation_chars=";&\n")
+        lexer = shlex.shlex(command.strip(), posix=True, punctuation_chars=";&|<>\n")
         lexer.whitespace = " \t\r"
         lexer.whitespace_split = True
         lexer.commenters = ""
@@ -1642,8 +1650,37 @@ def _read_targets(command: str) -> list[str]:
                     return []
                 reads.extend(selected)
             return reads
-        if not tokens or "$" in command or "&" in tokens:
+        if '|' in tokens:
+            parts, part = [], []
+            for token in tokens:
+                if token == '|':
+                    parts.append(shlex.join(part))
+                    part = []
+                else:
+                    part.append(token)
+            parts.append(shlex.join(part))
+            return (_read_targets(parts[0]) if all(part and _listing_command('pwd | ' + part)
+                                                  for part in parts[1:]) else [])
+        if not tokens or "$" in command or any(re.fullmatch(r'[;&|<>\n]+', token) for token in tokens):
             return []
+        if tokens[0] == 'rg':
+            paths, pattern, index = [], False, 1
+            while index < len(tokens):
+                token = tokens[index]
+                if token in {'-g', '--glob', '-t', '--type', '--type-not', '-A', '-B', '-C', '-m', '--max-count'}:
+                    if index + 1 == len(tokens):
+                        return []
+                    index += 2
+                    continue
+                if token.startswith('-'):
+                    if token not in {'-n', '-i', '-F', '-S', '-l', '--line-number', '--ignore-case', '--fixed-strings'}:
+                        return []
+                elif not pattern:
+                    pattern = True
+                else:
+                    paths.append(token)
+                index += 1
+            return paths if pattern else []
         if tokens[0] == "cat" and len(tokens) > 1 and all(not arg.startswith("-") for arg in tokens[1:]):
             return tokens[1:]
         if tokens[0] in {"head", "tail"}:
@@ -1655,7 +1692,7 @@ def _read_targets(command: str) -> list[str]:
                 and re.fullmatch(r"[0-9]+(?:,[0-9]+)?p", tokens[2])):
             return tokens[3:]
         return []
-    except ValueError:
+    except (ValueError, SyntaxError):
         return []
 
 
@@ -1841,9 +1878,13 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 instructions = json.loads(receipts.read_text()) if receipts.is_file() else {}
                 allowed_instructions = _allowed_instruction_paths(root, assigned)
                 safe = safe and bool(targets) and all(
-                    not (path.resolve().parent == root and path.name in instructions)
+                    not any(char in str(path) for char in '*?[]{}~')
+                    and not (path.resolve().parent == root and path.name in instructions)
                     and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()
                     and ((path.resolve().parent == root and path.is_file()) or str(path) in assigned
+                         or (path.exists() and not path.resolve().is_relative_to(root.parent)
+                             and any(Path(parent).is_dir() and path.resolve().is_relative_to(Path(parent).resolve())
+                                     for parent in assigned if parent.startswith('/')))
                          or path.name == "AGENTS.md" and path.resolve() in allowed_instructions and path.is_file())
                     for path in resolved)
             elif name not in {"mcp__codex_apps__atlassian_getjiraissue", "mcp__codex_apps__atlassian_executeread",
@@ -2488,6 +2529,36 @@ def _verified_trace_retrieval_path(trace: dict[str, object]) -> Path | None:
     return path
 
 
+def _without_comparison_literals(text: str, row: dict) -> str:
+    """Comparison strings are search data; file arguments and other code remain audited."""
+    for name, arguments in _tool_operations(row):
+        command = arguments.get("cmd") if name == "exec_command" else None
+        if not isinstance(command, str) or any(marker in command for marker in ("$", "`")):
+            continue
+        try:
+            tokens = shlex.split(command)
+            if (len(tokens) < 3 or tokens[1] != "-c" or (tokens[0] != "python3"
+                    and Path(tokens[0]).resolve() != Path(sys.executable).resolve())):
+                continue
+            if not _python_read_targets(tokens[2], argv=("-c", *tokens[3:])):
+                continue
+            tree, changed = ast.parse(tokens[2]), False
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Compare):
+                    for value in [node.left, *node.comparators]:
+                        if (isinstance(value, ast.Constant) and isinstance(value.value, str)
+                                and any(pattern.search(value.value) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)):
+                            value.value = "[comparison data]"
+                            changed = True
+            if changed:
+                sanitized = shlex.join([*tokens[:2], ast.unparse(tree), *tokens[3:]])
+                for escape in (lambda value: value, lambda value: json.dumps(value, ensure_ascii=True)[1:-1],
+                               lambda value: json.dumps(value, ensure_ascii=False)[1:-1]):
+                    text = text.replace(escape(command), escape(sanitized))
+        except (ValueError, OSError, SyntaxError):
+            continue
+    return text
+
 def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None = None,
                          input_paths: tuple[str, ...] = (), artifact_root: Path | None = None,
                          verified_trace_retrieval: Path | None = None,
@@ -2548,6 +2619,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
         row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
         operational = _without_approval_justification(candidate, row, path) if not output else candidate
+        if root and not output:
+            operational = _without_comparison_literals(operational, row)
         metadata_only = operational != candidate
         candidate = operational
         background = _background_memory_paths(row) or (background_reads.get(row.get("call_id"), set()) if output else set())

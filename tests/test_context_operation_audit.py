@@ -709,8 +709,8 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertEqual(exported["spawn"]["dispatch_proof_source"], "provider_instruction_read")
         self.assertEqual(exported["spawn"]["dispatch_file_sha256"], trace["spawn"]["dispatch_file_sha256"])
 
-    def instruction_read_trace(self):
-        trace = self.dispatch_trace([])
+    def instruction_read_trace(self, input_paths=()):
+        trace = self.dispatch_trace(list(input_paths))
         content = Path(trace["spawn"]["dispatch_file"]).read_text()
         trace["spawn"].pop("activation_packet_delivered", None)
         trace["tool_trace"] = self.paired(
@@ -928,6 +928,55 @@ class ContextOperationAudit(unittest.TestCase):
                             'cmd': command + unsafe}) + '); text(r.output);'
                         self.assertTrue(any(error.startswith('forbidden_context_reference:')
                                             for error in runtime.trace_errors(changed)))
+
+    def test_mixed_source_search_and_packet_read_preserve_metadata_provenance(self):
+        trace = self.instruction_read_trace([str(self.repository)])
+        source = self.repository / 'code.txt'
+        source.write_text('renderSubject\n')
+        packet_path = self.root / 'finalization_packet.json'
+        packet = json.loads(packet_path.read_text())
+        packet['runtime_audits'] = [{'Worker': 'context', 'Trace retrieval': '/Users/example/.codex/sessions/current.jsonl'}]
+        packet_path.write_text(json.dumps(packet))
+        command = "rg -n 'renderSubject|normalize' " + str(source) + ' | head -n 20; cat ' + str(packet_path)
+        call = 'text(await tools.exec_command(' + json.dumps({'cmd': command}) + '));'
+        output = [{'type': 'input_text', 'text': json.dumps({'exit_code': 0, 'output':
+            '1:renderSubject\n' + json.dumps(packet)})}]
+        # The code scope is a directory; legitimate reads inside it need not be listed one file at a time.
+        content = Path(trace['spawn']['dispatch_file']).read_text()
+        self.assertIn(str(self.repository), content)
+        trace['tool_trace'].extend(self.paired(call, output))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        external = self.repository.parent / 'external-data'
+        external.write_text('/Users/example/.codex/sessions/foreign.jsonl')
+        (self.repository / 'foreign-link').symlink_to(external)
+        (self.repository / '*').write_text('A real wildcard-named file must not make expansion trustworthy.')
+        for suffix in ('; cat /Users/example/.codex/sessions/foreign.jsonl', '; cat /repo/.thoughts/OTHER/runs/old.md',
+                       '; cat ' + str(self.repository / '*'), '; cat ' + str(self.repository / 'foreign-link')):
+            changed = json.loads(json.dumps(trace))
+            changed['tool_trace'][-2]['input'] = 'text(await tools.exec_command(' + json.dumps({'cmd': command + suffix}) + '));'
+            self.assertTrue(any(error.startswith('forbidden_context_reference:') for error in runtime.trace_errors(changed)))
+
+    def test_current_artifact_json_inspection_treats_search_literals_as_data(self):
+        path = self.root / 'trace.json'
+        path.write_text(json.dumps({'tool_trace': []}))
+        code = ('import json,sys; d=json.load(open(sys.argv[1])); '
+                'print([x for x in d.get("tool_trace",[]) if "/.codex/sessions" in str(x)])')
+        command = shlex.join(['python3', '-c', code, str(path)])
+        def errors(value):
+            return runtime.context_trace_errors({'tool_trace': [{'type': 'function_call', 'name': 'exec_command',
+                'arguments': {'cmd': value}}]}, artifact_root=self.root)
+        self.assertEqual(errors(command), [])
+        for unsafe in (command + '; cat /Users/example/.codex/sessions/foreign.jsonl',
+                       'python3 -c "import json; d=json.load(open(\'' + str(path)
+                           + '\')); print(\'$(cat /Users/example/.codex/sessions/foreign.jsonl)\' == \'\')"',
+                       'python3 -c "import json; d=json.load(open(\'' + str(path)
+                           + '\')); print(\'`cat /Users/example/.codex/sessions/foreign.jsonl`\' == \'\')"',
+                       shlex.join(['python3', '-c', code, '/Users/example/.codex/sessions/foreign.jsonl']),
+                       shlex.join(['python3', '-c', code + '; eval("open(\'/Users/example/.codex/sessions/foreign.jsonl\').read()")', str(path)]),
+                       shlex.join(['python3', '-c', code + '; str=eval; str("open(\'/Users/example/.codex/sessions/foreign.jsonl\').read()")', str(path)]),
+                       shlex.join(['python3', '-c', 'import json; p=' + repr(str(path))
+                           + '; p="/Users/example/.codex/sessions/foreign.jsonl"+""; print(json.load(open(p)))'])):
+            self.assertIn('forbidden_context_reference:session_log', errors(unsafe))
 
     def test_packet_object_projection_exempts_only_verified_reentry_path(self):
         trace = self.instruction_read_trace()

@@ -28,6 +28,10 @@ class PlanningCommandPath(unittest.TestCase):
         commands = self.planning_path("feature_delivery", parallel_integration=True)
         self.assertFalse(any(str(arg).startswith(("--recover", "--planning-recovery"))
                              for _, arguments in commands for arg in arguments))
+        fresh = self.planning_outcome
+        commands = self.planning_path("feature_delivery", parallel_integration=True, planning_recovery=True)
+        self.assertTrue(any("--planning-recovery" in arguments for _, arguments in commands))
+        self.assertEqual(self.planning_outcome, fresh)
 
     def test_feature_remediation_through_actual_shipped_commands(self):
         self.planning_path("feature_delivery", continue_to_remediation=True)
@@ -86,7 +90,7 @@ class PlanningCommandPath(unittest.TestCase):
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
                       recover_context_block=False, missing_mapping=False, start_next_run=False,
-                      parallel_integration=False):
+                      parallel_integration=False, planning_recovery=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -165,6 +169,26 @@ class PlanningCommandPath(unittest.TestCase):
                 "--playbook", playbook, "--input-manifest", inputs,
                 *parent_option, "--lifecycle", "planning"))
             root, packet_path = Path(run["artifact_root"]), Path(run["finalization_packet"])
+            if planning_recovery:
+                original_id = run["run_id"]
+                command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
+                        "controlled_pre_dispatch_failure", expected=2)
+                response = root / "handoff_response.md"
+                self.assertEqual(command("finalize_work_record.py", "--packet", packet_path,
+                                         "--publish-response", response).encode(), response.read_bytes())
+                original_packet = packet_path.read_bytes()
+                turn_id = str(UUID(int=999))
+                append(parent, "turn_context", turn_id=turn_id)
+                append(parent, "response_item", role="user", content=[{"type": "input_text", "text":
+                    "Recover the interrupted planning run using its valid current-run artifacts."}])
+                preflight = json.loads(command("run_preflight.py", *parent_option))
+                run = json.loads(command("prepare_run.py", "--execution-repository", repository,
+                    "--work-item", "DEMO-1", "--playbook", playbook, "--continuation", "--planning-recovery",
+                    "--approval-reference", "Current user requests planning recovery", "--input-manifest", inputs,
+                    *parent_option))
+                self.assertNotEqual(run["run_id"], original_id)
+                self.assertEqual((Path(run["archived_prior_run"]) / "finalization_packet.json").read_bytes(),
+                                 original_packet)
             guide_row = next(row for row in json.loads((root / "run_inputs.json").read_text())["inputs"]
                              if row["Input ID"] == "IN-003")
             guide_snapshot = Path(guide_row["path"])
@@ -297,7 +321,8 @@ class PlanningCommandPath(unittest.TestCase):
                 append(child, "response_item", type="function_call_output", call_id="source", output=source.read_text())
                 if parallel_integration and index > 0:
                     append(child, "response_item", type="function_call", name="exec_command", call_id="current-packet",
-                           arguments=json.dumps({"cmd": "git status --short --branch && git rev-parse HEAD && cat "
+                           arguments=json.dumps({"cmd": "rg -n 'increment|value' " + str(source)
+                                                 + " | head -n 20; git status --short --branch && git rev-parse HEAD && cat "
                                                  + str(packet_path), "workdir": str(repository)}))
                     append(child, "response_item", type="function_call_output", call_id="current-packet",
                            output="## main\nrevision\n" + packet_path.read_text())
@@ -543,6 +568,13 @@ class PlanningCommandPath(unittest.TestCase):
             emitted = command("finalize_work_record.py", "--packet", packet_path, "--publish-response", response)
             self.assertEqual(emitted.encode(), response.read_bytes())
             self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
+            published = json.loads(packet_path.read_text())
+            self.planning_outcome = {
+                "state": published["identity"]["State"], "outcome": published["identity"]["Workflow outcome"],
+                "plan": (root / "implementation_plan.md").read_text().replace(str(repository), "<repository>"),
+                "reasoning": {key: json.dumps(published[key], sort_keys=True).replace(str(repository), "<repository>")
+                              for key in ("evidence", "claims", "decisions", "actions")},
+            }
             if continue_to_remediation:
                 self.assertIn(playbook, {"feature_delivery", "techops_issue_remediation"})
                 approved_plan = (root / "implementation_plan.md").read_bytes()
