@@ -55,11 +55,14 @@ limitation if either prerequisite fails; do not silently substitute a different 
 For external reads, record the selected route, operation, and limitation. A resource lookup does not establish access
 to a required item or collection, and an authentication or permission failure MUST NOT be bypassed.
 
-After adapter preflight passes, at initialization the Coordinator MUST read the selected playbook, this contract,
-the claims contract, and the applicable provider adapter and source integration rules. Other frontmatter dependencies
-are maintenance or stage references, not an instruction to load the complete framework into the run context.
-Load a role, skill, strategy, integration, template, or example only when the active
-worker or stage needs it. Templates and examples MUST NOT override the selected playbook or contracts.
+After adapter preflight passes, the Coordinator uses the launcher and prepared contracts as its compact runtime surface.
+For every playbook/profile/lifecycle, read the selected playbook's identity, defaults and active-stage instructions.
+Load the specific execution, claims, provider or integration sections needed for the current operation; do not bulk
+read complete reference documents or inactive stages. Obtain missing ranges when a required read is truncated.
+All normative requirements still apply. Other frontmatter dependencies are maintenance or stage references, not a
+request to load the complete framework. Templates and examples MUST NOT override the selected playbook or contracts.
+Use documented CLI forms and prepared script paths; consult a helper's `--help` before using an unfamiliar form.
+Do not invent flags or transfer options between helpers.
 
 The Coordinator alone performs execution preflight and run preparation. It MUST activate delegated workers with fresh
 provider context, and every activation packet MUST begin with `Coordinator initialization: complete`.

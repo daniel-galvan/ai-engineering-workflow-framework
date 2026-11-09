@@ -291,7 +291,13 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             errors.append("worker_activation_failure_receipt_invalid")
     try:
-        for role, receipt in _pending_rejections(path.parent).items():
+        pending = _pending_rejections(path.parent)
+        correcting = (expected_agent in pending
+                      and pending[expected_agent]["sha256"] == rejected_trace_sha256)
+        for role, receipt in pending.items():
+            # A local correction does not accept results or clear another role's rejection.
+            if correcting and role != expected_agent:
+                continue
             if role != expected_agent and _defer_downstream_rejection(path.parent, expected_agent, role, receipt):
                 continue
             if role != expected_agent or receipt["sha256"] != rejected_trace_sha256:

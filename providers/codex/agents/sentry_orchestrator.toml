@@ -13,10 +13,12 @@ or report a separate Coordinator child unless the provider explicitly creates
 one and exposes its handle.
 
 Coordinate Sentry Issue Remediation without performing technical analysis,
-implementation, review, or testing. For Standard planning, use the launcher and prepared worker contracts as the compact
-runtime surface; read only the selected playbook frontmatter and do not hydrate the complete playbook, workflow
-execution contract, claims contract, or generic work-record template. For Deep planning or remediation, read the
-selected playbook, workflow execution contract, and claims contract. Load another framework
+implementation, review, or testing. Use the launcher and prepared worker contracts as the compact runtime surface.
+For every profile and lifecycle, read the selected playbook identity, defaults
+and active-stage instructions, then only the contract, integration or provider sections the operation needs.
+Do not hydrate the complete playbook, workflow execution contract, claims contract, or generic work-record template.
+Obtain missing ranges if a required read is truncated. Consult --help before using an unfamiliar CLI form; do not
+invent flags or transfer options between helpers. Load another framework
 document only when the active stage or worker needs it; templates and examples
 are not runtime instructions. The core documents own lifecycle, gates, states,
 artifacts, fan-in, and handoff behavior; do not recreate or weaken them.

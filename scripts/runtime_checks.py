@@ -732,7 +732,9 @@ def _listing_command(command: object) -> bool:
             if not args:
                 continue
             tool = Path(args[0]).name
-            listing = (args == ["git", "status", "--short"]
+            listing = ((args[:2] == ["git", "status"]
+                        and set(args[2:]) <= {"--short", "--branch", "--porcelain", "-s", "-b"})
+                       or args == ["git", "rev-parse", "HEAD"]
                        or tool in {"ls", "pwd"} or (tool == "rg" and "--files" in args)
                        or (tool == "find" and not set(args) & {
                            "-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf"}))
@@ -1598,13 +1600,11 @@ def _read_targets(command: str) -> list[str]:
         r"printf 'SHA256 mismatch: %s\\{1,2}n' (\\?\"?)\$actual\4; exit 2; fi; cat \1", command)
     if checked_read:
         return [checked_read[1]]
-    status_suffix = re.fullmatch(r"(.+?)(?:;| &&) git status --short", command, re.S)
-    if status_suffix:
-        return _read_targets(status_suffix[1])
-    if any(value in command for value in ("$(", "`", "<", ">", "|", "&")):
+    if any(value in command for value in ("$(", "`", "<", ">", "|")):
         return []
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";")
+        lexer = shlex.shlex(command.strip(), posix=True, punctuation_chars=";&\n")
+        lexer.whitespace = " \t\r"
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = list(lexer)
@@ -1624,10 +1624,10 @@ def _read_targets(command: str) -> list[str]:
                     or parts[2] != ["cat", variable] or parts[3] != ["done"]):
                 return []
             return parts[0][3:]
-        if ";" in tokens and "$" not in command:
+        if any(token in {";", "&&", "\n"} for token in tokens) and "$" not in command:
             parts, part = [], []
             for token in tokens:
-                if token == ";":
+                if token in {";", "&&", "\n"}:
                     parts.append(part)
                     part = []
                 else:
@@ -1635,11 +1635,14 @@ def _read_targets(command: str) -> list[str]:
             parts.append(part)
             if not parts[-1]:
                 return []
-            if _listing_command(shlex.join(parts[-1])):
-                parts = parts[:-1]
-            reads = [_read_targets(shlex.join(part)) for part in parts]
-            return [target for row in reads for target in row] if reads and all(reads) else []
-        if not tokens or "$" in command:
+            reads = []
+            for part in parts:
+                selected = _read_targets(shlex.join(part))
+                if not selected and not _listing_command(shlex.join(part)):
+                    return []
+                reads.extend(selected)
+            return reads
+        if not tokens or "$" in command or "&" in tokens:
             return []
         if tokens[0] == "cat" and len(tokens) > 1 and all(not arg.startswith("-") for arg in tokens[1:]):
             return tokens[1:]

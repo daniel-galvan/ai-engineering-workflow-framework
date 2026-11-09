@@ -28,7 +28,9 @@ execution repository and artifact root. The installed package supplies the frame
 
 The active run skill and shared contract own preflight, source-access gates, input-manifest creation, worker selection,
 artifact placement, validation, and handoff. Do not copy framework commands, worker lists, internal paths, or evaluation
-metadata into an ordinary run prompt. `MEMORY.md` may be read as background guidance only. Current user instructions and
+metadata into an ordinary run prompt. Use compact stage-specific instructions from the active run skill and prepared
+contracts; do not bulk-load framework reference documents at startup.
+`MEMORY.md` may be read as background guidance only. Current user instructions and
 current-run evidence take precedence.
 Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
 against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.

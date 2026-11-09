@@ -3500,6 +3500,9 @@ def prepare_run(
             continue
         contract["response_builder"] = str(ROOT / "scripts" / "prepare_worker_response.py")
         contract["result_instructions"] = (
+            "The output/result paths are Coordinator publication destinations, not worker write permissions. "
+            "Do not write those files; return their contents only in the JSON response. "
+            "Do not create unassigned draft files. Use stdin for the read-only response preview. "
             "Before your final answer, pipe the complete declared JSON envelope to response_builder with --packet "
             f"{artifact_root / 'finalization_packet.json'} --agent {agent} --response-stdin. "
             "Correct reported draft errors and rerun this read-only preview before ending; return its successful "

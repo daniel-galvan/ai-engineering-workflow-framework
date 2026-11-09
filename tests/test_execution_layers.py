@@ -171,11 +171,12 @@ class ExecutionLayers(unittest.TestCase):
         self.assertIn("validate_library.py --sentry-artifacts", fix_design)
         self.assertIn("For TechOps and other playbooks, skip these Sentry-only helpers", fix_design)
 
-    def test_unreleased_stale_run_requires_a_separate_artifact_root_for_new_planning(self):
+    def test_new_planning_archives_prior_attempts_and_protects_active_writers(self):
         launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
-        self.assertIn("separate execution repository and artifact root", launcher)
-        self.assertIn("does not authorize deleting, resetting, or reusing the blocked work-item root", launcher)
-        self.assertIn("preserve the old files and satisfy the stale-archive checks above first", launcher)
+        self.assertIn("A fresh request uses ordinary preparation without continuation or recovery flags", launcher)
+        self.assertIn("active workers or writers block a conflicting archive", launcher)
+        self.assertIn("including incomplete or unpublished attempts", launcher)
+        self.assertIn("Archive entries remain history and are not current-run inputs", launcher)
 
     def test_ordinary_handle_join_does_not_create_a_post_spawn_dispatch(self):
         for path in ("providers/codex.md", "skills/run/SKILL.md"):
@@ -233,8 +234,8 @@ class ExecutionLayers(unittest.TestCase):
     def test_access_observations_preserve_the_prepared_input_manifest(self):
         launcher = " ".join((ROOT / "skills/run/SKILL.md").read_text().split())
         self.assertIn("Run filename discovery in a separate tool result from content reads or searches", launcher)
-        self.assertIn("Include the current `.thoughts/<WORK-ITEM-ID>` artifact directory", launcher)
-        self.assertIn("These exact ancestor checks do not authorize searching the artifact tree", launcher)
+        self.assertIn("Do not check `.thoughts/<WORK-ITEM-ID>` or its `.thoughts` parent for `AGENTS.md`", launcher)
+        self.assertIn("do not search parent directory trees", launcher)
         for name in ("skills/run/SKILL.md", "contracts/workflow_execution.md"):
             text = " ".join((ROOT / name).read_text().split())
             with self.subTest(file=name):
@@ -245,7 +246,7 @@ class ExecutionLayers(unittest.TestCase):
 
     def test_sentry_access_failure_stops_before_preparation_without_log_fallback(self):
         launcher = (ROOT / "skills/run/SKILL.md").read_text()
-        gate = launcher.split("5c. For Sentry Issue Remediation", 1)[1].split("6. For Standard Sentry planning", 1)[0]
+        gate = launcher.split("5c. For Sentry Issue Remediation", 1)[1].split("\n6.", 1)[0]
         for phrase in ("issue and its latest event", "--source Sentry", "OPERATION_UNAVAILABLE",
                        "zero worker activation attempts", "no artifact root or work record",
                        "Supplied logs do not", "explicitly selects an offline", "30 seconds", "90 seconds"):

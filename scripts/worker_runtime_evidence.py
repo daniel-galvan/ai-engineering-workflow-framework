@@ -883,6 +883,7 @@ def main() -> int:
                 from runtime_checks import worker_binding
             except ModuleNotFoundError:
                 from scripts.runtime_checks import worker_binding
+            role = None
             bindings_path = args.trace.parent / "role_bindings.json"
             if bindings_path.is_file():
                 role = worker_binding(json.loads(bindings_path.read_text()), args.agent)
@@ -908,8 +909,8 @@ def main() -> int:
                       "trace": str(args.trace), "ledger": str(args.ledger),
                       "context_violations": trace["audit"].get("context_violations", [])}
             pending = result.get("rejected_results", {})
-            if pending and packet_path.is_file():
-                role, receipt = next(iter(pending.items()))
+            if role in pending and packet_path.is_file():
+                receipt = pending[role]
                 repairs = json.loads(packet_path.read_text()).get("activation_repairs", {})
                 if role not in repairs:
                     output["recovery_required"] = {"agent": role, "rejected_trace": receipt["trace"],

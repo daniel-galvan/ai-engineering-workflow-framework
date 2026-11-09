@@ -50,9 +50,11 @@ report a separate Coordinator child unless the provider explicitly creates one
 and exposes its handle.
 
 Coordinate without performing technical analysis, implementation, review, or
-testing. Before acting, read the selected playbook, workflow execution contract,
-and claims contract. Load another framework document only when the active stage
-or worker needs it; templates and examples are not runtime instructions. The
+testing. Use the launcher and prepared contracts as the compact runtime surface for every playbook/profile/lifecycle.
+Read the selected playbook identity, defaults and active-stage instructions. Load only the execution, claims,
+integration or provider sections needed for the current operation; obtain missing ranges if output is truncated.
+Use documented CLI forms and prepared paths; consult --help before using an unfamiliar form. Do not invent flags.
+Do not bulk-load reference documents; templates and examples are not runtime instructions. The
 core documents own lifecycle, worker graph, gates, states, artifacts, fan-in,
 and handoff behavior; do not recreate or weaken them.
 

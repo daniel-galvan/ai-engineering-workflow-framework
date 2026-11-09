@@ -478,6 +478,53 @@ class ActivationDelivery(unittest.TestCase):
         trace["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": "rg 'bazel test' source.md"}})
         self.assertFalse(any("planning_operation" in error for error in runtime.trace_errors(trace)))
 
+    def test_strict_response_workers_receive_the_enforced_write_boundary(self):
+        for playbook in ('feature_delivery', 'techops_issue_remediation'):
+            run = prepare.prepare_run(self.root, playbook.upper(), playbook, None, False,
+                                      input_manifest=self.root / 'inputs.json')
+            packets = json.loads(Path(run['activation_packet_bundle']['path']).read_text())['packets']
+            for role, packet in packets.items():
+                contract = packet.get('worker_contract') or {}
+                if contract.get('result_response') == 'strict_json_final_answer':
+                    with self.subTest(playbook=playbook, role=role):
+                        self.assertIn('Coordinator publication destinations, not worker write permissions',
+                                      contract['result_instructions'])
+                        self.assertIn('Do not create unassigned draft files', contract['result_instructions'])
+                        self.assertIn('--response-stdin', contract['result_instructions'])
+            self.assertNotIn('not worker write permissions',
+                             (packets['documenter'].get('worker_contract') or {}).get('result_instructions', ''))
+
+    def test_parallel_rejections_allow_each_verified_correction_but_block_normal_activation(self):
+        receipts = {}
+        for role in ('dependency_analyst', 'repository_integrator'):
+            _, trace = self.rejected_trace()
+            trace['spawn']['agent'] = role
+            path = self.artifacts / (role + '_rejected.json')
+            path.write_text(json.dumps(trace))
+            receipts[role] = {'run_id': trace['run_id'], 'trace': str(path),
+                'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                'Provider handle': HANDLE, 'Last dispatch at': DISPATCH}
+        ledger = self.artifacts / 'runtime_dispatches.json'
+        ledger.write_text(json.dumps({'rejected_results': receipts}))
+        before = ledger.read_bytes()
+        for role, receipt in receipts.items():
+            args = ('--activation-packet-bundle', self.bundle['path'], '--expected-agent', role,
+                    '--expected-bundle-sha256', self.bundle['sha256'])
+            self.assertIn('worker_activation_rejected_result_pending', self.command(*args).stdout)
+            assignment = self.artifacts / (role + '_correction.json')
+            assignment.write_text(json.dumps({'objective': 'Correct this rejected result only', 'input_paths': []}))
+            correction = (*args, '--rejected-trace', receipt['trace'], '--provider-handle', HANDLE,
+                          '--last-dispatch-at', DISPATCH, '--provider-status', 'completed', '--assignment', assignment,
+                          '--dispatch-file', self.artifacts / (role + '_correction.txt'))
+            result = self.command(*correction)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(ledger.read_bytes(), before)
+            repeated = self.command(*correction)
+            self.assertIn('activation_repair_limit_reached', repeated.stdout)
+        blocked = self.command('--activation-packet-bundle', self.bundle['path'], '--expected-agent', 'documenter',
+                               '--expected-bundle-sha256', self.bundle['sha256'])
+        self.assertIn('worker_activation_rejected_result_pending', blocked.stdout)
+
     def test_planning_rejects_direct_writes_for_response_contracts(self):
         trace = self.instruction_trace()
         worker_packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["current_state_investigator"]

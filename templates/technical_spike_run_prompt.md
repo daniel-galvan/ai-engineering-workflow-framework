@@ -59,8 +59,9 @@ Continuation (omit this entire section for a new investigation):
 Runtime bootstrap:
 - For a versioned evaluation, compare this populated prompt with the canonical template. Record `prompt_conformance` and
   stop with `run_prompt_nonconformant` when a required field is missing or altered.
-- Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md` from the
-  same framework checkout. Load another referenced framework document only when the active stage or worker needs it;
+- Use the launcher and prepared worker contracts as the compact runtime surface for every profile and lifecycle.
+  Read the selected playbook identity, defaults and active-stage instructions. Load specific contract, integration or
+  provider sections only when needed; read missing ranges if output is truncated. Do not bulk-load reference documents;
   templates and examples are not runtime instructions.
 - The shared contract and selected playbook own lifecycle, worker activation, recovery, fan-in, and handoff behavior.
 - Preserve all supplied context. Current explicit user decisions and constraints are authoritative and must not be

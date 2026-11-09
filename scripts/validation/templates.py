@@ -55,17 +55,11 @@ def validate_run_prompt_basics() -> None:
             "Never claim successful execution when the required graph is incomplete.",
             "Reserve `plan_only`",
         )
-        if path.name == "sentry_issue_run_prompt.md":
-            bootstrap_phrases += (
-                "prepared worker contracts as the compact runtime surface",
-                "do not hydrate the complete playbook",
-                "Deep planning and remediation retain",
-            )
-        else:
-            bootstrap_phrases += (
-                "Before acting, read the selected playbook plus `contracts/workflow_execution.md` and `contracts/claims.md`",
-                "templates and examples are not runtime instructions.",
-            )
+        bootstrap_phrases += (
+            "prepared worker contracts as the compact runtime surface",
+            "active-stage instructions",
+            "templates and examples are not runtime instructions.",
+        )
         for phrase in bootstrap_phrases:
             if phrase not in text:
                 fail(f"{path.relative_to(ROOT)} is missing runtime bootstrap rule: {phrase}")

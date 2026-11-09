@@ -25,7 +25,7 @@ class PlanningCommandPath(unittest.TestCase):
         self.planning_path("techops_issue_remediation")
 
     def test_feature_ready_plan_through_actual_shipped_commands(self):
-        commands = self.planning_path("feature_delivery")
+        commands = self.planning_path("feature_delivery", parallel_integration=True)
         self.assertFalse(any(str(arg).startswith(("--recover", "--planning-recovery"))
                              for _, arguments in commands for arg in arguments))
 
@@ -73,7 +73,8 @@ class PlanningCommandPath(unittest.TestCase):
     def test_failed_worker_replacement_reaches_publication_with_both_handles_closed(self):
         for playbook in ("techops_issue_remediation", "feature_delivery"):
             with self.subTest(playbook=playbook):
-                self.planning_path(playbook, recover_failed_worker=True)
+                self.planning_path(playbook, recover_failed_worker=True,
+                                   parallel_integration=playbook == "feature_delivery")
 
     def test_native_fragment_continuation_preserves_accepted_results_through_publication(self):
         for playbook in ("techops_issue_remediation", "feature_delivery"):
@@ -84,7 +85,8 @@ class PlanningCommandPath(unittest.TestCase):
                       native_continuation=False, continue_to_remediation=False,
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
-                      recover_context_block=False, missing_mapping=False, start_next_run=False):
+                      recover_context_block=False, missing_mapping=False, start_next_run=False,
+                      parallel_integration=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -92,6 +94,8 @@ class PlanningCommandPath(unittest.TestCase):
             source = repository / "src" / "counter" / "counter.py"
             source.parent.mkdir(parents=True)
             source.write_text("def increment(value):\n    return value - 1\n")
+            if parallel_integration:
+                (source.parent / "caller.py").write_text("from counter import increment\n\ndef next_value(value):\n    return increment(value)\n")
             instructions = source.parent / "AGENTS.md"
             instructions.write_text("Do not read .thoughts/DEMO-1/runs/prior/analysis.md.\n")
             (source.parent / "test_counter.py").write_text("from counter import increment\n\ndef test_increment():\n    assert increment(2) == 3\n")
@@ -102,13 +106,15 @@ class PlanningCommandPath(unittest.TestCase):
                 subprocess.run(["git", "-C", str(repository), *arguments], check=True, capture_output=True)
             source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
             parent_id, turn_id = str(UUID(int=1)), str(UUID(int=2))
-            provider = Path(directory) / ("native/sessions" if native_continuation else "provider")
+            provider = Path(directory) / ("native/sessions" if native_continuation else
+                                          ".codex/sessions" if parallel_integration else "provider")
             provider.mkdir(parents=True)
             if opaque_delivery:
                 session_home = Path(directory) / "worker-home"
                 (session_home / "sessions").mkdir(parents=True)
                 environment.enter_context(patch.dict(os.environ, {"CODEX_HOME": str(session_home)}))
-            parent = provider / ("rollout-" + parent_id + ".jsonl" if native_continuation else "parent.jsonl")
+            parent = provider / ("rollout-" + parent_id + ".jsonl"
+                                 if native_continuation or parallel_integration else "parent.jsonl")
             if native_continuation:
                 environment.enter_context(patch.dict(os.environ, {"CODEX_THREAD_ID": parent_id,
                                                                  "CODEX_SESSION_ID": "",
@@ -178,8 +184,11 @@ class PlanningCommandPath(unittest.TestCase):
                 roles = (("feature-context", "current_state_investigator", "FC"),
                          ("impact-analysis", "dependency_analyst", "IA"),
                          ("feature-design", "solution_architect", "FD"), ("handoff", "documenter", "DOC"))
+                if parallel_integration:
+                    roles = roles[:2] + (("repository-integration", "repository_integrator", "RI"),) + roles[2:]
             first_namespace, second_namespace = roles[0][2], roles[1][2]
             completed, summaries, result_hashes, statuses, rejected_traces = {}, {}, {}, {}, {}
+            active, prestarted = {}, {}
             coordinator_handoff_identity = None
 
             def inventory(omit_handles=()):
@@ -187,8 +196,32 @@ class PlanningCommandPath(unittest.TestCase):
                 append(parent, "response_item", type="function_call", namespace="collaboration", name="list_agents",
                        call_id=call, arguments="{}")
                 append(parent, "response_item", type="function_call_output", call_id=call,
-                       output=json.dumps({"agents": [{"agent_name": handle, "agent_status": {statuses.get(handle, "completed"): "Done"}}
-                                                    for handle in completed if handle not in set(omit_handles)]}))
+                       output=json.dumps({"agents": [{"agent_name": handle, "agent_status": {
+                           statuses.get(handle, "completed") if handle in completed else "running": "Observed"}}
+                           for handle in {**active, **completed} if handle not in set(omit_handles)]}))
+
+            def prepare_assignment(worker, role):
+                assignment = root / (worker + "-assignment.json")
+                assignment.write_text(json.dumps({"objective": "Complete the current counter planning stage: " + worker,
+                    "input_paths": [str(packet_path), str(source)]
+                    + ([str(guide_snapshot)] if role == "solution_architect" else [])}))
+                activation = root / (worker + "-activation.txt")
+                guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
+                    run["activation_packet_bundle"]["path"], "--expected-agent", role, "--expected-bundle-sha256",
+                    run["activation_packet_bundle"]["sha256"], "--assignment", assignment, "--dispatch-file", activation))
+                self.assertIn(str(guide_snapshot), activation.read_text())
+                self.assertNotIn("UNNEEDED_GUIDE_SECTION", activation.read_text())
+                return assignment, activation, guarded
+
+            def start_worker(worker, index, guarded):
+                handle, child_id = "/root/" + worker.replace("-", "_"), str(UUID(int=index + 100))
+                append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
+                       call_id="spawn-" + worker, arguments=json.dumps({"task_name": worker.replace("-", "_"),
+                       "message": guarded["activation_message"], **guarded["launch_arguments"]}))
+                append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                       "agent_path": handle, "agent_thread_id": child_id})
+                active[handle] = child_id
+                return handle, child_id
 
             collector = ("--provider-session", parent, "--parent-thread-id", parent_id,
                          "--started-at", run["runtime_evidence"]["run_started_at"],
@@ -208,16 +241,8 @@ class PlanningCommandPath(unittest.TestCase):
                         "Prompt template / revision / conformance")}
                     self.assertEqual({row["Worker"] for row in packet["workers"]}, set(summaries))
                     self.assertEqual(packet["synchronization"][-1]["Barrier status"].split(";")[0], "Passed")
-                assignment = root / (worker + "-assignment.json")
-                assignment.write_text(json.dumps({"objective": "Complete the current counter planning stage: " + worker,
-                    "input_paths": [str(packet_path), str(source)]
-                    + ([str(guide_snapshot)] if role == "solution_architect" else [])}))
-                activation = root / (worker + "-activation.txt")
-                guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
-                    run["activation_packet_bundle"]["path"], "--expected-agent", role, "--expected-bundle-sha256",
-                    run["activation_packet_bundle"]["sha256"], "--assignment", assignment, "--dispatch-file", activation))
-                self.assertIn(str(guide_snapshot), activation.read_text())
-                self.assertNotIn("UNNEEDED_GUIDE_SECTION", activation.read_text())
+                assignment, activation, guarded = (prestarted[role][:3] if role in prestarted
+                                                   else prepare_assignment(worker, role))
                 if recover_failed_worker and index == 0:
                     failed_handle, failed_id = "/root/failed_original", str(UUID(int=900))
                     append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
@@ -225,7 +250,7 @@ class PlanningCommandPath(unittest.TestCase):
                            "message": guarded["activation_message"], **guarded["launch_arguments"]}))
                     append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
                            "agent_path": failed_handle, "agent_thread_id": failed_id})
-                    failed_child = provider / "failed-original.jsonl"
+                    failed_child = provider / ("rollout-" + failed_id + ".jsonl")
                     append(failed_child, "session_meta", id=failed_id, cwd=str(repository))
                     append(failed_child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
                            arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
@@ -252,13 +277,15 @@ class PlanningCommandPath(unittest.TestCase):
                     guarded = json.loads(command("validate_worker_runtime.py", *recovery, "--dispatch-file", activation))
                     repeated = command("validate_worker_runtime.py", *recovery, "--dispatch-file", root / "forbidden-third-attempt.txt", expected=2)
                     self.assertIn("activation_repair_limit_reached", repeated)
-                handle, child_id = "/root/" + worker.replace("-", "_"), str(UUID(int=index + 100))
-                append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
-                       call_id="spawn-" + worker, arguments=json.dumps({"task_name": worker.replace("-", "_"),
-                       "message": guarded["activation_message"], **guarded["launch_arguments"]}))
-                append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
-                       "agent_path": handle, "agent_thread_id": child_id})
-                child = provider / (worker + ".jsonl")
+                handle, child_id = (prestarted.pop(role)[3:] if role in prestarted
+                                    else start_worker(worker, index, guarded))
+                if parallel_integration and role == "dependency_analyst":
+                    sibling, sibling_role, _ = roles[index + 1]
+                    sibling_assignment = prepare_assignment(sibling, sibling_role)
+                    sibling_identity = start_worker(sibling, index + 1, sibling_assignment[2])
+                    prestarted[sibling_role] = (*sibling_assignment, *sibling_identity)
+                    self.assertEqual(len(active), 2)
+                child = provider / ("rollout-" + child_id + ".jsonl" if parallel_integration else worker + ".jsonl")
                 append(child, "session_meta", id=child_id, cwd=str(repository))
                 append(child, "turn_context", turn_id=str(UUID(int=index + 200)),
                        model=guarded["launch_arguments"]["model"], effort=guarded["launch_arguments"]["reasoning_effort"])
@@ -268,6 +295,17 @@ class PlanningCommandPath(unittest.TestCase):
                 append(child, "response_item", type="function_call", name="exec_command", call_id="source",
                        arguments=json.dumps({"cmd": "cat " + str(source), "workdir": str(repository)}))
                 append(child, "response_item", type="function_call_output", call_id="source", output=source.read_text())
+                if parallel_integration and index > 0:
+                    append(child, "response_item", type="function_call", name="exec_command", call_id="current-packet",
+                           arguments=json.dumps({"cmd": "git status --short --branch && git rev-parse HEAD && cat "
+                                                 + str(packet_path), "workdir": str(repository)}))
+                    append(child, "response_item", type="function_call_output", call_id="current-packet",
+                           output="## main\nrevision\n" + packet_path.read_text())
+                if role == "repository_integrator":
+                    caller = source.parent / "caller.py"
+                    append(child, "response_item", type="function_call", name="exec_command", call_id="caller",
+                           arguments=json.dumps({"cmd": "cat " + str(caller), "workdir": str(repository)}))
+                    append(child, "response_item", type="function_call_output", call_id="caller", output=caller.read_text())
                 append(child, "response_item", type="function_call", name="exec_command", call_id="instructions",
                        arguments=json.dumps({"cmd": "cat " + str(instructions), "workdir": str(repository)}))
                 append(child, "response_item", type="function_call_output", call_id="instructions",
@@ -287,11 +325,13 @@ class PlanningCommandPath(unittest.TestCase):
                     "Evidence / claim refs": "E-" + (first_namespace if worker == "handoff" else namespace) + "-001",
                     "Actual model/effort": guarded["launch_arguments"]["model"] + " / " + guarded["launch_arguments"]["reasoning_effort"],
                     "Usage/credits": "Not exposed"}
-                summary["Unique contribution"] = (
-                    "Bounded the supplied symptom and expected counter behavior.",
-                    "Traced subtraction to the decrement without deployment assumptions.",
-                    "Selected the minimal operator correction and regression extension.",
-                    "Assembled accepted analysis and an unapproved plan without source changes.")[index]
+                summary["Unique contribution"] = {
+                    "current_state_investigator": "Bounded the supplied symptom and expected counter behavior.",
+                    "dependency_analyst": "Traced subtraction to the decrement without deployment assumptions.",
+                    "repository_integrator": "Checked the caller/library contract and unchanged integration boundary.",
+                    "solution_architect": "Selected the minimal operator correction and regression extension.",
+                    "documenter": "Assembled accepted analysis and an unapproved plan without source changes.",
+                }[role]
                 summaries[worker] = summary
                 response_manifest = None
                 if worker != "handoff":
@@ -299,6 +339,8 @@ class PlanningCommandPath(unittest.TestCase):
                         "Summary": "Current counter subtracts one; supplied requirement explicitly expects an increment.",
                         "Confidence": "High", "Uncertainty": "Deployment was not inspected or needed for this local plan.",
                         "Status": "Verified"}
+                    if role == "repository_integrator":
+                        evidence.update(Source=str(caller), Summary="The caller uses the unchanged numeric increment interface.")
                     result = {"run_id": run["run_id"], "worker_result": summary, "evidence": [evidence], "claims": [{
                         "Claim ID": "CL-" + namespace + "-001", "Claim": "Change the existing subtraction to addition.",
                         "Evidence refs": evidence["Evidence ID"], "Confidence": "High", "Uncertainty": "None",
@@ -315,7 +357,8 @@ class PlanningCommandPath(unittest.TestCase):
                         evidence["Source"] = str(source.parent / "test_counter.py")
                         evidence["Summary"] = "The existing fixture expects increment(2) == 3; zero and negative cases remain planned."
                         result["decisions"] = [{"Decision ID": "DE-FD-001", "Decision": "Use addition in the existing counter function.",
-                            "Claim refs": f"CL-{first_namespace}-001, CL-{second_namespace}-001, CL-FD-001", "Owner": "Implementer", "Status": "Proposed"}]
+                            "Claim refs": f"CL-{first_namespace}-001, CL-{second_namespace}-001, CL-FD-001"
+                            + (", CL-RI-001" if parallel_integration else ""), "Owner": "Implementer", "Status": "Proposed"}]
                         result["actions"] = [{"Action ID": "A-FD-001", "Action": "After approval, correct the operator and extend the regression fixture.",
                             "Decision ref": "DE-FD-001", "Owner": "Implementer", "Status": "Proposed"}]
                         if playbook == "feature_delivery":
@@ -405,6 +448,7 @@ class PlanningCommandPath(unittest.TestCase):
                 append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "completed",
                        "agent_path": handle, "agent_thread_id": child_id})
                 completed[handle] = child_id
+                active.pop(handle, None)
                 inventory()
                 trace = root / (worker + "-trace.json")
                 command("worker_runtime_evidence.py", *collector, "--worker-session", child, "--agent", role, "--trace", trace)

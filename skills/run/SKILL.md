@@ -295,13 +295,15 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    A blocked engineering result does not require a workflow-failure receipt. Preparation verifies the unchanged
    finalized record, original successful finalizer output, delivery, candidate, planning history, and terminal closure
    before archiving anything. Carry accepted planning inputs forward; create fresh review and validation inputs.
-6. For Standard Sentry planning, do not hydrate the complete playbook, generic work-record template, execution contract,
-   or claims contract before preparation. Read only the selected playbook frontmatter needed for identity/version; this
-   launcher plus the prepared worker contracts and binding manifest are the compact runtime surface. For every other
-   playbook/profile/lifecycle, relative to the verified packaged framework root, read the selected playbook,
-   `contracts/workflow_execution.md`, `contracts/claims.md`, and its canonical run template once. Do not also read a
-   checkout copy or restart a document from line 1 after reading an earlier range. Load the Codex provider adapter and
-   model policy only when provider configuration is needed.
+6. Use this launcher, the prepared worker contracts and binding manifest as the compact runtime surface for every
+   playbook, profile and lifecycle. Read the selected playbook's identity, defaults and active-stage instructions;
+   load specific contract, integration or provider sections only when the current operation needs them. Do not bulk
+   read the complete execution/claims contracts, work-record template, examples or inactive stages at startup.
+   Their requirements remain authoritative; compact loading does not waive a gate. Read each needed section completely
+   in bounded ranges; if output is truncated, obtain the missing range before acting. Reuse complete instructions
+   already in context. Keep all framework reads in the verified package; do not also load checkout copies.
+   Use the documented command forms and prepared script paths. Before using an unfamiliar CLI form, read that script's
+   `--help` once. Do not infer flags from prose labels, reuse options from another helper, or invent aliases.
 7. Before preparation, create a run-specific JSON input manifest from every material detail in the current request:
    explicit decisions and constraints, unanswered material user questions, observed reports, hypotheses, and repository
    paths, plus named supporting artifacts. When a fresh run is launched from an active conversation, carry each explicit

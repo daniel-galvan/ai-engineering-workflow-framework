@@ -905,6 +905,30 @@ class ContextOperationAudit(unittest.TestCase):
             changed['tool_trace'][-1]['output'][0]['text'] = json.dumps(value)
             self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(changed))
 
+    def test_packet_metadata_reads_compose_with_repository_checks_without_allowing_log_reads(self):
+        base = self.instruction_read_trace()
+        path = self.root / 'finalization_packet.json'
+        packet = json.loads(path.read_text())
+        session = '/Users/example/.codex/sessions/worker.jsonl'
+        packet['runtime_audits'] = [{'Worker': 'context', 'Trace retrieval': session}]
+        path.write_text(json.dumps(packet))
+        for reader in ('cat ' + str(path), "sed -n '1,999p' " + str(path)):
+            for separator in (' && ', '; ', '\n'):
+                with self.subTest(reader=reader, separator=separator):
+                    command = 'git status --short --branch' + separator + 'git rev-parse HEAD' + separator + reader
+                    call = 'const r = await tools.exec_command(' + json.dumps({'cmd': command}) + '); text(r.output);'
+                    trace = json.loads(json.dumps(base))
+                    trace['tool_trace'].extend(self.paired(call, [{'type': 'input_text', 'text':
+                        '## main\nrevision\n' + json.dumps(packet)}]))
+                    self.assertEqual(runtime.trace_errors(trace), [])
+                    for unsafe in ('; cat ' + session, '; cat /repo/.thoughts/OTHER/runs/old/notes.md',
+                                   '; python3 -c "print(open(\'' + session + '\').read())"'):
+                        changed = json.loads(json.dumps(trace))
+                        changed['tool_trace'][-2]['input'] = 'const r = await tools.exec_command(' + json.dumps({
+                            'cmd': command + unsafe}) + '); text(r.output);'
+                        self.assertTrue(any(error.startswith('forbidden_context_reference:')
+                                            for error in runtime.trace_errors(changed)))
+
     def test_packet_object_projection_exempts_only_verified_reentry_path(self):
         trace = self.instruction_read_trace()
         packet_path = self.root / "finalization_packet.json"
