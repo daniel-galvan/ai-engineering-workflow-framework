@@ -650,7 +650,6 @@ def _redact_current_session_projection(command: str, source: Path, script_dir: P
             else:
                 return command
         if (not seen_flags.intersection({"--status-projection", "--continuation"})
-                or ("--status-projection" in seen_flags and "--continuation" in seen_flags)
                 or ("--planning-recovery" in seen_flags and "--continuation" not in seen_flags)
                 or "--provider-session" not in values
                 or ("--work-item" in values and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", values["--work-item"]))

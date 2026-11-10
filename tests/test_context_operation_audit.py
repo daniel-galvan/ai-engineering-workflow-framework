@@ -117,16 +117,21 @@ class ContextOperationAudit(unittest.TestCase):
         script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_run.py"
         command = shlex.join(["python3", str(script), "--status-projection", "--execution-repository",
                               str(self.repository), "--work-item", "ITEM-1", "--provider-session", str(source)])
-        call = {"type": "custom_tool_call", "name": "exec", "input":
-                "const result = await tools.exec_command(" + json.dumps({"cmd": command}) + "); text(result.output);"}
-        source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
         audit = lambda: parent_context_audit(source, artifact_root=self.root, related_run_thread_ids=())
-        self.assertEqual(audit()["status"], "passed")
+        for flags in ((), ("--continuation",), ("--continuation", "--planning-recovery")):
+            with self.subTest(flags=flags):
+                invocation = command + " " + " ".join(flags)
+                call = {"type": "custom_tool_call", "name": "exec", "input":
+                        "const result = await tools.exec_command(" + json.dumps({"cmd": invocation}) + "); text(result.output);"}
+                source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
+                self.assertEqual(audit()["status"], "passed")
 
-        prior = command.replace(str(source), str(source.parent / "prior.jsonl"))
-        call["input"] = "const result = await tools.exec_command(" + json.dumps({"cmd": prior}) + "); text(result.output);"
-        source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
-        self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+                for invalid in (invocation.replace(str(source), str(source.parent / "prior.jsonl")),
+                                invocation + "; cat " + shlex.quote(str(source)),
+                                invocation + " --unsupported-option"):
+                    call["input"] = "const result = await tools.exec_command(" + json.dumps({"cmd": invalid}) + "); text(result.output);"
+                    source.write_text("".join(json.dumps(row) + "\n" for row in header + [{"type": "response_item", "payload": call}]))
+                    self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
 
         call["input"] = ("const result = await tools.exec_command(" + json.dumps({"cmd": command})
                          + "); text(result.output); await tools.exec_command(" + json.dumps({"cmd": "cat " + str(source)}) + ");")

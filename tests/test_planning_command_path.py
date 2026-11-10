@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,9 @@ from tests import test_packaged_lifecycle as packaging
 class PlanningCommandPath(unittest.TestCase):
     def test_techops_ready_plan_through_actual_shipped_commands(self):
         self.planning_path("techops_issue_remediation")
+        fresh = self.planning_outcome
+        self.planning_path("techops_issue_remediation", planning_recovery=True)
+        self.assertEqual(self.planning_outcome, fresh)
 
     def test_feature_ready_plan_through_actual_shipped_commands(self):
         commands = self.planning_path("feature_delivery", parallel_integration=True)
@@ -153,6 +157,10 @@ class PlanningCommandPath(unittest.TestCase):
             commands = []
             def command(script, *arguments, expected=0, stdin=None):
                 commands.append((script, arguments))
+                if script == "prepare_run.py" and "--status-projection" in arguments:
+                    append(parent, "response_item", type="function_call", name="exec_command",
+                           arguments=json.dumps({"cmd": shlex.join([sys.executable,
+                               str(package / "scripts" / script), *map(str, arguments)])}))
                 result = subprocess.run([sys.executable, str(package / "scripts" / script), *map(str, arguments)],
                                         cwd=package, input=stdin, capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, expected, script + "\n" + result.stdout + result.stderr)
@@ -163,6 +171,8 @@ class PlanningCommandPath(unittest.TestCase):
 
             parent_option = () if native_continuation else ("--provider-session", parent)
             preflight = json.loads(command("run_preflight.py", *parent_option))
+            command("prepare_run.py", "--status-projection", "--execution-repository", repository,
+                    "--work-item", "DEMO-1", *parent_option)
             append(parent, "response_item", type="function_call", name="exec_command", call_id="guide-outline",
                    arguments=json.dumps({"cmd": "rg -n '^#' " + str(guide), "workdir": str(repository)}))
             append(parent, "response_item", type="function_call_output", call_id="guide-outline",
@@ -194,6 +204,8 @@ class PlanningCommandPath(unittest.TestCase):
                 append(parent, "response_item", role="user", content=[{"type": "input_text", "text":
                     "Recover the interrupted planning run using its valid current-run artifacts."}])
                 preflight = json.loads(command("run_preflight.py", *parent_option))
+                command("prepare_run.py", "--status-projection", "--continuation",
+                        "--execution-repository", repository, "--work-item", "DEMO-1", *parent_option)
                 run = json.loads(command("prepare_run.py", "--execution-repository", repository,
                     "--work-item", "DEMO-1", "--playbook", playbook, "--continuation", "--planning-recovery",
                     "--approval-reference", "Current user requests planning recovery", "--input-manifest", inputs,
