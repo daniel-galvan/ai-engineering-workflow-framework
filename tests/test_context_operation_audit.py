@@ -1005,6 +1005,26 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn('forbidden_context_reference:session_log', runtime.context_trace_errors({
             'tool_trace': [{'type': 'function_call', 'name': 'exec_command', 'arguments': {'cmd': command}}]}))
 
+    def test_hashed_fixed_file_reads_preserve_source_provenance(self):
+        trace = self.instruction_read_trace()
+        packet = self.root / 'finalization_packet.json'
+        content = json.loads(packet.read_text())
+        content['reentry'] = {'Prior artifacts': str(self.root / 'runs' / 'old')}
+        content['runtime_audits'] = [{'Trace retrieval': '/Users/example/.codex/sessions/current.jsonl'}]
+        packet.write_text(json.dumps(content))
+        code = ("from pathlib import Path\nimport hashlib\npaths=[" + repr(str(packet)) + "]\n"
+                "for p in paths:\n data=Path(p).read_bytes()\n"
+                " print(f'{p} {hashlib.sha256(data).hexdigest()} {data.decode()}')")
+        call = 'const r = await tools.exec_command(' + json.dumps({'cmd': "python3 - <<'PY'\n" + code + "\nPY"}) + '); text(r.output);'
+        trace['tool_trace'].extend(self.paired(call, [{'type': 'text', 'text': packet.read_text()}]))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace['tool_trace'][-2]['input'] = call.replace(repr(str(packet)), repr('/Users/example/.codex/sessions/old.jsonl'))
+        self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(trace))
+        extra = code + "\nprint(Path('/repo/.thoughts/OTHER/runs/old').read_bytes())"
+        trace['tool_trace'][-2]['input'] = 'const r = await tools.exec_command(' + json.dumps({
+            'cmd': "python3 - <<'PY'\n" + extra + "\nPY"}) + '); text(r.output);'
+        self.assertIn('forbidden_context_reference:archived_artifact', runtime.trace_errors(trace))
+
     def test_current_file_read_with_unspecified_workdir_is_auditable(self):
         trace = self.instruction_read_trace()
         path = self.root / 'finalization_packet.json'

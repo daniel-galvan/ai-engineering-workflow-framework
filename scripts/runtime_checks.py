@@ -1433,7 +1433,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
     targets, constants = [], {}
     stores = [node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)]
     builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted", "range", "min", "max"}
-    protected = builtins | {"open", "json", "pprint", "sys", "Path"}
+    protected = builtins | {"open", "json", "pprint", "sys", "Path", "hashlib"}
     def literal_paths(node):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return [node.value]
@@ -1470,7 +1470,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
         if isinstance(node, (ast.For, ast.comprehension)) and (
                 not isinstance(node.target, ast.Name) or node.target.id in protected):
             return []
-        if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json", "sys"})
+        if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json", "sys", "hashlib"})
                                                 or item.asname for item in node.names):
             return []
         if isinstance(node, ast.ImportFrom) and (pretty or node.module != "pathlib" or node.level
@@ -1518,7 +1518,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                     return []
                 targets.extend(paths)
                 continue
-            if not pretty and node.func.attr == "read_text":
+            if not pretty and node.func.attr in {"read_text", "read_bytes"}:
                 paths = literal_paths(node.func.value)
                 if node.args or node.keywords or not paths:
                     return []
@@ -1528,6 +1528,10 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                          and node.func.attr in {"load", "loads", "dumps"})
             pretty_print = (pretty and isinstance(node.func.value, ast.Name) and node.func.value.id == "pprint"
                             and node.func.attr in {"pp", "pprint", "pformat"})
+            hashing = (not pretty and isinstance(node.func.value, ast.Name) and node.func.value.id == "hashlib"
+                       and node.func.attr == "sha256" and len(node.args) == 1 and not node.keywords)
+            formatting = (not pretty and node.func.attr in {"decode", "hexdigest"}
+                          and not node.args and not node.keywords)
             if json_load and any(keyword.arg not in {"indent", "sort_keys", "ensure_ascii"}
                                  or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords):
                 return []
@@ -1535,7 +1539,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                     keyword.arg not in {"indent", "width", "depth", "compact", "sort_dicts"}
                     or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords)):
                 return []
-            if not json_load and not pretty_print and node.func.attr not in (
+            if not json_load and not pretty_print and not hashing and not formatting and node.func.attr not in (
                     {"keys", "items", "values", "get", "lower"} if pretty else {"keys", "items", "values", "get", "find"}):
                 return []
         else:
