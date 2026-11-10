@@ -1038,6 +1038,28 @@ class ContextOperationAudit(unittest.TestCase):
             'cmd': "python3 - <<'PY'\n" + extra + "\nPY"}) + '); text(r.output);'
         self.assertIn('forbidden_context_reference:archived_artifact', runtime.trace_errors(trace))
 
+    def test_registered_current_snapshot_output_is_not_an_archive_read(self):
+        content = b'/Users/example/.codex/sessions/old.jsonl\n'
+        digest = hashlib.sha256(content).hexdigest()
+        snapshot = self.root / 'input_snapshots' / digest / 'result.json'
+        snapshot.parent.mkdir(parents=True)
+        snapshot.write_bytes(content)
+        bundle = Path(self.run['activation_packet_bundle']['path'])
+        data = json.loads(bundle.read_text())
+        data['packets']['current_state_investigator']['run_input_manifest']['inputs'].append({
+            'path': str(snapshot), 'sha256': digest, 'Expected use': 'Revalidate saved evidence'})
+        bundle.write_text(json.dumps(data))
+        binding_path = self.root / 'role_bindings.json'
+        binding = json.loads(binding_path.read_text())
+        binding['activation_packet_bundle']['sha256'] = hashlib.sha256(bundle.read_bytes()).hexdigest()
+        binding_path.write_text(json.dumps(binding))
+        trace = self.instruction_read_trace()
+        call = 'const r = await tools.exec_command(' + json.dumps({'cmd': 'cat ' + str(snapshot)}) + '); text(r.output);'
+        trace['tool_trace'].extend(self.paired(call, [{'type': 'text', 'text': content.decode()}]))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        snapshot.write_text('modified')
+        self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(trace))
+
     def test_current_file_read_with_unspecified_workdir_is_auditable(self):
         trace = self.instruction_read_trace()
         path = self.root / 'finalization_packet.json'

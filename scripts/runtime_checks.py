@@ -2681,7 +2681,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     if str(trace.get("context_conformance", "")).strip().lower() in {"fail", "failed", "blocked"}:
         errors.append("context_conformance_failed")
     dispatch_content = _verified_dispatch_content(trace)
-    assigned, root = list(input_paths), artifact_root
+    assigned, root, snapshots = list(input_paths), artifact_root, []
     if dispatch_content:
         assignment = json.loads(dispatch_content.split("\nTyped assignment:\n", 1)[1])
         assigned = list(assignment.get("input_paths", []))
@@ -2693,6 +2693,26 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                     and not any(value in expected_use for value in ("do not read", "without reading", "preserve only"))):
                 assigned.append(locator)
         root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
+        for row in packet.get("run_input_manifest", {}).get("inputs", []):
+            if not isinstance(row, dict) or str(row.get("Status", "")).lower() in {"rejected", "denied", "superseded"}:
+                continue
+            if any(value in str(row.get("Expected use", "")).lower()
+                   for value in ("do not read", "without reading", "preserve only")):
+                continue
+            hashes = {path: digest for path, digest in row.get("sha256_by_path", {}).items()
+                      if path in row.get("paths", [])} if (isinstance(row.get("sha256_by_path"), dict)
+                                                           and isinstance(row.get("paths"), list)) else {}
+            if isinstance(row.get("path"), str) and isinstance(row.get("sha256"), str):
+                hashes[row["path"]] = row["sha256"]
+            for locator, digest in hashes.items():
+                try:
+                    path = Path(locator)
+                    if (isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest)
+                            and not path.is_symlink() and path.resolve().parent == root / "input_snapshots" / digest
+                            and hashlib.sha256(path.read_bytes()).hexdigest() == digest):
+                        snapshots.append(str(path))
+                except (OSError, ValueError, TypeError):
+                    continue
     for index, row in enumerate(trace.get("tool_trace", [])):
         if not isinstance(row, dict):
             continue
@@ -2740,7 +2760,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                                                 "reference": reference})
     listing_reads = {}
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
-    source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []
+    source_outputs = _read_output_prefixes(trace, assigned + snapshots, root) if dispatch_content else []
     labeled_outputs = _labeled_packet_outputs(trace, root) if dispatch_content else {}
     pretty_outputs = _pretty_packet_reads(trace, root)
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
