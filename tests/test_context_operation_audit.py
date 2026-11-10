@@ -347,6 +347,23 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn('forbidden_context_reference:archived_artifact',
                       audit({'objective': objective, 'input_paths': []}, '\ncat ' + str(self.root) + '.'))
 
+    def test_quoted_assignment_text_is_data_but_its_paths_and_operations_are_audited(self):
+        assignment = self.root / 'assignment.json'
+        archive = str(self.root / 'runs' / 'previous' / 'result.json')
+        session = '/Users/example/.codex/sessions/previous.jsonl'
+        def audit(body, extra=''):
+            command = ('cat > ' + shlex.quote(str(assignment)) + " <<'EOF'\n" + json.dumps(body)
+                       + '\nEOF' + extra)
+            return runtime.context_trace_errors({'tool_trace': [{'type': 'function_call', 'name': 'exec_command',
+                'arguments': {'cmd': command}}]}, artifact_root=self.root)
+        self.assertEqual(audit({'objective': 'Do not read ' + archive + ' or ' + session, 'input_paths': []}), [])
+        self.assertIn('forbidden_context_reference:archived_artifact',
+                      audit({'objective': 'Use these inputs', 'input_paths': [archive]}))
+        self.assertIn('forbidden_context_reference:session_log',
+                      audit({'objective': 'Use these inputs', 'input_paths': [session]}))
+        self.assertIn('forbidden_context_reference:session_log',
+                      audit({'objective': 'Do not read ' + session, 'input_paths': []}, '\ncat ' + session))
+
     def test_shared_objective_prose_is_allowed_only_when_used_as_serialized_data(self):
         prose = "Keep scratch inside " + str(self.root) + ". Use assigned inputs."
         body = ("import json\nfrom pathlib import Path\nr=Path(" + repr(str(self.root)) + ")\n"

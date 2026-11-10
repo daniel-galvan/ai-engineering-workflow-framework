@@ -370,9 +370,10 @@ A forbidden read in the provider trace requires a fresh worker: a same-worker co
 For an output or envelope mistake without a forbidden read, return the same worker once for current-run reverification.
 A provider-completed task
 with a rejected result is eligible for one replacement when clean isolation requires it: use the worker-runtime
-guard's activation mode with its saved rejected trace, observed handle, latest dispatch and fresh terminal status.
-Use `--rejected-trace`, `--provider-handle`, `--last-dispatch-at`, and `--provider-status` together with the activation
-bundle, corrected assignment and dispatch file. One command validates eligibility and emits the corrected launch;
+guard's activation mode with its saved rejected trace and a fresh native terminal status observation.
+Use `--rejected-trace` with the activation bundle, corrected assignment and dispatch file. The guard resolves the
+handle, latest dispatch and status from current-run evidence, and blocks if it is absent, stale or mismatched.
+One command validates eligibility and emits the corrected launch;
 it records the single recovery authorization against that dispatch hash. A separate replacement-transition check
 is read-only eligibility validation; it does not consume the attempt or authorize ordinary activation. An activation
 blocked by missing recovery options remains eligible for the complete corrected-activation command.

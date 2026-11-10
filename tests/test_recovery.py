@@ -275,6 +275,11 @@ class V6Recovery(unittest.TestCase):
                    "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH]
         allowed = self.command("validate_worker_runtime.py", *command)
         self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
+        wrong_handle = command.copy()
+        wrong_handle[wrong_handle.index("--provider-handle") + 1] = CHILD
+        wrong_result = self.command("validate_worker_runtime.py", *wrong_handle)
+        self.assertIn("rejected_result_dispatch_mismatch", wrong_result.stdout)
+        self.assertNotIn("replace_requires_failed_or_stopped_status:completed", wrong_result.stdout)
         for field, wrong in ((3, "running"), (7, "/root/other"), (9, START)):
             bad = list(command)
             bad[field] = wrong
@@ -293,6 +298,58 @@ class V6Recovery(unittest.TestCase):
         rejected["audit"] = {"status": "passed", "errors": []}
         trace.write_text(json.dumps(rejected))
         self.assertEqual(self.command("validate_worker_runtime.py", *command).returncode, 2)
+
+    def test_replacement_uses_recorded_worker_identity(self):
+        run = self.prepare()
+        trace = self.rejected_trace(run)
+        command = ['--transition', 'replace', '--rejected-trace', trace]
+        missing_status = self.command('validate_worker_runtime.py', *command)
+        self.assertEqual(missing_status.returncode, 2, missing_status.stdout + missing_status.stderr)
+        self.assertIn('terminal_provider_inventory_required', missing_status.stdout)
+        ledger_path = Path(run['runtime_evidence']['ledger'])
+        ledger = json.loads(ledger_path.read_text())
+        parent = Path(ledger['provider_session'])
+        inventory = [
+            {'timestamp': '2026-10-09T20:02:00Z', 'type': 'response_item', 'payload': {
+                'type': 'function_call', 'namespace': 'collaboration', 'name': 'list_agents',
+                'call_id': 'inventory', 'arguments': '{}'}},
+            {'timestamp': '2026-10-09T20:02:01Z', 'type': 'response_item', 'payload': {
+                'type': 'function_call_output', 'call_id': 'inventory', 'output': json.dumps({
+                    'agents': [{'agent_name': HANDLE, 'agent_status': {'completed': 'Done'}}]})}},
+        ]
+        parent_prefix = parent.read_text()
+        with parent.open('a') as stream:
+            stream.write(''.join(json.dumps(row) + '\n' for row in inventory))
+        allowed = self.command('validate_worker_runtime.py', *command)
+        self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
+        self.assertEqual(json.loads(allowed.stdout)['status'], 'allowed')
+        original_parent = parent.read_text()
+        inventory[-1]['payload']['output'] = json.dumps({'agents': [{
+            'agent_name': HANDLE, 'agent_status': {'running': 'Active'}}]})
+        parent.write_text(parent_prefix + ''.join(json.dumps(row) + '\n' for row in inventory))
+        blocked = self.command('validate_worker_runtime.py', *command)
+        self.assertEqual(blocked.returncode, 2, blocked.stdout + blocked.stderr)
+        parent.write_text(original_parent)
+        stale_inventory = original_parent.replace('2026-10-09T20:02:01Z', '2026-10-09T20:01:50Z')
+        parent.write_text(stale_inventory)
+        stale = self.command('validate_worker_runtime.py', *command)
+        self.assertEqual(stale.returncode, 2, stale.stdout + stale.stderr)
+        self.assertIn('rejected_result_status_stale', stale.stdout)
+        parent.write_text(original_parent)
+        bundle = run['activation_packet_bundle']
+        assignment = self.root / 'automatic_retry.json'
+        assignment.write_text(json.dumps({'objective': 'Correct the rejected result', 'input_paths': []}))
+        dispatch = Path(run['artifact_root']) / 'automatic_retry.txt'
+        activation = self.command('validate_worker_runtime.py', '--activation-packet-bundle', bundle['path'],
+                                  '--expected-agent', 'current_state_investigator', '--expected-bundle-sha256',
+                                  bundle['sha256'], '--assignment', assignment, '--dispatch-file', dispatch,
+                                  '--rejected-trace', trace)
+        self.assertEqual(activation.returncode, 0, activation.stdout + activation.stderr)
+        self.assertTrue(dispatch.is_file())
+        ledger['rejected_results']['current_state_investigator']['Provider handle'] = '/root/wrong'
+        ledger_path.write_text(json.dumps(ledger))
+        blocked = self.command('validate_worker_runtime.py', *command)
+        self.assertEqual(blocked.returncode, 2, blocked.stdout + blocked.stderr)
 
     def test_prepared_worker_names_resolve_for_every_playbook(self):
         for index, playbook in enumerate(sorted(prepare.PLAYBOOKS)):
@@ -346,7 +403,7 @@ class V6Recovery(unittest.TestCase):
         guidance = json.loads(blocked.stdout)["recovery_required"]
         self.assertEqual(guidance["rejected_trace"], str(trace.resolve()))
         self.assertEqual(guidance["provider_handle"], HANDLE)
-        self.assertIn("--provider-status", guidance["required_options"])
+        self.assertEqual(guidance["required_options"], ["--rejected-trace"])
         corrected = self.command("validate_worker_runtime.py", *activation, "--rejected-trace", trace,
             "--provider-handle", HANDLE, "--last-dispatch-at", DISPATCH, "--provider-status", "completed")
         self.assertEqual(corrected.returncode, 0, corrected.stdout + corrected.stderr)

@@ -217,8 +217,8 @@ stopped status. If closure reports `previous_status: running`, record
 `coordinator_interrupted_after_wait_timeout`. A wait timeout or `running` status is
 not a recovery trigger. Interrupted recovery is allowed only after confirmed
 failure or stoppage and permits one replacement attempt.
-For a rejected completed result, use corrected activation with the bundle, exact role/hash, assignment, new dispatch
-file, `--rejected-trace`, `--provider-handle`, `--last-dispatch-at`, and fresh terminal `--provider-status` together.
+For a rejected completed result, refresh native terminal status, then use corrected activation with the bundle, exact
+role/hash, assignment, new dispatch file and `--rejected-trace`. The guard resolves the worker identity and status.
 Only that activation reserves the single repair and emits launch instructions. A separate `--transition replace`
 checks eligibility without reserving an attempt; it cannot authorize ordinary activation. If activation reports a
 pending rejection, follow its `recovery_required` receipt and include the missing recovery options.

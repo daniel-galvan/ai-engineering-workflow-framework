@@ -601,9 +601,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    if a rejected downstream worker is verified terminal, the activation guard may allow an upstream correction while
    keeping that rejection pending. Resolve it through its own guarded recovery before accepting that worker or handoff.
    A parent context failure, exhausted correction, or another terminal control failure still requires the failure path.
-   Include `--rejected-trace`,
-   `--provider-handle`, `--last-dispatch-at`, and the freshly observed terminal `--provider-status`, along with the
-   ordinary activation bundle, corrected assignment and a new dispatch file. This checks the one recovery allowance
+   Refresh native worker status, then include `--rejected-trace` with the ordinary activation bundle, corrected
+   assignment and a new dispatch file. The guard resolves the handle, dispatch and status from current-run evidence;
+   it blocks if that evidence is absent or stale. This checks the one recovery allowance
    and binds it to the emitted corrected launch. Never run an unguarded follow-up first or merge it as accepted
    evidence. Use the same complete command for a same-worker correction and a fresh-worker replacement:
 
@@ -612,8 +612,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
      --activation-packet-bundle <bundle-path> --expected-agent <bound-role> \
      --expected-bundle-sha256 <manifest-bundle-hash> \
      --assignment <corrected-assignment.json> --dispatch-file <new-dispatch.txt> \
-     --rejected-trace <saved-rejected-trace.json> --provider-handle <observed-handle> \
-     --last-dispatch-at <latest-dispatch> --provider-status <fresh-terminal-status>
+     --rejected-trace <saved-rejected-trace.json>
    ```
 
    An allowed `--transition replace` check establishes eligibility only. It does not consume the recovery attempt or

@@ -2473,8 +2473,9 @@ def _without_approval_justification(text: str, row: dict, field_path: tuple[str,
 
 
 def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
-    """Recognize root punctuation only in serialized objectives and bound failure-reason text."""
-    if str(root) + "." not in text and ".thoughts/" + root.name + "." not in text:
+    """Distinguish serialized assignment text and failure metadata from executed operations."""
+    if (str(root) + "." not in text and ".thoughts/" not in text
+            and not any(pattern.search(text) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)):
         return text
     punctuation = re.compile(r"(" + re.escape(str(root)) + "|" + re.escape(".thoughts/" + root.name)
                              + r")\.(?=\s|$)")
@@ -2513,10 +2514,13 @@ def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
                 assignment = json.loads(body)
                 fields = list(re.finditer(r'"objective"\s*:\s*("(?:\\.|[^"\\])*")', body))
                 if (target.parent == root.resolve() and target.suffix == '.json' and len(fields) == 1
+                        and set(assignment) == {'objective', 'input_paths'}
+                        and isinstance(assignment.get('input_paths'), list)
+                        and all(isinstance(path, str) for path in assignment['input_paths'])
                         and isinstance(assignment.get('objective'), str)
                         and json.loads(fields[0][1]) == assignment['objective']):
                     field = fields[0]
-                    normalized = json.dumps(punctuation.sub(r'\1', assignment['objective']))
+                    normalized = json.dumps('[assignment text]')
                     replacement = (command[:heredoc.start('body') + field.start(1)] + normalized
                                    + command[heredoc.start('body') + field.end(1):])
                     text = text.replace(command, replacement)
@@ -2812,7 +2816,9 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         for spelling in sorted(spellings, key=len, reverse=True):
             candidate = candidate.replace(spelling, "[background guidance]")
         if root and not output:
-            candidate = _without_prose_root_punctuation(candidate, row, root)
+            normalized = _without_prose_root_punctuation(candidate, row, root)
+            metadata_only = metadata_only or normalized != candidate
+            candidate = normalized
         call_contents = instruction_contents.get(row.get("call_id"), {})
         ancestor_instruction_output = output and bool(call_contents.get("ancestor"))
         if output:

@@ -44,6 +44,37 @@ class PlanningRecovery(unittest.TestCase):
         self.packet_path = Path(self.prepared["finalization_packet"])
         self.packet = json.loads(self.packet_path.read_text())
 
+    def test_feature_continuation_reuses_recorded_inputs_without_user_resubmission(self):
+        inputs = self.artifacts / 'run_inputs.json'
+        before = inputs.read_bytes()
+        resumed = preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True)
+        self.assertEqual(resumed['run_id'], self.prepared['run_id'])
+        self.assertEqual(inputs.read_bytes(), before)
+        with self.assertRaisesRegex(ValueError, 'run_input_manifest_required'):
+            preparation.prepare_run(self.root, 'ITEM-NEW', 'feature_delivery', None, False)
+
+    def test_feature_planning_recovery_reuses_recorded_inputs(self):
+        before = json.loads((self.artifacts / 'run_inputs.json').read_text())
+        self.close_prior()
+        result = preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True,
+                                         planning_recovery=True, approval_reference='Continue this run')
+        self.assertNotEqual(result['run_id'], self.prepared['run_id'])
+        self.assertEqual(json.loads((self.artifacts / 'run_inputs.json').read_text()), before)
+
+    def test_implicit_continuation_rejects_modified_saved_inputs(self):
+        inputs = self.artifacts / 'run_inputs.json'
+        inputs.write_text(inputs.read_text().replace('Jira ITEM-1', 'Different input'))
+        with self.assertRaisesRegex(ValueError, 'run_input_manifest_hash_mismatch'):
+            preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True)
+
+    def test_implicit_continuation_requires_inputs_bound_to_the_same_run(self):
+        binding_path = self.artifacts / 'role_bindings.json'
+        binding = json.loads(binding_path.read_text())
+        binding['run_id'] = 'different-run'
+        binding_path.write_text(json.dumps(binding))
+        with self.assertRaisesRegex(ValueError, 'run_input_manifest_unverified'):
+            preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True)
+
     def close_prior(self):
         self.packet["identity"].update({"Requested profile": "standard", "State": "awaiting_input",
                                        "Workflow outcome": "completed"})

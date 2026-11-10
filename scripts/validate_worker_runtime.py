@@ -174,14 +174,55 @@ def _recovery_errors(path: Path, role: str, handle: str, dispatch: str, provider
             from scripts.provider_runtime import launch_binding_errors
         if "launch_errors" in trace and trace["launch_errors"] != launch_binding_errors(trace, path.parent, role):
             errors.append("rejected_result_launch_errors_mismatch")
-        error = transition_error("replace", provider_status, rejected_result=not errors)
-        if error:
-            errors.append(error)
+        if not errors or provider_status.strip().lower() != "completed":
+            error = transition_error("replace", provider_status, rejected_result=not errors)
+            if error:
+                errors.append(error)
         if role in current.get("activation_repairs", {}):
             errors.append("activation_repair_limit_reached")
         return errors
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
         return ["rejected_result_trace_invalid:" + str(error)]
+
+
+def _recorded_recovery_identity(path: Path, expected_agent: str | None) -> tuple[str, str, str]:
+    """Resolve only the pending rejection whose latest native dispatch matches its terminal trace."""
+    try:
+        from provider_runtime import latest_worker_dispatch, read_runtime_events, timestamp, validate_prepared_provider_source
+        from worker_runtime_evidence import _native_terminal_observations
+    except ModuleNotFoundError:
+        from scripts.provider_runtime import latest_worker_dispatch, read_runtime_events, timestamp, validate_prepared_provider_source
+        from scripts.worker_runtime_evidence import _native_terminal_observations
+    root = path.resolve().parent
+    bindings = json.loads((root / "role_bindings.json").read_text())
+    trace = json.loads(path.read_text())
+    role = worker_binding(bindings, trace["spawn"].get("agent") or trace["spawn"].get("expected_agent"))
+    if expected_agent and worker_binding(bindings, expected_agent) != role:
+        raise ValueError("rejected_result_current_binding_required")
+    receipt = _pending_rejections(root).get(role)
+    if not receipt or Path(receipt["trace"]).resolve() != path.resolve():
+        raise ValueError("worker_rejection_receipt_invalid")
+    handle, dispatch = receipt["Provider handle"], receipt["Last dispatch at"]
+    ledger = json.loads((root / "runtime_dispatches.json").read_text())
+    contract = bindings["runtime_evidence"]
+    if (Path(contract["ledger"]).resolve() != root / "runtime_dispatches.json"
+            or ledger.get("identity_sessions", []) != contract.get("identity_sessions", [])):
+        raise ValueError("runtime_dispatch_ledger_mismatch")
+    source = Path(ledger["provider_session"])
+    validate_prepared_provider_source(bindings, source, ledger["parent_thread_id"], ledger["run_started_at"])
+    native = read_runtime_events(source, ledger["parent_thread_id"], ledger["run_started_at"],
+                                 tuple(Path(item) for item in ledger.get("identity_sessions", [])))
+    latest = latest_worker_dispatch(native, handle, include_failed=True)
+    if (latest["Last dispatch at"] != dispatch or native["thread_mappings"].get(handle) != trace["thread_id"]):
+        raise ValueError("rejected_result_dispatch_mismatch")
+    observed = _native_terminal_observations(native, [handle])[0]
+    if (observed["Thread ID"] != trace["thread_id"]
+            or timestamp(observed["Observed at"]) < timestamp(trace["status_observation"]["Observed at"])):
+        raise ValueError("rejected_result_status_stale")
+    status = str(observed["Provider status"]).lower()
+    if status == "idle" and observed.get("Latest turn status") == "completed":
+        status = "completed"
+    return handle, dispatch, status
 
 
 def delivery_dependency_errors(root: Path, agent: str, bindings: dict) -> list[str]:
@@ -306,8 +347,8 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                     recovery_required.update({
                         "agent": role, "rejected_trace": receipt["trace"],
                         "provider_handle": receipt["Provider handle"], "last_dispatch_at": receipt["Last dispatch at"],
-                        "required_options": ["--rejected-trace", "--provider-handle", "--last-dispatch-at", "--provider-status"],
-                        "next_action": "Run corrected activation with these options and a fresh terminal provider status.",
+                        "required_options": ["--rejected-trace"],
+                        "next_action": "Refresh terminal provider status, then use the rejected trace for corrected activation.",
                     })
     except (OSError, ValueError, TypeError, KeyError) as error:
         errors.append("worker_rejection_receipt_invalid:" + str(error))
@@ -584,6 +625,14 @@ def main() -> int:
     if args.self_test:
         self_test()
         return 0
+    if args.rejected_trace and not any((args.provider_handle, args.last_dispatch_at, args.provider_status)):
+        try:
+            args.provider_handle, args.last_dispatch_at, args.provider_status = _recorded_recovery_identity(
+                args.rejected_trace, args.expected_agent)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            print(json.dumps({"status": "blocked", "errors": [str(error)],
+                              "next_action": "Refresh native terminal worker status and verify the pending rejection."}))
+            return 2
     selected_modes = sum(
         bool(value) for value in (
             args.trace,
@@ -753,10 +802,11 @@ def main() -> int:
                     errors.append("rejected_result_current_run_required")
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
                 errors = [f"rejected_result_trace_invalid:{error}"]
-        error = transition_error(args.transition, args.provider_status,
-                                 rejected_result=bool(args.rejected_trace) and not errors)
-        if error:
-            errors.append(error)
+        if not errors or args.provider_status.strip().lower() != "completed":
+            error = transition_error(args.transition, args.provider_status,
+                                     rejected_result=bool(args.rejected_trace) and not errors)
+            if error:
+                errors.append(error)
         if not errors and args.rejected_trace:
             role = (trace["spawn"].get("binding_agent") or trace["spawn"].get("agent")
                     or trace["spawn"].get("expected_agent"))
@@ -765,8 +815,8 @@ def main() -> int:
             if not errors:
                 result["next_action"] = (
                     "Run corrected activation with --activation-packet-bundle, --expected-agent, "
-                    "--expected-bundle-sha256, --assignment, --dispatch-file and the same --rejected-trace, "
-                    "--provider-handle, --last-dispatch-at plus a fresh terminal --provider-status. "
+                    "--expected-bundle-sha256, --assignment, --dispatch-file and the same --rejected-trace. "
+                    "Refresh the native terminal status before activation. "
                     "This transition check does not consume the recovery attempt or authorize an ordinary activation."
                 )
     else:

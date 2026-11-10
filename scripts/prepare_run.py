@@ -2965,11 +2965,23 @@ def prepare_run(
     # overwriting any run artifact. This makes invalid retries transactional.
     if input_manifest is not None and input_data is not None:
         raise ValueError("run_input_manifest_sources_conflict")
-    if (planning_recovery and playbook == "techops_issue_remediation"
+    if ((continuation and playbook == "feature_delivery"
+         or planning_recovery and playbook == "techops_issue_remediation")
             and input_manifest is None and input_data is None):
         saved_inputs = artifact_root / RUN_INPUTS_FILENAME
         if not saved_inputs.is_file():
             raise ValueError("run_input_manifest_required")
+        try:
+            bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+            recorded = bindings["run_input_manifest"]
+            packet = json.loads((artifact_root / "finalization_packet.json").read_text())
+            if bindings["run_id"] != packet["identity"]["Run ID"] or bindings["playbook"] != playbook:
+                raise ValueError("run_input_manifest_unverified")
+            if (Path(recorded["path"]).resolve() != saved_inputs.resolve()
+                    or hashlib.sha256(saved_inputs.read_bytes()).hexdigest() != recorded["sha256"]):
+                raise ValueError("run_input_manifest_hash_mismatch")
+        except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+            raise ValueError("run_input_manifest_unverified") from error
         input_manifest = saved_inputs
     if playbook == "feature_delivery" and input_manifest is None and input_data is None:
         raise ValueError("run_input_manifest_required")

@@ -342,8 +342,7 @@ class PlanningCommandPath(unittest.TestCase):
                     dispatch_at = rejected_result["last_dispatch_at"]
                     recovery = ("--activation-packet-bundle", run["activation_packet_bundle"]["path"],
                         "--expected-agent", role, "--expected-bundle-sha256", run["activation_packet_bundle"]["sha256"],
-                        "--assignment", assignment, "--rejected-trace", rejected, "--provider-handle", failed_handle,
-                        "--last-dispatch-at", dispatch_at, "--provider-status", "failed")
+                        "--assignment", assignment, "--rejected-trace", rejected)
                     activation = root / (worker + "-replacement-activation.txt")
                     guarded = json.loads(command("validate_worker_runtime.py", *recovery, "--dispatch-file", activation))
                     repeated = command("validate_worker_runtime.py", *recovery, "--dispatch-file", root / "forbidden-third-attempt.txt", expected=2)
