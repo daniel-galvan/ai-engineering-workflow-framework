@@ -193,6 +193,22 @@ class PlanningCommandPath(unittest.TestCase):
             root, packet_path = Path(run["artifact_root"]), Path(run["finalization_packet"])
             if planning_recovery:
                 original_id = run["run_id"]
+                if playbook == "feature_delivery":
+                    prior = json.loads(packet_path.read_text())
+                    schema = json.loads((package / "templates/finalization_packet.json").read_text())
+                    prior["worker_results"] = [{**dict.fromkeys(schema["worker_results"][0], "Provisional"),
+                                                "Worker": "feature-context", "Outcome": "blocked"}]
+                    prior["evidence"] = [{**dict.fromkeys(schema["evidence"][0], "Provisional"),
+                                           "Evidence ID": "E-FC-001"}]
+                    prior["claims"] = [{**dict.fromkeys(schema["claims"][0], "Provisional"),
+                                         "Claim ID": "CL-FC-001", "Evidence refs": "E-FC-001"}]
+                    prior["evidence"].append({"Evidence ID": "E-IA-001", "Source": str(source),
+                        "Summary": "Current counter subtracts one; supplied requirement explicitly expects an increment.",
+                        "Confidence": "High", "Uncertainty": "Deployment was not inspected or needed for this local plan.",
+                        "Status": "Verified"})
+                    prior["claims"].append({"Claim ID": "CL-IA-001", "Claim": "Change the existing subtraction to addition.",
+                        "Evidence refs": "E-IA-001", "Confidence": "High", "Uncertainty": "None", "Status": "Supported"})
+                    packet_path.write_text(json.dumps(prior))
                 command("finalize_work_record.py", "--packet", packet_path, "--workflow-failure",
                         "controlled_pre_dispatch_failure", expected=2)
                 response = root / "handoff_response.md"
@@ -213,6 +229,12 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertNotEqual(run["run_id"], original_id)
                 self.assertEqual((Path(run["archived_prior_run"]) / "finalization_packet.json").read_bytes(),
                                  original_packet)
+                if playbook == "feature_delivery":
+                    recovered = json.loads(packet_path.read_text())
+                    self.assertFalse(any(row.get("Claim ID") == "CL-FC-001" for row in recovered["claims"]))
+                    self.assertFalse(any(row.get("Evidence ID") == "E-FC-001" for row in recovered["evidence"]))
+                    self.assertTrue(any(row.get("Claim ID") == "CL-IA-001" for row in recovered["claims"]))
+                    self.assertTrue(any(row.get("Evidence ID") == "E-IA-001" for row in recovered["evidence"]))
             guide_row = next(row for row in json.loads((root / "run_inputs.json").read_text())["inputs"]
                              if row["Input ID"] == "IN-003")
             guide_snapshot = Path(guide_row["path"])
@@ -465,6 +487,24 @@ class PlanningCommandPath(unittest.TestCase):
                         self.assertEqual(json.loads(preview), response)
                     if response_manifest is not None:
                         response["asset_manifest"] = response_manifest
+                        blocked = json.loads(json.dumps(response))
+                        blocked["result"]["worker_result"]["Outcome"] = "blocked"
+                        blocked["result"]["claims"][0]["Claim"] = "Asset review is unavailable."
+                        blocked_inventory = blocked["asset_manifest"]
+                        blocked_inventory["status"] = "awaiting_input"
+                        blocked_inventory["assets"] = []
+                        blocked_inventory["sources"][0].update(discovery_status="unavailable", asset_ids=[],
+                                                       limitation="Asset source is temporarily unavailable")
+                        blocked_inventory["gate"].update(inventory_complete=False, all_material_assets_linked=True,
+                                                 blocking_source_ids=["SRC-JIRA"])
+                        preview = command("prepare_worker_response.py", "--packet", packet_path,
+                            "--agent", role, "--response-stdin", stdin=json.dumps(blocked))
+                        self.assertEqual(json.loads(preview), blocked)
+                        staged_inventory = root / "unaccepted-inventory.json"
+                        staged_inventory.write_text(json.dumps(blocked_inventory))
+                        command("asset_manifest.py", "--validate", staged_inventory, "--run-inputs",
+                                root / "run_inputs.json", "--work-item", "DEMO-1", expected=2)
+                        self.assertFalse(json.loads(packet_path.read_text())["worker_results"])
                         invalid = {**response, "asset_manifest": {**response_manifest, "status": "awaiting_input"}}
                         rejected = command("prepare_worker_response.py", "--packet", packet_path,
                             "--agent", role, "--response-stdin", stdin=json.dumps(invalid), expected=2)
@@ -664,7 +704,8 @@ class PlanningCommandPath(unittest.TestCase):
                          if (root / "implementation_plan.md").is_file() else None),
                 "clarification": ((root / "clarification_brief.md").read_text()
                                   if (root / "clarification_brief.md").is_file() else None),
-                "reasoning": {key: json.dumps(published[key], sort_keys=True).replace(str(repository), "<repository>")
+                "reasoning": {key: json.dumps(sorted(published[key], key=lambda row: json.dumps(row, sort_keys=True)),
+                                               sort_keys=True).replace(str(repository), "<repository>")
                               for key in ("evidence", "claims", "decisions", "actions")},
             }
             if continue_to_remediation:

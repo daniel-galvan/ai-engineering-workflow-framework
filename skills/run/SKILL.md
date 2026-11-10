@@ -367,8 +367,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    complete coverage only for selected collections and playbook-required gates;
    unselected scopes are not empty collections. Reconcile selected issue and
    asset read states before downstream work; return one correction for omissions.
-   For an asset-only correction after result acceptance, require the worker to preserve its accepted output and result
-   tables verbatim and change only `asset_manifest`. Do not request regenerated evidence summaries or claim statuses.
+   For Feature Delivery, validate the context worker's staged asset manifest from its trace before merging its result.
+   If missing evidence can be obtained, ask the owner to update the full response before merging and starting dependent
+   workers. Preserve the original response. Merge an unresolved blocked result only for an honest blocked handoff.
+   An asset-only correction after complete result acceptance is valid only while its findings remain accurate.
    Unavailable or unreviewed material stays explicit and prevents a false claim
    of complete context or readiness.
    When the request explicitly names Feature Delivery `specification_assessment`, treat that as the compatible
@@ -462,6 +464,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `--timebox-minutes` otherwise; do not invent a deadline or explicit goal overrides. Use the playbook defaults.
    Preparation preserves the prior invocation under `runs/`, starts a new planning identity, and clears current
    execution/closure rows. The archived retry counters remain intact. This is not implementation approval.
+   When prior Feature Delivery context was blocked or failed, its provisional rows remain in the preserved response
+   but are not copied into the new packet. The context owner revalidates them; other completed findings are retained.
    If a recovery was prepared accidentally and has no native dispatch, use `scripts/restore_prepared_recovery.py`
    with `--artifact-root`, `--current-run-id` and `--prior-run-id`, first with `--check-only`. Run the write operation
    only in the original chat. It verifies the archive hashes and absence of dispatches, preserves the unused recovery,
@@ -511,21 +515,24 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Use the playbook's logical worker IDs exactly: final provider role `documenter` is recorded as `handoff`,
    `spike-investigation` uses `solution_architect`, and `spike-assessment` uses `reviewer`. The packaged finalizer
    validates those role bindings and validates `spike_report.md` before releasing the Documenter.
-   For Feature Delivery, after `feature-context` returns its final JSON response, collect and merge the current-run
-   trace to materialize `asset_manifest.json`; before activating
+   For Feature Delivery, after `feature-context` returns its final JSON response, collect its current-run trace and
+   validate the staged `result_artifact.asset_manifest_path` before merging the response or activating
    `impact-analysis`, `repository-integration`, or `feature-design`, run
    ```bash
    python3 <framework-root>/scripts/asset_manifest.py \
-     --validate <artifact-root>/asset_manifest.json --run-inputs <artifact-root>/run_inputs.json \
+     --validate <trace-result-asset-manifest-path> --run-inputs <artifact-root>/run_inputs.json \
      --work-item <key>
    ```
    Exit 0 is the only passed asset gate; a worker's `passed` label or a manual spot-check is insufficient. On a
-   nonzero exit, return the exact errors to the same context worker for at most one correction and rerun the command.
+   nonzero exit, return the exact errors to the same context worker for at most one correction and validate its new
+   staged manifest. Once the gate passes, merge that response and publish the canonical manifest. Start dependent
+   workers only when the context outcome is complete; if it remains blocked, report the blocker instead.
    This first gate accepts reviewed `material` assets before feature design exists, with
    `all_material_assets_linked: false`; do not reclassify them as `non_material` to clear the gate. After design, the
    terminal validator still requires design/review and claim links for every material asset. If the gate still fails,
-   rerun the command once with `--record-failure` to preserve `asset_gate_failure.json`, stop downstream activation,
-   and report its errors and receipt path. The receipt does not certify worker release or make `work_record.md`
+   merge the truthful blocked response, then rerun the command against the canonical manifest with `--record-failure`
+   to preserve `asset_gate_failure.json`, stop downstream activation, and report its errors and receipt path. The
+   receipt does not certify worker release or make `work_record.md`
    terminal; reconcile runtime handles before a new run. A genuinely unavailable required source yields
    `awaiting_input` and no implementation plan; a malformed manifest is a contract failure, not an access gap.
    Capture the current turn start before checking this work item's recorded run state. The current-task rule is:

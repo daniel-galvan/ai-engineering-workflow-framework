@@ -378,6 +378,25 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         elif manifest_path:
             errors.append("run_input_manifest_unavailable")
     bindings_path = path.parent / "role_bindings.json"
+    if expected_agent in {"dependency_analyst", "repository_integrator", "solution_architect"} and bindings_path.is_file():
+        try:
+            bindings = json.loads(bindings_path.read_text())
+            if bindings.get("playbook") == "feature_delivery" and bindings.get("lifecycle") == "planning":
+                current = json.loads((path.parent / "finalization_packet.json").read_text())
+                for table in ("workers", "worker_results"):
+                    rows = [row for row in current.get(table, []) if row.get("Worker") == "feature-context"]
+                    if len(rows) != 1 or rows[0].get("Outcome") != "complete":
+                        errors.append("feature_context_not_complete")
+                        break
+                else:
+                    try:
+                        from asset_manifest import asset_gate_errors
+                    except ModuleNotFoundError:
+                        from scripts.asset_manifest import asset_gate_errors
+                    errors.extend("feature_asset_gate_invalid:" + error for error in asset_gate_errors(
+                        path.parent / "asset_manifest.json", path.parent / "run_inputs.json", current["work_item"]["ID"]))
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            errors.append("feature_context_gate_invalid")
     if expected_agent in {"reviewer", "tester"} and bindings_path.is_file():
         try:
             errors.extend(delivery_dependency_errors(path.parent, expected_agent, json.loads(bindings_path.read_text())))

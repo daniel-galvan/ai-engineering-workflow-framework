@@ -920,7 +920,14 @@ class ContextOperationAudit(unittest.TestCase):
         program = ("from pathlib import Path\nbase=Path(" + repr(str(self.root))
                    + ")\nfor name in ('finalization_packet.json',):\n print((base/name).read_text())")
         readers = ('git -C ' + str(self.repository) + ' status --short && cat ' + str(path),
-                   "python3 - <<'PY'\n" + program + "\nPY", shlex.join([sys.executable, '-c', program]))
+                   "python3 - <<'PY'\n" + program + "\nPY", shlex.join([sys.executable, '-c', program]),
+                   shlex.join(['python3', '-c', "from pathlib import Path\nfor name in [" + repr(str(path))
+                               + "]:\n p=Path(name); print(p.read_text() if p.is_file() else 'absent')"]),
+                   shlex.join(['python3', '-c', "from pathlib import Path; paths=[" + repr(str(path))
+                               + "]; [print(Path(p).read_text()) for p in paths]"]),
+                   shlex.join(['python3', '-c', "from pathlib import Path; paths=[" + repr(str(path))
+                               + "," + repr(str(self.root / 'optional.json'))
+                               + "]; [print(Path(p).read_text() if Path(p).is_file() else 'absent') for p in paths]"]))
         for command in readers:
             for nested in (False, True):
                 with self.subTest(command=command, nested=nested):
@@ -954,6 +961,27 @@ class ContextOperationAudit(unittest.TestCase):
                         changed['tool_trace'][-2]['input'] = 'await tools.exec_command(' + json.dumps({
                             'cmd': "python3 - <<'PY'\n" + unsafe + "\nPY"}) + ')'
                         self.assertIn('forbidden_context_reference:session_log', runtime.trace_errors(changed))
+
+    def test_constructed_historical_paths_are_audited_as_accesses(self):
+        for method in ('read_text', 'is_file'):
+            code = ("from pathlib import Path; p=Path('/Users/example/.codex')/'sessions'/'prior.jsonl'; "
+                    + "print(p." + method + "())")
+            command = shlex.join(['python3', '-c', code])
+            trace = {'tool_trace': [{'type': 'function_call', 'name': 'exec_command',
+                                     'arguments': {'cmd': command}}]}
+            with self.subTest(method=method):
+                self.assertIn('forbidden_context_reference:session_log', runtime.context_trace_errors(trace))
+        code = ("from pathlib import Path; p=Path(" + repr(str(self.root.parent))
+                + ")/'OTHER'/'notes.md'; print(p.read_text())")
+        trace = {'tool_trace': [{'type': 'function_call', 'name': 'exec_command',
+                                 'arguments': {'cmd': shlex.join(['python3', '-c', code])}}]}
+        self.assertIn('forbidden_context_reference:archived_artifact',
+                      runtime.context_trace_errors(trace, artifact_root=self.root))
+        command = shlex.join(['python3', '-c', "from pathlib import Path; p=Path("
+                              + repr(str(self.root)) + ")/'AGENTS.md'; print(p.is_file())"])
+        trace['tool_trace'][0]['arguments']['cmd'] = command
+        self.assertIn('forbidden_context_reference:archived_artifact',
+                      runtime.context_trace_errors(trace, artifact_root=self.root))
 
     def test_packet_metadata_reads_compose_with_repository_checks_without_allowing_log_reads(self):
         base = self.instruction_read_trace()

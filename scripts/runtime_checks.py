@@ -1448,6 +1448,16 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
             return [str(Path(base) / name) for base in literal_paths(node.left) for name in literal_paths(node.right)]
         return []
+    for _ in range(len(stores)):
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                name, value = node.targets[0].id, node.value
+            elif isinstance(node, (ast.For, ast.comprehension)) and isinstance(node.target, ast.Name):
+                name, value = node.target.id, node.iter
+            else:
+                continue
+            if stores.count(name) == 1 and (paths := literal_paths(value)):
+                constants[name] = paths
     called_attributes = {id(node.func) for node in ast.walk(tree)
                          if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
     for node in ast.walk(tree):
@@ -1471,11 +1481,6 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
         if isinstance(node, ast.Assign) and any(not isinstance(target, ast.Name)
                 or target.id in protected for target in node.targets):
             return []
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                constants[target.id] = literal_paths(node.value)
-        if isinstance(node, ast.For) and isinstance(node.target, ast.Name):
-            constants[node.target.id] = literal_paths(node.iter)
         if not isinstance(node, ast.Call):
             continue
         if isinstance(node.func, ast.Name):
@@ -1507,6 +1512,12 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                         len(node.args) != (2 if node.func.id == "isinstance" else 1)):
                     return []
         elif isinstance(node.func, ast.Attribute):
+            if not pretty and node.func.attr == "is_file":
+                paths = literal_paths(node.func.value)
+                if node.args or node.keywords or not paths:
+                    return []
+                targets.extend(paths)
+                continue
             if not pretty and node.func.attr == "read_text":
                 paths = literal_paths(node.func.value)
                 if node.args or node.keywords or not paths:
@@ -1942,7 +1953,8 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                     not any(char in str(path) for char in '*?[]{}~')
                     and not (path.resolve().parent == root and path.name in instructions)
                     and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()
-                    and ((path.resolve().parent == root and path.is_file()) or str(path) in assigned
+                    and ((path.resolve().parent == root and not path.is_symlink()
+                          and (path.is_file() or not path.exists())) or str(path) in assigned
                          or ((path.exists() or path.name == "AGENTS.md" and path.parent.is_dir() and not path.is_symlink())
                              and not path.resolve().is_relative_to(root.parent)
                              and any(Path(parent).is_dir() and path.resolve().is_relative_to(Path(parent).resolve())
@@ -2648,6 +2660,41 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                     and not any(value in expected_use for value in ("do not read", "without reading", "preserve only"))):
                 assigned.append(locator)
         root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
+    for index, row in enumerate(trace.get("tool_trace", [])):
+        if not isinstance(row, dict):
+            continue
+        for name, arguments in _tool_operations(row):
+            if name != "exec_command":
+                continue
+            for target in _read_targets(arguments.get("cmd", "")):
+                if target in assigned or target in _background_memory_paths(row):
+                    continue
+                try:
+                    path = Path(target)
+                    working_directory = arguments.get("workdir")
+                    cwd = Path(working_directory) if isinstance(working_directory, (str, Path)) and working_directory else (
+                        root.parent.parent if root else Path.cwd())
+                    resolved = str((path if path.is_absolute() else cwd / path).resolve())
+                except (OSError, RuntimeError, ValueError):
+                    errors.append("context_read_target_invalid")
+                    continue
+                for label, pattern in FORBIDDEN_CONTEXT_PATTERNS:
+                    match = pattern.search(target) or pattern.search(resolved)
+                    if match:
+                        errors.append("forbidden_context_reference:" + label)
+                        if details is not None:
+                            details.append({"error": errors[-1], "trace_path": ["tool_trace", str(index), "arguments", "cmd"],
+                                            "reference": match.group().strip()})
+                        break
+                if root:
+                    for reference in THOUGHT_PATH.findall(resolved):
+                        relative = reference.split(".thoughts/", 1)[1]
+                        if (relative.split("/", 1)[0] != root.name or "/runs/" in relative
+                                or Path(resolved).name == "AGENTS.md"):
+                            errors.append("forbidden_context_reference:archived_artifact")
+                            if details is not None:
+                                details.append({"error": errors[-1], "trace_path": ["tool_trace", str(index), "arguments", "cmd"],
+                                                "reference": reference})
     listing_reads = {}
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs = _read_output_prefixes(trace, assigned, root) if dispatch_content else []

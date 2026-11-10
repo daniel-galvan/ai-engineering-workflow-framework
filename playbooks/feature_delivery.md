@@ -120,9 +120,13 @@ planning consequence. For a complete design, its validated merger records `used_
 that evidence; the Coordinator does not edit those fields manually. Terminal
 finalization then requires the material asset's design/review link and a claim backed by its evidence. Never relabel a
 material asset `non_material` merely to pass the early gate.
-For an asset-only correction after context acceptance, correct `asset_manifest` and preserve the accepted output and
-result tables verbatim when resubmitting the response envelope. Do not reword evidence summaries or claim statuses;
-the merger rejects changes to accepted findings even when they accompany a valid manifest correction.
+Before merging feature-context, validate the staged asset manifest identified in its worker trace. If evidence can be
+obtained to resolve a blocked inventory, keep the original response as history and ask the owner to update the full
+response, including findings that changed. Merge the corrected response and require a complete context outcome before
+starting dependent workers. If context or its inventory remains blocked, merge the blocked response for an honest
+handoff and do not start dependent workers.
+After a complete result is accepted, an asset-only correction may preserve its result unchanged only when its findings
+remain valid; otherwise revalidate the affected context and dependent findings through supported recovery.
 For an implementation plan, give each material asset its own Asset Baseline row with evidence, observation, and an
 implementation or explicit non-impact consequence. Planning Review verifies those rows against the source assets;
 matching IDs alone is not proof of use.

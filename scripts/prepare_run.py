@@ -3486,12 +3486,13 @@ def prepare_run(
             manifest["worker_contracts"]["feature_asset_inventory"])
         manifest["worker_contracts"]["current_state_investigator"]["instructions"] += (
             " Include asset_manifest as a third key in the final JSON object using the prepared asset_inventory "
-            "contract. The Coordinator publishes it before the packaged asset gate; do not write the file yourself. "
+            "contract. The Coordinator validates the staged inventory before publishing it; do not write the file yourself. "
             "Use exactly one jira_issue_attachments source tied to the supplied work-item input, aggregating "
             "the selected issues' attachment and remote-link inventories there. "
             "Before downstream design/review consumption, keep all_material_assets_linked false for material assets. "
-            "For an asset-only correction after result acceptance, change only asset_manifest and re-emit the "
-            "accepted output and result tables verbatim. Do not reword evidence summaries or claim statuses.")
+            "When missing asset evidence becomes available before result acceptance, update the full response "
+            "and remove any conclusions that are no longer true. Preserve the original response as run history. "
+            "After a complete result is accepted, change only the manifest if its findings remain valid.")
         documenter = manifest["worker_contracts"].setdefault("documenter", {})
         documenter["output"] = str(artifact_root / "finalization_packet.json")
         if manifest["lifecycle"] == "planning" and workflow_objective == "implementation_planning":
@@ -3559,6 +3560,18 @@ def prepare_run(
         if prior:
             for field in ("work_item", "decisions", "claims", "actions", "evidence"):
                 packet[field] = prior[field]
+            # Incomplete context findings remain in the archived response for owner revalidation.
+            if (planning_recovery and playbook == "feature_delivery" and any(
+                    row.get("Worker") == "feature-context" and row.get("Outcome") in {"blocked", "failed"}
+                    for row in prior.get("worker_results", []))):
+                try:
+                    from merge_techops_result import FEATURE_WORKERS, PREFIXES, TABLES
+                except ModuleNotFoundError:
+                    from scripts.merge_techops_result import FEATURE_WORKERS, PREFIXES, TABLES
+                namespace = FEATURE_WORKERS["current_state_investigator"][1]
+                for table, key in TABLES.items():
+                    prefix = f"{PREFIXES[table]}-{namespace}-"
+                    packet[table] = [row for row in packet[table] if not str(row.get(key, "")).startswith(prefix)]
             if "techops_checks" in prior:
                 packet["techops_checks"] = prior["techops_checks"]
             if "reproduction" in prior:

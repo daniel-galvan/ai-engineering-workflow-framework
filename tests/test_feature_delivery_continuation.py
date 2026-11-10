@@ -21,6 +21,28 @@ from tests.worker_response_support import stage_worker_response
 
 
 class FeatureDeliveryContinuation(unittest.TestCase):
+    def test_dependent_workers_require_completed_context_and_asset_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "plan.md").write_text("supplied guidance\n")
+            run = preparation.prepare_run(root, "ITEM-CONTEXT", "feature_delivery", None, False,
+                                          input_manifest=self.inputs(root))
+            bundle = run["activation_packet_bundle"]
+            packet_path = Path(run["finalization_packet"])
+            for outcome in (None, "blocked", "complete"):
+                packet = json.loads(packet_path.read_text())
+                rows = [] if outcome is None else [{"Worker": "feature-context", "Outcome": outcome}]
+                packet["worker_results"] = rows
+                packet["workers"] = rows
+                packet_path.write_text(json.dumps(packet))
+                for role in ("dependency_analyst", "repository_integrator", "solution_architect"):
+                    errors = runtime.activation_packet_errors(Path(bundle["path"]), role, bundle["sha256"])
+                    with self.subTest(outcome=outcome, role=role):
+                        if outcome != "complete":
+                            self.assertIn("feature_context_not_complete", errors)
+                        else:
+                            self.assertTrue(any(error.startswith("feature_asset_gate_invalid:") for error in errors))
+
     def inputs(self, root):
         source = root / "inputs.json"
         source.write_text(json.dumps({"inputs": [{

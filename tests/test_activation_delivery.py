@@ -495,6 +495,21 @@ class ActivationDelivery(unittest.TestCase):
                              (packets['documenter'].get('worker_contract') or {}).get('result_instructions', ''))
 
     def test_parallel_rejections_allow_each_verified_correction_but_block_normal_activation(self):
+        packet_path = Path(self.run['finalization_packet'])
+        packet = json.loads(packet_path.read_text())
+        packet['workers'] = [{'Worker': 'feature-context', 'Outcome': 'complete'}]
+        packet['worker_results'] = [{'Worker': 'feature-context', 'Outcome': 'complete'}]
+        packet_path.write_text(json.dumps(packet))
+        manifest = {'schema_version': 1, 'status': 'passed', 'work_item': 'ITEM-1', 'sources': [{
+            'source_id': 'SRC-JIRA', 'input_id': 'IN-001', 'kind': 'jira_issue_attachments',
+            'locator': 'Jira ITEM-1 attachments', 'requiredness': 'required', 'discovery_status': 'empty',
+            'discovery_method': 'Read inventory', 'limitation': 'No attachments', 'asset_ids': [],
+            'evidence_refs': ['E-FC-001'], 'remote_link_inventory': {'status': 'empty',
+                'method': 'Read remote links', 'locators': []}}], 'assets': [], 'gate': {
+            'inventory_complete': True, 'all_assets_accounted_for': True, 'all_available_assets_reviewed': True,
+            'all_material_assets_linked': True, 'reviewed_before_plan': True,
+            'unresolved_asset_ids': [], 'blocking_source_ids': []}}
+        (self.artifacts / 'asset_manifest.json').write_text(json.dumps(manifest))
         receipts = {}
         for role in ('dependency_analyst', 'repository_integrator'):
             _, trace = self.rejected_trace()
