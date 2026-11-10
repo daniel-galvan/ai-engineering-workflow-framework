@@ -717,7 +717,6 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
         ledger = run_root / "runtime_dispatches.json"
         if (not required.issubset(values)
                 or Path(values["--provider-session"]).resolve() != source.resolve()
-                or not UUID.fullmatch(values["--parent-thread-id"])
                 or (timestamp(values["--started-at"]) != timestamp(runtime_evidence["run_started_at"])
                     and (prior_started_at is None or timestamp(values["--started-at"]) != prior_started_at))
                 or Path(runtime_evidence["ledger"]).resolve() != ledger

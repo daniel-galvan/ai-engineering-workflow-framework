@@ -714,6 +714,10 @@ class ParentContext(unittest.TestCase):
             self.rows[-1] = self.call("exec_command", cmd=shlex.join(mistyped), workdir=str(self.root))
             self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                         runtime_evidence=runtime)["status"], "passed")
+            mistyped[mistyped.index("--parent-thread-id") + 1] = PARENT + "-mistyped"
+            self.rows[-1] = self.call("exec_command", cmd=shlex.join(mistyped), workdir=str(self.root))
+            self.assertEqual(self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
+                                        runtime_evidence=runtime)["status"], "passed")
             grouped = shlex.join(base_command()) + "\npython3 " + shlex.quote(str(script)) + " --help"
             for separator in (" && ", "; ", " | "):
                 checksum = shlex.join(["shasum", "-a", "256", str(artifact_root / "worker_activation_packets.json")])
