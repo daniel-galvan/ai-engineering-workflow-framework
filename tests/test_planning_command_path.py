@@ -133,16 +133,18 @@ class PlanningCommandPath(unittest.TestCase):
             append(parent, "turn_context", turn_id=turn_id)
             guide = Path(directory) / "development-guide.md"
             guide.write_text("# Testing\nUse the existing focused counter fixture.\n# Deployment\nUNNEEDED_GUIDE_SECTION\n")
+            requirements = Path(directory) / "requirements.txt"
+            requirements.write_text("The counter must increment its input.\n")
             append(parent, "response_item", role="user", content=[{"type": "input_text", "text":
                 "Use only this controlled offline case and supplied source. Plan DEMO-1 in standard/planning: increment(2) returns 1 and must return 3. "
                 "Read-only source inspection; do not run product tests or builds.\n"
                 "Supporting artifacts to inventory:\n- Development Guide: " + str(guide)}])
 
             commands = []
-            def command(script, *arguments, expected=0):
+            def command(script, *arguments, expected=0, stdin=None):
                 commands.append((script, arguments))
                 result = subprocess.run([sys.executable, str(package / "scripts" / script), *map(str, arguments)],
-                                        cwd=package, capture_output=True, text=True, timeout=60)
+                                        cwd=package, input=stdin, capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, expected, script + "\n" + result.stdout + result.stderr)
                 return result.stdout
 
@@ -159,7 +161,7 @@ class PlanningCommandPath(unittest.TestCase):
             inputs.write_text(json.dumps({"inputs": [{"Input ID": "IN-001", "Input or artifact":
                 "Counter defect: increment(2) returns 1; expected 3. Planning only, standard profile.",
                 "Source or path": "User", "Authority": "User", "Status": "Verified"},
-                {"Input ID": "IN-002", "Input or artifact": "Jira DEMO-1 supplied offline record: no attachments or remote links",
+                {"Input ID": "IN-002", "Input or artifact": "Jira DEMO-1 supplied offline record and attachment inventory",
                  "Source or path": "Jira DEMO-1", "Authority": "User supplied fixture", "Status": "Verified"},
                 # Simulated Coordinator intake classifies the outline; the user supplied only the reference.
                 {"Input ID": "IN-003", "Input or artifact": "Development Guide", "Source or path": str(guide),
@@ -212,6 +214,7 @@ class PlanningCommandPath(unittest.TestCase):
                     roles = roles[:2] + (("repository-integration", "repository_integrator", "RI"),) + roles[2:]
             first_namespace, second_namespace = roles[0][2], roles[1][2]
             completed, summaries, result_hashes, statuses, rejected_traces = {}, {}, {}, {}, {}
+            initial_assets = None
             active, prestarted = {}, {}
             coordinator_handoff_identity = None
 
@@ -402,15 +405,32 @@ class PlanningCommandPath(unittest.TestCase):
                         response_manifest = {
                             "schema_version": 1, "status": "passed", "work_item": "DEMO-1", "sources": [{
                                 "source_id": "SRC-JIRA", "input_id": "IN-002", "kind": "jira_issue_attachments",
-                                "locator": "Jira DEMO-1 attachments", "requiredness": "required", "discovery_status": "empty",
+                                "locator": "Jira DEMO-1 attachments", "requiredness": "required", "discovery_status": "complete",
                                 "discovery_method": "Read complete attachment inventory in supplied offline Jira record",
                                 "remote_link_inventory": {"status": "empty", "method": "Read supplied remote link inventory", "locators": []},
-                                "limitation": "None", "asset_ids": [], "evidence_refs": ["E-FC-001"]}], "assets": [],
+                                "limitation": "None", "asset_ids": ["ASSET-001"], "evidence_refs": ["E-FC-001"]}],
+                            "assets": [{"asset_id": "ASSET-001", "source_id": "SRC-JIRA", "name": "requirements.txt",
+                                "kind": "file", "locator": str(requirements), "availability": "available", "requiredness": "required",
+                                "review_method": "text_read", "review_status": "consumed", "relevance": "material",
+                                "observation": "Counter must increment its input", "disposition": "Use the existing numeric boundary",
+                                "used_by": ["feature-context"], "evidence_refs": ["E-FC-001"]}],
                             "gate": {"inventory_complete": True, "all_assets_accounted_for": True,
-                                "all_available_assets_reviewed": True, "all_material_assets_linked": True,
+                                "all_available_assets_reviewed": True, "all_material_assets_linked": False,
                                 "reviewed_before_plan": True, "unresolved_asset_ids": [], "blocking_source_ids": []}}
                     response = {"output": "# Current counter planning\n" + evidence["Summary"] + "\n",
                                 "result": result}
+                    if playbook == "feature_delivery" and role == "solution_architect":
+                        response["output"] += ("\n## Asset Baseline\n\nasset_manifest.json\n\n"
+                            "| Asset ID | Evidence refs | Observation | Planning consequence |\n"
+                            "| --- | --- | --- | --- |\n"
+                            "| ASSET-001 | E-FC-001 | Counter must increment | Correct the existing numeric operator |\n")
+                        invalid = {**response, "output": "Design lacks per-asset consumption evidence"}
+                        rejected = command("prepare_worker_response.py", "--packet", packet_path,
+                            "--agent", role, "--response-stdin", stdin=json.dumps(invalid), expected=2)
+                        self.assertIn("design_asset_consumption_invalid", rejected)
+                        preview = command("prepare_worker_response.py", "--packet", packet_path,
+                            "--agent", role, "--response-stdin", stdin=json.dumps(response))
+                        self.assertEqual(json.loads(preview), response)
                     if response_manifest is not None:
                         response["asset_manifest"] = response_manifest
                     append(child, "response_item", type="message", role="assistant", phase="final_answer",
@@ -466,7 +486,10 @@ class PlanningCommandPath(unittest.TestCase):
                     if playbook == "feature_delivery":
                         assets = root / "asset_manifest.json"
                         plan.write_text(plan.read_text() + "\n## Asset Baseline\n\n"
-                            + f"[Asset inventory]({assets}): the supplied Jira fixture has no attachments or remote links.\n")
+                            + f"[Asset inventory]({assets}): the supplied Jira fixture has one reviewed attachment.\n\n"
+                            "| Asset ID | Evidence refs | Observation | Planning consequence |\n"
+                            "| --- | --- | --- | --- |\n"
+                            "| ASSET-001 | E-FC-001 | Counter must increment | Correct the existing numeric operator |\n")
                         packet["durable_artifacts"].append({"Artifact": "Asset inventory", "Path": str(assets),
                             "Status": "passed", "Purpose": "Current feature-context inventory"})
                         packet["handoff"]["artifacts"].append(str(assets))
@@ -488,8 +511,14 @@ class PlanningCommandPath(unittest.TestCase):
                         path = Path(contract[field])
                         result_hashes[path] = hashlib.sha256(path.read_bytes()).hexdigest()
                     if contract.get("asset_inventory"):
-                        path = Path(contract["asset_inventory"]["output"])
+                        initial_assets = json.loads(Path(contract["asset_inventory"]["output"]).read_text())
+                        path = Path(json.loads(trace.read_text())["result_artifact"]["asset_manifest_path"])
                         result_hashes[path] = hashlib.sha256(path.read_bytes()).hexdigest()
+                    if playbook == "feature_delivery" and role == "solution_architect":
+                        asset_bytes = (root / "asset_manifest.json").read_bytes()
+                        command("merge_techops_result.py", "--packet", packet_path, "--agent", "current_state_investigator",
+                                "--trace", root / "feature-context-trace.json")
+                        self.assertEqual((root / "asset_manifest.json").read_bytes(), asset_bytes)
                 if native_continuation and index == 0:
                     accepted = json.loads(packet_path.read_text())
                     earlier, parent = parent, provider / ("reopened-" + parent_id + ".jsonl")
@@ -1083,6 +1112,11 @@ class PlanningCommandPath(unittest.TestCase):
                 append(parent, "response_item", type="custom_tool_call", name="exec", input=
                        'await tools.exec_command({cmd:"cat /repo/.codex/memories/raw_memories.md"})')
                 before = packet_path.read_bytes()
+                staged = json.loads(command("stage_documenter_packet.py", "--packet", packet_path,
+                    "--coordinator-model-effort", "Not exposed / Not exposed", "--prompt-conformance", "pass", expected=2))
+                self.assertEqual(staged["reason"], "parent_context_nonconformant:forbidden_context_reference:memory_path")
+                self.assertEqual(staged["context_violations"][0]["reference"], "/raw_memories.md")
+                self.assertEqual(packet_path.read_bytes(), before)
                 late_trace = root / "late-documenter-trace.json"
                 blocked = command("worker_runtime_evidence.py", *collector, "--worker-session", child,
                                   "--agent", role, "--trace", late_trace, expected=2)
@@ -1110,6 +1144,11 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
             for result_path, digest in result_hashes.items():
                 self.assertEqual(hashlib.sha256(result_path.read_bytes()).hexdigest(), digest)
+            if initial_assets is not None:
+                expected_assets = json.loads(json.dumps(initial_assets))
+                expected_assets["assets"][0]["used_by"].append("feature-design")
+                expected_assets["gate"]["all_material_assets_linked"] = True
+                self.assertEqual(json.loads((root / "asset_manifest.json").read_text()), expected_assets)
             for rejected, original in rejected_traces.items():
                 self.assertEqual(rejected.read_bytes(), original)
             if recover_failed_worker:

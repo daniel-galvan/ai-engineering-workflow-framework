@@ -12,13 +12,14 @@ from pathlib import Path
 
 
 def stage(packet_path: Path, *, coordinator_model_effort: str, prompt_conformance: str,
-          state: str | None = None, engineering_outcome: str | None = None) -> dict[str, object]:
+          state: str | None = None, engineering_outcome: str | None = None,
+          context_details: list | None = None) -> dict[str, object]:
     root = packet_path.resolve().parent
     try:
         from runtime_checks import prepared_package_errors
     except ModuleNotFoundError:
         from scripts.runtime_checks import prepared_package_errors
-    package_errors = prepared_package_errors(root)
+    package_errors = prepared_package_errors(root, context_details=context_details)
     if package_errors:
         raise ValueError(";".join(package_errors))
     packet = json.loads(packet_path.read_text())
@@ -312,12 +313,16 @@ def main() -> int:
     parser.add_argument("--state", choices=("ready_for_implementation", "awaiting_input", "blocked"))
     parser.add_argument("--engineering-outcome", choices=("solved", "partially_solved", "blocked"))
     args = parser.parse_args()
+    context_details = []
     try:
         result = stage(args.packet, coordinator_model_effort=args.coordinator_model_effort,
                        prompt_conformance=args.prompt_conformance, state=args.state,
-                       engineering_outcome=args.engineering_outcome)
+                       engineering_outcome=args.engineering_outcome, context_details=context_details)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
-        print(json.dumps({"status": "blocked", "reason": str(error)}))
+        receipt = {"status": "blocked", "reason": str(error)}
+        if context_details:
+            receipt["context_violations"] = context_details
+        print(json.dumps(receipt))
         return 2
     print(json.dumps(result, sort_keys=True))
     return 0

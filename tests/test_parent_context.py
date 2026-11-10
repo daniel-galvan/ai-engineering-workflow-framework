@@ -2054,6 +2054,12 @@ class ParentContext(unittest.TestCase):
         self.rows.append(self.call("exec_command", cmd="cat /repo/.codex/memories/raw_memories.md"))
         self.audit()
         self.assertTrue(any(error.startswith("parent_context_nonconformant") for error in check()))
+        from scripts.provider_runtime import prepared_parent_context_errors
+        details = []
+        errors = prepared_parent_context_errors(Path(run["artifact_root"]),
+            json.loads(Path(run["role_binding_manifest"]).read_text()), details=details)
+        self.assertEqual(errors, ["parent_context_nonconformant:forbidden_context_reference:memory_path"])
+        self.assertEqual(details[0]["reference"], "/raw_memories.md")
         self.rows.append({"type": "turn_context", "timestamp": "2026-10-01T00:00:03Z",
                           "payload": {"turn_id": CHILD}})
         self.audit()

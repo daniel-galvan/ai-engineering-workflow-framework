@@ -31,7 +31,17 @@ def validate_response(packet_path: Path, agent: str, response: dict) -> str:
         raise ValueError("worker_response_envelope_invalid")
     if contract.get("asset_inventory") and not isinstance(response.get("asset_manifest"), dict):
         raise ValueError("worker_asset_manifest_response_required")
-    validated_result(packet, response["result"], bindings, agent)
+    candidate = validated_result(packet, response["result"], bindings, agent)
+    if (bindings.get("playbook") == "feature_delivery" and bindings.get("lifecycle") == "planning"
+            and agent == "solution_architect" and response["result"]["worker_result"]["Outcome"] == "complete"
+            and response["result"].get("plan_readiness") == "ready_for_implementation"
+            and (packet_path.parent / "asset_manifest.json").is_file()):
+        try:
+            from asset_manifest import link_design_assets
+        except ModuleNotFoundError:
+            from scripts.asset_manifest import link_design_assets
+        link_design_assets(json.loads((packet_path.parent / "asset_manifest.json").read_text()),
+                           response["output"], candidate)
     if (agent == "reviewer" and bindings.get("lifecycle") == "remediation"
             and bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}
             and re.search(r"^Disposition:\s*accepted\s*$", response["output"], re.M)):

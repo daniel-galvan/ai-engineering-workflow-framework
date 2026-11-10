@@ -10,6 +10,7 @@ from scripts.asset_manifest import (
     _supplied_asset_reference,
     asset_gate_errors,
     asset_plan_errors,
+    link_design_assets,
     record_asset_gate_failure,
     validate_asset_manifest,
 )
@@ -202,13 +203,30 @@ def self_test() -> None:
         assert asset_plan_errors("# Asset Baseline\nasset_manifest.json\nE-FOLDER-001\n", manifest) == []
         assert any("material asset ASSET-002 requires its own Asset Baseline row" in error for error in
                    asset_plan_errors("# Asset Baseline\nasset_manifest.json\nASSET-002 E-FOLDER-001\n", material))
-        assert asset_plan_errors(
-            "# Asset Baseline\nasset_manifest.json\n"
+        baseline = ("# Asset Baseline\nasset_manifest.json\n"
             "| Asset ID | Evidence refs | Observation | Planning consequence |\n"
             "| --- | --- | --- | --- |\n"
-            "| ASSET-002 | E-FOLDER-001 | Prior note describes the behavior. | Test the behavior. |\n",
-            material,
-        ) == []
+            "| ASSET-002 | E-FOLDER-001 | Prior note describes the behavior. | Test the behavior. |\n")
+        assert asset_plan_errors(baseline, material) == []
+        pending = json.loads(json.dumps(material))
+        pending["assets"][1]["used_by"] = ["feature-context"]
+        pending["gate"]["all_material_assets_linked"] = False
+        before = json.dumps(pending, sort_keys=True)
+        packet = {"work_item": {"ID": "EXAMPLE-1"},
+                  "evidence": [{"Evidence ID": ref} for ref in ("E-JIRA-001", "E-FOLDER-001")],
+                  "claims": [{"Evidence refs": "E-FOLDER-001"}]}
+        linked = link_design_assets(pending, baseline, packet)
+        assert linked["gate"]["all_material_assets_linked"] is True
+        assert linked["assets"][0] == pending["assets"][0]
+        assert linked["assets"][1]["used_by"] == ["feature-context", "feature-design"]
+        assert link_design_assets(linked, baseline, packet) == linked
+        for text in ("No asset review", baseline.replace("E-FOLDER-001", "E-OTHER-001")):
+            try:
+                link_design_assets(pending, text, packet)
+                raise AssertionError("Missing per-asset evidence was accepted")
+            except ValueError as error:
+                assert "design_asset_consumption_invalid" in str(error)
+        assert json.dumps(pending, sort_keys=True) == before
         assert asset_plan_errors(
             "## Asset Baseline\nasset_manifest.json\n"
             "| Asset ID | Evidence refs | Observation | Planning consequence |\n"

@@ -3477,7 +3477,10 @@ def prepare_run(
             " Return plan_readiness and implementation_plan_action. Use ready_for_implementation/create for a "
             "complete supported plan; awaiting_input/create_draft when confirmed independent work has a feasible "
             "partial Draft with owned unresolved decisions; awaiting_input/omit only when no supported partial "
-            "scope exists. A partial Draft preserves the Clarification Brief and does not approve implementation."
+            "scope exists. A partial Draft preserves the Clarification Brief and does not approve implementation. "
+            "For a ready design, include an Asset Baseline section linking asset_manifest.json and one row per "
+            "material asset with exact columns Asset ID, Evidence refs, Observation, Planning consequence. "
+            "Use bare asset IDs in the Asset ID column. The validated merger records consumption; do not edit the manifest."
         )
         manifest["worker_contracts"]["current_state_investigator"]["asset_inventory"] = (
             manifest["worker_contracts"]["feature_asset_inventory"])

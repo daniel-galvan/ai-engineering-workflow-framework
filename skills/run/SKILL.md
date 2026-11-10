@@ -787,6 +787,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    The merger registers each analytical worker ledger row from the authenticated typed assignment, launch binding and
    accepted result. Do not edit those rows by hand or ask Documenter to reconstruct them. Continue to the packaged
    activation guard only after this command exits successfully.
+   For ready Feature Delivery planning designs, the merger also records material asset consumption from the accepted
+   per-asset `Asset Baseline`. Return missing or invalid coverage to Feature Design; do not patch asset linkage by hand.
    For Feature Delivery remediation, after merging `implement`, `review`, and `validate`, stage the delivery barrier
    with `--engineering-outcome solved|partially_solved|blocked`. The command requires current accepted result artifacts,
    matching provider audits, the approved plan, review and validation reports. It writes the handoff identity and

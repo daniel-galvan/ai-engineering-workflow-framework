@@ -1080,7 +1080,7 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
     return []
 
 
-def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
+def prepared_parent_context_errors(root: Path, manifest: dict, *, details: list | None = None) -> list[str]:
     """Recheck the bound current turn at every acceptance boundary, without importing its answers."""
     parent = manifest.get("parent_context")
     if not parent:
@@ -1099,6 +1099,8 @@ def prepared_parent_context_errors(root: Path, manifest: dict) -> list[str]:
         errors = []
         if current["status"] != "passed":
             errors.append("parent_context_nonconformant:" + ";".join(current["errors"]))
+            if details is not None:
+                details.extend(current.get("context_violations", []))
         if current["turn_id"] != parent["turn_id"]:
             errors.append("parent_context_turn_mismatch:expected=" + parent["turn_id"]
                           + ";received=" + current["turn_id"] + ";prepare the current continuation")

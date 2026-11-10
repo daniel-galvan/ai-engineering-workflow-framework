@@ -49,7 +49,8 @@ except ModuleNotFoundError:
 
 def prepared_package_errors(root: Path, *, check_parent_context: bool = True,
                             expected_package_root: Path | None = None,
-                            package_content_root: Path | None = None) -> list[str]:
+                            package_content_root: Path | None = None,
+                            context_details: list | None = None) -> list[str]:
     """Reject package, lifecycle, profile or parent-context drift from the prepared run."""
     try:
         manifest = json.loads((root / "role_bindings.json").read_text())
@@ -72,7 +73,7 @@ def prepared_package_errors(root: Path, *, check_parent_context: bool = True,
                 from provider_runtime import prepared_parent_context_errors
             except ModuleNotFoundError:
                 from scripts.provider_runtime import prepared_parent_context_errors
-            return prepared_parent_context_errors(root, manifest)
+            return prepared_parent_context_errors(root, manifest, details=context_details)
         return []
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return ["prepared_framework_package_invalid"]

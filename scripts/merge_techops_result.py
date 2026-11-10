@@ -436,6 +436,28 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
     packet = validated_result(packet, result, bindings, agent)
     if trace_value is not None:
         _register_coordinator_worker(packet, agent, result, trace_value, bindings)
+    design_assets = None
+    asset_path = root / "asset_manifest.json"
+    if (bindings.get("playbook") == "feature_delivery" and bindings.get("lifecycle") == "planning"
+            and packet.get("planning_disposition", {}).get("plan_readiness") == "ready_for_implementation"
+            and any(row.get("Worker") == "feature-design" and row.get("Outcome") == "complete"
+                    for row in packet.get("worker_results", [])) and asset_path.is_file()
+            and (agent == "solution_architect" and output is not None or asset_manifest is not None)):
+        try:
+            from asset_manifest import asset_plan_errors, link_design_assets
+        except ModuleNotFoundError:
+            from scripts.asset_manifest import asset_plan_errors, link_design_assets
+        design_output = output
+        inventory = json.loads(asset_manifest if asset_manifest is not None else asset_path.read_text())
+        if agent != "solution_architect":
+            # Replaying context acceptance must not erase current accepted design consumption.
+            design_audit = next(row for row in packet["runtime_audits"] if row.get("Worker") == "feature-design")
+            design_trace_path = Path(design_audit["Trace path"])
+            worker_audit_record(packet_path, "feature-design", design_trace_path)
+            design_trace = json.loads(design_trace_path.read_text())
+            design_output = Path(design_trace["result_artifact"]["output_path"]).read_text()
+        if agent == "solution_architect" or not asset_plan_errors(design_output, inventory):
+            design_assets = link_design_assets(inventory, design_output, packet)
     if output is not None:
         _write_text(canonical_output_path, output)
         _write_text(canonical_result_path, json.dumps(result, indent=2, ensure_ascii=False) + "\n")
@@ -453,6 +475,8 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
         temporary.replace(packet_path)
     finally:
         temporary.unlink(missing_ok=True)
+    if design_assets is not None:
+        _write_text(asset_path, json.dumps(design_assets, indent=2, ensure_ascii=False) + "\n")
 
 
 def main() -> int:

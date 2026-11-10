@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -576,6 +577,25 @@ def asset_plan_errors(plan_text: str, manifest: dict[str, object]) -> list[str]:
         if not row["Observation"] or not row["Planning consequence"]:
             errors.append(f"material asset {asset_id} requires an observation and planning consequence")
     return errors
+
+
+def link_design_assets(manifest: dict, design_text: str, packet: dict) -> dict:
+    """Derive consumption bookkeeping from the accepted design's per-asset evidence."""
+    if not any(row.get("relevance") == "material" for row in manifest.get("assets", [])):
+        return manifest
+    errors = asset_plan_errors(design_text, manifest)
+    candidate = copy.deepcopy(manifest)
+    for asset in candidate["assets"]:
+        if asset.get("relevance") == "material":
+            asset["used_by"] = list(dict.fromkeys([*asset.get("used_by", []), "feature-design"]))
+    candidate["gate"]["all_material_assets_linked"] = True
+    errors.extend(validate_asset_manifest(candidate, work_item=packet["work_item"]["ID"],
+        expected_evidence_ids={row["Evidence ID"] for row in packet["evidence"]},
+        material_claim_evidence_ids={ref for row in packet["claims"]
+            for ref in re.findall(r"\bE-[A-Za-z0-9_-]+\b", row.get("Evidence refs", ""))}, require_passed=True))
+    if errors:
+        raise ValueError("design_asset_consumption_invalid:" + ";".join(errors))
+    return candidate
 
 
 def asset_gate_errors(manifest_path: Path, inputs_path: Path, work_item: str) -> list[str]:

@@ -63,6 +63,8 @@ smallest reasonable change.
 * Consume all supplied context and supporting artifacts before requesting clarification.
 * Consume the complete Feature Delivery asset manifest and carry every material asset's evidence and disposition into
   acceptance criteria and the implementation plan.
+  Include each material asset in an `Asset Baseline` table with Asset ID, Evidence refs, Observation, and Planning
+  consequence, linking `asset_manifest.json`. The validated merger records consumption; do not edit the manifest.
 * Execute the smallest safe falsification check before requesting clarification, and record the result and any remaining
   unavailable checks.
 * Record the strongest supported hypothesis and a plain-language next action when implementation readiness is not
