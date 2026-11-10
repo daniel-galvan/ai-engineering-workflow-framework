@@ -363,7 +363,9 @@ def validate_final_documenter_rules() -> None:
         "solution_architect.toml",
     ):
         text = (CODEX_AGENT_DIR / name).read_text().lower()
-        if "use only this chat and current-run artifacts" not in text or "verify material current-state claims" not in text:
+        if ("use only this chat and current-run artifacts" not in text
+                or "verified worker chats created by this run" not in text
+                or "verify material current-state claims" not in text):
             fail(f"providers/codex/agents/{name} is missing the current-chat boundary or current-evidence verification")
 
     for name in (
@@ -373,7 +375,9 @@ def validate_final_documenter_rules() -> None:
         "documenter.toml",
     ):
         text = (CODEX_AGENT_DIR / name).read_text().lower()
-        if "use only this chat and current-run artifacts" not in text or "verify material current-state claims" not in text:
+        if ("use only this chat and current-run artifacts" not in text
+                or "verified worker chats created by this run" not in text
+                or "verify material current-state claims" not in text):
             fail(f"providers/codex/agents/{name} is missing the current-chat boundary or current-evidence verification")
 
     for path in (

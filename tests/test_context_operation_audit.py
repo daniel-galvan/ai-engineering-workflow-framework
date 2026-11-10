@@ -983,6 +983,35 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn('forbidden_context_reference:archived_artifact',
                       runtime.context_trace_errors(trace, artifact_root=self.root))
 
+    def test_json_reads_keep_current_source_provenance_and_audit_constructed_paths(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / 'finalization_packet.json'
+        packet = json.loads(packet_path.read_text())
+        packet['runtime_audits'] = [{'Worker': 'context',
+                                     'Trace retrieval': '/Users/example/.codex/sessions/current.jsonl'}]
+        packet_path.write_text(json.dumps(packet))
+        for expression in (f'json.load(open({str(packet_path)!r}))',
+                           f'json.loads(Path({str(packet_path)!r}).read_text())'):
+            code = 'import json; from pathlib import Path; print(json.dumps(' + expression + '))'
+            call = 'const r = await tools.exec_command(' + json.dumps({
+                'cmd': shlex.join(['python3', '-c', code])}) + '); text(r.output);'
+            current = json.loads(json.dumps(trace))
+            current['tool_trace'].extend(self.paired(call, [{'type': 'text', 'text': json.dumps(packet)}]))
+            with self.subTest(expression=expression):
+                self.assertEqual(runtime.trace_errors(current), [])
+        code = ("import json; from pathlib import Path; "
+                "p=Path('/Users/example/.codex')/'sessions'/'prior.jsonl'; print(p.read_text())")
+        command = shlex.join(['python3', '-c', code])
+        self.assertIn('forbidden_context_reference:session_log', runtime.context_trace_errors({
+            'tool_trace': [{'type': 'function_call', 'name': 'exec_command', 'arguments': {'cmd': command}}]}))
+
+    def test_current_file_read_with_unspecified_workdir_is_auditable(self):
+        trace = self.instruction_read_trace()
+        path = self.root / 'finalization_packet.json'
+        call = 'text(await tools.exec_command(' + json.dumps({'cmd': 'cat ' + str(path), 'workdir': None}) + '));'
+        trace['tool_trace'].extend(self.paired(call, [{'type': 'text', 'text': path.read_text()}]))
+        self.assertEqual(runtime.trace_errors(trace), [])
+
     def test_packet_metadata_reads_compose_with_repository_checks_without_allowing_log_reads(self):
         base = self.instruction_read_trace()
         path = self.root / 'finalization_packet.json'
@@ -1590,6 +1619,19 @@ class ContextOperationAudit(unittest.TestCase):
         trace["tool_trace"] = self.paired(code, "/repo/.codex/memories/raw_memories.md")
         self.assertTrue(any(error.startswith("forbidden_context_reference:memory_")
                             for error in runtime.context_trace_errors(trace)))
+
+    def test_worker_thread_reads_require_an_assigned_source(self):
+        trace = self.dispatch_trace(["codex://threads/" + SOURCE])
+        other = "00000000-0000-0000-0000-000000000002"
+        for name, args in (("read_thread", {"threadId": SOURCE}),
+                           ("wait_threads", {"targets": [{"threadId": SOURCE}], "timeoutMs": 0})):
+            with self.subTest(name=name):
+                trace["tool_trace"] = [{"type": "function_call", "name": "mcp__codex_app__" + name,
+                                        "arguments": args}]
+                self.assertEqual(runtime.context_trace_errors(trace), [])
+                trace["tool_trace"][0]["arguments"] = (
+                    {"threadId": other} if name == "read_thread" else {"targets": [{"threadId": other}]})
+                self.assertIn("context_unassigned_thread_read:" + other, runtime.context_trace_errors(trace))
 
     def test_plain_parent_launch_retains_the_guarded_dispatch_identity(self):
         trace = self.dispatch_trace([])

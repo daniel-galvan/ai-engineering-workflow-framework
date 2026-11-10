@@ -18,8 +18,9 @@ in the continuation summary. `MEMORY.md` may be read as background guidance only
 current-run evidence take precedence.
 Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
 against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
-Use only this chat and current-run artifacts. Do not include or rely on other chats,
-sessions, or other memory files unless the current user explicitly identifies and authorizes the exact source. Verify
+Use only this chat and current-run artifacts, and verified worker chats created by this run. Do not include or rely on
+unrelated chats, sessions, previous runs, or other memory files unless the current user explicitly identifies
+and authorizes the exact source. Verify
 current-state claims against evidence from this chat and its current-run artifacts.
 Use helper paths from the prepared role bindings and read only the section needed for the pending gate. Compaction
 does not authorize another worker, restart, lifecycle change, or import of historical evidence. If the current-run
@@ -43,9 +44,10 @@ invocation: run package preflight first, then the required status projection, be
    The first framework tool call that reads the repository, prepares a run or dispatches a worker must follow a
    passing standalone package preflight. Launcher reads and packaged CLI `--help`/`-h` requests are permitted
    beforehand, including together in one command. Do not
-   search other memory files, rollout summaries, session logs, or other chats before or after preflight unless the
-   current user identifies the exact source and explicitly authorizes its use. A standalone read-only `MEMORY.md`
-   lookup is background guidance and may precede preflight; do not combine it with repository or task discovery.
+   search other memory files, rollout summaries, unrelated session logs, or unrelated chats before or after preflight
+   unless the current user identifies the exact source and explicitly authorizes its use. A standalone read-only
+   `MEMORY.md` lookup is background guidance and may precede preflight; do not combine it with repository or task
+   discovery.
    A work-item key or link to the current task does
    not authorize lookup of previous attempts. Never combine the skill read with repository guidance or a playbook.
    After preflight, never call `list_threads` directly: its raw output includes
@@ -165,9 +167,9 @@ invocation: run package preflight first, then the required status projection, be
    Record every explicit current-task skill or plugin enable/disable directive as an authoritative run constraint.
    Include it in every fresh worker packet and correction turn. A worker must not load, invoke, or reactivate a
    disabled skill or plugin.
-   Treat every new framework run as current-chat and current-run only. Do not consult other memory files, rollout
-   summaries,
-   session logs, or other chats unless the current user explicitly identifies and authorizes that exact source. Do not
+   Treat every new framework run as current-chat and current-run only, including verified worker chats created by that
+   run. Do not consult other memory files, rollout summaries, unrelated session logs, or unrelated chats unless the
+   current user explicitly identifies and authorizes that exact source. Do not
    open an unassigned `.thoughts` run archive because a historical note references it.
    Before analytical fan-in for Sentry, TechOps, or Feature Delivery, use the prepared `runtime_evidence.collector` and
    `runtime_evidence.ledger` when declared. Extract dispatches from the verified current parent session and export the
@@ -577,7 +579,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    exact source; classify it as `decision continuity`.
    Keep its Input ID and selected-source provenance in the continuity ledger; do not expand every historical receipt,
    trace or snapshot into a product asset. Register selected product/specification assets separately when material.
-   Supply an authorized session URI explicitly in the worker assignment's `input_paths` when a thread read is needed.
+   Supply a verified current-run worker chat URI, or an explicitly authorized other session URI, in the worker
+   assignment's `input_paths` when a thread read is needed. Verify worker identity against this run's dispatch evidence;
+   a reference inside a permitted source does not authorize opening another source.
    Preparation also writes exact role envelopes to the direct-child `worker_activation_packets.json` bundle and records
    its path and hash in `role_bindings.json`. For each worker, run the manifest's `worker_runtime_guard` in activation
    mode with `--activation-packet-bundle <path> --expected-agent <binding> --expected-bundle-sha256 <manifest-sha256>`
@@ -707,9 +711,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    durable artifact validates the supplied handle.
 8. Keep the prepared `work_record.md` skeleton unchanged until deterministic finalization on every path. Populate
    `finalization_packet.json` from supplied and discoverable context; only `finalize_work_record.py` writes the
-   terminal record. Use only this chat and current-run artifacts. Do not search or read other memory files, session
-   logs, or
-   another chat/session unless the current user identifies and authorizes that exact source. Do not read unassigned
+   terminal record. Use only this chat, current-run artifacts and verified current-run worker chats. Do not search or
+   read other memory files, unrelated session logs or unrelated chats unless the current user identifies and authorizes
+   that exact source. Do not read unassigned
    historical `.thoughts` artifacts. The execution repository's `.codex/agents/` runtime view is
    optional. If absent, resolve the bundled provider definitions or selected work-graph model/effort
    binding; record the source and status, and never inherit unverified Coordinator settings. Active artifacts are direct

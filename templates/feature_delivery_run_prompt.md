@@ -21,8 +21,9 @@ from those references. `MEMORY.md` may be read as background guidance only. Curr
 evidence take precedence.
 Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
 against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
-Use only this chat and current-run artifacts. Do not include or rely on other chats, sessions, or
-other memory files unless the current user explicitly identifies and authorizes the exact source. Verify current claims
+Use only this chat and current-run artifacts, and verified worker chats created by this run. Do not include or rely on
+unrelated chats, sessions, or other memory files unless the current user explicitly identifies and authorizes
+the exact source. Verify current claims
 against
 current evidence.
 Do not open unassigned `.thoughts` run archives. Use `None` for unused optional fields.

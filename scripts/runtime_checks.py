@@ -295,11 +295,11 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
                      if len(message) > 12000 else "")
     return (packet["required_prefix"] + "\n"
             + "First step: verify and read the file; this bootstrap is self-contained. Use only this chat and current-run "
-              "artifacts. MEMORY.md may be read as background guidance only. Current user instructions and current-run "
+              "artifacts, and verified worker chats created by this run and assigned to you. MEMORY.md may be read as background guidance only. Current user instructions and current-run "
               "evidence take precedence. Memory alone must not establish a task finding or justify an implementation "
               "decision. Verify task-specific memory claims against currently authorized sources. References in memory "
               "do not authorize opening previous chats, sessions, or runs. "
-              "Do not include or rely on other chats, sessions, or other memory files unless the current user "
+              "Do not include or rely on unrelated chats, sessions, or other memory files unless the current user "
               "explicitly identifies and authorizes the exact source. Verify current claims against current evidence. "
               "Do not search the artifact directory or archives.\n"
             + f"Role: {packet['agent']}; model/effort: {packet['model']} / {packet['effort']}.\n"
@@ -1397,7 +1397,7 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
             if not segment:
                 continue
             target, start, end = segment
-            target_path = Path(target) if Path(target).is_absolute() else Path(arguments.get("workdir", cwd)) / target
+            target_path = Path(target) if Path(target).is_absolute() else Path(arguments.get("workdir") or cwd) / target
             if target_path.resolve() != path.resolve():
                 continue
             call_id = row.get("call_id")
@@ -1525,7 +1525,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                 targets.extend(paths)
                 continue
             json_load = (isinstance(node.func.value, ast.Name) and node.func.value.id == "json"
-                         and node.func.attr in {"load", "dumps"})
+                         and node.func.attr in {"load", "loads", "dumps"})
             pretty_print = (pretty and isinstance(node.func.value, ast.Name) and node.func.value.id == "pprint"
                             and node.func.attr in {"pp", "pprint", "pformat"})
             if json_load and any(keyword.arg not in {"indent", "sort_keys", "ensure_ascii"}
@@ -1615,7 +1615,7 @@ def _without_pretty_reentry_reference(text: str, expected: dict) -> str:
     return text
 
 
-def _read_targets(command: str) -> list[str]:
+def _read_targets(command: str, *, include_json: bool = False) -> list[str]:
     if not isinstance(command, str):
         return []
     segment = _dispatch_segment(command)
@@ -1632,7 +1632,7 @@ def _read_targets(command: str) -> list[str]:
                 or Path(args[0]).resolve() == Path(sys.executable).resolve())
                 and args[1] == "-c" and not any(char in command for char in '$`')):
             # JSON projections retain their existing field-level output verification.
-            if any(isinstance(node, ast.Import) and any(item.name == "json" for item in node.names)
+            if not include_json and any(isinstance(node, ast.Import) and any(item.name == "json" for item in node.names)
                    for node in ast.walk(ast.parse(args[2]))):
                 return []
             return _python_read_targets(args[2])
@@ -1693,7 +1693,7 @@ def _read_targets(command: str) -> list[str]:
                 for part in parts[5:]:
                     if not part:
                         continue
-                    selected = _read_targets(shlex.join(part))
+                    selected = _read_targets(shlex.join(part), include_json=include_json)
                     if not selected and not _listing_command(shlex.join(part)):
                         return []
                     targets.extend(selected)
@@ -1717,7 +1717,7 @@ def _read_targets(command: str) -> list[str]:
                 return []
             reads = []
             for part in parts:
-                selected = _read_targets(shlex.join(part))
+                selected = _read_targets(shlex.join(part), include_json=include_json)
                 if not selected and not _listing_command(shlex.join(part)):
                     return []
                 reads.extend(selected)
@@ -1731,7 +1731,7 @@ def _read_targets(command: str) -> list[str]:
                 else:
                     part.append(token)
             parts.append(shlex.join(part))
-            return (_read_targets(parts[0]) if all(part and _listing_command('pwd | ' + part)
+            return (_read_targets(parts[0], include_json=include_json) if all(part and _listing_command('pwd | ' + part)
                                                   for part in parts[1:]) else [])
         if not tokens or "$" in command or any(re.fullmatch(r'[;&|<>\n]+', token) for token in tokens):
             return []
@@ -1898,7 +1898,7 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
             try:
                 tokens = shlex.split(arguments.get("cmd", ""))
                 targets = _read_targets(arguments.get("cmd", ""))
-                cwd = Path(arguments.get("workdir", root.parent.parent))
+                cwd = Path(arguments.get("workdir") or root.parent.parent)
                 fields = _python_packet_projection(tokens, root, cwd)
                 if fields is not None:
                     metadata = json.loads((root / "finalization_packet.json").read_text())
@@ -1934,6 +1934,7 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
             except (OSError, ValueError, TypeError, UnicodeError, KeyError):
                 continue
             exact_cat_outputs.setdefault(row["call_id"], set()).add(content)
+    strict_projections = set(packet_projections) | set(_labeled_packet_outputs(trace, root)) | set(_pretty_packet_reads(trace, root))
     for index, row in enumerate(trace.get("tool_trace", [])):
         if not isinstance(row, dict):
             continue
@@ -1943,8 +1944,15 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
             if name == "mcp__codex_app__read_thread":
                 safe = safe and "codex://threads/" + str(arguments.get("threadId")) in assigned
             elif name == "exec_command":
-                targets = _read_targets(arguments.get("cmd"))
-                cwd = Path(arguments.get("workdir", root.parent.parent))
+                if row.get("call_id") in strict_projections:
+                    safe = False
+                    continue
+                targets = _read_targets(arguments.get("cmd"), include_json=True)
+                workdir = arguments.get("workdir")
+                if workdir is not None and not isinstance(workdir, (str, Path)):
+                    safe = False
+                    continue
+                cwd = Path(workdir or root.parent.parent)
                 resolved = [Path(target) if Path(target).is_absolute() else cwd / target for target in targets]
                 receipts = root / "activation_receipts.json"
                 instructions = json.loads(receipts.read_text()) if receipts.is_file() else {}
@@ -2012,7 +2020,7 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
         for name, arguments in _tool_operations(row):
             if name != "exec_command":
                 continue
-            cwd = Path(arguments.get("workdir", bindings["execution_repository"]))
+            cwd = Path(arguments.get("workdir") or bindings["execution_repository"])
             for target in _read_targets(arguments.get("cmd")):
                 path = Path(target) if Path(target).is_absolute() else cwd / target
                 path = path.resolve()
@@ -2131,7 +2139,7 @@ def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -
                     chunk = _chunked_dispatch_read(command)
                     if chunk:
                         targets.append(chunk[0])
-                    cwd = Path(arguments.get("workdir", root.parent.parent))
+                    cwd = Path(arguments.get("workdir") or root.parent.parent)
                     if any((Path(target) if Path(target).is_absolute() else cwd / target).resolve() == dispatch_path
                            for target in targets):
                         record_paired_output(row, _dispatch_read_output(command, content), "dispatch")
@@ -2142,7 +2150,7 @@ def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -
             if name != "exec_command":
                 continue
             operation = {"tool": name, "arguments": arguments}
-            cwd = Path(arguments.get("workdir", root.parent.parent))
+            cwd = Path(arguments.get("workdir") or root.parent.parent)
             for target in _ancestor_instruction_reads(operation, root, input_paths=assigned):
                 path = Path(target)
                 path = path if path.is_absolute() else cwd / path
@@ -2355,7 +2363,7 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                     break
                 if (not selected and statement[0] == "test" and statement[-1].endswith("AGENTS.md")):
                     target = Path(statement[-1])
-                    target = target if target.is_absolute() else Path(arguments.get("workdir", root.parent.parent)) / target
+                    target = target if target.is_absolute() else Path(arguments.get("workdir") or root.parent.parent) / target
                     try:
                         if target.name == "AGENTS.md" and target.resolve() in allowed:
                             targets.append(statement[-1])
@@ -2363,7 +2371,7 @@ def _ancestor_instruction_reads(row: dict, root: Path, *, include_probes: bool =
                         pass
                 targets.extend(selected)
                 index += 1
-        cwd = Path(arguments.get("workdir", root.parent.parent))
+        cwd = Path(arguments.get("workdir") or root.parent.parent)
         for target in targets:
             if any(char in target for char in "$`*"):
                 continue
@@ -2664,9 +2672,19 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         if not isinstance(row, dict):
             continue
         for name, arguments in _tool_operations(row):
+            if dispatch_content and name.rsplit("__", 1)[-1] in {"read_thread", "wait_threads"}:
+                targets = arguments.get("targets", []) if name.endswith("wait_threads") else [arguments]
+                if not isinstance(targets, list) or not targets:
+                    errors.append("context_thread_target_invalid")
+                    continue
+                for target in targets:
+                    thread = target.get("threadId") if isinstance(target, dict) else None
+                    if not isinstance(thread, str) or "codex://threads/" + thread not in assigned:
+                        errors.append("context_unassigned_thread_read:" + str(thread))
+                continue
             if name != "exec_command":
                 continue
-            for target in _read_targets(arguments.get("cmd", "")):
+            for target in _read_targets(arguments.get("cmd", ""), include_json=True):
                 if target in assigned or target in _background_memory_paths(row):
                     continue
                 try:

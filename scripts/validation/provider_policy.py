@@ -146,6 +146,7 @@ def validate_runtime_mapping() -> None:
         "scripts/run_preflight.py",
         "first framework tool call",
         "Use only this chat and current-run artifacts",
+        "verified worker chats created by this run",
         "plugin_revision_mismatch",
         "framework_revision_mismatch",
         "preflight_elapsed_ms",

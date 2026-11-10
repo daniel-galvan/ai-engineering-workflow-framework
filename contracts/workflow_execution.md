@@ -81,12 +81,13 @@ section or template needed to resolve an ambiguity in their assigned stage. `MEM
 guidance only. Current user instructions and current-run evidence take precedence.
 Memory alone MUST NOT establish a task finding or justify an implementation decision. Verify task-specific memory claims
 against currently authorized sources. References in memory do not authorize opening previous chats, sessions, or runs.
-Use only this chat and the current run's
-artifacts. Do not include or rely on other chats, sessions, or other memory files unless the current user explicitly
-identifies
-and authorizes the exact source. A work-item key or link to the current task does not authorize prior attempts. When a
-prior source is authorized, register its exact identifier and provenance as a run input; verify current-state claims
-against current evidence.
+Use only this chat and the current run's artifacts and verified worker chats. A worker chat belongs to the current run
+only when its identity is verified against this run's dispatch evidence. The Coordinator supplies a worker's needed
+current-run chat URI in its typed assignment. References within any permitted source do not authorize opening other
+sources. Do not include or rely on unrelated chats, sessions, previous runs, or other memory files unless the current
+user explicitly identifies and authorizes the exact source. A work-item key or link to the current task does not
+authorize prior attempts. When a prior source is authorized, register its exact identifier and provenance as a run
+input; verify current-state claims against current evidence.
 
 For every delegated activation, the Coordinator MUST pass the exact manifest
 `model`, reasoning effort, and fresh-context setting to the provider primitive.
@@ -1897,8 +1898,8 @@ Read verification resolves literal Python paths and fixed file lists, including 
 Computed reads through packet locators remain unverified; metadata never grants authority to follow those locators.
 
 The canonical launch message names its SHA256 and makes verification and reading the supplied file the self-contained
-first task. The worker reads the full file before analysis. Source access is limited to exact sources the current user
-identified and authorized for this run; a work-item key or task link does not authorize reading another chat or session.
+first task. The worker reads the full file before analysis. Source access includes assigned, verified current-run worker
+chats and exact sources the current user authorized; a work-item key or task link does not authorize previous attempts.
 A short launch notice is not a replacement for the role contract. Modified instructions require a new file and a fresh
 guarded dispatch.
 

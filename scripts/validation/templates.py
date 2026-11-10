@@ -32,6 +32,7 @@ def validate_run_prompt_basics() -> None:
                 "## Optional user context",
                 "Unanswered material user decisions carried from the current request",
                 "Use only this chat and current-run artifacts",
+                "verified worker chats created by this run",
             ):
                 if phrase not in text:
                     fail(f"templates/techops_issue_run_prompt.md is missing minimal launch control: {phrase}")
@@ -44,6 +45,7 @@ def validate_run_prompt_basics() -> None:
             fail(f"{path.relative_to(ROOT)} is missing the additional-context section")
         for phrase in (
             "Use only this chat and current-run artifacts",
+            "verified worker chats created by this run",
             "`.thoughts`",
             "Use `None` for unused optional fields",
         ):
