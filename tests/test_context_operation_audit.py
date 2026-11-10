@@ -334,6 +334,19 @@ class ContextOperationAudit(unittest.TestCase):
             self.assertIn("forbidden_context_reference:archived_artifact",
                           runtime.context_trace_errors(changed, artifact_root=self.root))
 
+    def test_quoted_json_assignment_objective_is_prose_not_a_path(self):
+        assignment = self.root / 'assignment.json'
+        objective = 'Keep artifacts under ' + str(self.root) + '. Continue.'
+        def audit(body, suffix=''):
+            cmd = 'cat > ' + shlex.quote(str(assignment)) + " <<'EOF'\n" + json.dumps(body) + '\nEOF' + suffix
+            return runtime.context_trace_errors({'tool_trace': [{'type': 'function_call', 'name': 'exec_command',
+                'arguments': {'cmd': cmd}}]}, artifact_root=self.root)
+        self.assertEqual(audit({'objective': objective, 'input_paths': []}), [])
+        self.assertIn('forbidden_context_reference:archived_artifact',
+                      audit({'objective': objective, 'input_paths': [str(self.root) + '.']}))
+        self.assertIn('forbidden_context_reference:archived_artifact',
+                      audit({'objective': objective, 'input_paths': []}, '\ncat ' + str(self.root) + '.'))
+
     def test_shared_objective_prose_is_allowed_only_when_used_as_serialized_data(self):
         prose = "Keep scratch inside " + str(self.root) + ". Use assigned inputs."
         body = ("import json\nfrom pathlib import Path\nr=Path(" + repr(str(self.root)) + ")\n"
