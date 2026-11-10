@@ -6,8 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from review_evidence import candidate_fingerprint, delivery_evidence_fixture, review_report_errors, validation_report_errors
+from scripts.review_evidence import candidate_fingerprint, delivery_evidence_fixture, review_report_errors, validation_report_errors
 
 
 class ValidationEvidence(unittest.TestCase):

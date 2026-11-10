@@ -13,11 +13,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import finalize_work_record as finalizer
-import validate_worker_runtime as runtime
-import prepare_run as prepare
-import planning_contracts
+from scripts import finalize_work_record as finalizer
+from scripts import validate_worker_runtime as runtime
+from scripts import prepare_run as prepare
+from scripts import planning_contracts
 from tests.worker_response_support import stage_worker_response
 
 
@@ -46,7 +45,7 @@ class TechOpsCorrections(unittest.TestCase):
                 prepare._verified_recovery_planning(root, prior)
 
     def test_reviewed_checkout_recovery_rejects_changed_or_unreviewed_files(self):
-        from review_evidence import delivery_evidence_fixture, PLAN_FIXTURE
+        from scripts.review_evidence import delivery_evidence_fixture, PLAN_FIXTURE
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             repository, review, _ = delivery_evidence_fixture(root)
@@ -146,12 +145,12 @@ class TechOpsCorrections(unittest.TestCase):
             closure = {"terminal_observations": observations}
             context = {"status": "rejected", "errors": ["forbidden_context_reference:memory_path"], "turn_id": "turn"}
             candidate, planning = {"status": "unaccepted"}, {"claims": ["retained"]}
-            with patch("provider_runtime.parent_context_audit", return_value=context) as audit, \
+            with patch("scripts.provider_runtime.parent_context_audit", return_value=context) as audit, \
                  patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
                  patch.object(planning_contracts, "_worker_runtime_audit_errors", return_value=[]) as worker_audit, \
-                 patch("merge_techops_result.merged_result_errors", return_value=[]), \
-                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
-                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch("scripts.merge_techops_result.merged_result_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence._native_terminal_observations", return_value=observations), \
                  patch.object(prepare, "_recover_current_accepted_candidate", return_value=candidate), \
                  patch.object(prepare, "_verified_recovery_planning", return_value=planning):
                 self.assertEqual(prepare._recover_post_delivery_context_failure(root, prior, closure, root), (candidate, planning))
@@ -580,7 +579,7 @@ class TechOpsCorrections(unittest.TestCase):
                                             "Completed worker handles": "None dispatched"}]}
             (root / "runtime_closure.json").write_text(json.dumps(closure))
             bindings = {"playbook": "techops_issue_remediation", "run_id": "delivery", "runtime_evidence": {"ledger": "bound"}}
-            with patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]):
+            with patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]):
                 self.assertEqual(prepare._recover_unactivated_remediation(root, bindings),
                                  (failure_path, failure_path.read_bytes(), (root / "runtime_closure.json").read_bytes()))
                 wrapped = ("remediation_not_activated: parent_context_nonconformant:"
@@ -618,7 +617,7 @@ class TechOpsCorrections(unittest.TestCase):
                 failure_path.write_text(json.dumps({**retry_failure, "historical_errors": ["other"]}))
                 self.assertIsNone(prepare._recover_unactivated_remediation(root, bindings))
             failure_path.write_text(json.dumps(failure))
-            with patch("worker_runtime_evidence.dispatch_audit_errors", return_value=["stale"]):
+            with patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=["stale"]):
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified:stale"):
                     prepare._recover_unactivated_remediation(root, bindings)
 
@@ -656,9 +655,9 @@ class TechOpsCorrections(unittest.TestCase):
             (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
             observations = [{"Provider handle": "/root/implement", "Provider status": "interrupted"}]
             closure = {"terminal_observations": observations}
-            with patch("planning_contracts.terminal_closure_dispatch_errors", return_value=[]), \
-                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
-                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations):
+            with patch("scripts.planning_contracts.terminal_closure_dispatch_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence._native_terminal_observations", return_value=observations):
                 self.assertIsNone(prepare._recover_failed_remediation(root, packet, closure))
                 (repository / "source.txt").write_text("changed\n")
                 with self.assertRaisesRegex(ValueError, "remediation_recovery_checkout_changed"):
@@ -744,8 +743,8 @@ class TechOpsCorrections(unittest.TestCase):
             candidate = {"status": "unaccepted", "files": {"test.py": "digest"}}
             with patch.object(runtime, "_defer_downstream_rejection", return_value=True), \
                  patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
-                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
-                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence._native_terminal_observations", return_value=observations), \
                  patch.object(prepare, "_recover_accepted_candidate", return_value=candidate):
                 recovered, saved = prepare._recover_terminal_accepted_remediation(root, packet, closure, root)
                 self.assertEqual(recovered, candidate)
@@ -764,7 +763,7 @@ class TechOpsCorrections(unittest.TestCase):
                 with patch.object(runtime, "_defer_downstream_rejection", return_value=False):
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_terminal_accepted_remediation(root, packet, closure, root)
-                with patch("worker_runtime_evidence._native_terminal_observations", return_value=[]):
+                with patch("scripts.worker_runtime_evidence._native_terminal_observations", return_value=[]):
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_terminal_accepted_remediation(root, packet, closure, root)
 
@@ -817,11 +816,11 @@ class TechOpsCorrections(unittest.TestCase):
                 (root / "finalization_failure.json").write_text(json.dumps(failure))
             save(packet)
             candidate = {"status": "unaccepted", "files": {"test.py": "hash"}}
-            with patch("runtime_checks._verified_dispatch_content", return_value="verified"), \
-                 patch("runtime_checks.trace_errors", return_value=["worker_fan_in_rejected"]), \
+            with patch("scripts.runtime_checks._verified_dispatch_content", return_value="verified"), \
+                 patch("scripts.runtime_checks.trace_errors", return_value=["worker_fan_in_rejected"]), \
                  patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
-                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
-                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence._native_terminal_observations", return_value=observations), \
                  patch.object(prepare, "_recover_current_accepted_candidate", return_value=candidate):
                 result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
                 self.assertEqual((result, saved), (candidate, planning))
@@ -846,11 +845,11 @@ class TechOpsCorrections(unittest.TestCase):
                 with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=["stale"]):
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
-                with patch("runtime_checks.trace_errors", return_value=[
+                with patch("scripts.runtime_checks.trace_errors", return_value=[
                     "worker_fan_in_rejected", "forbidden_context_reference:memory_path"]):
                     result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
                     self.assertEqual((result, saved), (candidate, planning))
-                with patch("runtime_checks.trace_errors", return_value=[
+                with patch("scripts.runtime_checks.trace_errors", return_value=[
                     "worker_fan_in_rejected", "forbidden_context_reference:archived_artifact"]):
                     with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                         prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
@@ -878,7 +877,7 @@ class TechOpsCorrections(unittest.TestCase):
                 failure = json.loads(failure_path.read_text())
                 failure["errors"] = ["parent_context_nonconformant:forbidden_context_reference:archived_artifact"]
                 failure_path.write_text(json.dumps(failure))
-                with patch("runtime_checks.trace_errors", return_value=rejected["audit"]["errors"]):
+                with patch("scripts.runtime_checks.trace_errors", return_value=rejected["audit"]["errors"]):
                     result, saved = prepare._recover_terminal_reviewer_failure(root, packet, closure, root)
                     self.assertEqual((result, saved), (candidate, planning))
                     rejected["audit"]["status"] = "passed"
@@ -894,7 +893,7 @@ class TechOpsCorrections(unittest.TestCase):
                 trace_path.write_text(json.dumps(passed))
                 ledger.pop("rejected_results")
                 (root / "runtime_dispatches.json").write_text(json.dumps(ledger))
-                with patch("runtime_checks.trace_errors", return_value=[]):
+                with patch("scripts.runtime_checks.trace_errors", return_value=[]):
                     result, saved = prepare._recover_terminal_unmerged_review(root, packet, closure, root)
                     self.assertEqual((result, saved), (candidate, planning))
                     trace_path.unlink()
@@ -914,7 +913,7 @@ class TechOpsCorrections(unittest.TestCase):
                     trace_path.write_text(json.dumps(passed))
                     self.assertEqual(prepare._recover_terminal_unmerged_review(root, packet, closure, root),
                                      (candidate, planning))
-                    with patch("runtime_checks.trace_errors", return_value=["worker_fan_in_rejected"]):
+                    with patch("scripts.runtime_checks.trace_errors", return_value=["worker_fan_in_rejected"]):
                         with self.assertRaisesRegex(ValueError, "remediation_recovery_evidence_unverified"):
                             prepare._recover_terminal_unmerged_review(root, packet, closure, root)
                     passed["thread_id"] = "other"
@@ -945,7 +944,7 @@ class TechOpsCorrections(unittest.TestCase):
             ledger_path.write_text(json.dumps(ledger))
             candidate = {"status": "unaccepted", "files": {"test.py": "hash"}}
             with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
-                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
                  patch.object(prepare, "_verified_recovery_planning", return_value={}), \
                  patch.object(prepare, "_recover_preserved_candidate", return_value=candidate):
                 self.assertEqual(prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root), candidate)
@@ -992,8 +991,8 @@ class TechOpsCorrections(unittest.TestCase):
                     prepare._recover_predispatch_context_candidate(root, packet, {"terminal_observations": []}, root)
 
     def test_unmerged_unchanged_candidate_requires_verified_terminal_trace(self):
-        import recovery_candidate
-        import runtime_checks
+        from scripts import recovery_candidate
+        from scripts import runtime_checks
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             prior = {"identity": {"Run ID": "run", "Lifecycle": "remediation"},
@@ -1020,8 +1019,8 @@ class TechOpsCorrections(unittest.TestCase):
             dispatch = {"worker_contract": {"recovered_candidate": candidate},
                         "coordinator_execution": {"source_checkout": str(root)}}
             with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
-                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
-                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observation) as native, \
+                 patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence._native_terminal_observations", return_value=observation) as native, \
                  patch.object(prepare, "_verified_recovery_planning"), \
                  patch.object(prepare, "_recover_preserved_candidate", return_value=original), \
                  patch.object(runtime_checks, "_verified_dispatch_content", return_value="header\n" + json.dumps(dispatch)), \
@@ -1063,8 +1062,8 @@ class TechOpsCorrections(unittest.TestCase):
             closure = {"terminal_observations": observations}
             candidate = {"status": "unaccepted", "files": {"test.py": "hash"}}
             with patch.object(planning_contracts, "terminal_closure_dispatch_errors", return_value=[]), \
-                 patch("worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
-                 patch("worker_runtime_evidence._native_terminal_observations", return_value=observations), \
+                 patch("scripts.worker_runtime_evidence.dispatch_audit_errors", return_value=[]), \
+                 patch("scripts.worker_runtime_evidence._native_terminal_observations", return_value=observations), \
                  patch.object(prepare, "_verified_recovery_planning", return_value={}), \
                  patch.object(prepare, "_recover_preserved_candidate", return_value=candidate) as verify:
                 self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, packet, closure, root), candidate)
@@ -1117,7 +1116,7 @@ class TechOpsCorrections(unittest.TestCase):
                 (root / "finalization_failure.json").write_text(json.dumps({**failure,
                     "snapshot_sha256": repaired_hash, "packet_sha256": repaired_hash}))
                 observations[0]["Last dispatch at"] = "later"
-                with patch("provider_runtime.latest_worker_dispatch", return_value={"Operation": "followup_task", "Last dispatch at": "later"}):
+                with patch("scripts.provider_runtime.latest_worker_dispatch", return_value={"Operation": "followup_task", "Last dispatch at": "later"}):
                     self.assertEqual(prepare._recover_stopped_bootstrap_candidate(root, repaired, closure, root, rejected=True), candidate)
                     corrected.write_text("tampered")
                     with self.assertRaisesRegex(ValueError, "candidate_rejected_trace_unverified"):
@@ -1287,7 +1286,7 @@ class TechOpsCorrections(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), packet)
 
     def test_ready_plan_must_pass_remediation_entry_contract(self):
-        from review_evidence import PLAN_FIXTURE
+        from scripts.review_evidence import PLAN_FIXTURE
         packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.33",
                                "Lifecycle": "planning", "State": "ready_for_implementation"},
                   "planning_disposition": {"plan_readiness": "ready_for_implementation", "implementation_plan_action": "create"},
@@ -1460,20 +1459,20 @@ class TechOpsCorrections(unittest.TestCase):
                 return []
             packet_path.write_text(json.dumps(packet))
             original = packet_path.read_bytes()
-            with patch("merge_techops_result.merged_result_errors", side_effect=merged), \
+            with patch("scripts.merge_techops_result.merged_result_errors", side_effect=merged), \
                  patch.object(planning_contracts, "_worker_runtime_audit_errors", side_effect=audit) as checked:
                 errors = runtime.activation_packet_errors(Path(bundle["path"]), "solution_architect", bundle["sha256"])
                 checked.assert_called_once()
                 self.assertNotIn("worker_runtime_audits_incomplete", errors)
             self.assertEqual(packet_path.read_bytes(), original)
-            with patch("merge_techops_result.merged_result_errors", return_value=[]), \
+            with patch("scripts.merge_techops_result.merged_result_errors", return_value=[]), \
                  patch.object(planning_contracts, "_worker_runtime_audit_errors",
                               return_value=["worker_trace_stale:failure-path"]):
                 self.assertIn("worker_trace_stale:failure-path", runtime.activation_packet_errors(
                     Path(bundle["path"]), "solution_architect", bundle["sha256"]))
             packet["runtime_audits"] = [row for row in packet["runtime_audits"] if row["Worker"] != "failure-path"]
             packet_path.write_text(json.dumps(packet))
-            with patch("merge_techops_result.merged_result_errors", return_value=[]):
+            with patch("scripts.merge_techops_result.merged_result_errors", return_value=[]):
                 self.assertIn("worker_runtime_audits_incomplete", runtime.activation_packet_errors(
                     Path(bundle["path"]), "solution_architect", bundle["sha256"]))
 

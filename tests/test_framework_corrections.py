@@ -52,7 +52,7 @@ class FrameworkCorrections(unittest.TestCase):
         for role, namespace in (("implementer", "IM"), ("reviewer", "RV"), ("tester", "TE")):
             with self.subTest(role=role):
                 instructions = contracts[role]["result_instructions"]
-                self.assertIn("scratch files inside the run artifact root", instructions)
+                self.assertIn("Do not edit Coordinator-owned packet rows or write assigned output files directly", instructions)
                 self.assertIn("worker_result, a single object, never worker_results", instructions)
                 for prefix in ("E", "CL", "DE", "A"):
                     self.assertIn(f"{prefix}-{namespace}-001", instructions)
@@ -257,6 +257,13 @@ class FrameworkCorrections(unittest.TestCase):
                   "plan_readiness": "awaiting_input", "implementation_plan_action": "create",
                   "techops_checks": [{"Check": name, "Status": "passed", "Evidence refs": "E-FD-1, E-FD-2",
                                       "Detail": "Observed"} for name in runtime.TECHOPS_CHECKS]}
+        template = json.loads(finalizer.PACKET_TEMPLATE.read_text())
+        result["claims"] = [{**dict.fromkeys(template["claims"][0], "Recorded"),
+            "Claim ID": "CL-FD-1", "Evidence refs": "E-FD-1, E-FD-2"}]
+        result["decisions"] = [{**dict.fromkeys(template["decisions"][0], "Recorded"),
+            "Decision ID": "DE-FD-1", "Claim refs": "CL-FD-1"}]
+        result["actions"] = [{**dict.fromkeys(template["actions"][0], "Recorded"),
+            "Action ID": "A-FD-1", "Decision ref": "DE-FD-1"}]
         result["worker_result"]["Evidence / claim refs"] = ["E-FD-1", "E-FD-2"]
         before = packet.read_bytes()
         with self.assertRaises(ValueError) as caught:
@@ -296,7 +303,7 @@ class FrameworkCorrections(unittest.TestCase):
                 run = prepare.prepare_run(Path(directory), "ITEM-ALL", playbook, None, False,
                                           input_manifest=self.inputs)
                 contract = run["worker_contracts"]["current_state_investigator"]
-                instructions = contract.get("result_instructions", contract.get("instructions", ""))
+                instructions = contract.get("instructions", "") + " " + contract.get("result_instructions", "")
                 worker = contract.get("worker_id", contract.get("worker"))
                 self.assertIn(f"Its Worker value must be exactly {worker}.", instructions)
                 self.assertIn("Every field value", instructions)

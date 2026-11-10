@@ -34,7 +34,6 @@ def validate_response(packet_path: Path, agent: str, response: dict) -> str:
     candidate = validated_result(packet, response["result"], bindings, agent)
     if (bindings.get("playbook") == "feature_delivery" and bindings.get("lifecycle") == "planning"
             and agent == "solution_architect" and response["result"]["worker_result"]["Outcome"] == "complete"
-            and response["result"].get("plan_readiness") == "ready_for_implementation"
             and (packet_path.parent / "asset_manifest.json").is_file()):
         try:
             from asset_manifest import link_design_assets

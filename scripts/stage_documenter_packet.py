@@ -310,8 +310,10 @@ def main() -> int:
     parser.add_argument("--packet", type=Path, required=True)
     parser.add_argument("--coordinator-model-effort", required=True)
     parser.add_argument("--prompt-conformance", choices=("pass",), required=True)
-    parser.add_argument("--state", choices=("ready_for_implementation", "awaiting_input", "blocked"))
-    parser.add_argument("--engineering-outcome", choices=("solved", "partially_solved", "blocked"))
+    parser.add_argument("--state", choices=("ready_for_implementation", "awaiting_input", "blocked"),
+                        help="TechOps planning only; Feature planning derives state from the accepted design")
+    parser.add_argument("--engineering-outcome", choices=("solved", "partially_solved", "blocked"),
+                        help="Remediation only; planning derives its engineering outcome")
     args = parser.parse_args()
     context_details = []
     try:

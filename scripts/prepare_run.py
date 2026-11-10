@@ -3478,7 +3478,7 @@ def prepare_run(
             "complete supported plan; awaiting_input/create_draft when confirmed independent work has a feasible "
             "partial Draft with owned unresolved decisions; awaiting_input/omit only when no supported partial "
             "scope exists. A partial Draft preserves the Clarification Brief and does not approve implementation. "
-            "For a ready design, include an Asset Baseline section linking asset_manifest.json and one row per "
+            "For a completed design, include an Asset Baseline section linking asset_manifest.json and one row per "
             "material asset with exact columns Asset ID, Evidence refs, Observation, Planning consequence. "
             "Use bare asset IDs in the Asset ID column. The validated merger records consumption; do not edit the manifest."
         )

@@ -506,6 +506,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    For Technical Spike, assign the supplied work-item input and `work_item_read` to `spike-context`; a completed
    handoff is invalid if that worker silently omits the read. Preparation captures the execution checkout revision in
    the packet before worker analysis, so workers must not replace it with `Unknown`.
+   `bindings`, `worker_contracts`, and activation `packets` are keyed by provider role. Read the contract's
+   `worker_id` or `worker` field for its logical playbook ID; do not use a stage label as a contract lookup key.
    Use the playbook's logical worker IDs exactly: final provider role `documenter` is recorded as `handoff`,
    `spike-investigation` uses `solution_architect`, and `spike-assessment` uses `reviewer`. The packaged finalizer
    validates those role bindings and validates `spike_report.md` before releasing the Documenter.
@@ -787,7 +789,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    The merger registers each analytical worker ledger row from the authenticated typed assignment, launch binding and
    accepted result. Do not edit those rows by hand or ask Documenter to reconstruct them. Continue to the packaged
    activation guard only after this command exits successfully.
-   For ready Feature Delivery planning designs, the merger also records material asset consumption from the accepted
+   For completed Feature Delivery planning designs, the merger records material asset consumption from the accepted
    per-asset `Asset Baseline`. Return missing or invalid coverage to Feature Design; do not patch asset linkage by hand.
    For Feature Delivery remediation, after merging `implement`, `review`, and `validate`, stage the delivery barrier
    with `--engineering-outcome solved|partially_solved|blocked`. The command requires current accepted result artifacts,

@@ -116,7 +116,7 @@ or reviewed.
 The pre-fanout command checks source inventory and asset review, not future design or claim links. A reviewed material
 asset may pass this first gate with `all_material_assets_linked: false`; keep its relevance `material` and its evidence
 references. Feature Design includes each material asset in its `Asset Baseline` table with evidence, observation, and
-planning consequence. For a complete, ready design, its validated merger records `used_by` and the linkage gate from
+planning consequence. For a complete design, its validated merger records `used_by` and the linkage gate from
 that evidence; the Coordinator does not edit those fields manually. Terminal
 finalization then requires the material asset's design/review link and a claim backed by its evidence. Never relabel a
 material asset `non_material` merely to pass the early gate.

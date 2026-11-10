@@ -12,12 +12,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import prepare_run as preparation
-import finalize_work_record as finalizer
-import validate_worker_runtime as runtime
-from run_input_manifest import load_manifest
-from review_evidence import delivery_evidence_fixture, PLAN_FIXTURE
+from scripts import prepare_run as preparation
+from scripts import finalize_work_record as finalizer
+from scripts import validate_worker_runtime as runtime
+from scripts.run_input_manifest import load_manifest
+from scripts.review_evidence import delivery_evidence_fixture, PLAN_FIXTURE
 from tests.worker_response_support import stage_worker_response
 
 

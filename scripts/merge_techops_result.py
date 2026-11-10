@@ -439,7 +439,6 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
     design_assets = None
     asset_path = root / "asset_manifest.json"
     if (bindings.get("playbook") == "feature_delivery" and bindings.get("lifecycle") == "planning"
-            and packet.get("planning_disposition", {}).get("plan_readiness") == "ready_for_implementation"
             and any(row.get("Worker") == "feature-design" and row.get("Outcome") == "complete"
                     for row in packet.get("worker_results", [])) and asset_path.is_file()
             and (agent == "solution_architect" and output is not None or asset_manifest is not None)):

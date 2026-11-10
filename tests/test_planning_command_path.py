@@ -36,6 +36,16 @@ class PlanningCommandPath(unittest.TestCase):
     def test_feature_remediation_through_actual_shipped_commands(self):
         self.planning_path("feature_delivery", continue_to_remediation=True)
 
+    def test_feature_awaiting_designs_have_equivalent_fresh_and_recovered_handoffs(self):
+        for action in ("create_draft", "omit"):
+            with self.subTest(action=action):
+                self.planning_path("feature_delivery", plan_action=action)
+                fresh = self.planning_outcome
+                self.assertEqual(fresh["state"], "awaiting_input")
+                self.assertEqual(fresh["plan"] is None, action == "omit")
+                self.planning_path("feature_delivery", plan_action=action, planning_recovery=True)
+                self.assertEqual(self.planning_outcome, fresh)
+
     def test_techops_remediation_through_actual_shipped_commands(self):
         self.planning_path("techops_issue_remediation", continue_to_remediation=True)
 
@@ -90,7 +100,7 @@ class PlanningCommandPath(unittest.TestCase):
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
                       recover_context_block=False, missing_mapping=False, start_next_run=False,
-                      parallel_integration=False, planning_recovery=False):
+                      parallel_integration=False, planning_recovery=False, plan_action="create"):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -391,7 +401,8 @@ class PlanningCommandPath(unittest.TestCase):
                         result["actions"] = [{"Action ID": "A-FD-001", "Action": "After approval, correct the operator and extend the regression fixture.",
                             "Decision ref": "DE-FD-001", "Owner": "Implementer", "Status": "Proposed"}]
                         if playbook == "feature_delivery":
-                            result.update(plan_readiness="ready_for_implementation", implementation_plan_action="create")
+                            result.update(plan_readiness="ready_for_implementation" if plan_action == "create" else "awaiting_input",
+                                          implementation_plan_action=plan_action)
                         else:
                             result.update(plan_readiness="ready_for_implementation", implementation_plan_action="create")
                             result["techops_checks"] = [{"Check": check, "Status": "not_applicable" if check == "history_reconciliation" else "passed",
@@ -493,6 +504,26 @@ class PlanningCommandPath(unittest.TestCase):
                         packet["durable_artifacts"].append({"Artifact": "Asset inventory", "Path": str(assets),
                             "Status": "passed", "Purpose": "Current feature-context inventory"})
                         packet["handoff"]["artifacts"].append(str(assets))
+                        if plan_action != "create":
+                            question = ("Counter boundary-input policy", "Defines remaining acceptance criteria",
+                                        "Product owner", "pending", "E-FD-001")
+                            brief = root / "clarification_brief.md"
+                            brief.write_text("# Clarification Brief\n" + render_table(
+                                ("Question or decision", "Why it matters", "Owner", "Status", "Evidence refs"), question))
+                            packet["durable_artifacts"].append({"Artifact": "Clarification Brief", "Path": str(brief),
+                                "Status": "Draft", "Purpose": "Owned unresolved boundary-input decision"})
+                            packet["handoff"]["artifacts"].append(str(brief))
+                            packet["handoff"]["workflow_result"] = "Awaiting the owned boundary-input decision"
+                            packet["handoff"]["next_action"] = {"owner": "Product owner",
+                                "action": "Resolve the counter boundary-input policy", "complete_when": "The owned decision is recorded"}
+                            if plan_action == "create_draft":
+                                plan.write_text(plan.read_text() + "\n# Open Questions and Decisions\n" + render_table(
+                                    ("Question or decision", "Why it matters", "Owner", "Status", "Evidence refs"), question))
+                            else:
+                                plan.unlink()
+                                packet["durable_artifacts"] = [row for row in packet["durable_artifacts"] if row["Path"] != str(plan)]
+                                packet["handoff"]["artifacts"].remove(str(plan))
+                                packet["handoff"]["implementation_plan"] = "Not created; awaiting the owned decision"
                     packet_path.write_text(json.dumps(packet))
                 append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "completed",
                        "agent_path": handle, "agent_thread_id": child_id})
@@ -601,7 +632,10 @@ class PlanningCommandPath(unittest.TestCase):
             published = json.loads(packet_path.read_text())
             self.planning_outcome = {
                 "state": published["identity"]["State"], "outcome": published["identity"]["Workflow outcome"],
-                "plan": (root / "implementation_plan.md").read_text().replace(str(repository), "<repository>"),
+                "plan": ((root / "implementation_plan.md").read_text().replace(str(repository), "<repository>")
+                         if (root / "implementation_plan.md").is_file() else None),
+                "clarification": ((root / "clarification_brief.md").read_text()
+                                  if (root / "clarification_brief.md").is_file() else None),
                 "reasoning": {key: json.dumps(published[key], sort_keys=True).replace(str(repository), "<repository>")
                               for key in ("evidence", "claims", "decisions", "actions")},
             }
