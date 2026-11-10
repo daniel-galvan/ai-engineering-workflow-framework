@@ -344,6 +344,15 @@ class PlanningCommandPath(unittest.TestCase):
                 append(child, "response_item", type="function_call", name="exec_command", call_id="source",
                        arguments=json.dumps({"cmd": "cat " + str(source), "workdir": str(repository)}))
                 append(child, "response_item", type="function_call_output", call_id="source", output=source.read_text())
+                if role == "solution_architect":
+                    reader = ('for p in ' + str(instructions) + '; do if test -f "$p"; then cat "$p"; fi; done; cat ' + str(source))
+                    calls = ('text(await tools.exec_command(' + json.dumps({"cmd": reader, "workdir": str(repository)})
+                             + ')); text(await tools.exec_command(' + json.dumps({
+                                 "cmd": "cat " + str(packet_path), "workdir": str(repository)}) + '));')
+                    append(child, "response_item", type="custom_tool_call", name="exec", call_id="batched-source", input=calls)
+                    append(child, "response_item", type="custom_tool_call_output", call_id="batched-source", output=[{
+                        "type": "text", "text": 'Warning: truncated output (original token count: 10000)\n'
+                        + json.dumps({"exit_code": 0, "output": packet_path.read_text()})}])
                 if parallel_integration and index > 0:
                     reader = ("git -C " + str(repository) + " status --short --branch && cat " + str(packet_path)
                               if index % 2 else "python3 - <<'PY'\nfrom pathlib import Path\nbase=Path("
@@ -456,6 +465,13 @@ class PlanningCommandPath(unittest.TestCase):
                         self.assertEqual(json.loads(preview), response)
                     if response_manifest is not None:
                         response["asset_manifest"] = response_manifest
+                        invalid = {**response, "asset_manifest": {**response_manifest, "status": "awaiting_input"}}
+                        rejected = command("prepare_worker_response.py", "--packet", packet_path,
+                            "--agent", role, "--response-stdin", stdin=json.dumps(invalid), expected=2)
+                        self.assertIn("awaiting_input requires an unresolved source or asset", rejected)
+                        preview = command("prepare_worker_response.py", "--packet", packet_path,
+                            "--agent", role, "--response-stdin", stdin=json.dumps(response))
+                        self.assertEqual(json.loads(preview), response)
                     append(child, "response_item", type="message", role="assistant", phase="final_answer",
                            content=[{"type": "output_text", "text": json.dumps(response)}])
                 else:

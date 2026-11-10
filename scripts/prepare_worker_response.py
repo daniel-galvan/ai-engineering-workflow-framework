@@ -32,6 +32,15 @@ def validate_response(packet_path: Path, agent: str, response: dict) -> str:
     if contract.get("asset_inventory") and not isinstance(response.get("asset_manifest"), dict):
         raise ValueError("worker_asset_manifest_response_required")
     candidate = validated_result(packet, response["result"], bindings, agent)
+    if contract.get("asset_inventory"):
+        try:
+            from asset_manifest import validate_asset_manifest
+        except ModuleNotFoundError:
+            from scripts.asset_manifest import validate_asset_manifest
+        errors = validate_asset_manifest(response["asset_manifest"], work_item=packet["work_item"]["ID"],
+                                         require_material_linkage=False)
+        if errors:
+            raise ValueError("worker_asset_manifest_response_invalid:" + ";".join(errors))
     if (bindings.get("playbook") == "feature_delivery" and bindings.get("lifecycle") == "planning"
             and agent == "solution_architect" and response["result"]["worker_result"]["Outcome"] == "complete"
             and (packet_path.parent / "asset_manifest.json").is_file()):

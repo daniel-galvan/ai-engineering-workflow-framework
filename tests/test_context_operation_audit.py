@@ -1006,6 +1006,40 @@ class ContextOperationAudit(unittest.TestCase):
             changed['tool_trace'][-2]['input'] = 'text(await tools.exec_command(' + json.dumps({'cmd': command + suffix}) + '));'
             self.assertTrue(any(error.startswith('forbidden_context_reference:') for error in runtime.trace_errors(changed)))
 
+    def test_batched_guarded_source_reads_preserve_current_packet_provenance(self):
+        base = self.instruction_read_trace([str(self.repository)])
+        source = self.repository / 'module' / 'code.txt'
+        source.parent.mkdir()
+        source.write_text('current source')
+        external = self.repository.parent / 'external-source'
+        external.write_text('external source')
+        link = source.parent / 'foreign-link'
+        link.symlink_to(external)
+        packet = self.root / 'finalization_packet.json'
+        session = '/Users/example/.codex/sessions/current-worker.jsonl'
+        data = json.loads(packet.read_text())
+        data['runtime_audits'] = [{'Worker': 'context', 'Trace retrieval': session}]
+        packet.write_text(json.dumps(data))
+        command = ('for p in ' + str(source.parent / 'AGENTS.md')
+                   + '; do if test -f "$p"; then cat "$p"; fi; done; cat ' + str(source))
+        def audit(first, second):
+            trace = json.loads(json.dumps(base))
+            call = ('text(await tools.exec_command(' + json.dumps({'cmd': first}) + '));\n'
+                    'text(await tools.exec_command(' + json.dumps({'cmd': second}) + '));')
+            # The provider can truncate a combined result even when both source operations are legitimate.
+            output = 'Warning: truncated output (original token count: 10000)\n' + json.dumps({
+                'exit_code': 0, 'output': json.dumps(data)})
+            trace['tool_trace'].extend(self.paired(call, [{'type': 'text', 'text': output}]))
+            return runtime.trace_errors(trace)
+        self.assertEqual(audit(command, 'cat ' + str(packet)), [])
+        for unsafe in ('cat ' + session, command + '; cat ' + session,
+                       command.replace(str(source), str(self.repository / '*')),
+                       command.replace(str(source), str(link)),
+                       command.replace(str(source.parent / 'AGENTS.md'), '$HOME/AGENTS.md'),
+                       command.replace('then cat "$p"', 'then cat ' + session)):
+            with self.subTest(unsafe=unsafe):
+                self.assertIn('forbidden_context_reference:session_log', audit(unsafe, 'cat ' + str(packet)))
+
     def test_current_artifact_json_inspection_treats_search_literals_as_data(self):
         path = self.root / 'trace.json'
         path.write_text(json.dumps({'tool_trace': []}))
@@ -1016,6 +1050,16 @@ class ContextOperationAudit(unittest.TestCase):
             return runtime.context_trace_errors({'tool_trace': [{'type': 'function_call', 'name': 'exec_command',
                 'arguments': {'cmd': value}}]}, artifact_root=self.root)
         self.assertEqual(errors(command), [])
+        diagnostic = ('import json\np=' + repr(str(path)) + '; d=json.load(open(p)); '
+                      's=json.dumps(d); i=s.find("/.codex/sessions"); '
+                      'print(s[max(0,i-20):i+30])')
+        for invocation in (shlex.join(['python3', '-c', diagnostic]),
+                           "python3 - <<'PY'\n" + diagnostic + "\nPY"):
+            self.assertEqual(errors(invocation), [])
+            self.assertIn('forbidden_context_reference:session_log', errors(
+                invocation + '\ncat /Users/example/.codex/sessions/foreign.jsonl'))
+            self.assertIn('forbidden_context_reference:session_log', errors(invocation.replace(
+                repr(str(path)), repr('/Users/example/.codex/sessions/foreign.jsonl'))))
         for unsafe in (command + '; cat /Users/example/.codex/sessions/foreign.jsonl',
                        'python3 -c "import json; d=json.load(open(\'' + str(path)
                            + '\')); print(\'$(cat /Users/example/.codex/sessions/foreign.jsonl)\' == \'\')"',

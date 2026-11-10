@@ -1432,7 +1432,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
     tree = ast.parse(source)
     targets, constants = [], {}
     stores = [node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)]
-    builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted", "range"}
+    builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted", "range", "min", "max"}
     protected = builtins | {"open", "json", "pprint", "sys", "Path"}
     def literal_paths(node):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -1525,7 +1525,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                     or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords)):
                 return []
             if not json_load and not pretty_print and node.func.attr not in (
-                    {"keys", "items", "values", "get", "lower"} if pretty else {"keys", "items", "values", "get"}):
+                    {"keys", "items", "values", "get", "lower"} if pretty else {"keys", "items", "values", "get", "find"}):
                 return []
         else:
             return []
@@ -1671,9 +1671,24 @@ def _read_targets(command: str) -> list[str]:
                 else:
                     part.append(token)
             parts.append(part)
-            if len(parts) != 4 or len(parts[0]) < 4 or parts[0][2] != "in":
+            if len(parts[0]) < 4 or parts[0][2] != "in" or not re.fullmatch(r"[A-Za-z_]\w*", parts[0][1]):
                 return []
             variable = "$" + parts[0][1]
+            if any(target.startswith("-") or "$" in target for target in parts[0][3:]):
+                return []
+            if (len(parts) >= 5 and parts[1:5] == [
+                    ["do", "if", "test", "-f", variable], ["then", "cat", variable], ["fi"], ["done"]]):
+                targets = parts[0][3:]
+                for part in parts[5:]:
+                    if not part:
+                        continue
+                    selected = _read_targets(shlex.join(part))
+                    if not selected and not _listing_command(shlex.join(part)):
+                        return []
+                    targets.extend(selected)
+                return targets
+            if len(parts) != 4:
+                return []
             if (len(parts[1]) != 4 or parts[1][:2] != ["do", "printf"] or parts[1][3] != variable
                     or parts[2] != ["cat", variable] or parts[3] != ["done"]):
                 return []
@@ -1928,7 +1943,8 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                     and not (path.resolve().parent == root and path.name in instructions)
                     and path.resolve() != Path(trace["spawn"]["dispatch_file"]).resolve()
                     and ((path.resolve().parent == root and path.is_file()) or str(path) in assigned
-                         or (path.exists() and not path.resolve().is_relative_to(root.parent)
+                         or ((path.exists() or path.name == "AGENTS.md" and path.parent.is_dir() and not path.is_symlink())
+                             and not path.resolve().is_relative_to(root.parent)
                              and any(Path(parent).is_dir() and path.resolve().is_relative_to(Path(parent).resolve())
                                      for parent in assigned if parent.startswith('/')))
                          or path.name == "AGENTS.md" and path.resolve() in allowed_instructions and path.is_file())
@@ -2576,13 +2592,14 @@ def _verified_trace_retrieval_path(trace: dict[str, object]) -> Path | None:
 
 
 def _without_comparison_literals(text: str, row: dict) -> str:
-    """Comparison strings are search data; file arguments and other code remain audited."""
+    """Literal comparisons and string searches are data; file arguments remain audited."""
     for name, arguments in _tool_operations(row):
         command = arguments.get("cmd") if name == "exec_command" else None
         if not isinstance(command, str) or any(marker in command for marker in ("$", "`")):
             continue
         try:
-            tokens = shlex.split(command)
+            heredoc = re.fullmatch(r"(\S+) - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\2\s*", command, re.S)
+            tokens = [heredoc[1], "-c", heredoc[3]] if heredoc else shlex.split(command)
             if (len(tokens) < 3 or tokens[1] != "-c" or (tokens[0] != "python3"
                     and Path(tokens[0]).resolve() != Path(sys.executable).resolve())):
                 continue
@@ -2590,14 +2607,17 @@ def _without_comparison_literals(text: str, row: dict) -> str:
                 continue
             tree, changed = ast.parse(tokens[2]), False
             for node in ast.walk(tree):
-                if isinstance(node, ast.Compare):
-                    for value in [node.left, *node.comparators]:
-                        if (isinstance(value, ast.Constant) and isinstance(value.value, str)
-                                and any(pattern.search(value.value) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)):
-                            value.value = "[comparison data]"
-                            changed = True
+                values = ([node.left, *node.comparators] if isinstance(node, ast.Compare) else
+                          node.args[:1] if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                          and node.func.attr == "find" else [])
+                for value in values:
+                    if (isinstance(value, ast.Constant) and isinstance(value.value, str)
+                            and any(pattern.search(value.value) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)):
+                        value.value = "[comparison data]"
+                        changed = True
             if changed:
-                sanitized = shlex.join([*tokens[:2], ast.unparse(tree), *tokens[3:]])
+                sanitized = (command[:heredoc.start(3)] + ast.unparse(tree) + command[heredoc.end(3):]
+                             if heredoc else shlex.join([*tokens[:2], ast.unparse(tree), *tokens[3:]]))
                 for escape in (lambda value: value, lambda value: json.dumps(value, ensure_ascii=True)[1:-1],
                                lambda value: json.dumps(value, ensure_ascii=False)[1:-1]):
                     text = text.replace(escape(command), escape(sanitized))
