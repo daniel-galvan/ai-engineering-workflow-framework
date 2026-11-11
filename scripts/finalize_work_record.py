@@ -1676,7 +1676,7 @@ def prepare_analytical_failure(
                           + ([str(evidence_artifact)] if artifact_created else []) + [str(record_path)])),
         "execution": (
             f"standard/planning; finalization validation passed; analytical {failure_kind} failed; "
-            f"workers incomplete; source changes none; runtime {closure_state}"
+            f"workers incomplete; source changes not independently verified; runtime {closure_state}"
         ),
         "provenance": (
             f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "

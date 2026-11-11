@@ -975,7 +975,7 @@ def _finalize_standard_sentry_in_place(
             "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(clarification_path)],
             "execution": (
                 "standard/planning; analytical validation passed; deterministic clarification rendering passed; "
-                f"source changes none; runtime {closure_state}; {trace_audit['note']}"
+                f"source changes not independently verified; runtime {closure_state}; {trace_audit['note']}"
             ),
             "provenance": (
                 f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
@@ -987,7 +987,7 @@ def _finalize_standard_sentry_in_place(
         residual = plan.get("residual_uncertainty", "") if isinstance(plan, dict) else ""
         packet["handoff"] = {
             "workflow_result": "Ready for implementation",
-            "implementation_plan": f"created at {plan_path}; approval pending; no source or external changes made",
+            "implementation_plan": f"created at {plan_path}; approval pending; source and external changes not independently verified",
             "established": [str(fix["supported_remediation_boundary"]), str(fix["supported_intended_change"])],
             "best_current_explanations": ([{"explanation": str(confidence_basis), "confidence": "high",
                                             "reason": str(residual)}] if confidence_basis else []),
@@ -996,7 +996,7 @@ def _finalize_standard_sentry_in_place(
             "artifacts": [str(record_path), str(evidence_path), str(fix_path), str(plan_path)],
             "execution": (
                 "standard/planning; analytical validation passed; deterministic rendering passed; "
-                f"source changes none; runtime {closure_state}; {trace_audit['note']}"
+                f"source changes not independently verified; runtime {closure_state}; {trace_audit['note']}"
             ),
             "provenance": (
                 f"plugin {packet['identity']['Plugin package / version']}; framework revision {framework_revision} "
