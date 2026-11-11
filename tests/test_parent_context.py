@@ -1502,6 +1502,22 @@ class ParentContext(unittest.TestCase):
             payload["input"] = source
             self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_incomplete_literal_batch_audits_every_command(self):
+        payload = {"type": "custom_tool_call", "name": "exec", "input": (
+            'const results = await Promise.allSettled([\n'
+            'tools.exec_command({cmd:"cat /repo/one",max_output_tokens:500}),\n'
+            'tools.exec_command({cmd:"cat /repo/two",max_output_tokens:500)\n'
+            ']);\nfor (const result of results) text(JSON.stringify(result));')}
+        self.rows.append({"type": "response_item", "payload": payload})
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        payload["input"] = payload["input"].replace('/repo/two', '.thoughts/OTHER/runs/old/secret')
+        self.assertIn("forbidden_context_reference:archived_artifact", self.audit()["errors"])
+        for source in (payload["input"].replace('"cat .thoughts/OTHER/runs/old/secret"', 'unknown'),
+                       payload["input"] + ' await tools.exec_command(unknown);',
+                       payload["input"].replace('max_output_tokens:500)', 'max_output_tokens:unknown)')):
+            payload["input"] = source
+            self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
     def test_thoughts_instruction_probes_are_rejected_but_current_flow_artifacts_are_allowed(self):
         shared_instructions = self.root / ".thoughts" / "AGENTS.md"
         artifact_root = self.root / ".thoughts" / "ITEM-1"

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
 import shlex
 import sys
+import tokenize
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -604,15 +606,36 @@ def _literal_command_batch(source: str) -> list[tuple[str, dict]] | None:
             for _, command in commands]
 
 
-def _incomplete_literal_command(source: str) -> list[tuple[str, dict]] | None:
-    """Audit the literal command even when its JavaScript call is missing the closing parenthesis."""
+def _incomplete_literal_command(source: str, parse_operations) -> list[tuple[str, dict]] | None:
+    """Conservatively audit literal operations in a structurally incomplete call."""
     match = re.fullmatch(r'\s*const\s+\w+\s*=\s*await\s+tools\.exec_command\(\{\s*cmd\s*:\s*("(?:[^"\\]|\\.)*")\s*\}\s*', source)
-    if not match:
-        return None
+    if match:
+        try:
+            return [("exec_command", {"cmd": json.loads(match[1])})]
+        except ValueError:
+            return None
     try:
-        return [("exec_command", {"cmd": json.loads(match[1])})]
-    except ValueError:
+        stack = []
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type != tokenize.OP:
+                continue
+            if token.string in {"(", "[", "{"}:
+                stack.append(token.string)
+            elif token.string in {")", "]", "}"}:
+                expected = {")": "(", "]": "[", "}": "{"}[token.string]
+                if stack and stack[-1] != expected:
+                    if token.string != ")" or stack[-2:] != ["(", "{"]:
+                        return None
+                    lines = source.splitlines(keepends=True)
+                    offset = sum(map(len, lines[:token.start[0] - 1])) + token.start[1]
+                    repaired = source[:offset] + "}" + source[offset:]
+                    return parse_operations({"type": "custom_tool_call", "name": "exec", "input": repaired}) or None
+                if not stack:
+                    return None
+                stack.pop()
+    except (TypeError, tokenize.TokenError, IndentationError):
         return None
+    return None
 
 
 def _same_cached_package_script(candidate: Path, script_dir: Path, filename: str) -> bool:
@@ -947,7 +970,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 calls = _tool_operations(payload)
                 if not calls and payload.get("type") == "custom_tool_call":
                     calls = (_literal_worker_status_observation(raw_source) or _literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source)
-                             or _incomplete_literal_command(raw_source) or [])
+                             or _incomplete_literal_command(raw_source, _tool_operations) or [])
                 if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(raw_source or ""):
                     errors.append("parent_tool_arguments_unavailable")
                 for name, arguments in calls:

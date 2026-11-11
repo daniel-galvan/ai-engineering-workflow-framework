@@ -23,17 +23,18 @@ from tests import test_packaged_lifecycle as packaging
 
 class PlanningCommandPath(unittest.TestCase):
     def test_techops_ready_plan_through_actual_shipped_commands(self):
-        self.planning_path("techops_issue_remediation")
+        self.planning_path("techops_issue_remediation", invalid_parent_batch=True)
         fresh = self.planning_outcome
-        self.planning_path("techops_issue_remediation", planning_recovery=True)
+        self.planning_path("techops_issue_remediation", planning_recovery=True, invalid_parent_batch=True)
         self.assertEqual(self.planning_outcome, fresh)
 
     def test_feature_ready_plan_through_actual_shipped_commands(self):
-        commands = self.planning_path("feature_delivery", parallel_integration=True)
+        commands = self.planning_path("feature_delivery", parallel_integration=True, invalid_parent_batch=True)
         self.assertFalse(any(str(arg).startswith(("--recover", "--planning-recovery"))
                              for _, arguments in commands for arg in arguments))
         fresh = self.planning_outcome
-        commands = self.planning_path("feature_delivery", parallel_integration=True, planning_recovery=True)
+        commands = self.planning_path("feature_delivery", parallel_integration=True, planning_recovery=True,
+                                      invalid_parent_batch=True)
         self.assertTrue(any("--planning-recovery" in arguments for _, arguments in commands))
         self.assertEqual(self.planning_outcome, fresh)
 
@@ -104,7 +105,7 @@ class PlanningCommandPath(unittest.TestCase):
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
                       recover_context_block=False, missing_mapping=False, start_next_run=False,
-                      parallel_integration=False, planning_recovery=False, plan_action="create"):
+                      parallel_integration=False, planning_recovery=False, plan_action="create", invalid_parent_batch=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -298,6 +299,15 @@ class PlanningCommandPath(unittest.TestCase):
                          "--started-at", run["runtime_evidence"]["run_started_at"],
                          "--ledger", run["runtime_evidence"]["ledger"])
             for index, (worker, role, namespace) in enumerate(roles):
+                if role == "solution_architect" and invalid_parent_batch:
+                    append(parent, "response_item", type="custom_tool_call", name="functions.exec", call_id="bad-batch",
+                           input=('const results = await Promise.allSettled(['
+                                  'tools.exec_command({cmd:"git status --short"}),'
+                                  'tools.exec_command({cmd:"git rev-parse HEAD")]);'
+                                  'for (const r of results) text(JSON.stringify(r));'))
+                    append(parent, "response_item", type="custom_tool_call_output", call_id="bad-batch", output=[
+                        {"type": "text", "text": "Script failed\nWall time 0.0 seconds\nOutput:\n"},
+                        {"type": "text", "text": "Script error:\nSyntaxError: Unexpected token ')'"}])
                 if worker == "handoff":
                     stage_args = ["--packet", packet_path, "--coordinator-model-effort", "Not exposed / Not exposed",
                                   "--prompt-conformance", "pass"]
