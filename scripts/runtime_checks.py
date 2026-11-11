@@ -1953,7 +1953,11 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                 if row.get("call_id") in strict_projections:
                     safe = False
                     continue
-                targets = _read_targets(arguments.get("cmd"), include_json=True)
+                command = arguments.get("cmd")
+                targets = _read_targets(command, include_json=True)
+                if (not targets and isinstance(command, str) and command.splitlines()
+                        and all(_listing_command(line) for line in command.splitlines() if line.strip())):
+                    continue
                 workdir = arguments.get("workdir")
                 if workdir is not None and not isinstance(workdir, (str, Path)):
                     safe = False

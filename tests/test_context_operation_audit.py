@@ -1169,6 +1169,25 @@ class ContextOperationAudit(unittest.TestCase):
             with self.subTest(unsafe=unsafe):
                 self.assertIn('forbidden_context_reference:session_log', audit(unsafe, 'cat ' + str(packet)))
 
+    def test_packet_read_batched_with_repository_status_preserves_metadata_provenance(self):
+        trace = self.instruction_read_trace([str(self.repository)])
+        packet = self.root / 'finalization_packet.json'
+        data = json.loads(packet.read_text())
+        session = '/Users/example/.codex/sessions/current.jsonl'
+        archive = str(self.root / 'runs' / 'prior')
+        data['runtime_audits'] = [{'Trace retrieval': session}]
+        data['recovery'] = {'Prior artifacts': archive}
+        packet.write_text(json.dumps(data))
+        def audit(extra=''):
+            current = json.loads(json.dumps(trace))
+            call = ('text(await tools.exec_command(' + json.dumps({'cmd': 'cat ' + str(packet)}) + '));\n'
+                    'text(await tools.exec_command(' + json.dumps({'cmd': 'git status --short --branch\ngit rev-parse HEAD' + extra}) + '));')
+            current['tool_trace'].extend(self.paired(call, [{'type': 'input_text', 'text': json.dumps(data)}]))
+            return runtime.trace_errors(current)
+        self.assertEqual(audit(), [])
+        self.assertIn('forbidden_context_reference:session_log', audit('; cat ' + session))
+        self.assertIn('forbidden_context_reference:archived_artifact', audit('; cat ' + archive + '/secret'))
+
     def test_current_artifact_json_inspection_treats_search_literals_as_data(self):
         path = self.root / 'trace.json'
         path.write_text(json.dumps({'tool_trace': []}))
