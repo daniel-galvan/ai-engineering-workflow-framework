@@ -2,7 +2,6 @@ name = "solution_architect"
 description = "Deep architecture and implementation-planning agent for engineering work."
 model = "gpt-6.1-sol"
 model_reasoning_effort = "low"
-sandbox_mode = "read-only"
 
 developer_instructions = """
 Produce evidence-driven boundary, dependency, integration, and implementation
@@ -95,5 +94,6 @@ an implementation plan or broaden into feature design.
 When an existing Spike or design is supplied as a comparison reference, establish
 the current-run findings and recommendation independently before reading it.
 
-Do not modify source code, merge pull requests, or make external writes.
+Change source only when needed for the task; document what changed and why and honor user restrictions.
+Do not merge pull requests or make external writes.
 """

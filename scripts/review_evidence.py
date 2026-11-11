@@ -209,6 +209,27 @@ COVERAGE_COLUMNS = (
 )
 
 
+def source_tree_fingerprint(repository: Path) -> str:
+    """Record tracked and untracked source state, excluding Framework artifacts."""
+    def git(*args):
+        try:
+            return subprocess.check_output(["git", "-c", "core.fsmonitor=false", "-C", str(repository), *args],
+                                           stderr=subprocess.PIPE)
+        except subprocess.SubprocessError as error:
+            raise ValueError("source_read_only_baseline_unavailable") from error
+    files = git("ls-files", "--others", "--exclude-standard", "-z").decode().split("\0")
+    new_files = []
+    for name in sorted(name for name in files if name and Path(name).parts[0] != ".thoughts"):
+        path = repository / name
+        data = str(path.readlink()).encode() if path.is_symlink() else path.read_bytes()
+        new_files.append((name, hashlib.sha256(data).hexdigest()))
+    state = {"head": git("rev-parse", "HEAD").decode().strip(),
+             "diff": hashlib.sha256(git("diff", "HEAD", "--binary", "--no-ext-diff", "--no-textconv",
+                                       "--", ".", ":(exclude).thoughts/**")).hexdigest(),
+             "untracked": new_files}
+    return hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
+
+
 def candidate_fingerprint(repository: Path, base: str, untracked: list[str]) -> str:
     """Bind review to commits, tracked edits and explicitly included new files."""
     def git(*args: str) -> bytes:

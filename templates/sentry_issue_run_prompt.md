@@ -321,7 +321,7 @@ Integration:
 - Do not load a token-based Sentry skill when the configured MCP integration is available.
 
 Additional run-specific constraints or approvals:
-- For `planning`: no source or external-system changes.
+- For `planning`: document any needed source changes, honor user restrictions, and make no external-system changes.
 - For `remediation`: execute only the approved implementation plan after the
   explicit approval gate and required-worker fan-in; do not update external
   systems without separate approval.

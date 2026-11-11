@@ -60,6 +60,10 @@ Record each expansion reason and stop when the report, failure boundary, and mat
 `issue-evidence` owns evidence normalization. Record each artifact's source, timestamp when available, redaction status,
 and limitations. Treat an attachment as evidence, not proof of current code or runtime behavior.
 
+During planning, workers may investigate and create needed playbook artifacts. Change project source only when
+needed for the task; document what changed and why, and honor explicit user restrictions. The current item’s
+`.thoughts` folder contains Framework artifacts, not project source code.
+
 ## Default Execution
 
 - Execution profile: `standard`
@@ -86,7 +90,7 @@ run. Add only relevant user-known context or an explicit override.
 
 | Lifecycle | Behavior |
 | --- | --- |
-| `planning` | Investigate, diagnose, and design; stop at `ready_for_implementation` without source or external-system changes. |
+| `planning` | Investigate, diagnose, and design; stop at `ready_for_implementation` with needed source changes documented and user restrictions honored; no external-system changes. |
 | `remediation` | Execute the approved plan through implementation, Code Review, validation, stabilization, and handoff. |
 
 ## Worker Graph

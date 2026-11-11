@@ -193,7 +193,7 @@ def _normalize_input(row: object, index: int) -> dict[str, object]:
                                                for value in operations)):
         raise ValueError(f"run_input_manifest_authorized_operations_invalid:{input_id}")
     denied = normalized.get("Denied operations", [])
-    if (not isinstance(denied, list) or any(not isinstance(value, str) or value not in {"test_run", "build_run"}
+    if (not isinstance(denied, list) or any(not isinstance(value, str) or value not in {"test_run", "build_run", "source_write"}
                                             for value in denied)):
         raise ValueError(f"run_input_manifest_denied_operations_invalid:{input_id}")
     normalized.setdefault("Classification", "supporting current-run input")

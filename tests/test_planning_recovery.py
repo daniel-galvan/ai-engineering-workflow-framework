@@ -61,6 +61,37 @@ class PlanningRecovery(unittest.TestCase):
         self.assertNotEqual(result['run_id'], self.prepared['run_id'])
         self.assertEqual(json.loads((self.artifacts / 'run_inputs.json').read_text()), before)
 
+    def test_planning_recovery_preserves_explicit_source_restriction_baseline(self):
+        from unittest.mock import patch
+        from scripts import runtime_checks
+        source = self.root / 'source.py'
+        source.write_text('original')
+        for args in (('init', '-q'), ('config', 'user.name', 'Fixture'),
+                     ('config', 'user.email', 'fixture@example.invalid'), ('add', 'source.py'),
+                     ('commit', '-qm', 'baseline')):
+            subprocess.run(['git', '-C', str(self.root), *args], check=True, capture_output=True)
+        inputs = json.loads(self.inputs.read_text())
+        inputs['inputs'].append({'Input ID': 'READONLY', 'Input or artifact': 'Do not change source',
+            'Source or path': 'User', 'Authority': 'User', 'Status': 'Approved',
+            'Classification': 'execution restriction', 'Denied operations': ['source_write']})
+        self.inputs.write_text(json.dumps(inputs))
+        self.prepared = preparation.prepare_run(self.root, 'READONLY-1', 'feature_delivery', None, False,
+                                                input_manifest=self.inputs)
+        self.artifacts = Path(self.prepared['artifact_root'])
+        self.packet_path = Path(self.prepared['finalization_packet'])
+        self.packet = json.loads(self.packet_path.read_text())
+        baseline = self.prepared['coordinator_execution']['source_read_only_baseline']
+        self.close_prior()
+        source.write_text('changed')
+        recovered = preparation.prepare_run(self.root, 'READONLY-1', 'feature_delivery', None, True,
+            input_manifest=self.inputs, planning_recovery=True, approval_reference='Continue existing work')
+        self.assertEqual(recovered['coordinator_execution']['source_read_only_baseline'], baseline)
+        packet = json.loads(Path(recovered['activation_packet_bundle']['path']).read_text())['packets']['current_state_investigator']
+        content = 'Coordinator initialization: complete\n' + json.dumps(packet) + '\n'
+        with patch.object(runtime_checks, '_verified_dispatch_content', return_value=content):
+            self.assertIn('planning_source_write_not_authorized',
+                          runtime_checks.planning_permission_errors({'tool_trace': []}))
+
     def test_implicit_continuation_rejects_modified_saved_inputs(self):
         inputs = self.artifacts / 'run_inputs.json'
         inputs.write_text(inputs.read_text().replace('Jira ITEM-1', 'Different input'))

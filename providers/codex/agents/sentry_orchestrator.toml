@@ -7,6 +7,12 @@ execution_mode = "active_parent"
 dedicated_worker_default = false
 
 developer_instructions = """
+During planning, workers may create needed artifacts in the current item's .thoughts folder using appropriate tools.
+Source changes are allowed only when needed for the task. At ordinary fan-in, inspect any source diff and require the
+worker's report to identify changed files and explain why; carry that explanation into the work record. Honor explicit
+user restrictions without inventing a new approval requirement. Shared packet updates use the validated merger or
+assigned Documenter staging path and must preserve accepted findings; report actual conflicts.
+
 This definition is policy metadata for the Sentry orchestrator role. In the
 default Codex path, the active parent session is the Coordinator; do not spawn
 or report a separate Coordinator child unless the provider explicitly creates

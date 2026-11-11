@@ -297,6 +297,11 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    A blocked engineering result does not require a workflow-failure receipt. Preparation verifies the unchanged
    finalized record, original successful finalizer output, delivery, candidate, planning history, and terminal closure
    before archiving anything. Carry accepted planning inputs forward; create fresh review and validation inputs.
+   During planning, workers may create needed artifacts in the current item’s `.thoughts` folder using appropriate
+   tools. At ordinary fan-in, inspect any source diff and require files and reasons in the worker report and
+   work record; honor explicit user restrictions.
+   `.thoughts` is Framework artifact storage, not project source code. Shared packet updates go through the validated
+   merge or the assigned Documenter staging path. Preserve accepted findings and report actual conflicts.
 6. Use this launcher, the prepared worker contracts and binding manifest as the compact runtime surface for every
    playbook, profile and lifecycle. Read the selected playbook's identity, defaults and active-stage instructions;
    load specific contract, integration or provider sections only when the current operation needs them. Do not bulk
@@ -316,8 +321,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    status. Include the current request as an input with credentials redacted, and preserve each prohibition explicitly;
    do not replace
    a build/test prohibition with the broader phrase "planning-only". Record user prohibitions as an input row with
-   `Classification: "execution restriction"`, `Authority: "User"`, and `Denied operations` containing `test_run`
-   and/or `build_run`. TechOps planning permits a focused existing diagnostic test by its Failure Path or Fix Design
+   `Classification: "execution restriction"`, `Authority: "User"`, and `Denied operations` containing `test_run`,
+   `build_run`, and/or `source_write` as applicable. TechOps planning permits a focused existing diagnostic test by its
+   Failure Path or Fix Design
    worker when the shared evidence-to-hypothesis conditions are met and no user restriction forbids it. Other planning
    tests and product builds require a separate input row with `Classification: "execution authorization"`,
    `Authority: "User"`, `Status: "Approved"`, and `Authorized operations: ["test_run"]` or `["build_run"]`,

@@ -54,6 +54,18 @@ def prepared_package_errors(root: Path, *, check_parent_context: bool = True,
     """Reject package, lifecycle, profile or parent-context drift from the prepared run."""
     try:
         manifest = json.loads((root / "role_bindings.json").read_text())
+        if manifest.get("run_id"):
+            current = json.loads((root / "finalization_packet.json").read_text())
+            if current.get("identity", {}).get("Run ID") != manifest["run_id"]:
+                return ["prepared_run_identity_mismatch"]
+            if current.get("work_item", {}).get("ID") != root.name:
+                return ["prepared_work_item_mismatch"]
+            inputs = manifest.get("run_input_manifest", {})
+            if inputs.get("path") and inputs.get("sha256"):
+                copied = current.get("run_input_manifest", {})
+                if (any(copied.get(key) != inputs[key] for key in ("path", "sha256"))
+                        or hashlib.sha256(Path(inputs["path"]).read_bytes()).hexdigest() != inputs["sha256"]):
+                    return ["prepared_input_manifest_mismatch"]
         package = manifest.get("framework_package")
         expected_root = expected_package_root.resolve() if expected_package_root is not None else ROOT
         content_root = package_content_root or expected_root
@@ -2900,14 +2912,7 @@ def planning_permission_errors(trace: dict) -> list[str]:
         return errors + ["worker_lifecycle_required"]
     if lifecycle != "planning":
         return errors
-    artifact_root = Path(trace["spawn"]["dispatch_file"]).resolve().parent
-    repository_root = artifact_root.parent.parent
     contract = packet.get("worker_contract") or {}
-    allowed_writes = {Path(contract[key]).resolve() for key in ("output", "result", "implementation_plan")
-                      if isinstance(contract.get(key), str)}
-    if contract.get("result_response") == "strict_json_final_answer":
-        allowed_writes.difference_update(Path(contract[key]).resolve() for key in ("output", "result")
-                                        if isinstance(contract.get(key), str))
     authorized = set()
     denied = set()
     for row in packet.get("run_input_manifest", {}).get("inputs", []):
@@ -2924,25 +2929,20 @@ def planning_permission_errors(trace: dict) -> list[str]:
             and packet.get("agent") in {"dependency_analyst", "solution_architect"}):
         authorized.add("test_run")
     authorized.difference_update(denied)
+    if "source_write" in denied:
+        baseline = packet.get("coordinator_execution", {}).get("source_read_only_baseline")
+        try:
+            from review_evidence import source_tree_fingerprint
+        except ModuleNotFoundError:
+            from scripts.review_evidence import source_tree_fingerprint
+        try:
+            checkout = Path(packet["coordinator_execution"]["source_checkout"])
+            if not baseline or source_tree_fingerprint(checkout) != baseline:
+                errors.append("planning_source_write_not_authorized")
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+            errors.append("planning_source_restriction_unverified")
     for row in trace.get("tool_trace", []):
         for tool, arguments in _tool_operations(row):
-            if tool == "apply_patch":
-                patch = arguments.get("patch")
-                targets = re.findall(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", patch or "", re.M)
-                if not isinstance(patch, str) or not targets:
-                    errors.append("planning_write_targets_unavailable")
-                    continue
-                for target in targets:
-                    path = Path(target)
-                    path = path if path.is_absolute() else repository_root / path
-                    resolved = path.resolve()
-                    if not resolved.is_relative_to(artifact_root):
-                        errors.append("planning_source_write_not_authorized")
-                        break
-                    if resolved not in allowed_writes:
-                        errors.append("planning_write_target_not_assigned")
-                        break
-                continue
             if tool != "exec_command":
                 continue
             command = arguments.get("cmd", "")
@@ -2965,72 +2965,11 @@ def planning_permission_errors(trace: dict) -> list[str]:
                         part.append(token)
                 parts.append(part)
 
-                def authorized_write_target(target, *, supporting_file=False):
-                    if target in {"/dev/null", "/dev/stdout", "/dev/stderr"}:
-                        return True
-                    path = Path(target)
-                    cwd = Path(arguments.get("workdir") or repository_root)
-                    if not cwd.is_absolute():
-                        cwd = repository_root / cwd
-                    resolved = (path if path.is_absolute() else cwd / path).resolve()
-                    if not resolved.is_relative_to(artifact_root):
-                        return False
-                    directory = contract.get("artifact_directory")
-                    if supporting_file and isinstance(directory, str):
-                        assigned = Path(directory).resolve()
-                        if assigned.is_relative_to(artifact_root) and resolved.is_relative_to(assigned):
-                            return True
-                    return resolved in allowed_writes
-
                 for part in parts:
                     if not part:
                         continue
                     name = Path(part[0]).name
-                    # shortcut: audit literal embedded writes; opaque external scripts need a provider sandbox.
-                    if name in {"python", "python3", "node", "ruby"} and re.search(
-                            r"\.write_(?:text|bytes)\s*\(|\bopen\s*\([^)]*,\s*['\"](?:w|a|x)"
-                            r"|\b(?:os|shutil)\.(?:remove|unlink|mkdir|makedirs|rmdir|rename|replace|"
-                            r"copy|copy2|copyfile|copytree|move|rmtree)\s*\(", command):
-                        errors.append("planning_source_write_not_authorized")
-                    for index, token in enumerate(part[:-1]):
-                        if token in {">", ">>", ">|", "&>", "&>>", ">&"}:
-                            target = part[index + 1]
-                            if not (token == ">&" and target in {"1", "2"}) and not authorized_write_target(target, supporting_file=True):
-                                errors.append("planning_source_write_not_authorized")
                     operands = [token for token in part[1:] if not token.startswith("-") and token != "--"]
-                    if name in {"tee", "touch", "mkdir", "rmdir", "rm"}:
-                        targets = [target for target in operands if target != "-"]
-                    elif name in {"cp", "install", "ln"}:
-                        targets = operands[-1:]
-                    elif name == "mv":
-                        targets = operands
-                    elif (name in {"sed", "perl"} and any(token == "-i" or token.startswith("-i") for token in part[1:])
-                          or name == "git" and len(part) > 1 and part[1] in {
-                              "apply", "checkout", "switch", "reset", "clean", "stash", "am", "merge", "rebase",
-                              "cherry-pick"}):
-                        errors.append("planning_source_write_not_authorized")
-                        targets = []
-                    else:
-                        targets = []
-                    if any(not authorized_write_target(target, supporting_file=name in {"mkdir", "tee", "touch", "cp", "install"}) for target in targets):
-                        errors.append("planning_source_write_not_authorized")
-                    if name == "curl":
-                        for index, token in enumerate(part[1:], 1):
-                            if token in {"-O", "--remote-name", "--remote-name-all", "--output-dir", "-K", "--config"}:
-                                errors.append("planning_source_write_not_authorized")
-                            elif token in {"-o", "--output"}:
-                                if index + 1 >= len(part) or (part[index + 1] != "-" and not authorized_write_target(part[index + 1], supporting_file=True)):
-                                    errors.append("planning_source_write_not_authorized")
-                            elif token.startswith("--output="):
-                                if not authorized_write_target(token.split("=", 1)[1], supporting_file=True):
-                                    errors.append("planning_source_write_not_authorized")
-                            elif token.startswith("-o") and len(token) > 2:
-                                if not authorized_write_target(token[2:], supporting_file=True):
-                                    errors.append("planning_source_write_not_authorized")
-                            elif (token.startswith(("--output-dir=", "--config=")) or
-                                  token.startswith("-") and not token.startswith("--") and
-                                  ("O" in token[1:] or "K" in token[1:] or "o" in token[1:])):
-                                errors.append("planning_source_write_not_authorized")
                     operation = None
                     if name in {"bazel", "bazelisk", "go", "npm", "pnpm", "yarn", "make"}:
                         action = next((arg for arg in part[1:] if not arg.startswith("-")), "")

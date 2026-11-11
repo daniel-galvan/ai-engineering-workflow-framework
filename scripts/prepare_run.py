@@ -566,6 +566,9 @@ def _write_activation_packets(
             "repository_instructions": (
                 f"Use {manifest['source_checkout']} as the source checkout for repository reads, Git commands, "
                 f"changes, and validation. Use {artifact_root} for current-run workflow artifacts. "
+                "During planning, change source only when needed and document what changed and why. "
+                "Explicit user restrictions take precedence. The current item's .thoughts folder contains Framework "
+                "artifacts, not project source code. "
                 f"Keep every run-created file, including scratch drafts and temporary output, inside {artifact_root}; "
                 "do not write them to a separate temporary directory. "
                 "The execution_repository in coordinator_execution is the durable-records repository and may "
@@ -2987,6 +2990,10 @@ def prepare_run(
         raise ValueError("run_input_manifest_required")
     validated_supplied = (load_manifest(input_manifest, explicit=True) if input_manifest else
                           validate_manifest(input_data, explicit=True) if input_data is not None else None)
+    previous_source_baseline = None
+    if continuation and (artifact_root / "role_bindings.json").is_file():
+        previous_source_baseline = json.loads((artifact_root / "role_bindings.json").read_text()).get(
+            "coordinator_execution", {}).get("source_read_only_baseline")
     previous_run_bindings = {}
     if continuation and not (remediation_reentry or planning_recovery) and (artifact_root / "role_bindings.json").is_file():
         previous_run_bindings = json.loads((artifact_root / "role_bindings.json").read_text())
@@ -3202,6 +3209,14 @@ def prepare_run(
     manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
     manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
     manifest["run_input_manifest"]["precedence_rule"] = run_inputs["precedence_rule"]
+    if any(row.get("Authority") == "User" and row.get("Classification") == "execution restriction"
+           and "source_write" in row.get("Denied operations", []) for row in run_inputs["inputs"]):
+        try:
+            from review_evidence import source_tree_fingerprint
+        except ModuleNotFoundError:
+            from scripts.review_evidence import source_tree_fingerprint
+        manifest["coordinator_execution"]["source_read_only_baseline"] = (
+            previous_source_baseline or source_tree_fingerprint(source_checkout))
     manifest["lifecycle"] = resolved_lifecycle
     manifest["execution_profile"] = resolved_profile
     if budget:
@@ -3515,10 +3530,11 @@ def prepare_run(
         if contract.get("result_response") != "strict_json_final_answer":
             continue
         contract["response_builder"] = str(ROOT / "scripts" / "prepare_worker_response.py")
-        contract["artifact_directory"] = str(artifact_root / "worker_artifacts" / agent)
         contract["result_instructions"] = (
-            f"For supporting files needed by this assignment, use {contract['artifact_directory']} "
-            "with mkdir, shell redirection or curl --output; do not use embedded scripts for writes. "
+            f"Create needed supporting artifacts inside {artifact_root} using appropriate tools. "
+            "During planning, change source only when needed for the task and document the files changed and why. "
+            "Honor explicit user restrictions. Submit shared packet updates through the validated merger or assigned "
+            "Documenter staging path; preserve valid existing information and report conflicts. "
             "The output/result paths are Coordinator publication destinations, not worker write permissions. "
             "Do not write those files; provide their contents in the JSON response. "
             "Do not create unassigned draft files. Use stdin for the read-only response preview. "

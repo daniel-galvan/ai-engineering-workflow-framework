@@ -258,12 +258,15 @@ finalizer creates `implementation_plan.md` for `ready_for_implementation/create`
 with a pending closure probe only for Documenter-owned Deep-planning and remediation paths. Release that worker only
 after the check passes; then record exact provider closure and run the finalizer normally.
 Evidence Topology and Fix Design receive prepared contracts and exact output paths from `role_bindings.json`. Each
-writes only its assigned artifact; the Coordinator validates those files rather than reconstructing their payloads.
+writes its assigned result and may create needed supporting artifacts; the Coordinator validates those files
+rather than reconstructing their payloads.
 
-TechOps planning and Feature Delivery analytical agents may be configured read-only. Their prepared contracts require
-one strict JSON final answer containing `output` and `result`; Feature `feature-context` also returns `asset_manifest`.
-The packaged trace exporter snapshots that answer per dispatch, and the validated result merger writes the assigned
-files only after acceptance. Do not ask these workers to write files or pre-create their result paths.
+Planning workers may create supporting files in the current item’s `.thoughts` folder using appropriate tools.
+Needed source changes must be documented and explicit user restrictions honored. Prepared analytical contracts
+submit `output` and `result` through the response builder and submission marker; existing JSON responses remain
+supported. Feature `feature-context` also supplies `asset_manifest`. The trace exporter snapshots the response and
+the validated merger publishes canonical results after acceptance. Shared packet updates use this merger or the
+assigned Documenter staging path. Provider sandbox permissions remain authoritative.
 
 Framework tool IDs are provider-neutral capability classes, not literal Codex tool names. Use the
 `provider_tool_mapping` emitted in `role_bindings.json`: repository reads, searches, history, builds, tests, and local

@@ -120,7 +120,7 @@ the source of truth.
 | ID | Invariant | Detailed rule |
 | --- | --- | --- |
 | `INV-01` | A run MUST declare one work item and one explicit execution repository. | [Work Item Contract](#work-item-contract); [Durable Artifact Root](#durable-artifact-root) |
-| `INV-02` | A planning run MUST NOT modify source code or external systems. | [Workflow State Machine](#workflow-state-machine) |
+| `INV-02` | Planning permits needed, documented source changes and must honor user restrictions; external writes remain gated. | [Workflow State Machine](#workflow-state-machine) |
 | `INV-03` | A remediation run MUST have explicit implementation approval and recorded re-entry before source changes. | [Lifecycle Continuation and Re-entry](#lifecycle-continuation-and-re-entry) |
 | `INV-04` | A requested execution profile MUST NOT be silently downgraded or reported as successfully executed at a lower profile. | [Profile Execution Semantics](#profile-execution-semantics) |
 | `INV-05` | The Coordinator MUST NOT replace a required independent worker. | [Profile Execution Semantics](#profile-execution-semantics) |
@@ -1768,14 +1768,23 @@ flowchart TB
 | `in_progress` | A required stage or worker graph is active and has not reached its gate. | `awaiting_input`, `blocked`, or `ready_for_implementation` |
 | `awaiting_input` | A human decision or missing requirement remains after bounded discovery. | `in_progress`, or `blocked` if the input cannot be obtained |
 | `blocked` | An environment, permission, runtime, or indispensable-evidence problem prevents safe progress. | `in_progress` after recovery, or terminal `blocked` |
-| `ready_for_implementation` | Planning fan-in passed and the playbook's required readiness artifact is ready; source changes are still prohibited. | `implementation` only after explicit approval and an implementation plan, or `awaiting_input` / `blocked` |
+| `ready_for_implementation` | Planning fan-in passed and the playbook's required readiness artifact is ready; any needed source changes are documented. | `implementation` only after explicit approval and an implementation plan, or `awaiting_input` / `blocked` |
 | `implementation` | Approved source or configuration changes are being made by the Implementer. | `code_review` or `blocked` |
 | `code_review` | The Reviewer is assessing the approved change. | `implementation` for in-scope findings, `validation` when accepted, `awaiting_input` for replanning, or `blocked` |
 | `validation` | Tests, build, security, runtime, or other declared validation are being run. | `implementation` for an in-scope failure, `handoff` when the gate passes, or `blocked` |
 | `handoff` | Results, artifacts, ownership, and next steps are being finalized. | `completed` |
 | `completed` | Required gates passed or a documented terminal outcome was recorded. | None; start a new run for new scope. |
 
-Planning normally ends at `ready_for_implementation`, `awaiting_input`, or `blocked` and must not modify source.
+Planning normally ends at `ready_for_implementation`, `awaiting_input`, or `blocked`.
+During planning, workers may investigate and create needed playbook artifacts. Change project source only when
+needed for the task; document what changed and why, and honor explicit user restrictions. The current item’s
+`.thoughts` folder contains Framework artifacts, not project source code.
+Shared packet updates use the validated merger or the assigned Documenter staging path. Preserve accepted findings
+and report actual conflicts. Command inspection is not a filesystem security boundary; provider sandbox permissions
+remain authoritative. Merge completed results sequentially.
+An explicit `source_write` restriction records the Git-visible source baseline (tracked files and non-ignored
+untracked files), excluding `.thoughts`, and checks it at fan-in. Preserve the baseline during continuation and
+recovery. If it cannot be established, report that limitation rather than claiming read-only verification.
 Remediation enters `implementation` only through explicit approval and a recorded re-entry. A failed required worker
 keeps the run `in_progress` or moves it to `blocked`; it cannot be treated as successful fan-in.
 

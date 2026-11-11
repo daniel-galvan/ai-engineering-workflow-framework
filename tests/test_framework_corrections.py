@@ -245,6 +245,22 @@ class FrameworkCorrections(unittest.TestCase):
             merge_result(self.packet_path, 'dependency_analyst', trace=trace)
         self.assertEqual(self.packet_path.read_bytes(), before)
 
+    def test_prepared_identity_and_inputs_survive_coordinator_updates(self):
+        packet = json.loads(self.packet_path.read_text())
+        packet['identity']['State'] = 'in_progress'
+        self.packet_path.write_text(json.dumps(packet))
+        self.assertEqual(runtime.prepared_package_errors(self.root, check_parent_context=False), [])
+        for field, reason in (('work_item', 'prepared_work_item_mismatch'),
+                              ('identity', 'prepared_run_identity_mismatch'),
+                              ('run_input_manifest', 'prepared_input_manifest_mismatch')):
+            changed = json.loads(json.dumps(packet))
+            key = {'work_item': 'ID', 'identity': 'Run ID', 'run_input_manifest': 'sha256'}[field]
+            changed[field][key] = 'changed'
+            self.packet_path.write_text(json.dumps(changed))
+            with self.subTest(field=field):
+                self.assertIn(reason, runtime.prepared_package_errors(self.root, check_parent_context=False))
+        self.packet_path.write_text(json.dumps(packet))
+
     def test_bad_types_and_dangling_references_fail_before_mutation(self):
         saved = self.packet_path.read_bytes()
         for value, reason in ((["E-FC-001"], "schema_invalid"), ("E-FC-404", "reference_unresolved")):

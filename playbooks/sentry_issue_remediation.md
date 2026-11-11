@@ -136,6 +136,10 @@ excerpts, deployment metadata, source-map artifacts, and reproduction fixtures.
 Treat every artifact as evidence with a source, timestamp, owner, and redaction status. Do not trust an attachment over
 current repository or runtime evidence without reconciliation.
 
+During planning, workers may investigate and create needed playbook artifacts. Change project source only when
+needed for the task; document what changed and why, and honor explicit user restrictions. The current item’s
+`.thoughts` folder contains Framework artifacts, not project source code.
+
 ## Default Execution
 
 The default run uses:
@@ -181,7 +185,7 @@ uncertainty may increase one worker's effort without changing the run profile.
 
 | Lifecycle     | Behavior                                                                                                         |
 | ------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `planning`    | Run investigation and fix design, then stop at `ready_for_implementation`; no source or external-system changes. |
+| `planning`    | Run investigation and fix design, then stop at `ready_for_implementation`; needed source changes must be documented and user restrictions honored; no external-system changes. |
 | `remediation` | Continue through implementation, review, validation, and stabilization after the explicit approval gate.         |
 
 The valid combinations are `standard + planning`, `deep + planning`, `standard + remediation`, and `deep + remediation`.

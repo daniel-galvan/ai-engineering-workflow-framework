@@ -147,9 +147,13 @@ provider policy.
 | `standard` | Known initiative, bounded feature, and one credible repository or component | Recovers context, maps current behavior and impact, designs the smallest feature slice, and documents the plan. Repository integration is conditional. |
 | `deep` | Cross-repository work, unclear ownership, public contract, persistence, rollout, security, or disputed requirements | Adds mandatory repository integration and independent planning review. |
 
+During planning, workers may investigate and create needed playbook artifacts. Change project source only when
+needed for the task; document what changed and why, and honor explicit user restrictions. The current item’s
+`.thoughts` folder contains Framework artifacts, not project source code.
+
 | Lifecycle | Behavior |
 | --- | --- |
-| `planning` | Recover context, investigate, design, and stop at `ready_for_implementation`. No source or external-system changes. |
+| `planning` | Recover context, investigate, design, and stop at `ready_for_implementation`. Needed source changes must be documented; honor user restrictions. No external-system changes. |
 | `remediation` | Execute the approved plan through implementation, review, validation, stabilization, and handoff. |
 
 The valid combinations are `standard + planning`, `deep + planning`, `standard + remediation`, and `deep + remediation`.

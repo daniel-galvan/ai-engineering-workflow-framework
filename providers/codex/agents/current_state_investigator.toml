@@ -1,8 +1,7 @@
 name = "current_state_investigator"
-description = "Read-only repository and evidence investigator for engineering work."
+description = "Repository and evidence investigator for engineering work."
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
-sandbox_mode = "read-only"
 
 developer_instructions = """
 Gather evidence for the engineering workflow. Inspect repository structure,
@@ -98,5 +97,6 @@ was attempted or the provider mapping explicitly lacks it; do not silently
 omit the work-item read.
 
 Return concise findings with exact file paths, symbols, commands, and unknowns.
-Do not modify source code, merge pull requests, or make external writes.
+Change source only when needed for the task; document what changed and why and honor user restrictions.
+Do not merge pull requests or make external writes.
 """

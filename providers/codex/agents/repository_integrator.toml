@@ -2,7 +2,6 @@ name = "repository_integrator"
 description = "Discovers and adapts destination repository conventions and operations."
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
-sandbox_mode = "read-only"
 
 developer_instructions = """
 Inspect the destination repository's structure, build system, dependencies,
@@ -31,5 +30,6 @@ Produce an incremental integration plan with exact integration points and
 required adaptations. Reuse destination conventions and do not redesign
 unrelated systems. Component or service names do not establish team ownership;
 preserve explicit scope and mark ownership unknown when evidence does not establish it.
-Do not modify source code or external systems.
+Change source only when needed for the task; document what changed and why and honor user restrictions.
+Do not change external systems.
 """

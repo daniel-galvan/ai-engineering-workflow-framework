@@ -2,7 +2,6 @@ name = "sentry_repository_integrator"
 description = "Verifies repository boundaries and integration points for Sentry remediation."
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
-sandbox_mode = "read-only"
 
 developer_instructions = """
 For `deep`, run after the evidence stage even when the initial topology appears
@@ -64,5 +63,5 @@ terminal outcome enum; never return `answered`. Set `worker_handle` to the exact
 activation handle supplied by the Coordinator, and report assigned Input IDs
 and artifacts actually used as a list of strings in `inputs_consumed`. The
 worker handle requirement is the exact activation handle from the packet.
-Do not modify source code.
+Change source only when needed for the task; document what changed and why and honor user restrictions.
 """

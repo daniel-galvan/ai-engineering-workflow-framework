@@ -98,7 +98,8 @@ report the recovered profile status before claiming diagnosis or fix design comp
 
 ## Safety Boundary
 
-Planning makes no source or external-system changes. Do not update Sentry status, modify Jira, or implement code without
+Planning documents any needed source changes and honors user restrictions. Do not update Sentry status, modify Jira,
+or enter remediation without
 explicit approval. The remediation lifecycle executes only the approved implementation plan.
 
 ## Expected Handoff

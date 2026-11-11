@@ -540,72 +540,53 @@ class ActivationDelivery(unittest.TestCase):
                                '--expected-bundle-sha256', self.bundle['sha256'])
         self.assertIn('worker_activation_rejected_result_pending', blocked.stdout)
 
-    def test_planning_rejects_direct_writes_for_response_contracts(self):
+    def test_planning_accepts_artifact_tools_and_needed_source_changes(self):
         trace = self.instruction_trace()
-        worker_packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["current_state_investigator"]
-        output = worker_packet["worker_contract"]["output"]
-        result = worker_packet["worker_contract"]["result"]
-        packet_path = Path(self.run["finalization_packet"])
-        packet = json.loads(packet_path.read_text())
-        packet["identity"]["Lifecycle"] = "planning"
-        packet_path.write_text(json.dumps(packet))
-        trace["tool_trace"].append({"type": "custom_tool_call", "name": "functions.apply_patch",
-            "input": "*** Begin Patch\n*** Update File: src/service.go\n@@\n-old\n+new\n*** End Patch"})
-        self.assertIn("planning_source_write_not_authorized", runtime.trace_errors(trace))
-        trace["tool_trace"][-1]["input"] = ("*** Begin Patch\n*** Add File: " + output
-                                               + "\n+current-run analysis\n*** End Patch")
-        self.assertIn("planning_write_target_not_assigned", runtime.trace_errors(trace))
-        trace["tool_trace"][-1]["input"] = ("*** Begin Patch\n*** Add File: " + result
-                                               + "\n+current-run result\n*** End Patch")
-        self.assertIn("planning_write_target_not_assigned", runtime.trace_errors(trace))
-        trace["tool_trace"][-1]["input"] = ("*** Begin Patch\n*** Add File: " + str(self.artifacts / "finalization_packet.json")
-                                               + "\n+changed control record\n*** End Patch")
-        self.assertIn("planning_write_target_not_assigned", runtime.trace_errors(trace))
-        commands = ["printf plan > " + output, "printf plan > " + result,
-                    "printf plan > 1", "printf plan >&1",
-                    "printf plan > src/service.go", "tee src/service.go", "cp note.md src/service.go",
-                    "sed -i 's/old/new/' src/service.go", "git apply source.patch",
-                    "python3 -c \"from pathlib import Path; Path('src/service.go').write_text('new')\""]
+        commands = ["mkdir -p " + str(self.artifacts / 'attachments'),
+                    "curl --location https://example.invalid/image --output " + str(self.artifacts / 'image.png'),
+                    "python3 -c \"from pathlib import Path; Path('" + str(self.artifacts / 'note.txt') + "').write_text('note')\"",
+                    "printf change > source.py", "sed -i 's/old/new/' source.py"]
         for command in commands:
             with self.subTest(command=command):
                 current = json.loads(json.dumps(trace))
-                current["tool_trace"].append({"tool": "exec_command", "arguments": {"cmd": command}})
-                errors = runtime.trace_errors(current)
-                if command in {"printf plan >&1"}:
-                    self.assertFalse(any(error.startswith("planning_source_write") for error in errors))
-                elif command in {"printf plan > " + output, "printf plan > " + result}:
-                    self.assertIn("planning_source_write_not_authorized", errors)
-                else:
-                    self.assertIn("planning_source_write_not_authorized", errors)
+                current['tool_trace'].append({'tool': 'exec_command', 'arguments': {'cmd': command}})
+                self.assertEqual(runtime_checks.planning_permission_errors(current), [])
+        current['tool_trace'].append({'tool': 'apply_patch', 'arguments': {'patch':
+            '*** Begin Patch\n*** Update File: source.py\n@@\n-old\n+new\n*** End Patch'}})
+        self.assertEqual(runtime_checks.planning_permission_errors(current), [])
 
-        relative_output = Path(output).relative_to(self.root.resolve())
-        relative = json.loads(json.dumps(trace))
-        relative["tool_trace"].append({"tool": "exec_command", "arguments": {
-            "cmd": "printf plan > " + str(relative_output), "workdir": "."}})
-        self.assertIn("planning_source_write_not_authorized", runtime.trace_errors(relative))
-
-    def test_planning_allows_worker_assets_but_not_source_or_control_writes(self):
-        trace = self.instruction_trace()
-        packet = json.loads(Path(self.bundle['path']).read_text())['packets']['current_state_investigator']
-        assets = Path(packet['worker_contract']['artifact_directory'])
-        def audit(command):
-            current = json.loads(json.dumps(trace))
-            current['tool_trace'].append({'tool': 'exec_command', 'arguments': {'cmd': command}})
-            return runtime_checks.planning_permission_errors(current)
-        self.assertEqual(audit('mkdir -p ' + shlex.quote(str(assets)) + ' && curl --location https://example.invalid/image -o ' + shlex.quote(str(assets / 'image.png'))), [])
-        for destination in (self.root / 'source.go', self.artifacts / 'finalization_packet.json',
-                            self.artifacts / 'runs' / 'previous' / 'asset.png'):
-            with self.subTest(destination=destination):
-                self.assertIn('planning_source_write_not_authorized', audit('curl -o ' + shlex.quote(str(destination)) + ' https://example.invalid/image'))
-        self.assertEqual(audit('printf example > ' + shlex.quote(str(assets / 'note.txt'))), [])
-        self.assertEqual(audit('curl -o - https://example.invalid/image'), [])
-        self.assertEqual(audit('curl ' + shlex.quote('-o' + str(assets / 'image.png')) + ' https://example.invalid/image'), [])
-        for option in ('-O', '-o/tmp/out', '--output-dir=/tmp', '-sO'):
-            self.assertIn('planning_source_write_not_authorized', audit('curl ' + option + ' https://example.invalid/image'))
-        self.assertIn('planning_source_write_not_authorized', audit('printf example > ' + shlex.quote(str(assets / '..' / '..' / 'finalization_packet.json'))))
-        assets.mkdir(parents=True)
-        (assets / 'link').symlink_to(self.root, target_is_directory=True)
-        self.assertIn('planning_source_write_not_authorized', audit('curl -o ' + shlex.quote(str(assets / 'link' / 'source.go')) + ' https://example.invalid/image'))
+    def test_read_only_source_baseline_excludes_artifacts_and_survives_continuation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            source = repository / 'source.py'
+            source.write_text('original')
+            from scripts.review_evidence import source_tree_fingerprint
+            with self.assertRaisesRegex(ValueError, 'source_read_only_baseline_unavailable'):
+                source_tree_fingerprint(repository)
+            for args in (('init', '-q'), ('config', 'user.name', 'Fixture'),
+                         ('config', 'user.email', 'fixture@example.invalid'), ('add', 'source.py'),
+                         ('commit', '-qm', 'baseline')):
+                subprocess.run(['git', '-C', str(repository), *args], check=True, capture_output=True)
+            inputs = repository / 'inputs.json'
+            inputs.write_text(json.dumps({'inputs': [{'Input ID': 'IN-1', 'Input or artifact': 'Do not change source',
+                'Source or path': 'User', 'Authority': 'User', 'Status': 'Approved',
+                'Classification': 'execution restriction', 'Denied operations': ['source_write']}]}))
+            def prepare_and_audit(continuation):
+                run = prepare.prepare_run(repository, 'READONLY-1', 'techops_issue_remediation', None,
+                                          continuation, input_manifest=inputs)
+                packet = json.loads(Path(run['activation_packet_bundle']['path']).read_text())['packets']['current_state_investigator']
+                content = 'Coordinator initialization: complete\n' + json.dumps(packet) + '\n'
+                with patch.object(runtime_checks, '_verified_dispatch_content', return_value=content):
+                    errors = runtime_checks.planning_permission_errors({'tool_trace': []})
+                return run, errors
+            run, errors = prepare_and_audit(False)
+            self.assertEqual(errors, [])
+            artifact = Path(run['artifact_root']) / 'note.txt'
+            subprocess.run([sys.executable, '-c', 'from pathlib import Path; Path(' + repr(str(artifact)) +
+                            ').write_text("artifact")'], check=True)
+            self.assertEqual(prepare_and_audit(True)[1], [])
+            source.write_text('changed')
+            self.assertIn('planning_source_write_not_authorized', prepare_and_audit(True)[1])
 
     def test_planning_keeps_assigned_sentry_file_outputs_writable(self):
         run = prepare.prepare_run(self.root, "SENTRY-1", "sentry_issue_remediation", None, False,
@@ -790,7 +771,7 @@ class ActivationDelivery(unittest.TestCase):
                 self.assertEqual(planning_permission_errors(trace), [])
             trace['tool_trace'][0]['arguments']['patch'] = trace['tool_trace'][0]['arguments']['patch'].replace(
                 contract['implementation_plan'], str(self.artifacts / 'unassigned.md'))
-            self.assertIn('planning_write_target_not_assigned', planning_permission_errors(trace))
+            self.assertEqual(planning_permission_errors(trace), [])
 
     def test_recovery_preserves_packet_when_it_is_the_worker_output(self):
         path, trace = self.rejected_trace()
