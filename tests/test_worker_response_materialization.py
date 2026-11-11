@@ -16,6 +16,7 @@ from scripts.merge_techops_result import WORKERS, merge_result
 from scripts.provider_runtime import read_runtime_events
 from scripts.worker_runtime_evidence import export_worker_trace, worker_final_response
 from scripts.validate_worker_runtime import activation_message, dispatch_message
+from scripts.workflow_policy import WORKER_RESPONSE_SUBMITTED
 
 
 PARENT = "00000000-0000-0000-0000-000000000001"
@@ -115,6 +116,49 @@ class WorkerResponseMaterialization(unittest.TestCase):
             checked = subprocess.run(command, input=json.dumps(response), text=True, capture_output=True)
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertEqual(json.loads(checked.stdout), response)
+            session = repository / 'worker.jsonl'
+            shell = ("cat <<'RESPONSE' | " + ' '.join(command) + '\n'
+                     + json.dumps(response) + '\nRESPONSE')
+            rows = [
+                {'type': 'session_meta', 'timestamp': '2026-11-01T00:00:00Z', 'payload': {'id': CHILD}},
+                {'type': 'turn_context', 'timestamp': '2026-11-01T00:00:01Z', 'payload': {'turn_id': TURN}},
+                {'type': 'event_msg', 'timestamp': '2026-11-01T00:00:02Z', 'payload': {'type': 'item_completed',
+                    'item': {'type': 'CommandExecution', 'command': ['/bin/bash', '-lc', shell],
+                             'status': 'completed', 'exit_code': 0, 'aggregated_output': checked.stdout}}},
+                {'type': 'response_item', 'timestamp': '2026-11-01T00:00:03Z', 'payload': {
+                    'type': 'message', 'role': 'assistant', 'phase': 'final_answer',
+                    'content': [{'type': 'output_text', 'text': WORKER_RESPONSE_SUBMITTED}]}},
+            ]
+            def submitted(events):
+                session.write_text(''.join(json.dumps(row) + '\n' for row in events))
+                return worker_final_response(session, '2026-11-01T00:00:00Z', '2026-11-01T00:00:04Z',
+                                             turn_id=TURN, packet_path=packet_path,
+                                             agent='current_state_investigator', builder=Path(command[1]))
+            self.assertEqual(json.loads(submitted(rows)), response)
+            presented = json.loads(json.dumps(rows))
+            presented[-1]['payload']['content'][0]['text'] = '  ' + WORKER_RESPONSE_SUBMITTED + '.\n'
+            self.assertEqual(json.loads(submitted(presented)), response)
+            direct = json.loads(json.dumps(rows))
+            direct[2]['payload']['item']['command'][-1] = (' '.join(command) + " <<'RESPONSE'\n"
+                                                          + json.dumps(response) + '\nRESPONSE')
+            self.assertEqual(json.loads(submitted(direct)), response)
+            for argument, value in (("--agent current_state_investigator", "--agent reviewer"),
+                                    (str(packet_path), str(repository / "other.json"))):
+                changed = json.loads(json.dumps(rows))
+                changed[2]['payload']['item']['command'][-1] = shell.replace(argument, value)
+                with self.subTest(argument=argument), self.assertRaisesRegex(ValueError, 'submission_invalid'):
+                    submitted(changed)
+            changed = json.loads(json.dumps(rows))
+            changed[2]['payload']['item']['command'][0] = '/bin/echo'
+            with self.assertRaisesRegex(ValueError, 'submission_invalid'):
+                submitted(changed)
+            for field, value in (('exit_code', 1), ('aggregated_output', '{broken')):
+                changed = json.loads(json.dumps(rows))
+                changed[2]['payload']['item'][field] = value
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'submission_invalid'):
+                    submitted(changed)
+            with self.assertRaisesRegex(ValueError, 'submission_missing'):
+                submitted([rows[0], rows[1], rows[3]])
             missing_decision = {**response, "result": dict(response["result"])}
             del missing_decision["result"]["integration_decision"]
             rejected = subprocess.run(command, input=json.dumps(missing_decision), text=True, capture_output=True)
@@ -261,6 +305,15 @@ class WorkerResponseMaterialization(unittest.TestCase):
                 event(10, "response_item", {"type": "message", "role": "assistant", "phase": "final_answer",
                     "content": [{"type": "output_text", "text": response}]}),
             ]
+            builder_command = [sys.executable, contract["response_builder"], "--packet", run["finalization_packet"],
+                               "--agent", role, "--response-stdin"]
+            preview = subprocess.run(builder_command, input=response, text=True, capture_output=True)
+            self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+            shell = ' '.join(builder_command) + " <<'RESPONSE'\n" + response + "\nRESPONSE"
+            child_rows.insert(-1, event(9.5, "event_msg", {"type": "item_completed", "item": {
+                "type": "CommandExecution", "command": ["/bin/bash", "-lc", shell],
+                "status": "completed", "exit_code": 0, "aggregated_output": preview.stdout}}))
+            child_rows[-1]["payload"]["content"][0]["text"] = WORKER_RESPONSE_SUBMITTED
             child.write_text("\n".join(json.dumps(row) for row in child_rows) + "\n")
 
             latest_turn_start = base + timedelta(seconds=9.25)

@@ -2,6 +2,8 @@
 
 import re
 
+WORKER_RESPONSE_SUBMITTED = "WORKER_RESPONSE_SUBMITTED"
+
 _PATH_REFERENCE_END = r"(?=$|[/\\\s\"'`|;&)>}\],.:])"
 _CODEX_HOME = r"(?:\$CODEX_HOME|\$\{CODEX_HOME\}|%CODEX_HOME%|\$env:CODEX_HOME|\$\{env:CODEX_HOME\})[\"']?"
 

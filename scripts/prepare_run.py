@@ -45,9 +45,9 @@ except ModuleNotFoundError:  # Imported as scripts.prepare_run from the reposito
 
 
 try:
-    from workflow_policy import PROMPT_TEMPLATES
+    from workflow_policy import PROMPT_TEMPLATES, WORKER_RESPONSE_SUBMITTED
 except ModuleNotFoundError:
-    from scripts.workflow_policy import PROMPT_TEMPLATES
+    from scripts.workflow_policy import PROMPT_TEMPLATES, WORKER_RESPONSE_SUBMITTED
 
 
 try:
@@ -3517,12 +3517,14 @@ def prepare_run(
         contract["response_builder"] = str(ROOT / "scripts" / "prepare_worker_response.py")
         contract["result_instructions"] = (
             "The output/result paths are Coordinator publication destinations, not worker write permissions. "
-            "Do not write those files; return their contents only in the JSON response. "
+            "Do not write those files; provide their contents in the JSON response. "
             "Do not create unassigned draft files. Use stdin for the read-only response preview. "
-            "Before your final answer, pipe the complete declared JSON envelope to response_builder with --packet "
-            f"{artifact_root / 'finalization_packet.json'} --agent {agent} --response-stdin. "
-            "Correct reported draft errors and rerun this read-only preview before ending; return its successful "
-            "stdout unchanged. If a truthful repair is unavailable, return a valid blocked result with the limitation. "
+            f"Before your final answer, run python3 {shlex.quote(contract['response_builder'])} --packet "
+            f"{shlex.quote(str(artifact_root / 'finalization_packet.json'))} --agent {shlex.quote(agent)} --response-stdin <<'RESPONSE', "
+            "followed by the complete JSON envelope on the next line and RESPONSE on a line by itself. "
+            "Correct reported draft errors and rerun this read-only preview before ending. After a successful preview, "
+            f"return only {WORKER_RESPONSE_SUBMITTED} as your final answer. The collector verifies and uses the "
+            "preview output directly. If a truthful repair is unavailable, submit a valid blocked result. "
             "Draft validation does not accept results or consume a dispatch correction. "
             "At completed planning synthesis and afterward, it checks the entire merged reasoning graph: "
             "link every evidence row to a claim, every claim to a decision, and every decision to an action. "

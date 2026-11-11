@@ -761,8 +761,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Check runtime capacity before dispatch, choose either an existing compatible worker or a fresh worker, and record
    cancellation if a superseded assignment is interrupted. Do not accept the cancelled result as current work.
 8a. For TechOps planning and Feature Delivery planning or remediation, prepared worker contracts are operative
-   instructions. Include the complete `worker_contract` with each fresh assignment. Each analytical worker returns
-   exactly one strict JSON final answer with `output` (narrative string) and `result` (the prepared JSON envelope).
+   instructions. Include the complete `worker_contract` with each fresh assignment. Each analytical worker prepares
+   one strict JSON response with `output` (narrative string) and `result` (the prepared JSON envelope), and submits
+   it using the prepared response marker; existing strict JSON final answers remain supported.
    Feature `feature-context` also returns `asset_manifest` using its prepared contract. The runtime exporter stores
    immutable per-dispatch response artifacts; workers do not write assigned paths. The merger publishes them only after
    acceptance. Preserve the prepared ID namespace and upstream IDs.
@@ -844,7 +845,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Run `--trace <path> --require-freshness` before acceptance. For prepared TechOps and Feature Delivery analytical
    results, the audit checks the same result contract as the merger, including schema and evidence references.
    Every prepared strict JSON worker receives `response_builder`; require its read-only draft preview before the
-   worker ends. It preserves declared extra fields such as `asset_manifest`. Completed planning synthesis and later
+   worker ends. The worker submits the successful preview with its exact prepared marker; the collector authenticates
+   the builder command and uses its output directly. It preserves declared extra fields such as `asset_manifest`.
+   Completed planning synthesis and later
    analytical updates must pass the full merged reasoning graph, including new rows introduced during a correction.
    Draft errors are repaired in the worker's current turn and do not consume a provider-dispatch correction. Keep
    upstream findings intact; an evidence gap remains an explicit blocked result, never fabricated linkage.

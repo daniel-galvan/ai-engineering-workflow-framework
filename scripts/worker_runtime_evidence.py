@@ -7,6 +7,8 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
+import sys
 import tempfile
 from pathlib import Path
 
@@ -142,7 +144,9 @@ def worker_response_value(response: str, session: Path) -> dict:
 
 
 def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
-                          turn_started_at: str | None = None, *, turn_id: str | None = None) -> str:
+                          turn_started_at: str | None = None, *, turn_id: str | None = None,
+                          packet_path: Path | None = None, agent: str | None = None,
+                          builder: Path | None = None) -> str:
     """Read the latest assistant final answer from the dispatched worker turn."""
     with source.open() as stream:
         rows = [json.loads(line) for line in stream if line.strip()]
@@ -182,7 +186,58 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
              if isinstance(item, dict) and item.get("type") == "output_text" and isinstance(item.get("text"), str)]
     if len(parts) != len(content) or not parts:
         raise ValueError("worker_final_response_invalid")
-    return "".join(parts)
+    response = "".join(parts)
+    try:
+        from workflow_policy import WORKER_RESPONSE_SUBMITTED
+    except ModuleNotFoundError:
+        from scripts.workflow_policy import WORKER_RESPONSE_SUBMITTED
+    if not re.fullmatch(r"[\s\W]*" + re.escape(WORKER_RESPONSE_SUBMITTED) + r"[\s\W]*", response):
+        return response
+    if not packet_path or not agent or not builder:
+        raise ValueError("worker_final_response_submission_unbound")
+    attempts = []
+    for row in rows:
+        payload = row.get("payload", {}) if isinstance(row, dict) else {}
+        item = payload.get("item", {}) if isinstance(payload, dict) else {}
+        command = item.get("command", []) if isinstance(item, dict) else []
+        if (row.get("type") != "event_msg" or payload.get("type") != "item_completed"
+                or item.get("type") != "CommandExecution"
+                or not started <= timestamp(row["timestamp"]) <= timestamp(messages[-1]["timestamp"])
+                or not isinstance(command, list) or not command or not isinstance(command[-1], str)
+                or builder.name not in command[-1]):
+            continue
+        attempts.append(item)
+    if not attempts:
+        raise ValueError("worker_final_response_submission_missing")
+    item = attempts[-1]
+    command = item["command"][-1]
+    match = re.fullmatch(r"cat\s*<<'([A-Za-z_][A-Za-z0-9_]*)'\s*\|\s*(.*?)\n(.*?)\n\1\s*", command, re.S)
+    direct = re.fullmatch(r"([^\n]*?)\s*<<'([A-Za-z_][A-Za-z0-9_]*)'\s*\n(.*?)\n\2\s*", command, re.S)
+    try:
+        shell = item["command"]
+        if (len(shell) != 3 or Path(shell[0]).name not in {"bash", "sh", "zsh"}
+                or shell[1] not in {"-c", "-lc"} or not (match or direct)
+                or item.get("status") != "completed" or item.get("exit_code") != 0):
+            raise ValueError
+        args = shlex.split(match[2] if match else direct[1])
+        if (len(args) != 7 or not (args[0] == "python3" or Path(args[0]).resolve() == Path(sys.executable).resolve())
+                or Path(args[1]).resolve() != builder.resolve() or args[2] != "--packet"
+                or Path(args[3]).resolve() != packet_path.resolve() or args[4:6] != ["--agent", agent]
+                or args[6] != "--response-stdin"):
+            raise ValueError
+        output = item.get("aggregated_output")
+        if (not isinstance(output, str) or "Warning: truncated output" in output
+                or strict_json_loads(match[3] if match else direct[3]) != strict_json_loads(output)):
+            raise ValueError
+        try:
+            from prepare_worker_response import validate_response
+        except ModuleNotFoundError:
+            from scripts.prepare_worker_response import validate_response
+        if validate_response(packet_path, agent, strict_json_loads(output)) != output.rstrip("\n"):
+            raise ValueError
+        return output.rstrip("\n")
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        raise ValueError("worker_final_response_submission_invalid") from None
 
 
 def _materialize_worker_response(root: Path, role: str, dispatch_at: str, response: str,
@@ -373,7 +428,10 @@ def export_worker_trace(ledger: dict, source: Path, agent: str, observation: dic
             try:
                 response = worker_final_response(source, dispatch["Last dispatch at"], observation["Observed at"],
                                                  observation.get("Latest turn started at"),
-                                                 turn_id=observation.get("Latest turn ID"))
+                                                 turn_id=observation.get("Latest turn ID"),
+                                                 packet_path=artifact_root / "finalization_packet.json",
+                                                 agent=worker_binding(bindings, agent),
+                                                 builder=Path(contract["response_builder"]) if contract.get("response_builder") else None)
                 result["result_artifact"] = _materialize_worker_response(
                     artifact_root, worker_binding(bindings, agent), dispatch["Last dispatch at"], response, contract, source)
             except (OSError, ValueError, KeyError, TypeError) as error:
