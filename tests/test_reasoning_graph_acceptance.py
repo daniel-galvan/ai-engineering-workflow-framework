@@ -143,8 +143,21 @@ class ReasoningGraphAcceptance(unittest.TestCase):
                         self.assertIn(f"--agent {agent} --response-stdin", contract["result_instructions"])
                     if playbook == "feature_delivery":
                         result = self.result(run, "current_state_investigator", "asset_source")
-                        response = {"output": "Current source inventory", "result": result, "asset_manifest": {}}
+                        manifest = {"schema_version": 1, "status": "passed", "work_item": "SYNTHETIC-42",
+                            "sources": [{"source_id": "SRC-JIRA", "input_id": "IN-001",
+                                "kind": "jira_issue_attachments", "locator": "Jira SYNTHETIC-42 attachments",
+                                "requiredness": "required", "discovery_status": "empty",
+                                "discovery_method": "Read inventory", "limitation": "No attachments",
+                                "asset_ids": [], "evidence_refs": [result["evidence"][0]["Evidence ID"]],
+                                "remote_link_inventory": {"status": "empty", "method": "Read remote links", "locators": []}}],
+                            "assets": [], "gate": {"inventory_complete": True, "all_assets_accounted_for": True,
+                                "all_available_assets_reviewed": True, "all_material_assets_linked": True,
+                                "reviewed_before_plan": True, "unresolved_asset_ids": [], "blocking_source_ids": []}}
+                        response = {"output": "Current source inventory", "result": result, "asset_manifest": manifest}
                         self.assertEqual(json.loads(validate_response(path, "current_state_investigator", response)), response)
+                        response["asset_manifest"] = {}
+                        with self.assertRaisesRegex(ValueError, "worker_asset_manifest_response_invalid"):
+                            validate_response(path, "current_state_investigator", response)
                         response.pop("asset_manifest")
                         with self.assertRaisesRegex(ValueError, "worker_asset_manifest_response_required"):
                             validate_response(path, "current_state_investigator", response)

@@ -1685,6 +1685,9 @@ def _read_targets(command: str, *, include_json: bool = False) -> list[str]:
         return [checked_read[1]]
     if any(value in command for value in ("$(", "`")):
         return []
+    loop = re.search(r"(?:^|;)\s*(for\s+[A-Za-z_]\w*\s+in\s+)", command)
+    if loop and loop.start() and _listing_command(command[:loop.start()]):
+        return _read_targets(command[loop.start(1):], include_json=include_json)
     try:
         lexer = shlex.shlex(command.strip(), posix=True, punctuation_chars=";&|<>\n")
         lexer.whitespace = " \t\r"
@@ -1705,17 +1708,30 @@ def _read_targets(command: str, *, include_json: bool = False) -> list[str]:
             variable = "$" + parts[0][1]
             if any(target.startswith("-") or "$" in target for target in parts[0][3:]):
                 return []
-            if (len(parts) >= 5 and parts[1:5] == [
-                    ["do", "if", "test", "-f", variable], ["then", "cat", variable], ["fi"], ["done"]]):
-                targets = parts[0][3:]
-                for part in parts[5:]:
-                    if not part:
-                        continue
-                    selected = _read_targets(shlex.join(part), include_json=include_json)
-                    if not selected and not _listing_command(shlex.join(part)):
-                        return []
-                    targets.extend(selected)
-                return targets
+            def echo_label(part, prefix):
+                return (len(part) == 3 and part[:2] == [prefix, "echo"]
+                        and re.fullmatch(r"[A-Za-z0-9 _:-]*" + re.escape(variable), part[2]))
+            body = parts[1:]
+            conditions = (["do", "if", "test", "-f", variable],
+                          ["do", "if", "[", "-f", variable, "]"])
+            if body and body[0] in conditions:
+                body = body[1:]
+                if body and echo_label(body[0], "then"):
+                    body = [["then", *body[1]]] + body[2:] if len(body) > 1 else []
+                if body and body[0] == ["then", "cat", variable]:
+                    body = body[1:]
+                    if body and echo_label(body[0], "else"):
+                        body = body[1:]
+                    if body[:2] == [["fi"], ["done"]]:
+                        targets = parts[0][3:]
+                        for part in body[2:]:
+                            if not part:
+                                continue
+                            selected = _read_targets(shlex.join(part), include_json=include_json)
+                            if not selected and not _listing_command(shlex.join(part)):
+                                return []
+                            targets.extend(selected)
+                        return targets
             if len(parts) != 4:
                 return []
             if (len(parts[1]) != 4 or parts[1][:2] != ["do", "printf"] or parts[1][3] != variable
@@ -1902,10 +1918,11 @@ def _labeled_packet_outputs(trace: dict, root: Path | None) -> dict[str, tuple[s
     return result
 
 
-def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -> set[tuple[str, ...]]:
+def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -> tuple[set[tuple[str, ...]], dict[str, list[str]]]:
     if root is None:
-        return set()
+        return set(), {}
     calls, outputs = set(), set()
+    metadata_references = {}
     exact_cat_outputs, exact_reentry_outputs, packet_projections = {}, {}, {}
     for row in trace.get("tool_trace", []):
         if not isinstance(row, dict) or not row.get("call_id"):
@@ -1958,6 +1975,7 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
             continue
         operations = _tool_operations(row)
         safe = bool(operations)
+        metadata = []
         for name, arguments in operations:
             if name == "mcp__codex_app__read_thread":
                 safe = safe and "codex://threads/" + str(arguments.get("threadId")) in assigned
@@ -1976,6 +1994,8 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                     continue
                 cwd = Path(workdir or root.parent.parent)
                 resolved = [Path(target) if Path(target).is_absolute() else cwd / target for target in targets]
+                metadata.extend(path for path in resolved if path.parent.resolve() == root
+                                and path.name in {"role_bindings.json", "finalization_packet.json"})
                 receipts = root / "activation_receipts.json"
                 instructions = json.loads(receipts.read_text()) if receipts.is_file() else {}
                 allowed_instructions = _allowed_instruction_paths(root, assigned)
@@ -1989,15 +2009,28 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                              and not path.resolve().is_relative_to(root.parent)
                              and any(Path(parent).is_dir() and path.resolve().is_relative_to(Path(parent).resolve())
                                      for parent in assigned if parent.startswith('/')))
-                         or path.name == "AGENTS.md" and path.resolve() in allowed_instructions and path.is_file())
+                         or (path.name == "AGENTS.md" and path.resolve() in allowed_instructions
+                             and not path.is_symlink() and (path.is_file() or not path.exists() and path.parent.is_dir())))
                     for path in resolved)
             elif name not in {"mcp__codex_apps__atlassian_getjiraissue", "mcp__codex_apps__atlassian_executeread",
                               "mcp__codex_apps__atlassian_discover", "mcp__codex_apps__atlassian_searchjiraissuesusingjql"}:
                 safe = False
         if safe:
-            outputs.update({("tool_trace", str(index), "result"), ("tool_trace", str(index), "output")})
-            if row.get("call_id"):
-                calls.add(row["call_id"])
+            if metadata and row.get("call_id"):
+                try:
+                    if any(file.is_symlink() or not file.is_file() for file in metadata):
+                        continue
+                    values = [value for file in metadata for _, value in _trace_strings(json.loads(file.read_text()))
+                              if (value.startswith(("/", ".thoughts/"))
+                                  and (any(pattern.search(value) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)
+                                       or any("/runs/" in ref for ref in THOUGHT_PATH.findall(value))))]
+                    metadata_references[row["call_id"]] = values
+                except (OSError, ValueError, TypeError):
+                    pass
+            else:
+                outputs.update({("tool_trace", str(index), "result"), ("tool_trace", str(index), "output")})
+                if row.get("call_id"):
+                    calls.add(row["call_id"])
         if row.get("type") in {"function_call_output", "custom_tool_call_output"} and row.get("call_id") in calls:
             outputs.add(("tool_trace", str(index), "output"))
         if row.get("type") == "custom_tool_call_output" and isinstance(row.get("output"), str):
@@ -2032,7 +2065,7 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                      and result["output"] in exact_cat_outputs.get(row.get("call_id"), set()))
                         or result in exact_reentry_outputs.get(row.get("call_id"), [])):
                     outputs.add(("tool_trace", str(index), "output", str(item_index), "text"))
-    return outputs
+    return outputs, metadata_references
 
 
 def observed_dispatch_binding(trace: dict, root: Path) -> dict:
@@ -2782,7 +2815,8 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                                                 "reference": reference})
     listing_reads = {}
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
-    source_outputs = _read_output_prefixes(trace, assigned + snapshots, root) if dispatch_content else []
+    source_outputs, metadata_references = (_read_output_prefixes(trace, assigned + snapshots, root)
+                                           if dispatch_content else (set(), {}))
     labeled_outputs = _labeled_packet_outputs(trace, root) if dispatch_content else {}
     pretty_outputs = _pretty_packet_reads(trace, root)
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
@@ -2816,10 +2850,20 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                 break
         output = path[:1] == ("tool_trace",) and "output" in path[2:]
         row = trace["tool_trace"][int(path[1])] if path[:1] == ("tool_trace",) and len(path) > 1 and str(path[1]).isdigit() else {}
+        before_metadata = candidate
+        if output:
+            references = metadata_references.get(row.get("call_id"), [])
+            for reference in references[:]:
+                candidate, replaced = re.subn(r"(?<![\w./\\-])" + re.escape(reference)
+                                              + r"(?![\w./-]|\\(?![\"\\]))",
+                                              "[current metadata]", candidate, count=1)
+                if replaced:
+                    references.remove(reference)
+        metadata_only = candidate != before_metadata
         operational = _without_approval_justification(candidate, row, path) if not output else candidate
         if root and not output:
             operational = _without_comparison_literals(operational, row)
-        metadata_only = operational != candidate
+        metadata_only = metadata_only or operational != candidate
         candidate = operational
         background = _background_memory_paths(row) or (background_reads.get(row.get("call_id"), set()) if output else set())
         if output and background:
@@ -2896,6 +2940,26 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     return list(dict.fromkeys(errors))
 
 
+def _without_python_script_heredoc_data(command: str, package: Path) -> str:
+    """Exclude quoted data sent to packaged scripts, not shell or interpreter input."""
+    pattern = re.compile(r"(?ms)^(?P<head>[^\n]*<<'(?P<end>[A-Za-z_][A-Za-z0-9_]*)'[^\n]*)\n"
+                         r"(?P<body>.*?)^(?P=end)(?=\n|$)")
+    def remove(match):
+        head = match["head"]
+        if any(char in head for char in ";|&`$") or head.count("<<") != 1:
+            return match[0]
+        try:
+            tokens = shlex.split(head.split("<<", 1)[0])
+        except ValueError:
+            return match[0]
+        if (len(tokens) < 2 or not re.fullmatch(r"python(?:3(?:\.\d+)?)?", Path(tokens[0]).name)
+                or not tokens[1].endswith(".py") or Path(tokens[1]).is_symlink()
+                or Path(tokens[1]).resolve().parent != (package / "scripts").resolve()):
+            return match[0]
+        return head + "\n" + match["end"]
+    return pattern.sub(remove, command)
+
+
 def planning_permission_errors(trace: dict) -> list[str]:
     """Enforce planning permissions and explicit user restrictions."""
     content = _verified_dispatch_content(trace)
@@ -2950,9 +3014,12 @@ def planning_permission_errors(trace: dict) -> list[str]:
                 errors.append("planning_command_invalid")
                 continue
             try:
+                package = Path(packet.get("framework_package", {}).get("root", ROOT))
+                command = _without_python_script_heredoc_data(command, package)
                 tokens = shlex.split(command)
                 if len(tokens) == 3 and Path(tokens[0]).name in {"bash", "sh", "zsh"} and tokens[1] in {"-lc", "-c"}:
                     command = tokens[2]
+                command = _without_python_script_heredoc_data(command, package)
                 lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>\n")
                 lexer.whitespace = " \t\r"
                 lexer.whitespace_split = True

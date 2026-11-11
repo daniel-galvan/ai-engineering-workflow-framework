@@ -1385,6 +1385,49 @@ class ContextOperationAudit(unittest.TestCase):
         altered["tool_trace"][-2]["input"] += ' text(await tools.exec_command({"cmd":"cat .thoughts/ITEM-1/runs/prior/secret.md"}));'
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.trace_errors(altered))
 
+    def test_batched_metadata_references_do_not_exempt_other_output_or_reads(self):
+        bindings = self.root / "role_bindings.json"
+        packet_path = self.root / "finalization_packet.json"
+        trace = self.instruction_read_trace([str(bindings), str(packet_path)])
+        record = json.loads(bindings.read_text())
+        session = "/Users/example/.codex/sessions/current.jsonl"
+        record["parent_context"] = {"provider_session": session}
+        bindings.write_text(json.dumps(record))
+        packet = json.loads(packet_path.read_text())
+        archive = str(self.root / "runs" / "prior")
+        packet["reentry"] = {"Prior artifacts": archive}
+        packet_path.write_text(json.dumps(packet))
+        command = (f'for f in {bindings} {packet_path}; do if [ -f "$f" ]; '
+                   'then echo "PRESENT $f"; cat "$f"; else echo "ABSENT $f"; fi; done')
+        self.assertEqual(runtime._read_targets(command), [str(bindings), str(packet_path)])
+        for unsafe in (command.replace('cat "$f"', 'cat ' + session),
+                       command.replace('echo "ABSENT $f"', 'cat ' + session)):
+            self.assertEqual(runtime._read_targets(unsafe), [])
+        source = ('text(await tools.exec_command(' + json.dumps({"cmd": command})
+                  + ')); text(await tools.exec_command({"cmd":"git status --short"}));')
+        output = 'Warning: truncated output\n' + json.dumps({"exit_code": 0,
+            "output": bindings.read_text() + packet_path.read_text()})
+        trace["tool_trace"].extend(self.paired(source, [{"type": "text", "text": output}]))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        for extra, error in ((archive + "/secret.md", "archived_artifact"),
+                             (session + ".other", "session_log"),
+                             ("/Users/example/.codex/sessions/other.jsonl", "session_log")):
+            changed = json.loads(json.dumps(trace))
+            changed["tool_trace"][-1]["output"][0]["text"] += "\n" + extra
+            self.assertIn("forbidden_context_reference:" + error, runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] += ' await tools.exec_command(' + json.dumps({"cmd": "cat " + session}) + ');'
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(changed))
+        record["parent_context"]["provider_session"] = "/Users/example/.codex/sessions/changed.jsonl"
+        bindings.write_text(json.dumps(record))
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
+        record["parent_context"]["provider_session"] = session
+        bindings.write_text(json.dumps(record))
+        target = self.root / "packet-copy.json"
+        packet_path.rename(target)
+        packet_path.symlink_to(target)
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
+
     def test_python_ancestor_checks_allow_only_literal_instruction_reads(self):
         paths = [self.repository / "AGENTS.md"]
         policy = "Do not read .thoughts/ITEM-1/runs/prior/notes.md.\n"

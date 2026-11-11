@@ -511,6 +511,21 @@ class PlanningCommandPath(unittest.TestCase):
                         preview = command("prepare_worker_response.py", "--packet", packet_path,
                             "--agent", role, "--response-stdin", stdin=json.dumps(response))
                         self.assertEqual(json.loads(preview), response)
+                    if role == "solution_architect":
+                        if parallel_integration:
+                            self.assertIn("/.codex/sessions/", packet_path.read_text())
+                        invocation = ('text(await tools.exec_command(' + json.dumps({"cmd": "cat " + str(packet_path)})
+                                      + ')); text(await tools.exec_command({"cmd":"git status --short"}));')
+                        append(child, "response_item", type="custom_tool_call", name="functions.exec",
+                               call_id="packet-read", input=invocation)
+                        append(child, "response_item", type="custom_tool_call_output", call_id="packet-read",
+                               output=[{"type": "text", "text": "Warning: truncated output\n" + json.dumps({
+                                   "exit_code": 0, "output": packet_path.read_text()})}])
+                        append(child, "response_item", type="function_call", name="exec_command",
+                               call_id="plan-preview", arguments=json.dumps({"cmd":
+                                   f"{sys.executable} {package}/scripts/review_evidence.py --plan /dev/stdin <<'PLAN'\n"
+                                   "Future validation:\nbazel test //product:focused\nPLAN"}))
+                        append(child, "response_item", type="function_call_output", call_id="plan-preview", output="{}")
                     append(child, "response_item", type="message", role="assistant", phase="final_answer",
                            content=[{"type": "output_text", "text": json.dumps(response)}])
                 else:

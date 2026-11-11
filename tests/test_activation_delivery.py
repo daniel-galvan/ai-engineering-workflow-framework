@@ -555,6 +555,24 @@ class ActivationDelivery(unittest.TestCase):
             '*** Begin Patch\n*** Update File: source.py\n@@\n-old\n+new\n*** End Patch'}})
         self.assertEqual(runtime_checks.planning_permission_errors(current), [])
 
+    def test_planning_distinguishes_quoted_script_input_from_executed_commands(self):
+        trace = self.instruction_trace()
+        row = {'tool': 'exec_command', 'arguments': {}}
+        trace['tool_trace'].append(row)
+        data = (f"python3 {runtime_checks.ROOT}/scripts/review_evidence.py --plan /dev/stdin <<'PLAN'"
+                "\nIt's a plan.\nbazel build //app:bin\nbazel test //app:test\nPLAN")
+        row['arguments']['cmd'] = data
+        self.assertEqual(runtime_checks.planning_permission_errors(trace), [])
+        for command, expected in ((data + '\nbazel build //app:bin', 'build_run'),
+                                  (data + '\nbazel test //app:test', 'test_run'),
+                                  (data.replace(str(runtime_checks.ROOT), '/untrusted').replace("It's", 'This is'), 'build_run'),
+                                  ("bash <<'PLAN'\nbazel test //app:test\nPLAN", 'test_run'),
+                                  ("python3 - <<'PLAN'\nbazel test //app:test\nPLAN", 'test_run')):
+            with self.subTest(command=command):
+                row['arguments']['cmd'] = command
+                self.assertIn('planning_operation_not_authorized:' + expected,
+                              runtime_checks.planning_permission_errors(trace))
+
     def test_read_only_source_baseline_excludes_artifacts_and_survives_continuation(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
