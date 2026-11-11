@@ -3515,7 +3515,10 @@ def prepare_run(
         if contract.get("result_response") != "strict_json_final_answer":
             continue
         contract["response_builder"] = str(ROOT / "scripts" / "prepare_worker_response.py")
+        contract["artifact_directory"] = str(artifact_root / "worker_artifacts" / agent)
         contract["result_instructions"] = (
+            f"For supporting files needed by this assignment, use {contract['artifact_directory']} "
+            "with mkdir, shell redirection or curl --output; do not use embedded scripts for writes. "
             "The output/result paths are Coordinator publication destinations, not worker write permissions. "
             "Do not write those files; provide their contents in the JSON response. "
             "Do not create unassigned draft files. Use stdin for the read-only response preview. "

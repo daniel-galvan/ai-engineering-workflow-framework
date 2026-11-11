@@ -584,6 +584,29 @@ class ActivationDelivery(unittest.TestCase):
             "cmd": "printf plan > " + str(relative_output), "workdir": "."}})
         self.assertIn("planning_source_write_not_authorized", runtime.trace_errors(relative))
 
+    def test_planning_allows_worker_assets_but_not_source_or_control_writes(self):
+        trace = self.instruction_trace()
+        packet = json.loads(Path(self.bundle['path']).read_text())['packets']['current_state_investigator']
+        assets = Path(packet['worker_contract']['artifact_directory'])
+        def audit(command):
+            current = json.loads(json.dumps(trace))
+            current['tool_trace'].append({'tool': 'exec_command', 'arguments': {'cmd': command}})
+            return runtime_checks.planning_permission_errors(current)
+        self.assertEqual(audit('mkdir -p ' + shlex.quote(str(assets)) + ' && curl --location https://example.invalid/image -o ' + shlex.quote(str(assets / 'image.png'))), [])
+        for destination in (self.root / 'source.go', self.artifacts / 'finalization_packet.json',
+                            self.artifacts / 'runs' / 'previous' / 'asset.png'):
+            with self.subTest(destination=destination):
+                self.assertIn('planning_source_write_not_authorized', audit('curl -o ' + shlex.quote(str(destination)) + ' https://example.invalid/image'))
+        self.assertEqual(audit('printf example > ' + shlex.quote(str(assets / 'note.txt'))), [])
+        self.assertEqual(audit('curl -o - https://example.invalid/image'), [])
+        self.assertEqual(audit('curl ' + shlex.quote('-o' + str(assets / 'image.png')) + ' https://example.invalid/image'), [])
+        for option in ('-O', '-o/tmp/out', '--output-dir=/tmp', '-sO'):
+            self.assertIn('planning_source_write_not_authorized', audit('curl ' + option + ' https://example.invalid/image'))
+        self.assertIn('planning_source_write_not_authorized', audit('printf example > ' + shlex.quote(str(assets / '..' / '..' / 'finalization_packet.json'))))
+        assets.mkdir(parents=True)
+        (assets / 'link').symlink_to(self.root, target_is_directory=True)
+        self.assertIn('planning_source_write_not_authorized', audit('curl -o ' + shlex.quote(str(assets / 'link' / 'source.go')) + ' https://example.invalid/image'))
+
     def test_planning_keeps_assigned_sentry_file_outputs_writable(self):
         run = prepare.prepare_run(self.root, "SENTRY-1", "sentry_issue_remediation", None, False,
                                   input_manifest=self.root / "inputs.json")

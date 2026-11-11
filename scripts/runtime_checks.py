@@ -2965,7 +2965,7 @@ def planning_permission_errors(trace: dict) -> list[str]:
                         part.append(token)
                 parts.append(part)
 
-                def authorized_write_target(target):
+                def authorized_write_target(target, *, supporting_file=False):
                     if target in {"/dev/null", "/dev/stdout", "/dev/stderr"}:
                         return True
                     path = Path(target)
@@ -2975,6 +2975,11 @@ def planning_permission_errors(trace: dict) -> list[str]:
                     resolved = (path if path.is_absolute() else cwd / path).resolve()
                     if not resolved.is_relative_to(artifact_root):
                         return False
+                    directory = contract.get("artifact_directory")
+                    if supporting_file and isinstance(directory, str):
+                        assigned = Path(directory).resolve()
+                        if assigned.is_relative_to(artifact_root) and resolved.is_relative_to(assigned):
+                            return True
                     return resolved in allowed_writes
 
                 for part in parts:
@@ -2990,7 +2995,7 @@ def planning_permission_errors(trace: dict) -> list[str]:
                     for index, token in enumerate(part[:-1]):
                         if token in {">", ">>", ">|", "&>", "&>>", ">&"}:
                             target = part[index + 1]
-                            if not (token == ">&" and target in {"1", "2"}) and not authorized_write_target(target):
+                            if not (token == ">&" and target in {"1", "2"}) and not authorized_write_target(target, supporting_file=True):
                                 errors.append("planning_source_write_not_authorized")
                     operands = [token for token in part[1:] if not token.startswith("-") and token != "--"]
                     if name in {"tee", "touch", "mkdir", "rmdir", "rm"}:
@@ -3007,8 +3012,25 @@ def planning_permission_errors(trace: dict) -> list[str]:
                         targets = []
                     else:
                         targets = []
-                    if any(not authorized_write_target(target) for target in targets):
+                    if any(not authorized_write_target(target, supporting_file=name in {"mkdir", "tee", "touch", "cp", "install"}) for target in targets):
                         errors.append("planning_source_write_not_authorized")
+                    if name == "curl":
+                        for index, token in enumerate(part[1:], 1):
+                            if token in {"-O", "--remote-name", "--remote-name-all", "--output-dir", "-K", "--config"}:
+                                errors.append("planning_source_write_not_authorized")
+                            elif token in {"-o", "--output"}:
+                                if index + 1 >= len(part) or (part[index + 1] != "-" and not authorized_write_target(part[index + 1], supporting_file=True)):
+                                    errors.append("planning_source_write_not_authorized")
+                            elif token.startswith("--output="):
+                                if not authorized_write_target(token.split("=", 1)[1], supporting_file=True):
+                                    errors.append("planning_source_write_not_authorized")
+                            elif token.startswith("-o") and len(token) > 2:
+                                if not authorized_write_target(token[2:], supporting_file=True):
+                                    errors.append("planning_source_write_not_authorized")
+                            elif (token.startswith(("--output-dir=", "--config=")) or
+                                  token.startswith("-") and not token.startswith("--") and
+                                  ("O" in token[1:] or "K" in token[1:] or "o" in token[1:])):
+                                errors.append("planning_source_write_not_authorized")
                     operation = None
                     if name in {"bazel", "bazelisk", "go", "npm", "pnpm", "yarn", "make"}:
                         action = next((arg for arg in part[1:] if not arg.startswith("-")), "")
