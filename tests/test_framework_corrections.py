@@ -212,6 +212,39 @@ class FrameworkCorrections(unittest.TestCase):
         self.assertIn("worker_owned_record_changed:feature-context:evidence:E-FC-001",
                       finalizer._feature_delivery_packet_contract_errors(packet))
 
+    def test_merger_rejects_changes_to_another_workers_accepted_evidence(self):
+        self.merge()
+        result = {'run_id': self.result['run_id'], 'worker_result': {
+            **self.result['worker_result'], 'Worker': 'impact-analysis'}, 'evidence': []}
+        trace, _ = stage_worker_response(
+            self.run, 'dependency_analyst', result, provider_handle='/root/impact',
+            child_thread_id='00000000-0000-0000-0000-000000000103')
+        packet = json.loads(self.packet_path.read_text())
+        packet['evidence'][0]['Source'] = 'Changed after acceptance'
+        self.packet_path.write_text(json.dumps(packet))
+        before = self.packet_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'worker_owned_record_changed:feature-context'):
+            merge_result(self.packet_path, 'dependency_analyst', trace=trace)
+        self.assertEqual(self.packet_path.read_bytes(), before)
+
+    def test_merger_rejects_matching_rewrites_of_packet_and_prior_result(self):
+        self.merge()
+        result = {'run_id': self.result['run_id'], 'worker_result': {
+            **self.result['worker_result'], 'Worker': 'impact-analysis'}, 'evidence': []}
+        trace, _ = stage_worker_response(
+            self.run, 'dependency_analyst', result, provider_handle='/root/impact',
+            child_thread_id='00000000-0000-0000-0000-000000000103')
+        packet = json.loads(self.packet_path.read_text())
+        packet['evidence'][0]['Source'] = 'Rewritten'
+        self.packet_path.write_text(json.dumps(packet))
+        canonical = json.loads(self.source.read_text())
+        canonical['evidence'][0]['Source'] = 'Rewritten'
+        self.source.write_text(json.dumps(canonical))
+        before = self.packet_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'worker_result_artifact_changed'):
+            merge_result(self.packet_path, 'dependency_analyst', trace=trace)
+        self.assertEqual(self.packet_path.read_bytes(), before)
+
     def test_bad_types_and_dangling_references_fail_before_mutation(self):
         saved = self.packet_path.read_bytes()
         for value, reason in ((["E-FC-001"], "schema_invalid"), ("E-FC-404", "reference_unresolved")):

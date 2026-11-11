@@ -369,6 +369,39 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
         if asset_manifest_output.resolve().parent != root:
             raise ValueError("worker_asset_manifest_outside_current_run")
     packet = json.loads(packet_path.read_text())
+    if contract.get("result_hash_required"):
+        try:
+            from runtime_checks import result_artifact_errors
+        except ModuleNotFoundError:
+            from scripts.runtime_checks import result_artifact_errors
+        errors = merged_result_errors(packet, bindings, root)
+        if errors:
+            raise ValueError(";".join(errors))
+        for prior_agent, (prior_worker, _) in workers.items():
+            if prior_agent == agent:
+                continue
+            prior_contract = bindings.get("worker_contracts", {}).get(prior_agent, {})
+            if not prior_contract.get("result_hash_required"):
+                continue
+            if not any(row.get("Worker") == prior_worker and row.get("Outcome") == "complete"
+                       for row in packet.get("worker_results", [])):
+                continue
+            audits = [row for row in packet.get("runtime_audits", []) if row.get("Worker") == prior_worker]
+            if len(audits) != 1:
+                raise ValueError("worker_result_artifact_changed:" + prior_agent)
+            try:
+                prior_path = Path(audits[0]["Trace path"])
+                prior_path = prior_path if prior_path.is_absolute() else root / prior_path
+                if prior_path.resolve().parent != root or prior_path.is_symlink():
+                    raise ValueError
+                prior_trace = json.loads(prior_path.read_text())
+                staged = Path(prior_trace["result_artifact"]["path"])
+                if (prior_trace["last_dispatch_at"] != audits[0]["Last dispatch at"]
+                        or result_artifact_errors(prior_trace, bindings, root, prior_agent)
+                        or json.loads(Path(prior_contract["result"]).read_text()) != json.loads(staged.read_text())):
+                    raise ValueError
+            except (OSError, ValueError, KeyError, TypeError):
+                raise ValueError("worker_result_artifact_changed:" + prior_agent) from None
     worker, _ = workers[agent]
     trace_value, output, asset_manifest = None, None, None
     if contract.get("result_hash_required"):
@@ -406,10 +439,6 @@ def merge_result(packet_path: Path, agent: str, *, trace: Path | None = None) ->
                 errors = review_candidate_metadata_errors(review_output, expected_repository=Path(bindings["source_checkout"]))
                 if errors:
                     raise ValueError("worker_review_candidate_metadata_invalid:" + ";".join(errors))
-        try:
-            from runtime_checks import result_artifact_errors
-        except ModuleNotFoundError:
-            from scripts.runtime_checks import result_artifact_errors
         errors = result_artifact_errors(trace_value, bindings, root, agent)
         if errors:
             raise ValueError(";".join(errors))
