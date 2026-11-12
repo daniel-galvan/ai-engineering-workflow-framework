@@ -1,9 +1,9 @@
 ---
 title: Code Review Evidence
-version: 0.5.33
+version: 0.5.34
 status: Pilot
 owner: Engineering
-last_updated: 2026-10-27
+last_updated: 2026-11-11
 depends_on:
   - ../contracts/code_review.md
 ---

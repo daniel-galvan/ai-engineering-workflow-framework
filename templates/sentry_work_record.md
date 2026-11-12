@@ -1,8 +1,8 @@
 ---
 title: Compact Sentry Work Record
-version: 0.5.33
+version: 0.5.34
 status: Pilot
-last_updated: 2026-10-27
+last_updated: 2026-11-11
 ---
 
 # Engineering Work Record

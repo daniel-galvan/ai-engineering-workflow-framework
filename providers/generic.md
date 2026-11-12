@@ -1,11 +1,11 @@
 ---
 
 title: Generic Provider Adapter
-version: 0.5.33
+version: 0.5.34
 status: Pilot
 owner: Engineering
 provider: generic
-last_updated: 2026-10-27
+last_updated: 2026-11-11
 ---
 
 # Generic Provider Adapter

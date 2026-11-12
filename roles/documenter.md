@@ -1,12 +1,12 @@
 ---
 
 title: Documenter Role
-version: 0.5.33
+version: 0.5.34
 status: Pilot
 category: Documentation
 produces_decisions: false
 owner: Engineering
-last_updated: 2026-10-27
+last_updated: 2026-11-11
 required_documents:
 
   - ../frameworks/investigation.md

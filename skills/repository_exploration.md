@@ -1,12 +1,12 @@
 ---
 
 title: Repository Exploration
-version: 0.5.33
+version: 0.5.34
 status: Pilot
 category: Investigation
 provider_independent: true
 owner: Engineering
-last_updated: 2026-10-27
+last_updated: 2026-11-11
 ---
 
 # Repository Exploration
