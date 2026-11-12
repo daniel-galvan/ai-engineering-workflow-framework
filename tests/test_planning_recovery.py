@@ -8,9 +8,11 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import finalize_work_record as finalizer
 from scripts import prepare_run as preparation
+from scripts.planning_contracts import worker_audit_record
 from scripts.merge_techops_result import merge_result
 from scripts.review_evidence import PLAN_FIXTURE, draft_plan_errors
 from scripts.validation.work_records import _plan_handoff_linked
@@ -44,6 +46,24 @@ class PlanningRecovery(unittest.TestCase):
         self.artifacts = Path(self.prepared["artifact_root"])
         self.packet_path = Path(self.prepared["finalization_packet"])
         self.packet = json.loads(self.packet_path.read_text())
+
+    def test_worker_audit_keeps_session_locator_in_trace_only(self):
+        trace = self.artifacts / "worker.trace.json"
+        for locator in ("/home/example/.codex/sessions/worker.jsonl", "C:\\codex\\sessions\\worker.jsonl",
+                        "$CODEX_HOME/sessions/worker.jsonl", "read_thread provider export"):
+            with self.subTest(locator=locator):
+                trace.write_text(json.dumps({"status_observation": {}, "trace_retrieval": locator}))
+                observed = []
+                def validate(packet, *_args):
+                    observed.append(packet["runtime_audits"][0]["Trace retrieval"])
+                    return []
+                with patch("scripts.planning_contracts._worker_runtime_audit_errors", side_effect=validate):
+                    audit = worker_audit_record(self.packet_path, "feature-context", trace)
+                self.assertEqual(observed, [locator])
+                expected = "read_thread provider export" if locator == "read_thread provider export" else (
+                    "Native provider session; see current-run trace")
+                self.assertEqual(audit["Trace retrieval"], expected)
+                self.assertEqual(json.loads(trace.read_text())["trace_retrieval"], locator)
 
     def test_feature_continuation_reuses_recorded_inputs_without_user_resubmission(self):
         inputs = self.artifacts / 'run_inputs.json'

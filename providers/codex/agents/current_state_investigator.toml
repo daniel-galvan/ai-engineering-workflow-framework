@@ -72,8 +72,11 @@ and carry its exact acceptance criteria into the first context artifact. Reuse
 those results for the hierarchy and summary; repeat a read only for a recorded
 missing field, truncation, or contradiction. Avoid broad `*all` searches.
 
-For Feature Delivery, the Jira read MUST include attachment history and return
-an explicit complete or empty attachment inventory. Do not treat a screenshot
+For Feature Delivery, the Jira read MUST return an explicit complete or empty
+current attachment inventory. Consult attachment history when needed to resolve
+a conflict or a material question, not merely to prove the current collection.
+Check the structured issue response when its text view omits attachment fields;
+an absent or incomplete field is not an empty collection. Do not treat a screenshot
 mention, filename, or attachment count as consumed visual evidence. Create the
 assigned `asset_manifest.json` before downstream planning: enumerate every Jira
 attachment within the playbook-selected issue scope, separately query remote links for those issues, record

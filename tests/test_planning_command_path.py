@@ -528,7 +528,12 @@ class PlanningCommandPath(unittest.TestCase):
                         self.assertEqual(json.loads(preview), response)
                     if role == "solution_architect":
                         if parallel_integration:
-                            self.assertIn("/.codex/sessions/", packet_path.read_text())
+                            self.assertNotIn("/.codex/sessions/", packet_path.read_text())
+                            audits = json.loads(packet_path.read_text())["runtime_audits"]
+                            self.assertTrue(any(row["Trace retrieval"] == "Native provider session; see current-run trace"
+                                                and "/.codex/sessions/" in json.loads(
+                                                    Path(row["Trace path"]).read_text())["trace_retrieval"]
+                                                for row in audits))
                         invocation = ('text(await tools.exec_command(' + json.dumps({"cmd": "cat " + str(packet_path)})
                                       + ')); text(await tools.exec_command({"cmd":"git status --short"}));')
                         append(child, "response_item", type="custom_tool_call", name="functions.exec",

@@ -96,9 +96,9 @@ except ModuleNotFoundError:
 
 
 try:
-    from workflow_policy import TECHNICAL_SPIKE_DISPOSITIONS
+    from workflow_policy import FORBIDDEN_MEMORY_CONTEXT_PATTERNS, TECHNICAL_SPIKE_DISPOSITIONS
 except ModuleNotFoundError:
-    from scripts.workflow_policy import TECHNICAL_SPIKE_DISPOSITIONS
+    from scripts.workflow_policy import FORBIDDEN_MEMORY_CONTEXT_PATTERNS, TECHNICAL_SPIKE_DISPOSITIONS
 
 
 try:
@@ -1333,6 +1333,9 @@ def worker_audit_record(packet_path: Path, worker: str, trace_path: Path) -> dic
     errors = _worker_runtime_audit_errors({"runtime_audits": [audit]}, packet_path, {worker})
     if errors:
         raise ValueError(";".join(errors))
+    if any(label == "session_log" and pattern.search(str(audit["Trace retrieval"]))
+           for label, pattern in FORBIDDEN_MEMORY_CONTEXT_PATTERNS):
+        audit["Trace retrieval"] = "Native provider session; see current-run trace"
     return audit
 
 
