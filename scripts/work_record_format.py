@@ -262,12 +262,61 @@ def render_compact(packet: dict[str, object]) -> str:
     return "\n\n".join(result) + "\n"
 
 
+def published_plan_path(packet: dict[str, object]) -> Path | None:
+    """Resolve a verified immutable plan snapshot recorded in the terminal packet."""
+    digest = packet.get("published_plan_sha256")
+    if digest is None:
+        return None
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("published_plan_digest_invalid")
+    root = Path(str(packet["finalization"]["Durable artifact root"])).resolve()
+    bundle = packet.get("published_plan_bundle_sha256")
+    if bundle is not None and (not isinstance(bundle, str) or not re.fullmatch(r"[0-9a-f]{64}", bundle)):
+        raise ValueError("published_plan_digest_invalid")
+    directory = root / "runs" / "_published_plans" / (bundle or digest)
+    if any(path.is_symlink() for path in (root / "runs", root / "runs" / "_published_plans", directory)):
+        raise ValueError("published_plan_snapshot_invalid")
+    target = directory / "implementation_plan.md"
+    if (target.is_symlink() or not target.is_file()
+            or hashlib.sha256(target.read_bytes()).hexdigest() != digest):
+        raise ValueError("published_plan_snapshot_invalid")
+    if bundle:
+        manifest = directory / ".published_plan_manifest.json"
+        if manifest.is_symlink() or not manifest.is_file() or hashlib.sha256(manifest.read_bytes()).hexdigest() != bundle:
+            raise ValueError("published_plan_snapshot_invalid")
+        metadata = json.loads(manifest.read_text())
+        if metadata.get("plan_sha256") != digest or not isinstance(metadata.get("files"), dict):
+            raise ValueError("published_plan_snapshot_invalid")
+        for name, expected in metadata["files"].items():
+            relative = Path(name)
+            path = directory / relative
+            if (relative.is_absolute() or ".." in relative.parts or not relative.parts
+                    or any((directory / Path(*relative.parts[:i])).is_symlink() for i in range(1, len(relative.parts) + 1))
+                    or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected):
+                raise ValueError("published_plan_snapshot_invalid")
+    return target
+
+
 def render_handoff(packet: dict[str, object]) -> str:
     handoff = packet["handoff"]
+    root = Path(str(packet["finalization"]["Durable artifact root"])).resolve()
+    published = published_plan_path(packet)
     plan = str(handoff["implementation_plan"])
     reference = re.fullmatch(r"((?:/.*?/)?implementation_plan\.md)(\s.*)?", plan)
     if reference:
-        plan = _artifact_link(reference[1], packet["finalization"]["Durable artifact root"]) + (reference[2] or "")
+        original = Path(reference[1])
+        original = (original if original.is_absolute() else root / original).resolve()
+        plan = _artifact_link(str(published) if published and original == root / "implementation_plan.md"
+                              else reference[1], root) + (reference[2] or "")
+    elif published:
+        markdown = re.fullmatch(r"(\[[^\]]+\])\(<?([^)>]+)>?\)", plan)
+        if markdown:
+            original = Path(markdown[2])
+            original = (original if original.is_absolute() else root / original).resolve()
+            if original == root / "implementation_plan.md":
+                plan = _artifact_link(markdown[1] + "(" + str(published) + ")", root)
+        else:
+            plan = plan.replace(str(root / "implementation_plan.md"), str(published))
     explanations = handoff.get("best_current_explanations", [])
     explanation_block = ""
     if explanations:
@@ -294,6 +343,9 @@ def render_handoff(packet: dict[str, object]) -> str:
     for item in handoff["artifacts"]:
         link = _artifact_link(item, packet["finalization"]["Durable artifact root"])
         destination = link.rsplit("](", 1)[1][:-1].strip("<>")
+        if published and Path(destination) == root / "implementation_plan.md":
+            link = _artifact_link(str(published), root)
+            destination = str(published)
         artifact_links.setdefault(destination, link)
     artifacts = "".join(f"- {link}\n" for link in artifact_links.values())
     runtime = "not released" if packet["runtime_closure"] else "closure unverified"

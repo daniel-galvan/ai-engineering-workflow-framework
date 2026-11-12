@@ -88,6 +88,11 @@ sources. Do not include or rely on unrelated chats, sessions, previous runs, or 
 user explicitly identifies and authorizes the exact source. A work-item key or link to the current task does not
 authorize prior attempts. When a prior source is authorized, register its exact identifier and provenance as a run
 input; verify current-state claims against current evidence.
+Register applicable user-confirmed decisions from this chat as explicit current-run inputs, including their source;
+fresh preparation does not discard them. If preparation reports an archived prior run and no prior decision source was
+authorized, say that earlier decisions were not reviewed. Do not assume no decisions exist. When an unknown decision
+would materially change the outcome, resolve it with the user or an explicitly authorized source before claiming
+readiness.
 
 For every delegated activation, the Coordinator MUST pass the exact manifest
 `model`, reasoning effort, and fresh-context setting to the provider primitive.
@@ -1338,6 +1343,10 @@ During initialization, resolve a separate source checkout before repository insp
 * resolve the main checkout through Git worktree metadata; a linked worktree MUST NOT be a durable-artifact root;
 * if the runtime starts inside a Git worktree of the selected execution repository, use that active worktree as the
   source checkout and remap source/component paths beneath it;
+* for a fresh run, if that checkout differs from the named checkout, compare their committed source trees and check
+  for Git-visible changes outside the artifact directory. Stop and identify both paths if the trees differ, either
+  checkout has such changes, or the check fails. Select the intended checkout explicitly before retrying; do not switch
+  or modify either checkout automatically;
 * verify equivalence from Git identity, such as the shared common Git directory or matching canonical remote, rather
   than path text alone;
 * record the declared durable-artifact root and resolved source-checkout path separately; and
@@ -1345,10 +1354,19 @@ During initialization, resolve a separate source checkout before repository insp
   changing directories to the declared path.
 
 Branch and revision evidence, scope checks, and source commands MUST come from the resolved source checkout. A prompt's
-absolute source/component path MUST NOT override an equivalent active worktree. Durable artifacts MUST remain under the
-resolved main execution repository, never under an ephemeral managed-worktree path. This also applies when the prompt
-names a linked worktree. Non-Git record folders retain their declared durable path. Existing worktree artifacts MUST
-NOT be silently moved or reused; continuation requiring migration stops with an explicit migration limitation.
+absolute source/component path MUST NOT override an equivalent active worktree once their source has been reconciled.
+Durable artifacts MUST remain under the main checkout, never under an ephemeral managed-worktree path.
+This also applies when the prompt names a linked worktree. Non-Git record folders retain their declared durable path.
+Existing worktree artifacts MUST NOT be silently moved or reused; continuation requiring migration stops with an
+explicit migration limitation.
+
+For a successful or failed terminal handoff, the finalizer retains an exact content-addressed plan copy under
+`runs/_published_plans/<SHA256>/implementation_plan.md` and links that copy. Existing local files referenced by relative
+inline and reference Markdown links inside the run root are retained beside it; their content and the plan are checked
+when the handoff is rendered or recovered. External, missing, symlinked, and outside-run targets are not copied. The
+active plan remains the
+working and approval input. Retained copies are historical evidence, not current-run inputs unless explicitly
+authorized.
 
 Before using any execution, primary, additional, source, or destination repository as evidence, record its declared and
 resolved path, repository role, branch or detached state, full revision, clean status, canonical Git identity, and
@@ -1775,7 +1793,14 @@ flowchart TB
 | `handoff` | Results, artifacts, ownership, and next steps are being finalized. | `completed` |
 | `completed` | Required gates passed or a documented terminal outcome was recorded. | None; start a new run for new scope. |
 
-Planning normally ends at `ready_for_implementation`, `awaiting_input`, or `blocked`.
+Planning normally ends at `ready_for_implementation`, `awaiting_input`, or `blocked`. A proposed ready plan stays in
+`handoff` / `in_progress` in the candidate packet; only validated finalization publishes `ready_for_implementation`.
+If planning fails, preserve the original plan bytes and mark any working plan that claimed readiness as an unvalidated
+draft. If a rejected packet claimed readiness, retain its original bytes and restore the working candidate to handoff;
+recovery checks both the retained evidence and the current packet. Implementation re-entry requires the matching
+validated terminal record and closure. Feature Delivery and
+TechOps also require the passed pre-release receipt for that exact packet. A failed planning finalization cannot
+authorize implementation. Preserve failed candidate artifacts as evidence for recovery.
 During planning, workers may investigate and create needed playbook artifacts. Change project source only when
 needed for the task; document what changed and why, and honor explicit user restrictions. The current item’s
 `.thoughts` folder contains Framework artifacts, not project source code.
@@ -1929,8 +1954,10 @@ worker's result to resolve schema or upstream-row conflicts. Return corrections 
 supported guarded path. Workers reference upstream IDs without copying or redefining upstream rows.
 
 A terminal workflow-failure receipt binds an immutable packet snapshot and its Run ID. It may establish the closed
-invocation for explicit planning recovery after reconciliation changes the live packet. Actual provider closure remains
-required. Failed preparation or an exhausted invocation prohibits further dispatch until supported recovery succeeds.
+invocation for explicit planning recovery after reconciliation changes the live packet. Recover from the verified
+snapshot, preserve later packet changes in the archive, and disclose that those changes require review. Actual provider
+closure remains required. Failed preparation or an exhausted invocation prohibits further dispatch until supported
+recovery succeeds.
 TechOps and Feature Delivery workflow-failure reporting reconstruct native provider inventory from the registered
 ledger and retain Terminal closure or a concrete Blocked receipt. That closure does not validate analytical findings.
 

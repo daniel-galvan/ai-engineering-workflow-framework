@@ -120,8 +120,8 @@ Feature context and constraints (unverified until reconciled):
 - Constraints, dependencies, or release timing: <NONE-OR-DESCRIPTION>
 
 For each supplied task-evidence artifact, add a current-run input row with `Asset source: true`; do not hide an
-asset source in free-form context. A supplied `codex://threads/` reference is a URL asset source even when used only as
-prior-decision context.
+asset source in free-form context. Register a supplied `codex://threads/` reference used only for decision history as
+decision continuity; register material product or specification content separately as an asset source.
 
 Additional supplied context (preserve and classify):
 - <NONE-OR-DESCRIPTION-OR-REFERENCE>

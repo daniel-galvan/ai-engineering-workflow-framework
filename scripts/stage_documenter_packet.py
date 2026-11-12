@@ -101,9 +101,9 @@ def stage(packet_path: Path, *, coordinator_model_effort: str, prompt_conformanc
         "Activated profile": profile,
         "Executed profile": profile,
         "Profile status": "executed",
-        "State": state,
+        "State": "handoff" if lifecycle == "planning" and state == "ready_for_implementation" else state,
         "Engineering state": engineering_state,
-        "Workflow outcome": workflow_outcome,
+        "Workflow outcome": "in_progress" if lifecycle == "planning" and state == "ready_for_implementation" else workflow_outcome,
         "Engineering outcome": engineering_outcome,
         "Coordinator model/effort": coordinator_model_effort.strip(),
         "Prompt template / revision / conformance": prompt_identity,
@@ -131,7 +131,8 @@ def stage(packet_path: Path, *, coordinator_model_effort: str, prompt_conformanc
         _validate_current_fan_in(candidate, packet_path, bindings, playbook, profile)
         _passed_synchronization(candidate)
     _atomic_json(packet_path, candidate)
-    return {"status": "staged", "playbook": playbook, "state": state,
+    return {"status": "staged", "playbook": playbook, "state": candidate_identity["State"],
+            "proposed_state": state,
             "accepted_workers": [row["Worker"] for row in candidate.get("worker_results", [])
                                  if isinstance(row, dict) and row.get("Worker") in {
                                      "feature-context", "impact-analysis", "repository-integration", "feature-design",

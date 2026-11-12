@@ -2960,6 +2960,159 @@ def _without_python_script_heredoc_data(command: str, package: Path) -> str:
     return pattern.sub(remove, command)
 
 
+def _shell_substitution_fragments(command: str) -> list[str]:
+    """Find shell command substitutions without treating single-quoted text as shell code."""
+    fragments: list[str] = []
+
+    def scan(text: str, *, here_text: bool = False) -> None:
+        def visit(start: int, terminator: str | None = None) -> int | None:
+            i, quote, parentheses = start, None, 0
+            while i < len(text):
+                char = text[i]
+                if char == "\\" and quote != "'":
+                    i += 2
+                    continue
+                if not here_text or terminator:
+                    if char == "'" and quote != '"':
+                        quote = None if quote == "'" else "'"
+                        i += 1
+                        continue
+                    if char == '"' and quote != "'":
+                        quote = None if quote == '"' else '"'
+                        i += 1
+                        continue
+                if quote == "'":
+                    i += 1
+                    continue
+                if ((not here_text or terminator) and not quote and char == "#"
+                        and (i == start or text[i - 1] in " \t\r\n;|&()")):
+                    newline = text.find("\n", i)
+                    i = len(text) if newline < 0 else newline + 1
+                    continue
+                if terminator and char == terminator and not quote:
+                    if terminator == ")" and parentheses:
+                        parentheses -= 1
+                    else:
+                        return i
+                elif terminator == ")" and char == "(" and not quote:
+                    parentheses += 1
+                if (text.startswith("$(", i) or
+                        (not quote and (not here_text or terminator)
+                         and text[i:i + 2] in {"<(", ">("})):
+                    end = visit(i + 2, ")")
+                    if end is None:
+                        return None
+                    fragments.append(text[i + 2:end])
+                    i = end + 1
+                    continue
+                if char == "`":
+                    end = visit(i + 1, "`")
+                    if end is None:
+                        return None
+                    fragments.append(text[i + 1:end])
+                    i = end + 1
+                    continue
+                i += 1
+            return None
+        visit(0)
+
+    # Each unquoted here-document is expanded, including bodies overridden by a later redirection.
+    heredoc = re.compile(r"(?<!<)<<(?P<strip>-?)[ \t]*(?P<delimiter>"
+                         r"'[A-Za-z_][A-Za-z0-9_]*'|\"[A-Za-z_][A-Za-z0-9_]*\"|"
+                         r"\\[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]*)(?=$|[ \t\r\n;&|<>])")
+
+    def unquoted(line: str, end: int) -> bool:
+        quote, escaped = None, False
+        for index, char in enumerate(line[:end]):
+            if escaped:
+                escaped = False
+            elif char == "\\" and quote != "'":
+                escaped = True
+            elif char == "'" and quote != '"':
+                quote = None if quote == "'" else "'"
+            elif char == '"' and quote != "'":
+                quote = None if quote == '"' else '"'
+            elif (char == "#" and not quote and
+                  (index == 0 or line[index - 1] in " \t;|&()")):
+                return False
+        return not quote and not escaped
+
+    lines, outer = command.splitlines(keepends=True), []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        matches = [match for match in heredoc.finditer(line) if unquoted(line, match.start())]
+        outer.append(line)
+        index += 1
+        if not matches:
+            continue
+        try:
+            prefix = _shell_executable_words(shlex.split(line[:matches[0].start()]))
+        except ValueError:
+            prefix = []
+        shell_input = (bool(prefix) and Path(prefix[0]).name in {"bash", "sh", "zsh"}
+                       and not any(value in {"-c", "-lc"} for value in prefix[1:]))
+        for number, match in enumerate(matches):
+            raw = match["delimiter"]
+            quoted = raw[0] in "'\"\\"
+            delimiter = raw[1:-1] if raw[0] in "'\"" else raw[1:] if quoted else raw
+            content = []
+            while index < len(lines):
+                current = lines[index]
+                index += 1
+                line_end = current.rstrip("\r\n")
+                if (line_end.lstrip("\t") if match["strip"] else line_end) == delimiter:
+                    break
+                content.append(current)
+            if not quoted:
+                scan("".join(content), here_text=True)
+            elif shell_input and number == len(matches) - 1:
+                scan("".join(content))
+    scan("".join(outer))
+    return fragments
+
+
+def _shell_executable_words(words: list[str]) -> list[str]:
+    """Unwrap assignments and common shell command wrappers before classifying execution."""
+    words = list(words)
+    while words:
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]):
+            words.pop(0)
+            continue
+        name = Path(words[0]).name
+        if name == "env":
+            words.pop(0)
+            while words:
+                option = words[0]
+                if option == "--":
+                    words.pop(0)
+                    break
+                if option in {"-0", "--null", "--help", "--version"}:
+                    return []
+                if option in {"-i", "--ignore-environment"} or re.match(
+                        r"^(?:[A-Za-z_][A-Za-z0-9_]*=|--unset=|--chdir=)", option):
+                    words.pop(0)
+                elif option in {"-u", "--unset", "-C", "--chdir"}:
+                    if len(words) < 2:
+                        return []
+                    del words[:2]
+                elif option in {"-S", "--split-string"} and len(words) >= 2:
+                    words = shlex.split(words[1]) + words[2:]
+                    break
+                else:
+                    break
+            continue
+        if name == "command":
+            words.pop(0)
+            while words and words[0] in {"-p", "--"}:
+                words.pop(0)
+            if words and words[0] in {"-v", "-V"}:
+                return []  # command -v/-V describes commands instead of executing them.
+            continue
+        break
+    return words
+
+
 def planning_permission_errors(trace: dict) -> list[str]:
     """Enforce planning permissions and explicit user restrictions."""
     content = _verified_dispatch_content(trace)
@@ -3016,23 +3169,32 @@ def planning_permission_errors(trace: dict) -> list[str]:
             try:
                 package = Path(packet.get("framework_package", {}).get("root", ROOT))
                 command = _without_python_script_heredoc_data(command, package)
-                tokens = shlex.split(command)
+                try:
+                    tokens = shlex.split(command)
+                except ValueError:
+                    tokens = []
                 if len(tokens) == 3 and Path(tokens[0]).name in {"bash", "sh", "zsh"} and tokens[1] in {"-lc", "-c"}:
                     command = tokens[2]
                 command = _without_python_script_heredoc_data(command, package)
-                lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>\n")
-                lexer.whitespace = " \t\r"
-                lexer.whitespace_split = True
-                parts, part = [], []
-                for token in lexer:
-                    if token in {";", "&", "|", "&&", "||", "\n"}:
-                        parts.append(part)
+                parts = []
+                for fragment in [command, *_shell_substitution_fragments(command)]:
+                    try:
+                        lexer = shlex.shlex(fragment, posix=True, punctuation_chars=";&|<>\n")
+                        lexer.whitespace = " \t\r"
+                        lexer.whitespace_split = True
                         part = []
-                    else:
-                        part.append(token)
-                parts.append(part)
+                        for token in lexer:
+                            if token in {";", "&", "|", "&&", "||", "\n"}:
+                                parts.append(part)
+                                part = []
+                            else:
+                                part.append(token)
+                        parts.append(part)
+                    except ValueError:
+                        continue
 
                 for part in parts:
+                    part = _shell_executable_words(part)
                     if not part:
                         continue
                     name = Path(part[0]).name
@@ -3057,6 +3219,8 @@ def planning_permission_errors(trace: dict) -> list[str]:
                                  or name in {"python", "python3"} and "discover" in operands)
                         if broad:
                             errors.append("planning_diagnostic_test_not_focused")
+            except RecursionError:
+                errors.append("planning_command_invalid")
             except (ValueError, TypeError):
                 continue
     return list(dict.fromkeys(errors))

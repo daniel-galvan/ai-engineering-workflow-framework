@@ -1,11 +1,16 @@
 """Preserve verified current-run evidence when a later Sentry stage fails."""
 
 import copy
+import hashlib
+import io
 import json
 import os
+import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import finalize_work_record as finalizer
 from tests import test_shared_runtime_acceptance as shared
@@ -50,6 +55,32 @@ class V8SentryHandoff(unittest.TestCase):
         self.assertIn("Unaccepted worker artifact retained for audit only: " + str(self.evidence), report)
         self.assertIn("reported work is provisional", report)
         self.assertIn("Dispatched workers without an accepted result: provider handle /root/worker", report)
+
+    def test_failed_handoff_does_not_claim_plan_readiness(self):
+        plan = self.root / "implementation_plan.md"
+        plan.write_text("Draft plan\n")
+        self.packet['handoff']['workflow_result'] = 'The plan is ready for implementation.'
+        self.packet['handoff']['implementation_plan'] = str(plan) + ' ready for implementation'
+        self.packet_path.write_text(json.dumps(self.packet))
+        report = finalizer.failure_handoff(self.packet_path, 'Plan validation failed')
+        self.assertIn('readiness not validated by this handoff', report)
+        self.assertNotIn('The plan is ready for implementation', report)
+        self.assertIn(str(plan), report)
+        (self.root / 'finalization_failure.json').write_text(json.dumps({'status': 'failed'}))
+        report = finalizer._save_failure_handoff(self.packet_path, report)
+        digest = hashlib.sha256(plan.read_bytes()).hexdigest()
+        saved = self.root / 'runs' / '_published_plans' / digest / 'implementation_plan.md'
+        self.assertIn(str(saved), report)
+        self.assertEqual((self.root / 'handoff_failure.md').read_text().strip(), report)
+        plan.write_text('A later draft\n')
+        self.assertEqual(saved.read_text(), 'Draft plan\n')
+        args = ['finalizer', '--packet', str(self.packet_path), '--publish-response', str(self.root / 'handoff_response.md')]
+        with patch.object(sys, 'argv', args), redirect_stdout(io.StringIO()):
+            self.assertEqual(finalizer.main(), 0)
+        saved.write_text('Tampered plan\n')
+        with patch.object(sys, 'argv', args), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(finalizer.main(), 2)
+        self.assertIn('published_plan_snapshot_invalid', output.getvalue())
 
     def test_explicit_trace_path_supports_a_filename_without_trace_in_it(self):
         saved = self.root / "evidence-proof.json"

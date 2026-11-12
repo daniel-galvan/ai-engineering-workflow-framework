@@ -429,7 +429,17 @@ class FrameworkCorrections(unittest.TestCase):
         recovered = prepare.prepare_run(self.repository, "ITEM-1", "feature_delivery", None, True,
             input_manifest=self.inputs, planning_recovery=True, approval_reference="User requests recovery")
         self.assertNotEqual(recovered["run_id"], self.packet["identity"]["Run ID"])
+        self.assertTrue(recovered["recovery_packet_reconciliation_unverified"])
+        current = json.loads(self.packet_path.read_text())
+        self.assertNotEqual(current["work_item"]["Title"], "Reconciled title")
+        archived = Path(recovered["archived_prior_run"])
+        manifest = json.loads((archived / "archive_manifest.json").read_text())
+        entry = next(row for row in manifest["files"] if row["path"] == "finalization_packet.json")
+        self.assertEqual(json.loads((archived / entry["snapshot"]).read_text())["work_item"]["Title"], "Reconciled title")
         self.assertEqual(snapshot.read_bytes(), saved)
+        continued = prepare.prepare_run(self.repository, "ITEM-1", "feature_delivery", None, True)
+        self.assertEqual(continued["run_id"], recovered["run_id"])
+        self.assertTrue(continued["recovery_packet_reconciliation_unverified"])
 
     def dispatch_trace(self, assigned):
         packet = json.loads(Path(self.run["activation_packet_bundle"]["path"]).read_text())["packets"][

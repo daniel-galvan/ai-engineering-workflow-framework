@@ -573,6 +573,41 @@ class ActivationDelivery(unittest.TestCase):
                 self.assertIn('planning_operation_not_authorized:' + expected,
                               runtime_checks.planning_permission_errors(trace))
 
+    def test_planning_checks_shell_substitutions_without_treating_literals_as_commands(self):
+        trace = self.instruction_trace()
+        row = {'tool': 'exec_command', 'arguments': {}}
+        trace['tool_trace'].append(row)
+        for command, operation in (("echo $(go test ./pkg)", 'test_run'),
+                                   ('echo "$(npm run build)"', 'build_run'),
+                                   ('echo `bazel test //pkg:test`', 'test_run'),
+                                   ('cat <(go test ./pkg)', 'test_run'),
+                                   ('echo $(env -u FOO go test ./pkg)', 'test_run'),
+                                   ('echo $(command go test ./pkg)', 'test_run'),
+                                   ('echo $(FOO=1 go test ./pkg)', 'test_run'),
+                                   ("env -S 'go test ./pkg'", 'test_run'),
+                                   ("cat <<EOF\nIt's text $(go test ./pkg)\nEOF", 'test_run'),
+                                   ("cat <<A <<B\nFirst\nA\nIt's $(go test ./pkg)\nB", 'test_run'),
+                                   ("cat <<A <<'B'\nIt's $(go test ./pkg)\nA\nLiteral\nB", 'test_run'),
+                                   ("echo $(echo $(go test ./pkg))", 'test_run')):
+            with self.subTest(command=command):
+                row['arguments']['cmd'] = command
+                self.assertIn('planning_operation_not_authorized:' + operation,
+                              runtime_checks.planning_permission_errors(trace))
+        for command in ("printf '%s' '$(go test ./pkg)'",
+                        'echo "$(printf \'%s\' \'$(go test ./pkg)\')"',
+                        "cat <<'EOF'\nText $(go test ./pkg)\nEOF",
+                        "cat <<A <<'B'\nFirst\nA\nIt's $(go test ./pkg)\nB",
+                        "bash -c 'echo ok' <<'EOF'\n$(go test ./pkg)\nEOF",
+                        'echo "<(go test ./pkg)"',
+                        'command -v go test',
+                        'env -0 go test ./pkg',
+                        'echo ok # $(go test ./pkg)'):
+            with self.subTest(command=command):
+                row['arguments']['cmd'] = command
+                self.assertEqual(runtime_checks.planning_permission_errors(trace), [])
+        row['arguments']['cmd'] = 'echo ' + '$(' * 1100 + 'true' + ')' * 1100
+        self.assertIn('planning_command_invalid', runtime_checks.planning_permission_errors(trace))
+
     def test_read_only_source_baseline_excludes_artifacts_and_survives_continuation(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)

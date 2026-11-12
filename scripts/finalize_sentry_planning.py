@@ -17,11 +17,11 @@ from io import StringIO
 from pathlib import Path
 
 try:
-    from finalize_work_record import finalize, register_pending_delivery
+    from finalize_work_record import finalize, register_pending_delivery, _store_published_plan
     from normalize_fix_design_result import normalize_artifact_root
     from work_record_format import render_compact, snapshot_bytes, snapshot_name
 except ModuleNotFoundError:
-    from scripts.finalize_work_record import finalize, register_pending_delivery
+    from scripts.finalize_work_record import finalize, register_pending_delivery, _store_published_plan
     from scripts.normalize_fix_design_result import normalize_artifact_root
     from scripts.work_record_format import render_compact, snapshot_bytes, snapshot_name
 try:
@@ -269,7 +269,7 @@ def render_plan(
         {"Field": "Executed profile", "Value": "standard"},
         {"Field": "Lifecycle", "Value": "planning"},
         {"Field": "Affected repositories", "Value": repo_names},
-        {"Field": "Plan status", "Value": "Ready for implementation; approval pending"},
+        {"Field": "Plan status", "Value": "Draft; readiness is established by the validated handoff"},
         {"Field": "Approval reference", "Value": "Not recorded"},
         {"Field": "Portable handoff", "Value": "Not required for current planning handoff"},
         {"Field": "Last updated", "Value": packet["work_item"]["Last Updated"]},
@@ -278,7 +278,7 @@ def render_plan(
     return f"""---
 title: Engineering Implementation Plan
 version: {_plan_version()}
-status: Pilot
+status: Draft
 owner: Engineering
 last_updated: {packet['work_item']['Last Updated']}
 depends_on:
@@ -1053,7 +1053,7 @@ def finalize_standard_sentry(
         "handoff_delivery.json",
     )
     with tempfile.TemporaryDirectory(prefix="workflow-sentry-stage-") as directory:
-        stage_root = (Path(directory) / "artifacts").resolve()
+        stage_root = (Path(directory) / artifact_root.name).resolve()
         stage_root.mkdir()
         stage_names = set(required_names) | set(output_names) | {
             "normalized_evidence_contract.md",
@@ -1095,6 +1095,16 @@ def finalize_standard_sentry(
         snapshot = json.loads((stage_root / snapshot_reference.group(1)).read_text().replace(
             stage_prefix, canonical_prefix,
         ))
+        if snapshot.get("published_plan_sha256"):
+            data = (stage_root / "implementation_plan.md").read_bytes()
+            if hashlib.sha256(data).hexdigest() != snapshot["published_plan_sha256"]:
+                raise ValueError("published_plan_snapshot_invalid")
+            digest, bundle = _store_published_plan(artifact_root, candidates["implementation_plan.md"], source_root=stage_root)
+            snapshot["published_plan_sha256"] = digest
+            if bundle:
+                snapshot["published_plan_bundle_sha256"] = bundle
+            else:
+                snapshot.pop("published_plan_bundle_sha256", None)
         name = snapshot_name(snapshot)
         candidates = {name: snapshot_bytes(snapshot), **candidates}
         candidates["work_record.md"] = render_compact(snapshot).encode()

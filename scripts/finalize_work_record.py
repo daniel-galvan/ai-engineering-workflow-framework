@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+from urllib.parse import unquote, urlsplit
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -138,6 +139,7 @@ try:
         _mapping_table as _mapping_table,
         _section as _section,
         _runtime_closed,
+        published_plan_path,
         snapshot_bytes,
         snapshot_name,
         render_compact,
@@ -158,6 +160,7 @@ except ModuleNotFoundError:
         _mapping_table as _mapping_table,
         _section as _section,
         _runtime_closed,
+        published_plan_path,
         snapshot_bytes,
         snapshot_name,
         render_compact,
@@ -415,6 +418,12 @@ def _normalize_packet(
     _canonicalize_technical_spike_worker_ids(packet, manifest)
     identity = packet.get("identity", {})
     if isinstance(identity, dict):
+        disposition = packet.get("planning_disposition", {})
+        if (identity.get("Lifecycle") == "planning" and identity.get("State") == "handoff"
+                and isinstance(disposition, dict)
+                and (disposition.get("plan_readiness"), disposition.get("implementation_plan_action"))
+                    == ("ready_for_implementation", "create")):
+            identity.update({"State": "ready_for_implementation", "Workflow outcome": "completed"})
         playbook = str(manifest.get("playbook", ""))
         if playbook:
             package_root = producer_root or ROOT
@@ -510,6 +519,14 @@ def _normalize_packet(
     normalize_runtime_closure(closure)
     handoff = packet.get("handoff")
     if isinstance(handoff, dict):
+        if manifest.get("recovery_packet_reconciliation_unverified") and isinstance(handoff.get("established"), list):
+            notice = "Later packet changes were archived but not reused; review them before relying on them."
+            if notice not in handoff["established"]:
+                handoff["established"].append(notice)
+        if manifest.get("prior_decisions_unreviewed") and isinstance(handoff.get("established"), list):
+            notice = "Earlier run decisions were not reviewed; no prior decision source was supplied."
+            if notice not in handoff["established"]:
+                handoff["established"].append(notice)
         handoff["workflow_result"] = re.sub(
             r"^\s*Workflow result:\s*", "", str(handoff.get("workflow_result", "")), flags=re.IGNORECASE
         )
@@ -704,13 +721,23 @@ def _validate_pre_release_state(packet: dict[str, object]) -> None:
         return
     playbook = str(identity.get("Playbook / version", "")).split(" / ", 1)[0].lower()
     playbook = playbook.replace(" ", "_")
+    disposition = packet.get("planning_disposition", {})
+    if (identity.get("Lifecycle") == "planning"
+            and any(name in playbook for name in ("feature_delivery", "techops_issue_remediation"))
+            and isinstance(disposition, dict)
+            and (disposition.get("plan_readiness"), disposition.get("implementation_plan_action"))
+                == ("ready_for_implementation", "create")
+            and (identity.get("State"), identity.get("Workflow outcome")) != ("handoff", "in_progress")):
+        raise ValueError("planning_candidate_must_remain_in_handoff_until_finalization")
     if "techops_issue_remediation" in playbook and identity.get("Lifecycle") == "planning":
-        if identity.get("State") not in {"ready_for_implementation", "awaiting_input", "blocked"}:
-            raise ValueError("TechOps planning State must be ready_for_implementation, awaiting_input, or blocked; "
+        if identity.get("State") not in {"handoff", "ready_for_implementation", "awaiting_input", "blocked"}:
+            raise ValueError("TechOps planning State must be handoff, ready_for_implementation, awaiting_input, or blocked; "
                              "received=" + str(identity.get("State")) + "; return to Documenter before pre-release")
-        if identity.get("Workflow outcome") not in {"completed", "blocked"}:
-            raise ValueError("TechOps planning Workflow outcome must be completed or blocked; received="
-                             + str(identity.get("Workflow outcome")))
+        allowed = {"handoff": "in_progress", "ready_for_implementation": "completed",
+                   "awaiting_input": "completed", "blocked": "blocked"}
+        if identity.get("Workflow outcome") != allowed[identity["State"]]:
+            raise ValueError("TechOps planning Workflow outcome must be " + allowed[identity["State"]]
+                             + "; received=" + str(identity.get("Workflow outcome")))
     if "techops_issue_remediation" in playbook and identity.get("Lifecycle") == "remediation":
         if identity.get("State") not in {"handoff", "blocked"}:
             raise ValueError("TechOps remediation pre-release must keep State handoff or blocked until finalization")
@@ -1124,7 +1151,7 @@ def _prepare_blocked_runtime_snapshot(
     planning = (
         playbook == "feature_delivery"
         and str(packet["playbook_selection"]["Primary goal"]).strip().lower() == "implementation planning"
-        and identity["State"] == "ready_for_implementation"
+        and identity["State"] in {"handoff", "ready_for_implementation"}
         and identity["Engineering outcome"] == "plan_only"
     )
     remediation = (playbook == "feature_delivery" and identity.get("Lifecycle") == "remediation"
@@ -1144,7 +1171,7 @@ def _prepare_blocked_runtime_snapshot(
     techops_planning = (
         playbook == "techops_issue_remediation"
         and identity.get("Lifecycle") == "planning"
-        and identity["State"] == "ready_for_implementation"
+        and identity["State"] in {"handoff", "ready_for_implementation"}
         and identity["Engineering outcome"] == "plan_only"
         and techops_workers <= techops_completed
         and all(row.get("Outcome") in {"complete", "not_applicable"} for row in packet.get("worker_results", []))
@@ -1237,6 +1264,83 @@ def _blocked_snapshot_label(packet: dict[str, object]) -> str:
             return "Sentry remediation"
         return "Feature Delivery remediation"
     return "Feature Delivery assessment" if goal == "specification assessment" else "Feature Delivery implementation planning"
+
+
+def _retain_exact(path: Path, data: bytes, error: str) -> None:
+    """Publish immutable evidence without leaving a partial file on interruption."""
+    if path.is_symlink():
+        raise ValueError(error)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(data)
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.is_symlink() or path.read_bytes() != data:
+                raise ValueError(error) from None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _snapshot_published_plan(packet: dict[str, object], root: Path) -> None:
+    plan = root / "implementation_plan.md"
+    if plan.is_symlink():
+        raise ValueError("published_plan_snapshot_invalid")
+    if not plan.is_file():
+        return
+    digest, bundle = _store_published_plan(root, plan.read_bytes())
+    packet["published_plan_sha256"] = digest
+    if bundle:
+        packet["published_plan_bundle_sha256"] = bundle
+    else:
+        packet.pop("published_plan_bundle_sha256", None)
+
+
+def _store_published_plan(root: Path, content: bytes, *, source_root: Path | None = None) -> tuple[str, str | None]:
+    """Freeze the plan and its existing local Markdown link targets under the history boundary."""
+    digest = hashlib.sha256(content).hexdigest()
+    source = (source_root or root).resolve()
+    text = content.decode("utf-8", errors="replace")
+    links = re.findall(r"!?\[[^]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)]+))", text)
+    links += [(match, "") for match in re.findall(r"(?m)^\s*\[[^]\n]+\]:\s*<?([^>\s]+)>?", text)]
+    files: dict[str, bytes] = {}
+    for first, second in links:
+        try:
+            parts = urlsplit(first or second)
+        except ValueError:
+            continue
+        if parts.scheme or parts.netloc or not parts.path:
+            continue
+        relative = Path(unquote(parts.path))
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts or relative.parts[0] == "runs":
+            continue
+        path = source / relative
+        if relative.as_posix() in {"implementation_plan.md", ".published_plan_manifest.json"}:
+            continue
+        if any((source / Path(*relative.parts[:i])).is_symlink() for i in range(1, len(relative.parts) + 1)):
+            continue
+        if path.is_file():
+            files[relative.as_posix()] = path.read_bytes()
+    manifest = {"plan_sha256": digest, "files": {name: hashlib.sha256(data).hexdigest()
+                                                  for name, data in sorted(files.items())}}
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    bundle = hashlib.sha256(manifest_bytes).hexdigest() if files else None
+    directory = root / "runs" / "_published_plans" / (bundle or digest)
+    def retain(target: Path, data: bytes) -> None:
+        relative = target.relative_to(root)
+        if any((root / Path(*relative.parts[:i])).is_symlink() for i in range(1, len(relative.parts) + 1)):
+            raise ValueError("published_plan_snapshot_invalid")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _retain_exact(target, data, "published_plan_snapshot_invalid")
+    retain(directory / "implementation_plan.md", content)
+    for name, data in files.items():
+        retain(directory / name, data)
+    if bundle:
+        retain(directory / ".published_plan_manifest.json", manifest_bytes)
+    return digest, bundle
 
 
 def finalize(
@@ -1384,6 +1488,8 @@ def finalize(
     if packet_ready:
         try:
             packet["runtime_receipt"] = str(closure_path.resolve().relative_to(record_path.parent.resolve()))
+            if not pre_release and not errors:
+                _snapshot_published_plan(packet, record_path.parent.resolve())
             rendered = render_compact(packet)
         except (KeyError, TypeError, ValueError) as error:
             errors.append(str(error))
@@ -1782,7 +1888,8 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
         else "Recorded worker findings are available; no consolidated work summary was recorded."
     )
     summary = value("workflow_result", fallback_summary)
-    if re.sub(r"[_-]+", " ", summary.lower()) in TECHOPS_STATE_RESULT_TOKENS:
+    if (re.sub(r"[_-]+", " ", summary.lower()) in TECHOPS_STATE_RESULT_TOKENS
+            or re.search(r"\bready for implementation\b", summary, re.I)):
         summary = next(iter(items("established")), fallback_summary)
     established = ["Provisional saved findings follow; failed finalization has not validated these claims."] + items("established")
     root = packet_path.parent
@@ -1932,7 +2039,8 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
         except ValueError:
             explanations.append("Malformed recorded explanation (unverified): " + str(item))
     plan = root / "implementation_plan.md"
-    plan_status = str(plan) if plan.is_file() else "Not created; resolve the recorded workflow failure and missing deliverables."
+    plan_status = ("Plan present; readiness not validated by this handoff: " + _artifact_link(str(plan), root) if plan.is_file()
+                   else "Not created; resolve the recorded workflow failure and missing deliverables.")
     provenance = "; ".join(str(identity[key]) for key in
                            ("Plugin package / version", "Framework commit / status", "Playbook / version")
                            if identity.get(key)) or "Not available"
@@ -1942,7 +2050,7 @@ def failure_handoff(packet_path: Path, reason: str) -> str:
         "runtime_closure": [], "finalization": {"Durable artifact root": str(root)},
         "handoff": {
             "workflow_result": "Finalization failed. Provisional work summary: " + summary,
-            "implementation_plan": value("implementation_plan", plan_status),
+            "implementation_plan": plan_status,
             "established": established, "best_current_explanations": explanations,
             "next_action": {"owner": "Workflow Coordinator / framework maintainer",
                             "action": "Correct the recorded failure and reconcile fresh provider evidence within this run where permitted; "
@@ -1990,7 +2098,12 @@ def register_pending_delivery(packet_path: Path, report: str) -> None:
     root = packet_path.parent
     (root / "handoff_response.md").write_bytes(content)
     record = root / "work_record.md"
-    receipt = {"status": "pending", "run_id": json.loads(packet_path.read_text()).get("identity", {}).get("Run ID", "Unavailable"),
+    try:
+        packet = json.loads(packet_path.read_text())
+        run_id = packet.get("identity", {}).get("Run ID", "Unavailable") if isinstance(packet, dict) else "Unavailable"
+    except (OSError, ValueError, AttributeError):
+        run_id = "Unavailable"
+    receipt = {"status": "pending", "run_id": run_id,
                "canonical_sha256": hashlib.sha256(content).hexdigest(),
                "record_sha256": hashlib.sha256(record.read_bytes()).hexdigest() if record.is_file() else None,
                "scope": "Prepared-response verification is required; actual chat delivery is not observable by this CLI"}
@@ -2011,15 +2124,131 @@ def register_pending_delivery(packet_path: Path, report: str) -> None:
           + "\nThen send its stdout unchanged as the final answer.", file=sys.stderr)
 
 
-def _save_failure_handoff(packet_path: Path, report: str) -> None:
+def _demote_failed_planning_packet(packet_path: Path, status: dict) -> None:
+    """Retain an invalid candidate exactly before restoring its unvalidated handoff state."""
+    try:
+        original = packet_path.read_bytes()
+        packet = json.loads(original)
+    except (OSError, ValueError):
+        return
+    if not isinstance(packet, dict):
+        return
+    identity = packet.get("identity", {})
+    if not (isinstance(identity, dict) and identity.get("Lifecycle") == "planning"
+            and identity.get("State") == "ready_for_implementation"):
+        return
+    original_digest = hashlib.sha256(original).hexdigest()
+    rejected = packet_path.parent / "runs" / "_rejected_packets" / (original_digest + ".json")
+    if any(path.is_symlink() for path in (rejected.parent.parent, rejected.parent, rejected)):
+        raise ValueError("rejected_packet_snapshot_invalid")
+    rejected.parent.mkdir(parents=True, exist_ok=True)
+    _retain_exact(rejected, original, "rejected_packet_snapshot_invalid")
+    identity.update({"State": "handoff", "Workflow outcome": "in_progress"})
+    frozen = snapshot_bytes(packet)
+    with tempfile.NamedTemporaryFile(dir=packet_path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write(frozen)
+    try:
+        os.chmod(temporary, packet_path.stat().st_mode)
+        temporary.replace(packet_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    status.update({"original_packet_sha256": original_digest, "original_packet_snapshot": str(rejected),
+                   "packet_sha256": hashlib.sha256(frozen).hexdigest()})
+    status.pop("packet_snapshot", None)
+    status.pop("snapshot_sha256", None)
+
+
+def _bind_failed_planning_packet(packet_path: Path, status: dict) -> None:
+    try:
+        raw = packet_path.read_bytes()
+        packet = json.loads(raw)
+    except (OSError, ValueError):
+        return
+    identity = packet.get("identity", {}) if isinstance(packet, dict) else {}
+    if not isinstance(identity, dict) or identity.get("Lifecycle") != "planning":
+        return
+    digest = hashlib.sha256(raw).hexdigest()
+    if status.get("packet_sha256") not in {None, digest}:
+        raise ValueError("failure_packet_changed")
+    run_id = identity.get("Run ID")
+    if status.get("run_id") not in {None, run_id}:
+        raise ValueError("failure_packet_run_mismatch")
+    frozen = snapshot_bytes(packet)
+    snapshot = packet_path.parent / snapshot_name(packet)
+    _retain_exact(snapshot, frozen, "failure_packet_snapshot_invalid")
+    status.update({"run_id": run_id, "packet_sha256": digest, "packet_snapshot": str(snapshot),
+                   "snapshot_sha256": hashlib.sha256(frozen).hexdigest()})
+
+
+def _save_failure_handoff(packet_path: Path, report: str) -> str:
+    status_path, status = _finalization_status(packet_path)
+    if (status.get("status") == "failed" and status.get("packet_sha256")
+            and status["packet_sha256"] != hashlib.sha256(packet_path.read_bytes()).hexdigest()):
+        raise ValueError("failure_packet_changed")
+    plan = packet_path.parent / "implementation_plan.md"
+    digest = original_digest = None
+    if plan.is_file() and not plan.is_symlink():
+        original = plan.read_bytes()
+        original_digest, original_bundle = _store_published_plan(packet_path.parent, original)
+        try:
+            packet = json.loads(packet_path.read_text())
+        except (OSError, ValueError):
+            packet = {}
+        identity = packet.get("identity", {}) if isinstance(packet, dict) else {}
+        if isinstance(identity, dict) and identity.get("Lifecycle") == "planning":
+            try:
+                text = original.decode("utf-8")
+            except UnicodeDecodeError:
+                text = ""
+            draft = text
+            if draft.startswith("---\n") and "\n---\n" in draft[4:]:
+                end = draft.index("\n---\n", 4)
+                front = re.sub(r"(?im)^status:\s*['\"]?(?:ready[ _-]+for[ _-]+implementation|approved)['\"]?\s*$",
+                               "status: Draft", draft[:end])
+                draft = front + draft[end:]
+            draft = re.sub(r"(?im)^(\|\s*Plan status\s*\|)\s*(?:ready[ _-]+for[ _-]+implementation|approved)[^\n|]*(\|)",
+                           r"\1 Draft; readiness not validated \2", draft)
+            if draft != text:
+                note = "> **Unvalidated draft:** Finalization failed; readiness has not been established.\n\n"
+                if draft.startswith("---\n") and "\n---\n" in draft[4:]:
+                    end = draft.index("\n---\n", 4) + len("\n---\n")
+                    draft = draft[:end] + "\n" + note + draft[end:]
+                else:
+                    draft = note + draft
+                with tempfile.NamedTemporaryFile(dir=plan.parent, delete=False) as stream:
+                    temporary = Path(stream.name)
+                    stream.write(draft.encode("utf-8"))
+                try:
+                    os.chmod(temporary, plan.stat().st_mode)
+                    temporary.replace(plan)
+                finally:
+                    temporary.unlink(missing_ok=True)
+        digest, bundle = _store_published_plan(packet_path.parent, plan.read_bytes())
+        snapshot = packet_path.parent / "runs" / "_published_plans" / (bundle or digest) / "implementation_plan.md"
+        report = report.replace(str(plan), str(snapshot))
     content = (report.rstrip("\n") + "\n").encode()
     (packet_path.parent / "handoff_failure.md").write_bytes(content)
-    status_path, status = _finalization_status(packet_path)
     if status.get("status") == "failed":
+        _demote_failed_planning_packet(packet_path, status)
+        _bind_failed_planning_packet(packet_path, status)
         status["handoff_sha256"] = hashlib.sha256(content).hexdigest()
         status["handoff_packet_sha256"] = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+        if digest:
+            status["published_plan_sha256"] = digest
+            if bundle:
+                status["published_plan_bundle_sha256"] = bundle
+            else:
+                status.pop("published_plan_bundle_sha256", None)
+            if original_digest != digest:
+                status["original_plan_sha256"] = original_digest
+                if original_bundle:
+                    status["original_plan_bundle_sha256"] = original_bundle
+        else:
+            status.pop("published_plan_sha256", None)
         status_path.write_text(json.dumps(status, indent=2) + "\n")
     register_pending_delivery(packet_path, content.decode())
+    return content.decode().rstrip("\n")
 
 
 def verify_presentation(canonical: bytes, proposed: bytes, prefix: bytes = b"", suffix: bytes = b"") -> None:
@@ -2042,6 +2271,15 @@ def verify_recovery_record(packet_path: Path, record: Path, packet: dict, closur
     _reconcile_runtime_state(derived, closure["runtime_closure"])
     # Finalization time is presentation metadata; all engineering fields must derive from the passed packet.
     derived["runtime_receipt"] = "runtime_closure.json"
+    if "published_plan_sha256" in snapshot:
+        derived["published_plan_sha256"] = snapshot["published_plan_sha256"]
+        if "published_plan_bundle_sha256" in snapshot:
+            derived["published_plan_bundle_sha256"] = snapshot["published_plan_bundle_sha256"]
+        published_plan_path(derived)
+        current = record.parent / "implementation_plan.md"
+        if (current.is_symlink() or not current.is_file()
+                or hashlib.sha256(current.read_bytes()).hexdigest() != snapshot["published_plan_sha256"]):
+            raise ValueError("publication_recovery_plan_changed")
     if isinstance(derived.get("work_item"), dict):
         derived["work_item"]["Last Updated"] = snapshot["work_item"]["Last Updated"]
     if render_compact(derived) != text:
@@ -2222,6 +2460,11 @@ def main() -> int:
                     raise ValueError("handoff_canonical_content_changed: rerun the failure reporter")
                 if hashlib.sha256(packet_path.read_bytes()).hexdigest() != status.get("handoff_packet_sha256"):
                     raise ValueError("handoff_packet_changed: rerun the failure reporter")
+                if status.get("published_plan_sha256"):
+                    published_plan_path({"published_plan_sha256": status["published_plan_sha256"],
+                        **({"published_plan_bundle_sha256": status["published_plan_bundle_sha256"]}
+                           if status.get("published_plan_bundle_sha256") else {}),
+                        "finalization": {"Durable artifact root": str(packet_path.parent)}})
             else:
                 record = args.record or packet_path.parent / "work_record.md"
                 if record.resolve().parent != packet_path.parent:
@@ -2318,7 +2561,7 @@ def main() -> int:
                        "packet_sha256": hashlib.sha256(packet_path.read_bytes()).hexdigest()}
             (packet_path.parent / FINALIZATION_STATUS_FILENAME).write_text(json.dumps(receipt, indent=2) + "\n")
             report = failure_handoff(packet_path, args.workflow_failure)
-            _save_failure_handoff(packet_path, report)
+            report = _save_failure_handoff(packet_path, report)
             print(report)
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
@@ -2379,8 +2622,8 @@ def main() -> int:
         if not args.pre_release and not args.check_packet:
             report = failure_handoff(args.packet.resolve(), str(error))
             try:
-                _save_failure_handoff(args.packet.resolve(), report)
-            except OSError as write_error:
+                report = _save_failure_handoff(args.packet.resolve(), report)
+            except (OSError, ValueError) as write_error:
                 print(json.dumps({"status": "blocked", "reason": "failure_handoff_save_failed:" + str(write_error)}))
             print(report)
         return 2

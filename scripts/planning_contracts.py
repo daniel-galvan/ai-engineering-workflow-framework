@@ -632,6 +632,16 @@ def _feature_delivery_packet_contract_errors(
         return []
 
     errors: list[str] = []
+    objectives = [row.get("Input or artifact") for row in packet.get("inputs", [])
+                  if isinstance(row, dict) and row.get("Input ID") == "RUN-GOAL-002"]
+    if objectives:
+        goals = {"Workflow objective: implementation_planning": "Implementation planning",
+                 "Workflow objective: specification_assessment": "Specification assessment"}
+        expected_goal = goals.get(objectives[0]) if len(objectives) == 1 else None
+        actual_goal = str(packet.get("playbook_selection", {}).get("Primary goal", "")).strip()
+        if not expected_goal or actual_goal.lower() != expected_goal.lower():
+            errors.append("Feature Delivery Primary goal does not match the prepared workflow objective; "
+                          + ("restore " + expected_goal if expected_goal else "check RUN-GOAL-002"))
     disposition = packet.get("planning_disposition")
     if disposition is not None:
         if (not isinstance(disposition, dict)
@@ -938,7 +948,6 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
     if Path(str(identity.get("Playbook / version", "")).split(" / ", 1)[0]).stem.lower() != "feature_delivery":
         return []
     remediation = identity.get("Lifecycle") == "remediation"
-    planning = not remediation and str(selection.get("Primary goal", "")).strip().lower() == "implementation planning"
     errors = _shape_errors(packet, json.loads(PACKET_TEMPLATE.read_text()), "packet")
     if errors:
         return errors
@@ -946,8 +955,22 @@ def feature_delivery_pre_handoff_errors(packet_path: Path) -> list[str]:
     if Path(str(packet["finalization"]["Durable artifact root"])).resolve() != root:
         errors.append("Feature Delivery pre-handoff artifact root must match packet directory")
         return errors
-    _, input_errors = _feature_expected_inputs(packet, root)
+    inputs, input_errors = _feature_expected_inputs(packet, root)
     errors.extend(input_errors)
+    if not remediation:
+        objective = str(inputs.get("RUN-GOAL-002", {}).get("Input or artifact", ""))
+        routes = {"Workflow objective: implementation_planning": "Implementation planning",
+                  "Workflow objective: specification_assessment": "Specification assessment"}
+        if objective:
+            goal = routes.get(objective)
+        else:
+            # Older prepared runs may predate the bound objective row.
+            goal = {value.lower(): value for value in routes.values()}.get(
+                str(selection.get("Primary goal", "")).strip().lower())
+        if not goal:
+            return errors + ["Feature Delivery pre-handoff workflow objective is missing or unsupported"]
+        packet["playbook_selection"]["Primary goal"] = goal
+    planning = not remediation and goal == "Implementation planning"
     errors.extend(asset_gate_errors(
         root / ASSET_MANIFEST_FILENAME, root / "run_inputs.json", str(packet["work_item"]["ID"]),
     ))

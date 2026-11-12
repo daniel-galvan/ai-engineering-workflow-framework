@@ -78,7 +78,7 @@ def applicability_errors(text: str, *, require_ready: bool = True) -> list[str]:
     for index, row in enumerate(rows, 1):
         disposition = row[4]
         if disposition not in {"required", "conditional", "deferred", "excluded", "unverified"}:
-            errors.append(f"applicability row {index} has invalid disposition")
+            errors.append(f"applicability row {index} has invalid disposition; use required, conditional, deferred, excluded, or unverified")
         elif disposition == "unverified" and require_ready:
             errors.append(f"ready plan cannot contain unverified applicability row {index}")
         if any(row[column].strip("`").lower() in PLACEHOLDERS for column in (0, 1, 2, 3, 5)):
@@ -114,10 +114,10 @@ def plan_design_errors(text: str, *, require_complete: bool = False) -> list[str
         for index, row in enumerate(rows, 1):
             evidence_cells = row if heading == "# Design Justification" else [row[i] for i in (0, 1, 3, 4)]
             if any(cell.strip("`").lower() in PLACEHOLDERS for cell in evidence_cells):
-                errors.append(f"{heading} row {index} requires concrete evidence, alternative and disposition")
+                errors.append(f"{heading} row {index} requires concrete evidence, alternative and disposition; explain zero cost instead of using None")
             if heading == "# Complete Solution":
                 if row[2] not in {"verified", "planned", "assumed", "unverified", "not_applicable"}:
-                    errors.append(f"complete solution row {index} has invalid status")
+                    errors.append(f"complete solution row {index} has invalid status; use verified, planned, assumed, unverified, or not_applicable")
                 if row[5] not in {"required_for_completion", "release_only", "follow_up", "none"}:
                     errors.append(f"complete solution row {index} has invalid completion effect")
                 if require_complete and row[5] == "required_for_completion" and row[2] != "verified":

@@ -54,12 +54,91 @@ class PlanningRecovery(unittest.TestCase):
             preparation.prepare_run(self.root, 'ITEM-NEW', 'feature_delivery', None, False)
 
     def test_feature_planning_recovery_reuses_recorded_inputs(self):
+        decision = {'Input ID': 'DECISION-1', 'Input or artifact': 'Include both supported entry points',
+                    'Source or path': 'Current chat', 'Authority': 'User', 'Status': 'Confirmed',
+                    'Classification': 'decision continuity'}
+        preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True,
+                                input_data={'inputs': [decision]})
         before = json.loads((self.artifacts / 'run_inputs.json').read_text())
+        retained = next(row for row in before['inputs'] if row['Input ID'] == 'DECISION-1')
+        self.assertTrue(all(retained[key] == value for key, value in decision.items()))
         self.close_prior()
         result = preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True,
                                          planning_recovery=True, approval_reference='Continue this run')
         self.assertNotEqual(result['run_id'], self.prepared['run_id'])
-        self.assertEqual(json.loads((self.artifacts / 'run_inputs.json').read_text()), before)
+        after = json.loads((self.artifacts / 'run_inputs.json').read_text())
+        self.assertEqual({row['Input ID']: row for row in after['inputs']},
+                         {row['Input ID']: row for row in before['inputs']})
+        self.assertEqual({key: value for key, value in after.items() if key != 'inputs'},
+                         {key: value for key, value in before.items() if key != 'inputs'})
+
+    def test_interrupted_evidence_write_leaves_no_partial_snapshot(self):
+        from unittest.mock import patch
+        target = self.artifacts / "evidence-snapshot"
+        before = set(self.artifacts.iterdir())
+        with patch.object(finalizer.os, "link", side_effect=OSError("interrupted")):
+            with self.assertRaisesRegex(OSError, "interrupted"):
+                finalizer._retain_exact(target, b"verified evidence", "snapshot_invalid")
+        self.assertFalse(target.exists())
+        self.assertEqual(set(self.artifacts.iterdir()), before)
+
+    def test_published_plan_snapshot_preserves_bytes_and_detects_tampering(self):
+        plan = self.artifacts / 'implementation_plan.md'
+        plan.write_text('First plan\n')
+        finalizer._snapshot_published_plan(self.packet, self.artifacts)
+        snapshot = finalizer.published_plan_path(self.packet)
+        self.assertEqual(snapshot.read_text(), 'First plan\n')
+        self.assertTrue(snapshot.is_relative_to(self.artifacts / 'runs'))
+        self.packet['handoff']['implementation_plan'] = '[Proposed plan](implementation_plan.md)'
+        self.packet['handoff']['artifacts'] = [str(plan)]
+        self.packet['runtime_closure'] = []
+        self.assertIn('[Proposed plan](' + str(snapshot) + ')', finalizer.render_handoff(self.packet))
+        plan.write_text('Later plan\n')
+        self.assertEqual(finalizer.published_plan_path(self.packet).read_text(), 'First plan\n')
+        preparation._archive_recovery(self.artifacts, self.prepared['run_id'])
+        preparation._archive_existing_run(self.artifacts, False, fresh_start=True)
+        self.assertEqual(finalizer.published_plan_path(self.packet).read_text(), 'First plan\n')
+        self.assertIsNone(preparation._archive_existing_run(self.artifacts, False, fresh_start=True))
+        snapshot.write_text('Tampered plan\n')
+        with self.assertRaisesRegex(ValueError, 'published_plan_snapshot_invalid'):
+            finalizer.published_plan_path(self.packet)
+
+    def test_published_plan_preserves_relative_link_targets_and_detects_tampering(self):
+        plan = self.artifacts / "implementation_plan.md"
+        evidence = self.artifacts / "docs" / "evidence one.md"
+        evidence.parent.mkdir()
+        evidence.write_text("First evidence\n")
+        manifest = self.artifacts / "manifest.json"
+        manifest.write_text("First manifest\n")
+        plan.write_text("[Evidence](docs/evidence%20one.md) and [manifest][m]\n\n[m]: <manifest.json>\n")
+        finalizer._snapshot_published_plan(self.packet, self.artifacts)
+        first = finalizer.published_plan_path(self.packet)
+        self.assertEqual((first.parent / "docs" / "evidence one.md").read_text(), "First evidence\n")
+        self.assertEqual((first.parent / "manifest.json").read_text(), "First manifest\n")
+        old_packet = json.loads(json.dumps(self.packet))
+        evidence.write_text("Later evidence\n")
+        finalizer._snapshot_published_plan(self.packet, self.artifacts)
+        second = finalizer.published_plan_path(self.packet)
+        self.assertNotEqual(first, second)
+        self.assertEqual((first.parent / "docs" / "evidence one.md").read_text(), "First evidence\n")
+        self.assertEqual((second.parent / "docs" / "evidence one.md").read_text(), "Later evidence\n")
+        preparation._archive_existing_run(self.artifacts, False, fresh_start=True)
+        self.assertEqual(finalizer.published_plan_path(old_packet), first)
+        (first.parent / "manifest.json").write_text("Tampered\n")
+        with self.assertRaisesRegex(ValueError, "published_plan_snapshot_invalid"):
+            finalizer.published_plan_path(old_packet)
+
+    def test_published_plan_rejects_a_redirected_snapshot_directory(self):
+        plan = self.artifacts / "implementation_plan.md"
+        plan.write_text("Stable plan\n")
+        finalizer._snapshot_published_plan(self.packet, self.artifacts)
+        snapshot = finalizer.published_plan_path(self.packet)
+        directory = snapshot.parent
+        moved = self.root / "moved-snapshot"
+        directory.rename(moved)
+        directory.symlink_to(moved, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "published_plan_snapshot_invalid"):
+            finalizer.published_plan_path(self.packet)
 
     def test_planning_recovery_preserves_explicit_source_restriction_baseline(self):
         from unittest.mock import patch
@@ -131,7 +210,9 @@ class PlanningRecovery(unittest.TestCase):
         findings = {key: self.packet[key] for key in ("evidence", "claims", "decisions", "actions")}
         self.close_prior()
         failure = self.artifacts / "finalization_failure.json"
-        receipt = {"status": "failed", "attempt_count": 2, "errors": ["Earlier template error"]}
+        receipt = {"status": "failed", "stage": "workflow", "run_id": self.prepared["run_id"],
+                   "packet_sha256": hashlib.sha256(self.packet_path.read_bytes()).hexdigest(),
+                   "attempt_count": 2, "errors": ["Earlier template error"]}
         failure.write_text(json.dumps(receipt))
         saved = self.packet_path.read_bytes()
         with self.assertRaisesRegex(ValueError, "recovery_required"):
@@ -250,6 +331,160 @@ class PlanningRecovery(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "remediation_requires_ready_plan"):
             preparation.prepare_run(self.root, "ITEM-1", "feature_delivery", None, True,
                 input_manifest=self.inputs, remediation_reentry=True, approval_reference="User approves")
+
+    def test_failed_planning_cannot_enter_implementation_even_if_packet_says_ready(self):
+        self.close_prior()
+        (self.artifacts / "implementation_plan.md").write_text(PLAN_FIXTURE)
+        for playbook in ("feature_delivery", "techops_issue_remediation"):
+            with self.subTest(playbook=playbook):
+                self.packet["identity"].update({"State": "ready_for_implementation",
+                    "Playbook / version": f"playbooks/{playbook}.md / 1.0.0"})
+                self.packet_path.write_text(json.dumps(self.packet))
+                failure = self.artifacts / "finalization_failure.json"
+                failure.write_text(json.dumps({"status": "failed", "stage": "workflow"}))
+                before = self.packet_path.read_bytes()
+                with self.assertRaisesRegex(ValueError, "remediation_requires_validated_plan"):
+                    preparation._reentry_source(self.artifacts, "User approves", expected_playbook=playbook)
+                self.assertEqual(self.packet_path.read_bytes(), before)
+
+    def test_ready_candidate_requires_a_current_passed_finalization(self):
+        self.close_prior()
+        self.packet["identity"]["State"] = "ready_for_implementation"
+        self.packet_path.write_text(json.dumps(self.packet))
+        (self.artifacts / "implementation_plan.md").write_text(PLAN_FIXTURE)
+        receipt = self.artifacts / "pre_release_check.json"
+        for content in (None, {"status": "passed", "packet_sha256": "0" * 64},
+                        {"status": "passed", "packet_sha256": hashlib.sha256(self.packet_path.read_bytes()).hexdigest()}):
+            with self.subTest(receipt=content):
+                if content is not None:
+                    receipt.write_text(json.dumps(content))
+                with self.assertRaisesRegex(ValueError, "remediation_requires_validated_plan"):
+                    preparation._reentry_source(self.artifacts, "User approves")
+
+    def test_ready_proposal_cannot_be_published_as_candidate_state(self):
+        self.packet["identity"].update({"Lifecycle": "planning", "State": "ready_for_implementation",
+                                        "Workflow outcome": "completed"})
+        self.packet["planning_disposition"] = {"plan_readiness": "ready_for_implementation",
+                                               "implementation_plan_action": "create"}
+        with self.assertRaisesRegex(ValueError, "planning_candidate_must_remain_in_handoff"):
+            finalizer._validate_pre_release_state(self.packet)
+        self.packet["identity"].update({"State": "handoff", "Workflow outcome": "in_progress"})
+        finalizer._validate_pre_release_state(self.packet)
+
+    def test_failed_planning_plan_is_draft_and_original_bytes_are_preserved(self):
+        self.packet["identity"].update({"Lifecycle": "planning", "State": "handoff"})
+        self.packet_path.write_text(json.dumps(self.packet))
+        original = (b"---\nstatus: Ready for implementation\n---\n\n# Plan\n\n"
+                    b"| Plan status | Ready for implementation; approval pending |\n")
+        plan = self.artifacts / "implementation_plan.md"
+        plan.write_bytes(original)
+        failure = self.artifacts / "finalization_failure.json"
+        failure.write_text(json.dumps({"status": "failed"}))
+        before = self.packet_path.read_bytes()
+        report = finalizer._save_failure_handoff(self.packet_path, "Plan: " + str(plan))
+        status = json.loads(failure.read_text())
+        saved = self.artifacts / "runs" / "_published_plans" / status["original_plan_sha256"] / "implementation_plan.md"
+        self.assertEqual(saved.read_bytes(), original)
+        self.assertIn("status: Draft", plan.read_text())
+        self.assertIn("| Plan status | Draft; readiness not validated |", plan.read_text())
+        self.assertIn("Unvalidated draft", plan.read_text())
+        self.assertNotIn("Ready for implementation", plan.read_text())
+        self.assertEqual(self.packet_path.read_bytes(), before)
+        self.assertIn(status["published_plan_sha256"], report)
+
+    def test_failed_plan_draft_and_original_survive_planning_recovery(self):
+        self.close_prior()
+        self.packet["identity"]["State"] = "handoff"
+        self.packet_path.write_text(json.dumps(self.packet))
+        plan = self.artifacts / "implementation_plan.md"
+        original = b"---\nstatus: ready_for_implementation\n---\n\n# Preserved work\n"
+        plan.write_bytes(original)
+        failure = self.artifacts / "finalization_failure.json"
+        failure.write_text(json.dumps({"status": "failed", "stage": "workflow",
+            "packet_sha256": hashlib.sha256(self.packet_path.read_bytes()).hexdigest()}))
+        finalizer._save_failure_handoff(self.packet_path, "Plan: " + str(plan))
+        status = json.loads(failure.read_text())
+        original_snapshot = self.artifacts / "runs" / "_published_plans" / status["original_plan_sha256"] / "implementation_plan.md"
+        resumed = preparation.prepare_run(self.root, "ITEM-1", "feature_delivery", None, True,
+            input_manifest=self.inputs, planning_recovery=True, approval_reference="Continue planning")
+        self.assertNotEqual(resumed["run_id"], self.prepared["run_id"])
+        self.assertEqual(original_snapshot.read_bytes(), original)
+        self.assertIn("status: Draft", plan.read_text())
+        self.assertIn("Unvalidated draft", plan.read_text())
+
+    def test_failed_ready_candidate_is_demoted_with_recoverable_original_packet(self):
+        self.close_prior()
+        self.packet["identity"].update({"State": "ready_for_implementation", "Workflow outcome": "completed"})
+        self.packet["planning_disposition"] = {"plan_readiness": "ready_for_implementation",
+                                               "implementation_plan_action": "create"}
+        self.packet_path.write_text(json.dumps(self.packet))
+        original = self.packet_path.read_bytes()
+        failure = self.artifacts / "finalization_failure.json"
+        failure.write_text(json.dumps({"status": "failed", "stage": "workflow", "run_id": self.prepared["run_id"],
+                                      "packet_sha256": hashlib.sha256(original).hexdigest()}))
+        finalizer._save_failure_handoff(self.packet_path, "Unvalidated planning failure")
+        receipt = json.loads(failure.read_text())
+        rejected = Path(receipt["original_packet_snapshot"])
+        self.assertEqual(rejected.read_bytes(), original)
+        current = json.loads(self.packet_path.read_text())
+        self.assertEqual((current["identity"]["State"], current["identity"]["Workflow outcome"]),
+                         ("handoff", "in_progress"))
+        self.assertEqual(hashlib.sha256(self.packet_path.read_bytes()).hexdigest(), receipt["packet_sha256"])
+        self.assertEqual(Path(receipt["packet_snapshot"]).read_bytes(), self.packet_path.read_bytes())
+        rejected.write_text("tampered")
+        with self.assertRaisesRegex(ValueError, "planning_recovery_requires_terminal_invocation"):
+            preparation.prepare_run(self.root, "ITEM-1", "feature_delivery", None, True,
+                input_manifest=self.inputs, planning_recovery=True, approval_reference="Continue planning")
+        rejected.write_bytes(original)
+        current_bytes = self.packet_path.read_bytes()
+        changed = json.loads(current_bytes)
+        changed["work_item"]["Title"] = "Unverified later change"
+        self.packet_path.write_text(json.dumps(changed))
+        resumed = preparation.prepare_run(self.root, "ITEM-1", "feature_delivery", None, True,
+            input_manifest=self.inputs, planning_recovery=True, approval_reference="Continue planning")
+        self.assertNotEqual(resumed["run_id"], self.prepared["run_id"])
+        self.assertTrue(resumed["recovery_packet_reconciliation_unverified"])
+        self.assertNotEqual(json.loads(self.packet_path.read_text())["work_item"]["Title"], "Unverified later change")
+        self.assertEqual(rejected.read_bytes(), original)
+
+    def test_terminal_failure_binds_candidate_for_planning_recovery(self):
+        self.close_prior()
+        self.packet["identity"].update({"State": "handoff", "Workflow outcome": "in_progress"})
+        self.packet_path.write_text(json.dumps(self.packet))
+        failure = self.artifacts / "finalization_failure.json"
+        failure.write_text(json.dumps({"status": "failed", "phase": "terminal", "terminal_failure": True}))
+        finalizer._save_failure_handoff(self.packet_path, "Terminal validation failed")
+        receipt = json.loads(failure.read_text())
+        self.assertEqual(receipt["packet_sha256"], hashlib.sha256(self.packet_path.read_bytes()).hexdigest())
+        resumed = preparation.prepare_run(self.root, "ITEM-1", "feature_delivery", None, True,
+            input_manifest=self.inputs, planning_recovery=True, approval_reference="Continue planning")
+        self.assertNotEqual(resumed["run_id"], self.prepared["run_id"])
+
+    def test_failure_report_rejects_changed_packet_before_modifying_evidence(self):
+        self.packet["identity"].update({"Lifecycle": "planning", "State": "ready_for_implementation"})
+        self.packet_path.write_text(json.dumps(self.packet))
+        before = self.packet_path.read_bytes()
+        plan = self.artifacts / "implementation_plan.md"
+        plan.write_text("---\nstatus: Ready for implementation\n---\n")
+        plan_before = plan.read_bytes()
+        (self.artifacts / "finalization_failure.json").write_text(json.dumps({
+            "status": "failed", "packet_sha256": "0" * 64}))
+        with self.assertRaisesRegex(ValueError, "failure_packet_changed"):
+            finalizer._save_failure_handoff(self.packet_path, "Failure")
+        self.assertEqual(self.packet_path.read_bytes(), before)
+        self.assertEqual(plan.read_bytes(), plan_before)
+        self.assertFalse((self.artifacts / "handoff_failure.md").exists())
+
+    def test_failure_handoff_preserves_unreadable_packet_and_plan(self):
+        self.packet_path.write_text("{invalid")
+        plan = self.artifacts / "implementation_plan.md"
+        original = b"\xff invalid text\n"
+        plan.write_bytes(original)
+        (self.artifacts / "finalization_failure.json").write_text(json.dumps({"status": "failed"}))
+        report = finalizer._save_failure_handoff(self.packet_path, "Plan: " + str(plan))
+        self.assertEqual(plan.read_bytes(), original)
+        self.assertEqual((self.artifacts / "handoff_failure.md").read_text().strip(), report)
+        self.assertEqual(json.loads((self.artifacts / "handoff_delivery.json").read_text())["run_id"], "Unavailable")
 
     def test_failure_publication_preserves_diagnostics_and_attempt_limit(self):
         failure = self.artifacts / "finalization_failure.json"
@@ -455,6 +690,16 @@ class PlanningRecovery(unittest.TestCase):
                 result.update(plan_readiness='awaiting_input', implementation_plan_action='omit')
             Path(bindings['worker_contracts'][role]['result']).write_text(json.dumps(result))
         self.assertEqual(finalizer.feature_delivery_pre_handoff_errors(self.packet_path), [])
+        # A Documenter correction must use the prepared route even if its display label changed.
+        self.packet['playbook_selection']['Primary goal'] = 'Create an implementation plan'
+        self.packet_path.write_text(json.dumps(self.packet))
+        self.assertEqual(finalizer.feature_delivery_pre_handoff_errors(self.packet_path), [])
+        candidate = json.loads(json.dumps(self.packet))
+        candidate['identity']['State'] = 'awaiting_input'
+        self.assertTrue(any('Primary goal does not match' in error for error in
+                            finalizer._feature_delivery_packet_contract_errors(candidate)))
+        self.packet['playbook_selection']['Primary goal'] = 'Implementation planning'
+        self.packet_path.write_text(json.dumps(self.packet))
         asset['sources'][0].update(discovery_status='complete', asset_ids=['ASSET-FC-001'])
         asset['assets'] = [{
             'asset_id': 'ASSET-FC-001', 'source_id': 'SRC-JIRA', 'name': 'requirements.md', 'kind': 'file',

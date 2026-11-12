@@ -576,9 +576,11 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 "Completed worker handles": "/root/handoff", "Runtime status": "Released",
                 "Remaining active handles": "None",
                 "Closure evidence or blocker": "Provider close confirmed release of /root/handoff"}]}))
-            run = preparation.prepare_run(repository, "ITEM-1", playbook, None, True,
-                input_manifest=Path(run["run_input_manifest"]["path"]), remediation_reentry=True,
-                approval_reference="Synthetic explicit user approval")
+            # This fixture isolates worker audits; shipped-command tests verify planning publication.
+            with patch.object(preparation, "_verify_ready_planning"):
+                run = preparation.prepare_run(repository, "ITEM-1", playbook, None, True,
+                    input_manifest=Path(run["run_input_manifest"]["path"]), remediation_reentry=True,
+                    approval_reference="Synthetic explicit user approval")
         packet = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"][role]
         result_contract = packet.get("worker_contract") or {}
         if result_contract.get("result_hash_required"):
@@ -603,6 +605,13 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                 result["evidence"] = [{**dict.fromkeys(evidence_fields, "Synthetic fixture evidence"),
                                        "Evidence ID": evidence_id}]
                 result["worker_result"]["Evidence / claim refs"] = evidence_id
+                schema = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())
+                result["claims"] = [{**dict.fromkeys(schema["claims"][0], "Synthetic fixture"),
+                                     "Claim ID": "CL-FD-SYN001", "Evidence refs": evidence_id}]
+                result["decisions"] = [{**dict.fromkeys(schema["decisions"][0], "Synthetic fixture"),
+                                        "Decision ID": "DE-FD-SYN001", "Claim refs": "CL-FD-SYN001"}]
+                result["actions"] = [{**dict.fromkeys(schema["actions"][0], "Synthetic fixture"),
+                                      "Action ID": "A-FD-SYN001", "Decision ref": "DE-FD-SYN001"}]
                 result["techops_checks"] = [
                     {"Check": check, "Status": "not_applicable" if check == "history_reconciliation" else "passed",
                      "Evidence refs": evidence_id, "Detail": "Synthetic evidence for shared receipt acceptance"}

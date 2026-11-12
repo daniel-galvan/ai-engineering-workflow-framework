@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -18,6 +19,7 @@ from scripts.review_evidence import (
     AFFECTED_TEST_COLUMNS, COVERAGE_COLUMNS, PLAN_COLUMNS, REVIEW_COLUMNS,
     DESIGN_COLUMNS, SOLUTION_COLUMNS, VALIDATION_COLUMNS, candidate_fingerprint,
 )
+from scripts import finalize_work_record as finalizer
 from tests import test_packaged_lifecycle as packaging
 
 
@@ -315,7 +317,10 @@ class PlanningCommandPath(unittest.TestCase):
                         stage_args.extend(["--state", "ready_for_implementation"])
                     staged = json.loads(command("stage_documenter_packet.py", *stage_args))
                     self.assertEqual(staged["status"], "staged")
+                    if staged["proposed_state"] == "ready_for_implementation":
+                        self.assertEqual(staged["state"], "handoff")
                     packet = json.loads(packet_path.read_text())
+                    self.assertEqual(packet["identity"]["State"], staged["state"])
                     coordinator_handoff_identity = {key: packet["identity"][key] for key in (
                         "Activated profile", "Executed profile", "Profile status", "State", "Engineering state",
                         "Workflow outcome", "Engineering outcome", "Coordinator model/effort",
@@ -564,7 +569,8 @@ class PlanningCommandPath(unittest.TestCase):
                     packet["worker_results"].append(summary)
                     plan = root / "implementation_plan.md"
                     plan.write_text("---\nstatus: Draft\n---\n# Counter implementation plan\n"
-                        "Plan status: Unapproved. Change subtraction to addition and extend the existing regression fixture.\n" +
+                        "Plan status: Unapproved. Change subtraction to addition and extend the existing regression fixture.\n"
+                        "[Run inputs](run_inputs.json)\n" +
                         "# Behavior Applicability\n" + render_table(PLAN_COLUMNS, ["Counter increment", "User IN-001", f"E-{first_namespace}-001",
                             "Inspected subtraction and supplied increment expectation", "required", "Use existing addition operation"]) +
                         "# Design Justification\n" + render_table(DESIGN_COLUMNS, ["Existing numeric operation", "Increment by one",
@@ -686,6 +692,37 @@ class PlanningCommandPath(unittest.TestCase):
             finalize = ("--packet", packet_path, "--closure", pending_closure, "--record", root / "work_record.md",
                         "--coordinator-model-effort", "Not exposed / Not exposed", "--framework-revision",
                         preflight["framework_revision"], "--framework-status", "clean")
+            if playbook == "feature_delivery" and plan_action == "create":
+                candidate = json.loads(packet_path.read_text())
+                candidate["playbook_selection"]["Primary goal"] = "Create an implementation plan"
+                packet_path.write_text(json.dumps(candidate))
+                original_plan = plan.read_text()
+                invalid_plan = original_plan.replace(" | required | ", " | verified existing behavior | ", 1)
+                self.assertNotEqual(invalid_plan, original_plan)
+                plan.write_text(invalid_plan)
+                command("validate_worker_runtime.py", *followup_guard)
+                invalid = command("finalize_work_record.py", *finalize, "--check-packet", expected=2)
+                self.assertIn("Primary goal does not match the prepared workflow objective", invalid)
+                self.assertIn("invalid disposition", invalid)
+                correction = "Correct the plan disposition and restore the prepared primary goal."
+                append(parent, "response_item", type="function_call", namespace="collaboration", name="followup_task",
+                       call_id="correct-handoff", arguments=json.dumps({"target": handle, "message": correction}))
+                append(parent, "response_item", type="function_call_output", call_id="correct-handoff", output="{}")
+                append(child, "turn_context", turn_id=str(UUID(int=700)),
+                       model=run["bindings"]["documenter"]["model"], effort=run["bindings"]["documenter"]["effort"])
+                append(child, "response_item", type="message", role="user",
+                       content=[{"type": "input_text", "text": correction}])
+                plan.write_text(original_plan)
+                candidate["playbook_selection"]["Primary goal"] = "Implementation planning"
+                packet_path.write_text(json.dumps(candidate))
+                append(child, "response_item", type="message", role="assistant", phase="final_answer",
+                       content=[{"type": "output_text", "text": "Corrected the plan and primary goal."}])
+                append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "completed",
+                       "agent_path": handle, "agent_thread_id": child_id})
+                inventory()
+                command("worker_runtime_evidence.py", *collector, "--worker-session", child,
+                        "--agent", "documenter", "--trace", trace)
+                command("worker_runtime_evidence.py", *collector, "--pending-closure", pending_closure)
             command("finalize_work_record.py", *finalize, "--check-packet")
             command("finalize_work_record.py", *finalize, "--pre-release")
             if playbook == "feature_delivery":
@@ -721,7 +758,29 @@ class PlanningCommandPath(unittest.TestCase):
             emitted = command("finalize_work_record.py", "--packet", packet_path, "--publish-response", response)
             self.assertEqual(emitted.encode(), response.read_bytes())
             self.assertEqual(json.loads((root / "handoff_delivery.json").read_text())["status"], "verified")
+            plan = root / "implementation_plan.md"
+            if plan.is_file():
+                original = plan.read_bytes()
+                record_text = (root / "work_record.md").read_text()
+                terminal_name = re.search(r"<!-- workflow-state: (finalization_snapshot\.[0-9a-f]{64}\.json) -->", record_text)[1]
+                terminal = json.loads((root / terminal_name).read_text())
+                saved = finalizer.published_plan_path(terminal)
+                self.assertEqual(saved.read_bytes(), original)
+                self.assertEqual((saved.parent / "run_inputs.json").read_bytes(), (root / "run_inputs.json").read_bytes())
+                self.assertIn(str(saved), emitted)
+                raw_packet = json.loads(packet_path.read_text())
+                finalizer.verify_recovery_record(packet_path, root / "work_record.md", raw_packet, receipt, package)
+                plan.write_bytes(b"A later run's plan\n")
+                self.assertEqual(saved.read_bytes(), original)
+                with self.assertRaisesRegex(ValueError, 'publication_recovery_plan_changed'):
+                    finalizer.verify_recovery_record(packet_path, root / "work_record.md", raw_packet, receipt, package)
+                plan.write_bytes(original)
             published = json.loads(packet_path.read_text())
+            if published["identity"]["State"] == "handoff":
+                record_text = (root / "work_record.md").read_text()
+                snapshot_name = re.search(r"<!-- workflow-state: (finalization_snapshot\.[0-9a-f]{64}\.json) -->", record_text)[1]
+                published = json.loads((root / snapshot_name).read_text())
+                self.assertEqual(published["identity"]["State"], "ready_for_implementation")
             self.planning_outcome = {
                 "state": published["identity"]["State"], "outcome": published["identity"]["Workflow outcome"],
                 "plan": ((root / "implementation_plan.md").read_text().replace(str(repository), "<repository>")
@@ -735,6 +794,14 @@ class PlanningCommandPath(unittest.TestCase):
             if continue_to_remediation:
                 self.assertIn(playbook, {"feature_delivery", "techops_issue_remediation"})
                 approved_plan = (root / "implementation_plan.md").read_bytes()
+                (root / "implementation_plan.md").write_bytes(approved_plan + b"\n<!-- modified after validation -->\n")
+                rejected = command("prepare_run.py", "--execution-repository", repository,
+                    "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
+                    "--remediation-reentry", "--approval-reference", "Approval of original plan",
+                    "--input-manifest", run["run_input_manifest"]["path"], expected=2)
+                self.assertIn("remediation_requires_validated_plan", rejected)
+                self.assertIn("publication_recovery_plan_changed", rejected)
+                (root / "implementation_plan.md").write_bytes(approved_plan)
                 prior_checks = json.loads(packet_path.read_text()).get("techops_checks")
                 prior_reproduction = json.loads(packet_path.read_text()).get("reproduction")
                 append(parent, "response_item", role="user", content=[{"type": "input_text", "text":

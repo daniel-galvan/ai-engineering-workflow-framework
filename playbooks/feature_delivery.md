@@ -208,7 +208,8 @@ Required worker sets:
 
 - `standard + planning`: `feature-context`, `impact-analysis`, `feature-design`, and final `handoff`.
   `repository-integration` is added when the context crosses a repository, service, ownership, deployment, persistence,
-  or public-contract seam.
+  or public-contract seam that raises a distinct integration question not already answered by impact analysis. Record
+  that question and its consequence; tracing existing layers alone does not require a separate worker.
 - `deep + planning`: standard planning workers plus mandatory `repository-integration` and `planning-review`.
 - `standard + remediation`: reuse completed standard planning artifacts; activate `implement`, `review`, and `validate`
   in order after approval, then activate final `handoff` after delivery fan-in.

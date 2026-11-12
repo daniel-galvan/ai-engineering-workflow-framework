@@ -490,7 +490,7 @@ class TechOpsCorrections(unittest.TestCase):
     def test_techops_pre_release_rejects_nonterminal_planning_identity(self):
         packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.33",
                                "Lifecycle": "planning", "State": "handoff", "Workflow outcome": "incomplete"}}
-        with self.assertRaisesRegex(ValueError, "TechOps planning.*ready_for_implementation"):
+        with self.assertRaisesRegex(ValueError, "TechOps planning Workflow outcome must be in_progress"):
             finalizer._validate_pre_release_state(packet)
         packet["identity"].update({"State": "ready_for_implementation", "Workflow outcome": "completed"})
         finalizer._validate_pre_release_state(packet)

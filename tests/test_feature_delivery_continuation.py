@@ -11,6 +11,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
+from unittest.mock import patch
 
 from scripts import prepare_run as preparation
 from scripts import finalize_work_record as finalizer
@@ -70,9 +71,11 @@ class FeatureDeliveryContinuation(unittest.TestCase):
                 "Run or stage": "planning", "Receipt owner": "Coordinator", "Completed worker handles": "/root/handoff",
                 "Runtime status": "Released", "Remaining active handles": "None",
                 "Closure evidence or blocker": "Provider confirmed the planning worker closed"}]}))
-            run = preparation.prepare_run(root, "ITEM-REPORTS", "feature_delivery", None, True,
-                input_manifest=Path(first["run_input_manifest"]["path"]), remediation_reentry=True,
-                approval_reference="Explicit synthetic approval")
+            # This test starts from a synthetic planning packet; the shipped-command test verifies publication.
+            with patch.object(preparation, "_verify_ready_planning"):
+                run = preparation.prepare_run(root, "ITEM-REPORTS", "feature_delivery", None, True,
+                    input_manifest=Path(first["run_input_manifest"]["path"]), remediation_reentry=True,
+                    approval_reference="Explicit synthetic approval")
             artifact_root = Path(run["artifact_root"])
             packet_path = Path(run["finalization_packet"])
             result_fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())
@@ -167,9 +170,11 @@ class FeatureDeliveryContinuation(unittest.TestCase):
             self.assertEqual(packet_path.read_bytes(), old_bytes)
             self.assertFalse((artifact_root / "runs").exists())
             closure_path.write_bytes(closed_bytes)
-            result = preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, True,
-                                             input_manifest=Path(result["run_input_manifest"]["path"]),
-                                             remediation_reentry=True, approval_reference="User approval in current turn")
+            # Publication is exercised by the shipped-command path; this fixture isolates archive behavior.
+            with patch.object(preparation, "_verify_ready_planning"):
+                result = preparation.prepare_run(root, "ITEM-2", "feature_delivery", None, True,
+                                                 input_manifest=Path(result["run_input_manifest"]["path"]),
+                                                 remediation_reentry=True, approval_reference="User approval in current turn")
             current = json.loads(packet_path.read_text())
             archived = Path(result["archived_prior_run"])
             self.assertEqual((archived / "finalization_packet.json").read_bytes(), old_bytes)

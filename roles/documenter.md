@@ -87,6 +87,8 @@ maintenance.
   publishing `spike_report.md`. Do not substitute handwritten heading, table, grep, or reference checks.
 * Treat a failed packaged validation as a correction loop, not a successful finalization; the Coordinator owns
   pre-release and terminal work-record validation.
+* Preserve the prepared `Primary goal` value in the finalization packet. If it was changed, restore the value bound
+  to `RUN-GOAL-002` in the run input manifest while correcting the handoff.
 * Record the related-run check and post-closure polls from the Coordinator's finalized packet.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.
@@ -241,8 +243,8 @@ Typically:
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/work_record.md
 ```
 
-Create the implementation plan only after required planning workers complete, fan-in passes, and the workflow reaches
-`ready_for_implementation`:
+Create the implementation plan after required planning workers complete, fan-in passes, and the accepted design
+proposes readiness. Keep the staged packet in `handoff` until finalization validates the plan:
 
 ```text
 <execution-repository>/.thoughts/<WORK-ITEM-ID>/implementation_plan.md

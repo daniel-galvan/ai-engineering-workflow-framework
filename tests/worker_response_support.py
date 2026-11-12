@@ -62,7 +62,7 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
         ])
     parent.write_text("\n".join(json.dumps(row) for row in parent_rows) + "\n")
 
-    child = root / "worker_response_child.jsonl"
+    child = root / f"worker_response_child_{role}.jsonl"
     child_rows = [
         event(0, "session_meta", id=child_thread_id),
         event(dispatch_seconds + 1, "response_item", type="custom_tool_call", call_id="binding", name="exec",
@@ -86,7 +86,7 @@ def stage_worker_response(run, role, result, output="Synthetic worker response."
     ledger = provider_runtime.read_runtime_events(parent, parent_thread_id, run["runtime_evidence"]["run_started_at"])
     trace = export_worker_trace(ledger, child, role, observation, run_id=run["run_id"], artifact_root=root)
     Path(run["runtime_evidence"]["ledger"]).write_text(json.dumps(ledger))
-    trace_path = root / "worker_response_trace.json"
+    trace_path = root / f"worker_response_trace_{role}.json"
     trace_path.write_text(json.dumps(trace))
     _DISPATCH_COUNTS[key] = count + 1
     return trace_path, trace

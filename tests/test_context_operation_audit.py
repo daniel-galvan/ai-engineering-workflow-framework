@@ -1428,6 +1428,34 @@ class ContextOperationAudit(unittest.TestCase):
         packet_path.symlink_to(target)
         self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
 
+    def test_published_plan_link_in_current_record_is_metadata_not_an_archive_read(self):
+        trace = self.instruction_read_trace()
+        packet_path = self.root / 'finalization_packet.json'
+        record_path = self.root / 'work_record.md'
+        content = b'Published plan\n'
+        digest = hashlib.sha256(content).hexdigest()
+        published = self.root / 'runs' / '_published_plans' / digest / 'implementation_plan.md'
+        published.parent.mkdir(parents=True, exist_ok=True)
+        published.write_bytes(content)
+        record_path.write_text(f'Current handoff: [plan]({published})\n')
+        source = ('text(await tools.exec_command(' + json.dumps({
+            'cmd': 'cat ' + str(record_path) + ' ' + str(packet_path)})
+            + ')); text(await tools.exec_command({"cmd":"git status --short"}));')
+        output = [{"type": "input_text", "text": json.dumps({"exit_code": 0,
+                   "output": record_path.read_text() + packet_path.read_text()})},
+                  {"type": "input_text", "text": json.dumps({"exit_code": 0, "output": "clean"})}]
+        trace['tool_trace'].extend(self.paired(source, output))
+        self.assertEqual(runtime.trace_errors(trace), [])
+        changed = json.loads(json.dumps(trace))
+        changed['tool_trace'][-2]['input'] += ' await tools.exec_command(' + json.dumps({
+            'cmd': 'cat ' + str(published) + '; echo done'}) + ');'
+        self.assertIn('forbidden_context_reference:archived_artifact', runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        result = json.loads(changed['tool_trace'][-1]['output'][0]['text'])
+        result['output'] += '\n' + str(self.root / 'runs' / 'prior' / 'secret.md')
+        changed['tool_trace'][-1]['output'][0]['text'] = json.dumps(result)
+        self.assertIn('forbidden_context_reference:archived_artifact', runtime.trace_errors(changed))
+
     def test_python_ancestor_checks_allow_only_literal_instruction_reads(self):
         paths = [self.repository / "AGENTS.md"]
         policy = "Do not read .thoughts/ITEM-1/runs/prior/notes.md.\n"

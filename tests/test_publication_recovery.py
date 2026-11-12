@@ -31,7 +31,8 @@ class PublicationRecovery(unittest.TestCase):
             "import sys\nassert '--emit-handoff' in sys.argv\n"
             "print('Workflow-framework validation: passed\\nCanonical report')\n")
         self.packet = self.root / "finalization_packet.json"
-        self.packet.write_text(json.dumps({"identity": {"Run ID": "run", "Lifecycle": "remediation",
+        self.packet.write_text(json.dumps({"work_item": {"ID": self.root.name},
+            "identity": {"Run ID": "run", "Lifecycle": "remediation",
             "Requested profile": "standard", "Playbook / version": "techops_issue_remediation / 0.5.33",
             "Framework commit / status": "a" * 40 + " / Clean"}}))
         self.bindings = {"run_id": "run", "lifecycle": "remediation", "execution_profile": "standard",

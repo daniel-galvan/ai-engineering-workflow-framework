@@ -1,5 +1,6 @@
 """Fresh starts preserve prior files without turning archival into recovery."""
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -8,9 +9,43 @@ from unittest.mock import patch
 
 from scripts.prepare_run import _archive_existing_run
 from scripts import prepare_run as preparation
+from scripts import finalize_work_record as finalizer
 
 
 class FreshStartArchival(unittest.TestCase):
+    def test_prior_decision_availability_is_preserved_without_reading_history(self):
+        for supplied in (False, True):
+            with self.subTest(supplied=supplied), tempfile.TemporaryDirectory() as directory:
+                repository = Path(directory)
+                root = repository / '.thoughts' / 'ITEM-77'
+                old = root / 'runs' / 'ITEM-77-old' / 'decisions.md'
+                old.parent.mkdir(parents=True)
+                old.write_text('Prior decision is not automatically read')
+                inputs = [{'Input ID': 'IN-1', 'Input or artifact': 'Current issue',
+                           'Source or path': 'User', 'Authority': 'User', 'Status': 'Registered'}]
+                if supplied:
+                    inputs.append({'Input ID': 'IN-2', 'Input or artifact': 'User-selected prior decision',
+                                   'Source or path': str(old), 'path': str(old),
+                                   'sha256': hashlib.sha256(old.read_bytes()).hexdigest(), 'Authority': 'User',
+                                   'Classification': 'decision continuity', 'Status': 'Registered'})
+                run = preparation.prepare_run(repository, 'ITEM-77', 'techops_issue_remediation', None, False,
+                                              input_data={'inputs': inputs})
+                self.assertEqual(run['prior_decisions_unreviewed'], not supplied)
+                resumed = preparation.prepare_run(repository, 'ITEM-77', 'techops_issue_remediation', None, True)
+                self.assertEqual(resumed['prior_decisions_unreviewed'], not supplied)
+                if supplied:
+                    rows = json.loads(Path(resumed['run_input_manifest']['path']).read_text())['inputs']
+                    selected = next(row for row in rows if row['Input ID'] == 'IN-2')
+                    self.assertEqual(Path(selected['path']).read_text(), old.read_text())
+                    self.assertEqual(Path(selected['Original source path']).resolve(), old.resolve())
+                packet_path = Path(resumed['finalization_packet'])
+                packet = json.loads(packet_path.read_text())
+                packet['handoff']['established'] = []
+                finalizer._normalize_packet(packet, {'runtime_closure': [], 'terminal_observations': []}, packet_path)
+                notice = 'Earlier run decisions were not reviewed; no prior decision source was supplied.'
+                self.assertEqual(notice in packet['handoff']['established'], not supplied)
+                self.assertEqual(old.read_text(), 'Prior decision is not automatically read')
+
     def test_incomplete_and_unpublished_attempts_are_preserved_without_import(self):
         for state in ("prepared", "orphaned", "malformed", "unpublished"):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:

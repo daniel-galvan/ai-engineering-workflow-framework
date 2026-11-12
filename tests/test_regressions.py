@@ -63,6 +63,18 @@ class V4Regressions(unittest.TestCase):
         self.assertFalse((worktree / ".thoughts").exists())
         self.assertEqual(prepare.resolve_repository_paths(worktree), (main, worktree))
 
+    def test_fresh_run_rejects_a_different_implicit_source_checkout(self):
+        main, worktree = self.repository()
+        (main / "feature.txt").write_text("current feature\n")
+        self.git(main, "add", "feature.txt")
+        self.git(main, "commit", "-qm", "feature change")
+        with patch.object(Path, "cwd", return_value=worktree):
+            with self.assertRaisesRegex(ValueError, "source_checkout_differs_from_declared"):
+                self.prepare(main)
+            self.assertFalse((main / ".thoughts").exists())
+            result = self.prepare(worktree)
+        self.assertEqual(result["source_checkout"], str(worktree))
+
     def test_continuation_cannot_silently_switch_source_checkout(self):
         main, worktree = self.repository()
         with patch.object(Path, "cwd", return_value=main):

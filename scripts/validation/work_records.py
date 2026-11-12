@@ -1035,7 +1035,16 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
             if target not in durable_targets:
                 fail(f"{path}: Feature Delivery {identity['State']} must register {required_artifact}")
             if target not in handoff_artifacts:
-                fail(f"{path}: Feature Delivery {identity['State']} must link {required_artifact} in Final Handoff")
+                equivalent = False
+                if required_artifact == "implementation_plan.md" and target.is_file():
+                    data = target.read_bytes()
+                    published_root = (path.parent / "runs" / "_published_plans").resolve()
+                    equivalent = any(candidate.name == "implementation_plan.md"
+                        and candidate.parent.parent == published_root and candidate.is_file()
+                        and not candidate.is_symlink() and candidate.read_bytes() == data
+                        for candidate in handoff_artifacts)
+                if not equivalent:
+                    fail(f"{path}: Feature Delivery {identity['State']} must link {required_artifact} in Final Handoff")
     if playbook_name == "technical_spike":
         implementation_plan = re.search(r"^- Implementation plan:\s*(.+)$", handoff, re.MULTILINE)
         expected = "Not created; Technical Spike produces spike_report.md"

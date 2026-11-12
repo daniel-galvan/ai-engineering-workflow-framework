@@ -391,6 +391,23 @@ def resolve_repository_paths(repository: Path) -> tuple[Path, Path]:
     return main, source
 
 
+def _verify_fresh_source_checkout(declared_path: Path, source: Path) -> None:
+    """Do not silently substitute different source for the checkout the user named."""
+    declared = _git(declared_path, "rev-parse", "--show-toplevel")
+    if declared == "Unknown" or Path(declared).resolve() == source.resolve():
+        return
+    declared = Path(declared).resolve()
+    declared_tree = _git(declared, "rev-parse", "HEAD^{tree}")
+    source_tree = _git(source, "rev-parse", "HEAD^{tree}")
+    statuses = [_git(path, "status", "--porcelain", "--", ".", ":(exclude).thoughts")
+                for path in (declared, source)]
+    if ("Unknown" in (declared_tree, source_tree, *statuses) or declared_tree != source_tree
+            or any(statuses)):
+        raise ValueError("source_checkout_differs_from_declared: declared=" + str(declared)
+                         + "; active=" + str(source.resolve())
+                         + "; source equivalence could not be established; select the intended checkout or reconcile their source before starting")
+
+
 def _initial_packet(
     artifact_root: Path,
     work_item: str,
@@ -1337,6 +1354,27 @@ def _verified_recovery_planning(artifact_root: Path, prior: dict) -> dict:
         if planning["identity"]["Run ID"] != run_id:
             raise ValueError("remediation_recovery_prior_archive_invalid")
         if planning["identity"].get("Lifecycle") == "planning":
+            if planning["identity"].get("State") == "handoff":
+                records = [row for row in manifest["files"] if row.get("path") == "work_record.md"]
+                if len(records) != 1:
+                    raise ValueError("remediation_recovery_prior_archive_invalid")
+                record = (archive / records[0]["snapshot"]).resolve()
+                if not record.is_relative_to(archive) or hashlib.sha256(record.read_bytes()).hexdigest() != records[0]["sha256"]:
+                    raise ValueError("remediation_recovery_prior_archive_invalid")
+                reference = re.search(r"<!-- workflow-state: (finalization_snapshot\.([0-9a-f]{64})\.json) -->", record.read_text())
+                snapshots = [row for row in manifest["files"] if reference and row.get("path") == reference[1]]
+                if len(snapshots) != 1:
+                    raise ValueError("remediation_recovery_prior_archive_invalid")
+                frozen = (archive / snapshots[0]["snapshot"]).resolve()
+                if not frozen.is_relative_to(archive):
+                    raise ValueError("remediation_recovery_prior_archive_invalid")
+                content = frozen.read_bytes()
+                if hashlib.sha256(content).hexdigest() != reference[2] or snapshots[0]["sha256"] != reference[2]:
+                    raise ValueError("remediation_recovery_prior_archive_invalid")
+                terminal = json.loads(content)
+                if terminal["identity"]["Run ID"] != run_id:
+                    raise ValueError("remediation_recovery_prior_archive_invalid")
+                planning["identity"] = terminal["identity"]
             plans = [row for row in manifest["files"] if row.get("path") == "implementation_plan.md"]
             if (planning["identity"].get("State") != "ready_for_implementation"
                     or planning["identity"].get("Workflow outcome") != "completed" or len(plans) != 1):
@@ -2299,6 +2337,38 @@ def _recover_finalized_remediation(artifact_root: Path, prior: dict, source_chec
             _verified_recovery_planning(artifact_root, prior))
 
 
+def _verify_ready_planning(artifact_root: Path, packet: dict, closure: dict, playbook: str) -> dict:
+    """Require the published planning record, not a candidate packet, before implementation."""
+    try:
+        from finalize_work_record import verify_recovery_record
+    except ModuleNotFoundError:
+        from scripts.finalize_work_record import verify_recovery_record
+    packet_path = artifact_root / "finalization_packet.json"
+    record = artifact_root / "work_record.md"
+    try:
+        if record.is_symlink():
+            raise ValueError("work_record_symlink")
+        if playbook in {"feature_delivery", "techops_issue_remediation"}:
+            receipt = json.loads((artifact_root / "pre_release_check.json").read_text())
+            if (receipt.get("status") != "passed"
+                    or receipt.get("packet_sha256") != hashlib.sha256(packet_path.read_bytes()).hexdigest()):
+                raise ValueError("pre_release_not_passed")
+        bindings = json.loads((artifact_root / "role_bindings.json").read_text())
+        if bindings.get("run_id") != packet["identity"]["Run ID"]:
+            raise ValueError("run_id_mismatch")
+        producer_root = Path(bindings["framework_package"]["root"])
+        verify_recovery_record(packet_path, record, packet, closure, producer_root)
+        reference = re.search(r"<!-- workflow-state: (finalization_snapshot\.[0-9a-f]{64}\.json) -->", record.read_text())
+        if not reference:
+            raise ValueError("published_planning_snapshot_missing")
+        terminal = json.loads((artifact_root / reference[1]).read_text())
+        if terminal["identity"].get("State") != "ready_for_implementation":
+            raise ValueError("published_plan_not_ready")
+        return terminal
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ValueError("remediation_requires_validated_plan:" + str(error)) from error
+
+
 def _reentry_source(
     artifact_root: Path, approval_reference: str | None, *, planning_recovery: bool = False,
     expected_playbook: str = "feature_delivery", source_checkout: Path | None = None,
@@ -2338,6 +2408,11 @@ def _reentry_source(
         prior_playbook = Path(str(prior["identity"]["Playbook / version"]).split(" / ", 1)[0]).stem
         if prior_playbook != expected_playbook:
             raise ValueError("remediation_reentry_playbook_mismatch")
+        failure_path = artifact_root / "finalization_failure.json"
+        if not planning_recovery and prior["identity"].get("Lifecycle") == "planning" and failure_path.is_file():
+            failure = json.loads(failure_path.read_text())
+            if not isinstance(failure, dict) or failure.get("status") == "failed":
+                raise ValueError("remediation_requires_validated_plan: planning finalization failed")
         failed_delivery = (not planning_recovery and expected_playbook == "techops_issue_remediation"
                            and prior["identity"].get("Lifecycle") == "remediation")
         planning_source = None
@@ -2420,9 +2495,12 @@ def _reentry_source(
             if approval_reference != prior["reentry"]["Approval reference"]:
                 raise ValueError("candidate_recovery_approval_mismatch")
             prior["_recovered_candidate"] = candidate
-        if not planning_recovery and not failed_delivery and prior["identity"].get("State") != "ready_for_implementation":
+        if not planning_recovery and not failed_delivery and prior["identity"].get("State") not in {"ready_for_implementation", "handoff"}:
             raise ValueError("remediation_requires_ready_plan")
-        if planning_recovery and (expected_playbook == "techops_issue_remediation"
+        if (planning_recovery and expected_playbook == "feature_delivery"
+                and prior["identity"].get("State") == "handoff" and not failure_path.is_file()):
+            prior["identity"] = _verify_ready_planning(artifact_root, prior, closure, expected_playbook)["identity"]
+        if planning_recovery and (expected_playbook == "techops_issue_remediation" or failure_path.is_file()
                 or prior["identity"].get("State") not in {
                     "awaiting_input", "ready_for_implementation", "completed", "blocked"}):
             failure_path = artifact_root / "finalization_failure.json"
@@ -2439,16 +2517,33 @@ def _reentry_source(
             proof_matches = receipt.get("packet_sha256") == hashlib.sha256(
                 (artifact_root / "finalization_packet.json").read_bytes()).hexdigest()
             if receipt.get("packet_snapshot"):
-                snapshot = Path(receipt["packet_snapshot"]).resolve()
-                if snapshot.parent != artifact_root.resolve():
+                snapshot = Path(receipt["packet_snapshot"])
+                if snapshot.is_symlink() or snapshot.resolve().parent != artifact_root.resolve():
                     raise ValueError("planning_recovery_requires_terminal_invocation")
                 frozen = snapshot.read_bytes()
                 frozen_packet = json.loads(frozen)
-                proof_matches = (hashlib.sha256(frozen).hexdigest() == receipt.get("snapshot_sha256")
-                                 and frozen_packet["identity"]["Run ID"] == receipt.get("run_id")
-                                 == prior["identity"]["Run ID"]
-                                 and frozen_packet["identity"]["Lifecycle"] == "planning")
-            if (receipt.get("status") != "failed" or receipt.get("stage") != "workflow" or not proof_matches
+                snapshot_valid = (hashlib.sha256(frozen).hexdigest() == receipt.get("snapshot_sha256")
+                                  and frozen_packet["identity"]["Run ID"] == receipt.get("run_id")
+                                  == prior["identity"]["Run ID"]
+                                  and frozen_packet["identity"]["Lifecycle"] == "planning"
+                                  and isinstance(receipt.get("packet_sha256"), str)
+                                  and re.fullmatch(r"[0-9a-f]{64}", receipt["packet_sha256"]))
+                if snapshot_valid and (not proof_matches or frozen_packet != prior):
+                    prior = frozen_packet
+                    prior["_unverified_reconciliation"] = True
+                proof_matches = bool(snapshot_valid)
+            original_packet = receipt.get("original_packet_snapshot")
+            if original_packet:
+                original = Path(original_packet)
+                runs = artifact_root / "runs"
+                rejected = runs / "_rejected_packets"
+                history = rejected.resolve()
+                if (runs.is_symlink() or rejected.is_symlink() or original.is_symlink() or original.resolve().parent != history
+                        or hashlib.sha256(original.read_bytes()).hexdigest() != receipt.get("original_packet_sha256")):
+                    raise ValueError("planning_recovery_requires_terminal_invocation")
+            terminal_failure = receipt.get("phase") == "terminal" and receipt.get("terminal_failure") is True
+            if (receipt.get("status") != "failed" or (receipt.get("stage") != "workflow" and not terminal_failure)
+                    or not proof_matches
                     or (expected_playbook == "techops_issue_remediation" and not receipt.get("packet_snapshot"))):
                 raise ValueError("planning_recovery_requires_terminal_invocation")
         if prior["identity"]["Lifecycle"] != "planning" and not failed_delivery:
@@ -2477,6 +2572,10 @@ def _reentry_source(
             if (terminal_closure_dispatch_errors(packet_path, closure["terminal_observations"], historical_recovery=True)
                     or dispatch_audit_errors({"runtime_audits": []}, packet_path, closure_only=True, historical_recovery=True)):
                 raise ValueError("prior_worker_runtime_closure_required")
+        if not planning_recovery and not failed_delivery:
+            terminal = _verify_ready_planning(artifact_root, prior, closure, expected_playbook)
+            if prior["identity"].get("State") == "handoff":
+                prior["identity"] = terminal["identity"]
         if planning_source is not None:
             for field in ("work_item", "decisions", "claims", "actions", "evidence", "techops_checks",
                           "reproduction", "integration_decision", "playbook_selection"):
@@ -2872,6 +2971,8 @@ def prepare_run(
     if not execution_repository.resolve().is_dir():
         raise ValueError("execution_repository_unavailable")
     resolved_execution_repository, source_checkout = resolve_repository_paths(execution_repository)
+    if not continuation:
+        _verify_fresh_source_checkout(execution_repository, source_checkout)
     if continuation and archive_stale_run:
         raise ValueError("continuation_cannot_archive_stale_run")
     if remediation_reentry and (not continuation or playbook not in {
@@ -3209,6 +3310,16 @@ def prepare_run(
     manifest["run_input_manifest"] = packet_metadata(run_inputs_path, run_inputs)
     manifest["run_input_manifest"]["inputs"] = run_inputs["inputs"]
     manifest["run_input_manifest"]["precedence_rule"] = run_inputs["precedence_rule"]
+    if ((prior and prior.get("_unverified_reconciliation"))
+            or previous_run_bindings.get("recovery_packet_reconciliation_unverified")):
+        manifest["recovery_packet_reconciliation_unverified"] = True
+    history = artifact_root / "runs"
+    prior_unreviewed = (bool(previous_run_bindings.get("prior_decisions_unreviewed")) if continuation else
+                        bool(archived) or (history.is_dir() and any(
+                            not path.name.startswith("_") for path in history.iterdir())))
+    decision_source = any(str(row.get("Classification", "")).strip().lower() == "decision continuity"
+                          for row in run_inputs["inputs"])
+    manifest["prior_decisions_unreviewed"] = bool(prior_unreviewed and not decision_source)
     if any(row.get("Authority") == "User" and row.get("Classification") == "execution restriction"
            and "source_write" in row.get("Denied operations", []) for row in run_inputs["inputs"]):
         try:
@@ -3337,8 +3448,9 @@ def prepare_run(
                 "Keep the plan unapproved and external proof gates separate from local work. Preserve the Coordinator-"
                 "prepared State, Workflow outcome, Engineering state, Engineering outcome, and profile fields exactly; "
                 "do not choose or rewrite them. The Coordinator resolves these values from accepted analysis before "
-                "activation. A ready plan uses ready_for_implementation/completed; unresolved indispensable evidence or "
-                "a material decision uses the Coordinator-prepared awaiting_input or blocked state. If the supplied "
+                "activation. A proposed ready plan remains handoff/in_progress until validated finalization; "
+                "unresolved indispensable evidence or a material decision uses the Coordinator-prepared "
+                "awaiting_input or blocked state. If the supplied "
                 "values are missing or conflict with accepted evidence, return the exact mismatch for Coordinator "
                 "correction instead of changing the packet. Never use handoff/incomplete as the final TechOps planning "
                 "identity. "

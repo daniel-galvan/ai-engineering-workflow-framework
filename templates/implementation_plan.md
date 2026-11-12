@@ -53,12 +53,16 @@ source-environment paths, and remains non-executable until its approval status i
 | Execution repository | |
 | Affected repositories | |
 | Target revision | |
-| Plan status | Draft / Ready for implementation / Approved / Superseded |
+| Plan status | Draft |
 | Approval reference | |
 | Required tools | Exact tool, version, source, executable path or approved isolated-bootstrap method |
 | Portable handoff | `implementation_handoff.md` / Not created / Not required |
 | Handoff reason | Different session or environment / Explicit request / Not applicable |
 | Last updated | |
+
+Keep this status as `Draft` while preparing and validating the handoff. The validated handoff establishes readiness;
+the file alone does not. State ownership at the team or role level when that is sufficient. Require a named person
+before implementation only when a specific assignment is necessary to resolve a real dependency or decision.
 
 # Portable Handoff
 
@@ -96,7 +100,8 @@ For Feature Delivery and TechOps, record every material behavior using the
 inferred policy extensions. Preserve the exact condition of conditional approval. Cite actual source
 comparisons or existing-test results that could contradict the proposal, including unchanged payloads and consumers.
 Required/conditional work needs applicability evidence; unverified policy extensions cannot enter a ready plan as
-required work. Use `deferred` or `excluded` with an explicit non-impact consequence when appropriate.
+required work. Disposition is `required`, `conditional`, `deferred`, `excluded`, or `unverified`. Use `deferred` or
+`excluded` with an explicit non-impact consequence when appropriate.
 
 | Behavior | Authority / condition | Applicability evidence | Counterexample check / result | Disposition | Planned action / exclusion |
 | --- | --- | --- | --- | --- | --- |
@@ -116,6 +121,8 @@ these claims; table completeness does not prove correctness.
 | Change / mechanism | Required outcome | Existing handling / evidence | Smallest alternative / check | Selected change / reason | Additional cost |
 | --- | --- | --- | --- | --- | --- |
 | | | | | | |
+
+Explain the cost or why there is no additional cost; `None` is an incomplete placeholder.
 
 # Complete Solution
 

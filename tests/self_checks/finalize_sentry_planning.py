@@ -25,6 +25,7 @@ from scripts.finalize_sentry_planning import (
 )
 from scripts.work_record_format import expand_work_record
 from scripts.work_record_format import _cell
+from scripts.finalize_work_record import verify_recovery_record
 
 
 def self_test() -> None:
@@ -179,6 +180,8 @@ def self_test() -> None:
             worker_trace_specs=trace_specs,
         )
         plan_text = (artifact_root / "implementation_plan.md").read_text()
+        assert '\nstatus: Draft\n' in plan_text
+        assert '| Plan status | Draft;' in plan_text
         recorded = json.loads((artifact_root / "finalization_packet.json").read_text())
         assert len(recorded["repositories"]) == 2
         assert recorded["repositories"][1]["Full revision"] == _git(receiver, "rev-parse", "HEAD")
@@ -189,6 +192,12 @@ def self_test() -> None:
             *[arg for spec in completed_specs for arg in ("--completed-worker", spec)],
             *[arg for spec in trace_specs for arg in ("--worker-trace", spec)]], capture_output=True, text=True)
         assert cli.returncode == 0, cli.stdout + cli.stderr
+        plan_line = next(line for line in cli.stdout.splitlines() if line.startswith('- Implementation plan:'))
+        published_plan = Path(re.search(r'created at (.*?/runs/_published_plans/[0-9a-f]{64}/implementation_plan\.md);', plan_line).group(1))
+        assert published_plan.read_bytes() == (artifact_root / 'implementation_plan.md').read_bytes()
+        verify_recovery_record(artifact_root / 'finalization_packet.json', artifact_root / 'work_record.md',
+                               json.loads((artifact_root / 'finalization_packet.json').read_text()),
+                               json.loads((artifact_root / 'runtime_closure.json').read_text()), ROOT)
         record_text = (artifact_root / "work_record.md").read_text()
         contract = fixture["fix_design_result"]["interface_contract"]
         assert "# Interface Contract\n\n| Surface | Request shape" in plan_text

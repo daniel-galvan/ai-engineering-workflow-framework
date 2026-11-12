@@ -107,7 +107,7 @@ class ReviewRegressions(unittest.TestCase):
             self.assertEqual((Path(run["archived_prior_run"]) / "intake_inputs.json").read_text(), "previous intake")
             self.assertEqual(run["run_input_manifest_status"], "explicit")
 
-    def test_unrecorded_artifacts_require_status_before_archive(self):
+    def test_fresh_start_preserves_unrecorded_artifacts_without_prior_chat(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = self.repository(Path(directory))
             root = repository / ".thoughts" / "ITEM-1"
@@ -115,12 +115,8 @@ class ReviewRegressions(unittest.TestCase):
             (root / "intake_inputs.json").write_text("previous incomplete intake")
             inputs = {"inputs": [{"Input ID": "IN-001", "Input or artifact": "Current request",
                 "Source or path": "User", "Authority": "User", "Status": "Registered"}]}
-            with self.assertRaisesRegex(ValueError, "stale_run_archive_blocked:stale_run_status_probe_required"):
-                prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
-                                        input_data=inputs)
-            self.assertEqual((root / "intake_inputs.json").read_text(), "previous incomplete intake")
             run = prepare_run.prepare_run(repository, "ITEM-1", "techops_issue_remediation", None, False,
-                input_data=inputs, provider_session=self.parent_status_session(repository, "ITEM-1"))
+                input_data=inputs)
             self.assertEqual((Path(run["archived_prior_run"]) / "intake_inputs.json").read_text(),
                              "previous incomplete intake")
             self.assertFalse((root / "intake_inputs.json").exists())
