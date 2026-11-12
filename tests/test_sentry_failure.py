@@ -217,7 +217,9 @@ class SentryFailureRegression(unittest.TestCase):
         result = self.command(*self.arguments())
         self.assertEqual(result.returncode, 2)
         self.assertEqual(self.packet.read_bytes(), before)
-        self.assertFalse(self.closure.exists())
+        closure = json.loads(self.closure.read_text())["runtime_closure"][0]
+        self.assertEqual(closure["Runtime status"], "Blocked")
+        self.assertEqual(closure["Remaining active handles"], "Unknown")
         self.assertIn("runtime closure unverified", result.stdout)
         self.assertNotIn("Provider release confirmed", result.stdout)
         receipt = json.loads((self.root / "finalization_failure.json").read_text())
@@ -260,7 +262,7 @@ class SentryFailureRegression(unittest.TestCase):
         proposed = self.root / "proposed_response.md"
         proposed.write_bytes((self.root / "handoff_failure.md").read_bytes())
         packet = json.loads(self.packet.read_text())
-        packet["identity"]["Run ID"] = "different-run"
+        packet["handoff"]["established"].append("Changed after the handoff")
         self.packet.write_text(json.dumps(packet))
         result = self.command("--packet", self.packet, "--verify-response", proposed)
         self.assertEqual(result.returncode, 2)

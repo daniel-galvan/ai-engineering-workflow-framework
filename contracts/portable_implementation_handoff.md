@@ -1,9 +1,9 @@
 ---
 title: Portable Implementation Handoff Contract
-version: 0.5.34
+version: 0.5.35
 status: Pilot
 owner: Engineering
-last_updated: 2026-11-11
+last_updated: 2026-11-12
 depends_on:
   - ./workflow_execution.md
 ---

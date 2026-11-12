@@ -128,6 +128,8 @@ class PackagedLifecycle(unittest.TestCase):
             def save_parent(status):
                 events = list(core_events)
                 if status is not None:
+                    events.append({"timestamp": stamp, "type": "turn_context", "payload": {
+                        "turn_id": "00000000-0000-0000-0000-000000000004"}})
                     call_id = "related-run-status"
                     projection = related_run_status_projection_source("ITEM-1", parent_id, (child_id,))
                     events.extend([
@@ -162,14 +164,14 @@ class PackagedLifecycle(unittest.TestCase):
             before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
 
             save_parent("running")
-            blocked = command(*base, "--archive-stale-run", expected=2)
+            blocked = command(*base, "--archive-stale-run", "--authorize-prior-parent-thread", parent_id, expected=2)
             self.assertIn("stale_run_related_task_active:" + child_id, blocked["reason"])
             self.assertIn("| State | in_progress |", work_record.read_text())
             self.assertEqual(before, {path.relative_to(root): path.read_bytes()
                                       for path in root.rglob("*") if path.is_file()})
 
             save_parent("completed")
-            prepared = command(*base, "--archive-stale-run")
+            prepared = command(*base, "--archive-stale-run", "--authorize-prior-parent-thread", parent_id)
             self.assertNotEqual(prepared["run_id"], prior_run_id)
             archived = Path(prepared["archived_prior_run"])
             archived_ledger = json.loads((archived / "runtime_dispatches.json").read_text())

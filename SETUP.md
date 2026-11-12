@@ -1,9 +1,9 @@
 ---
 title: AI-assisted Software Engineering Workflow Framework Setup
-version: 0.5.34
+version: 0.5.35
 status: Pilot
 owner: Engineering
-last_updated: 2026-11-11
+last_updated: 2026-11-12
 ---
 
 # Setup

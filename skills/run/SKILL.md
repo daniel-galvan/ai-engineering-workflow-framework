@@ -732,7 +732,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    A blocking `functions.request_user_input` response with empty or missing answers is also unanswered. Do not
    continue dependent work or finalize/publish a completed handoff while it is unanswered. Record the response in the
    current-run decision record, return it to the owning worker if the result changes, and resume the same run. If the
-   interactive input tools are unavailable or return no answer, ask visibly in this chat and leave the run open for
+   reply starts a new native parent turn, first follow the existing status-projection and
+   `prepare_run.py --continuation` steps to bind it before the next guarded action. A reply in the already bound turn
+   does not require a new preparation. If interactive input tools are unavailable or return no answer, ask visibly and
+   leave the run open for
    the user's reply; do not route the
    question through another thread. Missing access or external evidence follows the blocked path.
    For Feature Delivery implementation planning, deliver each prepared analytical `worker_contract`, including the

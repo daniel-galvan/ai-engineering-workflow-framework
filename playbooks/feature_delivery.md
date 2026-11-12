@@ -1,6 +1,6 @@
 ---
 title: Feature Delivery Playbook
-version: 0.5.34
+version: 0.5.35
 status: Pilot
 maturity: exercising
 supported_lifecycles: planning, remediation
@@ -9,9 +9,9 @@ exercise_status_standard_planning: exercised
 exercise_status_deep_planning: pending
 exercise_status_standard_remediation: exercised
 exercise_status_deep_remediation: pending
-validation_summary: standard planning stable-observed; v12 completed; v14 finalization blocked
+validation_summary: standard planning stable-observed; fresh planning passed; earlier failure; recovery unverified
 owner: Engineering
-last_updated: 2026-11-11
+last_updated: 2026-11-12
 depends_on:
   - ../contracts/workflow_execution.md
   - ../contracts/claims.md

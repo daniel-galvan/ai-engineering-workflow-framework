@@ -638,6 +638,7 @@ def self_test() -> None:
         published_techops["identity"].update({
             "Playbook / version": f"playbooks/techops_issue_remediation.md / {_frontmatter_version(ROOT / 'playbooks/techops_issue_remediation.md')}",
             "Prompt template / revision / conformance": f"templates/techops_issue_run_prompt.md / {_frontmatter_version(ROOT / 'templates/techops_issue_run_prompt.md')} / pass",
+            "State": "handoff", "Workflow outcome": "in_progress",
             "Finalization schema": "Pending",
         })
         roles = {"issue-evidence": "current_state_investigator", "failure-path": "dependency_analyst",
@@ -1053,7 +1054,7 @@ Runtime behavior remains unverified.
             "Release mapping": "Unknown", "Evidence eligibility": "Accepted",
         }]
         spike_packet["identity"].update({
-            "Run ID": "spike-review-001", "Framework commit / status": f"{'a' * 40} / Dirty",
+            "Framework commit / status": f"{'a' * 40} / Dirty",
             "Plugin package / version": "corrupted / value",
             "Provider configuration source/status": "corrupted",
             "Prompt template / revision / conformance": (

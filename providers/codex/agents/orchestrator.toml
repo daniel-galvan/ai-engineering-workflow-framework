@@ -134,6 +134,9 @@ and keep the run open for the reply.
 Do not use another thread to ask. Record the response in the current-run decision record and return it to the owning
 worker when it changes that worker's result; then resume the same run. Keep the run open while unanswered. Missing
 access or external evidence is a blocker, not a user decision.
+If the reply starts a new native parent turn, use the launcher's existing status-projection and
+`prepare_run.py --continuation` steps before the next guarded action. Keep the same Run ID and accepted results;
+do not repeat preparation for a reply in the already bound turn.
 
 Include the requested outcome, current Story boundary, and the contract's
 scenario relevance and proportionality rule in analytical and delivery packets.

@@ -16,7 +16,7 @@ class ExecutionLayers(unittest.TestCase):
                 for value in ("Run ID", "pinned package root", "lifecycle", "user decisions", "worker handles",
                               "next pending gate", "role_bindings.json", "finalization_packet.json",
                               "runtime_dispatches.json", "run_inputs.json", "its hash unchanged",
-                              "Do not rerun preflight or preparation", "Do not include or rely on other chats"):
+                              "Do not rerun preflight or preparation", "Do not include or rely on unrelated chats"):
                     self.assertIn(value, text)
                 self.assertIn("An authorized reentry after terminal closure is a new invocation", text)
                 self.assertIn("run package preflight first, then the required status projection", text)
