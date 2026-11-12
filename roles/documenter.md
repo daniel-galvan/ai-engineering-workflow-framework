@@ -87,8 +87,9 @@ maintenance.
   publishing `spike_report.md`. Do not substitute handwritten heading, table, grep, or reference checks.
 * Treat a failed packaged validation as a correction loop, not a successful finalization; the Coordinator owns
   pre-release and terminal work-record validation.
-* Preserve the prepared `Primary goal` value in the finalization packet. If it was changed, restore the value bound
-  to `RUN-GOAL-002` in the run input manifest while correcting the handoff.
+* Preserve the prepared `Primary goal` value in the finalization packet. If changed, restore its human-readable value.
+  Where available, `RUN-GOAL-002` identifies the workflow objective, not the literal goal label; otherwise ask the
+  Coordinator.
 * Record the related-run check and post-closure polls from the Coordinator's finalized packet.
 * Record worker runtime closure separately from result fan-in, including any remaining active handles or provider
   release blocker.

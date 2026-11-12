@@ -96,7 +96,8 @@ invocation: run package preflight first, then the required status projection, be
    source remains blocked. This pins an uncommitted evaluation candidate without treating it as clean.
    A declared dirty snapshot
    cannot hide worktree changes made after the digest was recorded; stop if the digest no longer matches.
-   Pass `--declared-plugin-path <prompt-path>` only when the prompt contains an explicit versioned plugin path.
+   For an explicit versioned plugin path in the prompt, pass `--declared-plugin-path <prompt-path>` to
+   `run_preflight.py`; do not pass it to `prepare_run.py`. Omit the option when no versioned path is declared.
    A missing, stale, or different path is `plugin_revision_mismatch`; do not search another cache version or silently
    substitute a checkout. An undeclared, changed, or untracked dirty framework is `framework_revision_mismatch`.
    Stop before worker activation and report the preflight reason and `preflight_elapsed_ms`. Treat a completed

@@ -65,6 +65,8 @@ terminal artifact. Populate the prepared Run ID and RFC 3339 Work Item
 Last Updated values, and preserve prompt conformance as `pass` or an explicit
 `fail:<missing fields>` value. `pass` must have no explanatory suffix. Never
 emit `not exposed` for either field.
+Preserve the prepared Playbook Selection `Primary goal`; if changed, restore its human-readable value. Where available,
+`RUN-GOAL-002` identifies the workflow objective, not the literal goal label; otherwise ask the Coordinator.
 For Technical Spike, keep Playbook Selection `Primary goal` exactly
 `Execute technical spike` or `Review technical spike`; never copy the machine
 `Requested outcome` or `Spike objective` into that field. Keep `Execution
@@ -75,9 +77,9 @@ disposition, not a sentence containing State or outcome fields. Keep
 `State: handoff`, never emit `Workflow outcome: completed` because the packaged
 finalizer owns that terminal transition.
 When the selected profile actually ran and the requested, activated, and
-executed profiles match, record `Profile status: executed`; only the Technical
-Spike workflow state and outcome remain pre-terminal. Preserve the playbook's
-logical worker IDs exactly in both worker tables; do not combine an ID with its
+executed profiles match, record `Profile status: executed`; preserve the staged
+workflow state and outcome until the finalizer transitions them. Preserve the
+playbook's logical worker IDs exactly in both worker tables; do not combine an ID with its
 provider role using `/`. Copy substantive evidence, decision, and action text
 and their references from analytical artifacts; do not replace them with
 generic placeholders. If the recommendation is conditional on an unresolved
@@ -238,15 +240,14 @@ report is published.
 For a new `execute_spike`, every external document URL or stable locator in
 evidence must be declared in `run_inputs.json`; do not preserve an undeclared
 historical linked document in the report.
-For Technical Spike only, keep the packet in `State: handoff` with non-terminal workflow metadata until the Coordinator's
-packaged finalizer succeeds; never predeclare `completed`. For Feature Delivery planning, use the owning design
-envelope's terminal readiness state before pre-release: `ready_for_implementation` with action `create` requires
-`State: ready_for_implementation`, `Workflow outcome: completed`, `Engineering outcome: plan_only`, and
-`implementation_plan.md`; `awaiting_input` with action `omit` requires `State: awaiting_input`, `Workflow outcome:
-completed`, `Engineering outcome: partially_solved`, no `implementation_plan.md`, and a clear Clarification Brief in
-the current-run design/handoff artifacts. Do not emit `State: handoff` or `Workflow outcome: in_progress` for either
-Feature Delivery terminal readiness result. Evidence rows must describe observed repository, document, runtime, or provider
-facts. Keep current-user constraints in the Input Register or Decision Context; do not emit them as standalone Evidence
+For Technical Spike, keep the packet in `State: handoff` with non-terminal workflow metadata until the Coordinator's
+packaged finalizer succeeds. For Feature Delivery planning, preserve the staged disposition and identity: a
+`ready_for_implementation`/`create` candidate stays `State: handoff`, `Workflow outcome: in_progress`, and
+`Engineering outcome: plan_only` until finalization, with `implementation_plan.md` present. An `awaiting_input`/`omit`
+result uses `State: awaiting_input`, `Workflow outcome: completed`, and `Engineering outcome: partially_solved`,
+with no `implementation_plan.md` and a clear Clarification Brief. Evidence rows must describe observed repository,
+document, runtime, or provider facts. Keep current-user constraints in the Input Register or Decision Context; do not
+emit them as standalone Evidence
 IDs. Copy the template's table header and separator widths exactly, especially `## Direct Evidence`; do not hand-write a
 shortened separator row.
 

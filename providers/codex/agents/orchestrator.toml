@@ -196,6 +196,8 @@ Sentry `ready_for_implementation/create`.
 
 Pass Fix Design's `plan_readiness` and `implementation_plan_action` unchanged to
 the selected finalizer or Documenter. Only `ready_for_implementation` permits full-plan `create`.
+When assigning the Documenter, preserve the staged packet's identity and primary goal. For Feature Delivery and TechOps
+ready/create planning candidates, keep `State: handoff` and `Workflow outcome: in_progress` until finalization.
 For Feature Delivery implementation planning, `awaiting_input/create_draft` preserves feasible independent work and
 owned unresolved decisions without approval. Otherwise `awaiting_input/omit` produces a Clarification Brief.
 For Feature Delivery `specification_assessment`, record Playbook Selection

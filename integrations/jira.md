@@ -171,6 +171,9 @@ Inventory attachments on the supplied item and every issue selected under the ap
 playbook requires an asset inventory or an asset could answer the question. Inventory remote links separately when
 selected; empty `issuelinks` or attachment fields do not prove an empty remote-link collection. Preserve owner issue,
 source locator, retrieval method, availability, redaction, and review/disposition state for every discovered asset.
+Issue descriptions and selected comments may contain relevant links outside the remote-link collection; select those
+needed to answer the question and record optional links as not selected with a reason. Do not recursively follow
+incidental links or make optional links required assets.
 Review material assets' actual contents before using them as evidence: render or visually inspect images and video;
 read logs and documents. Other discovered assets may remain `not selected` with a reason unless the playbook requires
 complete review. An unread filename or count is not consumed evidence.

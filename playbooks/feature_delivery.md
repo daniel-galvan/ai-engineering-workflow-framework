@@ -91,8 +91,11 @@ attachment collections of the supplied issue and selected related issues, and se
 for each selected issue. Record the remote-link collection as `empty`,
 `complete`, or an explicit retrieval limitation in the Jira source's `remote_link_inventory`.
 Use exactly one `jira_issue_attachments` source tied to the supplied work-item input; aggregate
-the selected issues' attachment and remote-link inventories in that source. Every discovered link
-needs a supporting source and disposition even when non-material. Inventory each supporting artifact explicitly declared
+the selected issues' attachment and remote-link inventories in that source. Every discovered remote link
+needs a supporting source and disposition even when non-material. Also identify relevant links embedded in the issue
+description or selected comments; the separate remote-link collection does not cover them. Inventory links needed to
+answer the question; record optional links as not selected with a reason instead of making them required assets.
+Do not follow incidental or unrelated links. Inventory each supporting artifact explicitly declared
 as an asset source in the prompt or `run_inputs.json`. Classify source-code roots as `code scope`; do not enter them in
 `asset_manifest.json` or inventory them recursively. A declared supporting directory is inventoried recursively,
 including hidden entries and symlinks; an empty filtered search is not a complete inventory. Each source must record

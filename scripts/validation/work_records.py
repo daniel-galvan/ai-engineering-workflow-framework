@@ -132,6 +132,18 @@ def _feature_record_expected_inputs(
     return prepared_rows, errors
 
 
+def _plan_handoff_linked(plan: Path, handoff_targets: set[Path], root: Path) -> bool:
+    if plan in handoff_targets:
+        return True
+    if not plan.is_file():
+        return False
+    published_root = (root / "runs" / "_published_plans").resolve()
+    data = plan.read_bytes()
+    return any(candidate.name == "implementation_plan.md" and candidate.parent.parent == published_root
+               and candidate.is_file() and not candidate.is_symlink() and candidate.read_bytes() == data
+               for candidate in handoff_targets)
+
+
 def feature_asset_record_errors(
     text: str, path: Path, identity: dict[str, str], finalization: dict[str, str],
 ) -> list[str]:
@@ -233,7 +245,10 @@ def feature_asset_record_errors(
             errors.extend(draft_plan_errors((root / "implementation_plan.md").read_text()))
             errors.extend(asset_plan_errors((root / "implementation_plan.md").read_text(), manifest))
             for name in ("implementation_plan.md", "clarification_brief.md"):
-                if (root / name).resolve() not in durable_targets or (root / name).resolve() not in handoff_targets:
+                target = (root / name).resolve()
+                linked = (_plan_handoff_linked(target, handoff_targets, root) if name == "implementation_plan.md"
+                          else target in handoff_targets)
+                if target not in durable_targets or not linked:
                     errors.append(f"Partial planning handoff must register and link {name}")
             if not (root / "clarification_brief.md").is_file():
                 errors.append("Draft partial plan requires clarification_brief.md")
@@ -1034,17 +1049,10 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
             }
             if target not in durable_targets:
                 fail(f"{path}: Feature Delivery {identity['State']} must register {required_artifact}")
-            if target not in handoff_artifacts:
-                equivalent = False
-                if required_artifact == "implementation_plan.md" and target.is_file():
-                    data = target.read_bytes()
-                    published_root = (path.parent / "runs" / "_published_plans").resolve()
-                    equivalent = any(candidate.name == "implementation_plan.md"
-                        and candidate.parent.parent == published_root and candidate.is_file()
-                        and not candidate.is_symlink() and candidate.read_bytes() == data
-                        for candidate in handoff_artifacts)
-                if not equivalent:
-                    fail(f"{path}: Feature Delivery {identity['State']} must link {required_artifact} in Final Handoff")
+            linked = (_plan_handoff_linked(target, handoff_artifacts, path.parent)
+                      if required_artifact == "implementation_plan.md" else target in handoff_artifacts)
+            if not linked:
+                fail(f"{path}: Feature Delivery {identity['State']} must link {required_artifact} in Final Handoff")
     if playbook_name == "technical_spike":
         implementation_plan = re.search(r"^- Implementation plan:\s*(.+)$", handoff, re.MULTILINE)
         expected = "Not created; Technical Spike produces spike_report.md"

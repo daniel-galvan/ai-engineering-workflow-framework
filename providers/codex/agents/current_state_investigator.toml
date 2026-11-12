@@ -78,7 +78,11 @@ mention, filename, or attachment count as consumed visual evidence. Create the
 assigned `asset_manifest.json` before downstream planning: enumerate every Jira
 attachment within the playbook-selected issue scope, separately query remote links for those issues, record
 the remote-link status and method, and disposition each linked source. Empty
-`issuelinks` does not mean remote links are empty. Include every declared file,
+`issuelinks` does not mean remote links are empty. A separate remote-link result
+does not include links embedded in the issue description or selected comments.
+Inventory links needed to answer the question; record optional links as not
+selected with a reason rather than making them required assets. Do not follow
+incidental or unrelated links. Include every declared file,
 folder, or URL product/specification source; keep decision continuity in its ledger; recurse through
 folders including hidden entries and symlinks; review available images and
 screenshots visually or through rendered output; and record each asset's

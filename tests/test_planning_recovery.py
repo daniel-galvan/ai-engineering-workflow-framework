@@ -13,6 +13,7 @@ from scripts import finalize_work_record as finalizer
 from scripts import prepare_run as preparation
 from scripts.merge_techops_result import merge_result
 from scripts.review_evidence import PLAN_FIXTURE, draft_plan_errors
+from scripts.validation.work_records import _plan_handoff_linked
 from scripts.worker_runtime_evidence import read_runtime_events, terminal_closure
 from tests.worker_response_support import stage_worker_response
 
@@ -102,6 +103,19 @@ class PlanningRecovery(unittest.TestCase):
         snapshot.write_text('Tampered plan\n')
         with self.assertRaisesRegex(ValueError, 'published_plan_snapshot_invalid'):
             finalizer.published_plan_path(self.packet)
+
+    def test_handoff_accepts_only_the_same_published_plan(self):
+        plan = self.artifacts / "implementation_plan.md"
+        plan.write_text("Draft plan\n")
+        finalizer._snapshot_published_plan(self.packet, self.artifacts)
+        snapshot = finalizer.published_plan_path(self.packet)
+        self.assertTrue(_plan_handoff_linked(plan, {snapshot}, self.artifacts))
+        snapshot.write_text("Changed plan\n")
+        self.assertFalse(_plan_handoff_linked(plan, {snapshot}, self.artifacts))
+        unrelated = self.artifacts / "other" / "implementation_plan.md"
+        unrelated.parent.mkdir()
+        unrelated.write_bytes(plan.read_bytes())
+        self.assertFalse(_plan_handoff_linked(plan, {unrelated}, self.artifacts))
 
     def test_published_plan_preserves_relative_link_targets_and_detects_tampering(self):
         plan = self.artifacts / "implementation_plan.md"
