@@ -827,6 +827,46 @@ class ParentContext(unittest.TestCase):
                           self.audit(artifact_root=artifact_root, related_run_thread_ids=(),
                                      runtime_evidence=runtime)["errors"])
 
+    def test_missing_collector_does_not_turn_current_session_into_history_access(self):
+        artifact_root = self.root / ".thoughts" / "ITEM-1"
+        artifact_root.mkdir(parents=True)
+        sessions = self.root / ".codex" / "sessions"
+        sessions.mkdir(parents=True)
+        self.source = sessions / f"rollout-parent-{PARENT}.jsonl"
+        runtime = {"run_started_at": "2026-10-01T00:00:00Z",
+                   "collector": str(Path(__file__).resolve().parents[1] / "scripts/worker_runtime_evidence.py"),
+                   "ledger": str(artifact_root / "runtime_dispatches.json")}
+        missing = self.root / "mistyped" / "worker_runtime_evidence.py"
+        args = ["python3", str(missing), "--provider-session", str(self.source), "--parent-thread-id", PARENT,
+                "--started-at", runtime["run_started_at"], "--ledger", runtime["ledger"],
+                "--worker-thread-id", CHILD, "--agent", "current_state_investigator",
+                "--trace", str(artifact_root / "trace.json")]
+        command = shlex.join(args)
+        message = f"python3: can't open file '{missing}': [Errno 2] No such file or directory\n"
+        call = self.call("exec_command", cmd=command, workdir=str(self.root))
+        observation = self.command_execution(command, exit_code=2, output=message)
+        self.rows.extend([call, observation])
+        native = {"thread_mappings": {"/root/worker": CHILD}, "events": [
+            {"Provider handle": "/root/worker", "Thread ID": CHILD, "Last dispatch at": runtime["run_started_at"]}]}
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
+            def audit():
+                return self.audit(artifact_root=artifact_root, related_run_thread_ids=(), runtime_evidence=runtime)
+            self.assertEqual(audit()["status"], "passed")
+            observation["payload"]["item"]["aggregated_output"] = "other failure"
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            observation["payload"]["item"]["aggregated_output"] = message
+            other = sessions / "unrelated.jsonl"
+            other_command = command.replace(str(self.source), str(other))
+            call["payload"]["arguments"] = json.dumps({"cmd": other_command, "workdir": str(self.root)})
+            observation["payload"]["item"]["command"][-1] = other_command
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            observation["payload"]["item"]["command"][-1] = command
+            call["payload"]["arguments"] = json.dumps({"cmd": command + "; cat " + str(self.source)})
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            call["payload"]["arguments"] = json.dumps({"cmd": command, "workdir": str(self.root)})
+            self.rows.append(self.call("exec_command", cmd=command, workdir=str(self.root)))
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+
     def test_recovery_audit_allows_only_prior_run_workers_from_the_bound_recovery(self):
         artifact_root = self.root / ".thoughts" / "ITEM-1"
         artifact_root.mkdir(parents=True)

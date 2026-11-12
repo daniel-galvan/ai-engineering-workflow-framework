@@ -802,6 +802,37 @@ def _redact_current_runtime_collection(command: str, source: Path, thread: str, 
         return command
 
 
+def _redact_unstarted_collector(command: str, observations: list[dict], source: Path, thread: str,
+                                runtime_evidence: dict | None, artifact_root: Path | None,
+                                known_children: set[str], prior_children: set[str], script_dir: Path,
+                                previous_collector: Path | None, prior_started_at: datetime | None) -> str:
+    """Recognize an observed Python missing-script error without accepting other session reads."""
+    if len(observations) != 1 or any(char in command for char in "\n\r;&|<>$`"):
+        return command
+    try:
+        args = shlex.split(command)
+        if (len(args) < 2 or (args[0] != "python3" and Path(args[0]).resolve() != Path(sys.executable).resolve())
+                or not Path(args[1]).is_absolute() or Path(args[1]).name != "worker_runtime_evidence.py"
+                or Path(args[1]).exists()):
+            return command
+        observation = observations[0]
+        message = str(observation.get("aggregated_output", ""))
+        expected = ": can't open file " + repr(args[1]) + ": [Errno 2] No such file or directory"
+        if (observation.get("status") != "failed" or observation.get("exit_code") != 2
+                or not message.rstrip("\n").endswith(expected) or message.count("\n") > 1):
+            return command
+        proxy = shlex.join([args[0], str(script_dir / "worker_runtime_evidence.py"), *args[2:]])
+        redacted = _redact_current_runtime_collection(proxy, source, thread, runtime_evidence, artifact_root,
+            known_children, prior_children, script_dir, previous_collector, prior_started_at)
+        if redacted == proxy:
+            return command
+        sanitized = shlex.split(redacted)
+        sanitized[1] = args[1]
+        return shlex.join(sanitized)
+    except (OSError, ValueError, TypeError, IndexError):
+        return command
+
+
 def _redact_workflow_failure(command: str, source: Path, thread: str, runtime_evidence: dict | None,
                              artifact_root: Path | None, script_dir: Path) -> str:
     if not runtime_evidence or artifact_root is None:
@@ -1025,6 +1056,20 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
             raise ValueError("provider_bound_turn_unavailable")
     if require_preflight_order and framework_root is not None:
         errors.extend(_preflight_order_errors(sequenced_operations, framework_root, command_observations))
+    command_counts = {}
+    for operation in operations:
+        command = operation.get("arguments", {}).get("cmd") if operation.get("name") == "exec_command" else None
+        if isinstance(command, str):
+            command_counts[command] = command_counts.get(command, 0) + 1
+    for operation in operations:
+        arguments = operation.get("arguments", {})
+        command = arguments.get("cmd") if operation.get("name") == "exec_command" else None
+        if isinstance(command, str) and command_counts.get(command) == 1 and command in command_observations:
+            redacted = _redact_unstarted_collector(command, command_observations[command], source, thread,
+                runtime_evidence, artifact_root, known_children, set(prior_ids), script_dir,
+                audit_previous_collector, prior_started_at)
+            if redacted != command:
+                operation["arguments"] = {**arguments, "cmd": redacted}
     details = []
     errors.extend(context_trace_errors({"tool_trace": operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
