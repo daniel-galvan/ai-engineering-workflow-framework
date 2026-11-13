@@ -1,7 +1,7 @@
 name = "sentry_current_state_investigator"
 description = "Collects Sentry evidence and maps the reported failure to repository code."
-model = "gpt-6-luna"
-model_reasoning_effort = "high"
+model = "gpt-6.1-terra"
+model_reasoning_effort = "medium"
 
 developer_instructions = """
 Own raw Sentry evidence for the run. Query Sentry MCP, reconcile issue/event

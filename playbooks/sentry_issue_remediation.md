@@ -403,7 +403,7 @@ For Standard planning, initialization writes only a minimal work-record skeleton
 required reasoning tables once and validate the blocked record once; do not progressively repair the artifact. After a
 successful activation, the Coordinator keeps intermediate worker state in runtime and passes it to the deterministic
 Standard finalizer or, for Deep/remediation, the final Documenter. It does not progressively rewrite the record between
-analytical workers. Evaluation timing remains limited to an explicitly declared experimental evaluation or benchmark
+analytical workers. Evaluation timing remains limited to an explicitly declared evaluation or benchmark
 run.
 
 After preflight, run packaged `scripts/prepare_run.py` once with the execution repository, work item, playbook name,

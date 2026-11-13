@@ -89,7 +89,7 @@ workflow stops, continues bounded investigation, or asks the user.
 Use the detailed workflow evaluation guide only for a run explicitly declared as an evaluation or benchmark. Normal
 terminal and blocked handoffs keep the canonical summary and omit Run Metrics and Worker Timing. Comparable evaluation
 runs inform model and effort policy changes. See
-[frameworks/experimental/workflow_evaluation.md](frameworks/experimental/workflow_evaluation.md).
+[frameworks/deferred/workflow_evaluation.md](frameworks/deferred/workflow_evaluation.md).
 
 Create `implementation_plan.md` only after required planning fan-in passes and the workflow reaches
 `ready_for_implementation`.

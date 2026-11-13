@@ -194,7 +194,7 @@ Use this reading path:
 contracts/       shared execution and reasoning semantics
 examples/        safe, generic scenario guides
 frameworks/      reusable engineering method
-  experimental/  deferred, opt-in methods excluded from normal runs
+  deferred/      opt-in methods excluded from normal runs
 integrations/    external evidence and work-item sources
 playbooks/       scenario workflows
 providers/       platform adapters and agent definitions
@@ -236,7 +236,7 @@ Document facts and limitations in the work record. Exercise changes against real
 Evaluation and benchmarking are deliberately deferred from the normal workflow while the pilot stabilizes. Ordinary
 runs keep only core execution, provenance, outcome, and artifact controls. Add the evaluation addendum only when a
 prompt explicitly declares an evaluation or benchmark; it must not be used to retrofit telemetry that the run did not
-observe. See the [experimental evaluation guide](frameworks/experimental/workflow_evaluation.md) and
+observe. See the [workflow evaluation guide](frameworks/deferred/workflow_evaluation.md) and
 [`evaluation_work_record_addendum.md`](templates/evaluation_work_record_addendum.md).
 
 ## Versioning

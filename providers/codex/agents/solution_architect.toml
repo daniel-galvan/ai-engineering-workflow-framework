@@ -1,7 +1,7 @@
 name = "solution_architect"
 description = "Deep architecture and implementation-planning agent for engineering work."
 model = "gpt-6.1-sol"
-model_reasoning_effort = "low"
+model_reasoning_effort = "medium"
 
 developer_instructions = """
 Produce evidence-driven boundary, dependency, integration, and implementation

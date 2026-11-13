@@ -1686,6 +1686,7 @@ class ContextOperationAudit(unittest.TestCase):
         from datetime import datetime, timedelta
         run = fixtures.prepare.prepare_run(self.repository, "ITEM-2", playbook, None, False,
                                            input_manifest=self.inputs)
+        binding = run["bindings"][role]
         root = Path(run["artifact_root"])
         bundle = run["activation_packet_bundle"]
         assignment = root / "assignment.json"
@@ -1707,7 +1708,7 @@ class ContextOperationAudit(unittest.TestCase):
             {"timestamp": time(0), "type": "session_meta", "payload": {"id": SOURCE}},
             {"timestamp": time(1), "type": "response_item", "payload": {"type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
              "arguments": json.dumps({"task_name": "evidence_topology", "agent_type": role, "message": "opaque",
-                 "model": "gpt-6-luna", "reasoning_effort": "high", "fork_turns": "none"})}},
+                 "model": binding["model"], "reasoning_effort": binding["effort"], "fork_turns": "none"})}},
             {"timestamp": time(1), "type": "event_msg", "payload": {"item": {"type": "SubAgentActivity",
              "kind": "started", "agent_path": handle, "agent_thread_id": child}}},
         ]) + "\n")
@@ -1733,7 +1734,7 @@ class ContextOperationAudit(unittest.TestCase):
             {"timestamp": time(7), "type": "response_item", "payload": {"type": "custom_tool_call_output",
              "call_id": "ancestors", "output": [{"type": "input_text", "text": "No additional AGENTS.md files."}]}},
             {"timestamp": time(8), "type": "turn_context", "payload": {"turn_id": "00000000-0000-0000-0000-000000000104",
-             "model": "gpt-6-luna", "effort": "high"}},
+             "model": binding["model"], "effort": binding["effort"]}},
         ]) + "\n")
         contract = run["worker_contracts"].get(role, {})
         if contract.get("result_hash_required"):

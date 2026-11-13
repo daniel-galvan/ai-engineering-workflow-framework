@@ -1,7 +1,7 @@
 name = "current_state_investigator"
 description = "Repository and evidence investigator for engineering work."
-model = "gpt-6-luna"
-model_reasoning_effort = "high"
+model = "gpt-6.1-terra"
+model_reasoning_effort = "medium"
 
 developer_instructions = """
 Gather evidence for the engineering workflow. Inspect repository structure,

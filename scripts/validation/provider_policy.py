@@ -79,9 +79,10 @@ def validate_provider_policy() -> dict:
     if f"baseline_id: {MODEL_BASELINE_ID}" not in policy_text:
         fail(f"{CODEX_POLICY.relative_to(ROOT)} has no current model-policy baseline ID")
 
+    table_text = "\n".join(" ".join(line.split()) for line in policy_text.splitlines())
     for match in re.finditer(
         r"^\| ([^|]+) \| `([^`]+)` \| ([^|]+) \| `([^`]+)` \|$",
-        policy_text,
+        table_text,
         re.M,
     ):
         role, model, label, effort = (value.strip() for value in match.groups())
@@ -97,7 +98,7 @@ def validate_provider_policy() -> dict:
 
     for match in re.finditer(
         r"^\| [^|]+ \| `([^`]+)` \| ([^|]+) \|$",
-        policy_text,
+        table_text,
         re.M,
     ):
         agent_name, role = (value.strip() for value in match.groups())

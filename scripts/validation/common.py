@@ -76,7 +76,7 @@ STALE_FINALIZER_REFERENCE = (
 )
 
 
-MODEL_BASELINE_ID = "codex-role-policy-gpt61-sol-luna-orchestrator-v20261001"
+MODEL_BASELINE_ID = "codex-role-policy-gpt61-terra-sol-luna-v20261112"
 
 POLICY_EFFORTS = {
     "Light": "low",
@@ -156,7 +156,7 @@ PORTABLE_HANDOFF_CONTRACT = ROOT / "contracts" / "portable_implementation_handof
 
 CLAIMS_CONTRACT = ROOT / "contracts" / "claims.md"
 
-WORKFLOW_EVALUATION = ROOT / "frameworks" / "experimental" / "workflow_evaluation.md"
+WORKFLOW_EVALUATION = ROOT / "frameworks" / "deferred" / "workflow_evaluation.md"
 
 EVALUATION_ADDENDUM = ROOT / "templates" / "evaluation_work_record_addendum.md"
 

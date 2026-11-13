@@ -52,6 +52,21 @@ class ValidationModules(unittest.TestCase):
                 self.assertEqual(provider_policy._plugin_version_refresh_error(),
                     "plugin build metadata must change when bundled package content changes")
 
+    def test_provider_policy_accepts_table_padding_and_rejects_changed_mapping(self):
+        from scripts.validation import provider_policy
+
+        original = provider_policy.CODEX_POLICY.read_text()
+        compact = "\n".join(" ".join(line.split()) for line in original.splitlines())
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            policy = Path(directory) / "policy.md"
+            with patch.object(provider_policy, "CODEX_POLICY", policy):
+                for text in (original, compact):
+                    policy.write_text(text)
+                    self.assertTrue(provider_policy.validate_provider_policy())
+                policy.write_text(compact.replace("| Orchestrator | `gpt-6-luna`", "| Orchestrator | `wrong-model`"))
+                with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                    provider_policy.validate_provider_policy()
+
     def test_worker_outputs_cannot_be_attributed_to_user(self):
         for description, authority in (("Normalized evidence", "Evidence worker output"),
                                        ("Worker result", "Current-run evidence"),

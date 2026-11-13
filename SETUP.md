@@ -260,7 +260,7 @@ same-session implementation does not need one. The handoff does not select a mod
 
 ## Declare an evaluation or benchmark
 
-Evaluation and benchmarking are deferred while the normal workflow stabilizes. For an intentional experimental run,
+Evaluation and benchmarking are deferred while the normal workflow stabilizes. For an intentional evaluation run,
 add this block to the plugin invocation:
 
 ```text

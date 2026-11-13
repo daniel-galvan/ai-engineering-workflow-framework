@@ -1,7 +1,7 @@
 ---
 title: Workflow Evaluation
 version: 0.5.35
-status: Experimental / Deferred
+status: Deferred
 owner: Engineering
 last_updated: 2026-11-12
 depends_on:

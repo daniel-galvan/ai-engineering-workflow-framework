@@ -127,13 +127,13 @@ def validate_planning_and_evaluation_templates() -> None:
     if "The plan does not authorize implementation" not in implementation_plan_template:
         fail("templates/implementation_plan.md is missing the delivery activation rule")
     if not WORKFLOW_EVALUATION.exists():
-        fail("frameworks/experimental/workflow_evaluation.md is missing")
+        fail("frameworks/deferred/workflow_evaluation.md is missing")
     workflow_evaluation = WORKFLOW_EVALUATION.read_text()
     for heading in ("# Workflow Evaluation", "## Pilot Method", "## Comparison Rules"):
         if heading not in workflow_evaluation:
-            fail(f"frameworks/experimental/workflow_evaluation.md is missing {heading}")
+            fail(f"frameworks/deferred/workflow_evaluation.md is missing {heading}")
     if "recorded role-policy baseline" not in workflow_evaluation:
-        fail("frameworks/experimental/workflow_evaluation.md is missing baseline comparison control")
+        fail("frameworks/deferred/workflow_evaluation.md is missing baseline comparison control")
     evaluation_addendum = EVALUATION_ADDENDUM.read_text()
     if "# Workflow Evaluation" not in evaluation_addendum:
         fail("templates/evaluation_work_record_addendum.md is missing workflow evaluation")
@@ -158,7 +158,7 @@ def validate_planning_and_evaluation_templates() -> None:
         "Finding-to-plan ratio",
     ):
         if phrase not in workflow_evaluation:
-            fail(f"frameworks/experimental/workflow_evaluation.md is missing outcome/burden metric: {phrase}")
+            fail(f"frameworks/deferred/workflow_evaluation.md is missing outcome/burden metric: {phrase}")
         if phrase != "Finding-to-plan ratio" and phrase not in evaluation_addendum:
             fail(f"templates/evaluation_work_record_addendum.md is missing outcome/burden metric: {phrase}")
 
@@ -185,9 +185,9 @@ def validate_planning_and_evaluation_templates() -> None:
 def validate_evaluation_timing_and_toolchain() -> None:
     workflow_evaluation = WORKFLOW_EVALUATION.read_text()
     if "reported wall time omits Coordinator or documentation" not in workflow_evaluation:
-        fail("experimental workflow evaluation is missing complete wall-time evaluation")
+        fail("workflow evaluation is missing complete wall-time evaluation")
     if "reconstructed from worker-stage estimates" not in workflow_evaluation:
-        fail("experimental workflow evaluation is missing direct wall-time evaluation")
+        fail("workflow evaluation is missing direct wall-time evaluation")
 
     implementation_plan = (ROOT / "templates" / "implementation_plan.md").read_text()
     if "Exact tool, version, source, executable path or approved isolated-bootstrap method" not in implementation_plan:
@@ -272,15 +272,15 @@ def validate_evaluation_and_provenance() -> None:
     evaluation_addendum = EVALUATION_ADDENDUM.read_text()
     implementation_plan = (ROOT / "templates/implementation_plan.md").read_text()
     if "Coordinator changes a technical worker's diagnosis" not in workflow_evaluation:
-        fail("experimental workflow evaluation is missing coordinator-authority evaluation")
+        fail("workflow evaluation is missing coordinator-authority evaluation")
     for phrase in ("duplicates delegated technical", "counts itself as a worker activation attempt", "reported as a blocked workflow"):
         if phrase not in workflow_evaluation:
-            fail(f"experimental workflow evaluation is missing run-quality control: {phrase}")
+            fail(f"workflow evaluation is missing run-quality control: {phrase}")
     if "planning runs unit or integration tests that cannot change" not in workflow_evaluation:
-        fail("experimental workflow evaluation is missing planning-test efficiency control")
+        fail("workflow evaluation is missing planning-test efficiency control")
     for phrase in ("Coordination errors", "Handoff revisions", "required metrics are", "`plan_only` is reported"):
         if phrase not in workflow_evaluation:
-            fail(f"experimental workflow evaluation is missing metrics-validity control: {phrase}")
+            fail(f"workflow evaluation is missing metrics-validity control: {phrase}")
     for phrase in (
         "failed `context_conformance`",
         "provider configuration could not be resolved",
@@ -293,7 +293,7 @@ def validate_evaluation_and_provenance() -> None:
         "Invalid metrics must still report",
     ):
         if phrase not in workflow_evaluation:
-            fail(f"experimental workflow evaluation is missing conformance evaluation: {phrase}")
+            fail(f"workflow evaluation is missing conformance evaluation: {phrase}")
 
     for phrase in ("Planning normally designs these checks", "focused regression that reproduces the verified failure"):
         if phrase not in implementation_plan:
@@ -317,15 +317,16 @@ def validate_evaluation_and_provenance() -> None:
     if "Post-finalization Coordinator edits" not in evaluation_addendum:
         fail("templates/evaluation_work_record_addendum.md is missing evaluation control evidence")
     for phrase in (
-        "initial hypothesis: an experimental baseline",
+        "initial hypothesis: a baseline",
         "Orchestrator | `gpt-6-luna` | Extra High | `xhigh`",
-        "Dependency Analyst | `gpt-6-luna` | High | `high`",
+        "Current-State Investigator | `gpt-6.1-terra` | Medium | `medium`",
+        "Dependency Analyst | `gpt-6.1-sol` | Medium | `medium`",
         "Repository Integrator | `gpt-6-luna` | High | `high`",
-        "Solution Architect | `gpt-6.1-sol` | Light | `low`",
-        "Reviewer | `gpt-6.1-sol` | Light | `low`",
+        "Solution Architect | `gpt-6.1-sol` | Medium | `medium`",
+        "Reviewer | `gpt-6.1-sol` | Medium | `medium`",
     ):
-        if phrase not in policy_text:
-            fail(f"{CODEX_POLICY.relative_to(ROOT)} is missing experimental baseline: {phrase}")
+        if phrase not in " ".join(policy_text.split()):
+            fail(f"{CODEX_POLICY.relative_to(ROOT)} is missing role baseline: {phrase}")
 
 
 def validate_portable_handoff_template() -> None:

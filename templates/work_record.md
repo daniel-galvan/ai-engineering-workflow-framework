@@ -227,7 +227,7 @@ Risk: <recorded remaining uncertainty, or no additional risk recorded>.
 ---
 
 Evaluation runs append the separate evaluation addendum only when explicitly declared; see
-`../frameworks/experimental/workflow_evaluation.md`.
+`../frameworks/deferred/workflow_evaluation.md`.
 
 ---
 

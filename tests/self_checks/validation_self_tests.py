@@ -573,7 +573,7 @@ Keep the current boundary pending runtime confirmation (E-001).
 | Provider/runtime configuration | Not provided |
 | Provider configuration source/status | bundled provider definitions / resolved |
 | Prompt template / revision / conformance | templates/feature_delivery_run_prompt.md / __PROMPT_REVISION__ / pass |
-| Role-policy baseline ID | codex-role-policy-gpt61-sol-luna-orchestrator-v20261001 |
+| Role-policy baseline ID | codex-role-policy-gpt61-terra-sol-luna-v20261112 |
 | Role binding manifest | role_bindings.json |
 | Provider / model configuration | Codex / Worker Execution Ledger |
 | Coordinator model/effort | gpt-6-luna / medium |
@@ -909,8 +909,8 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "bindings": {
                 "current_state_investigator": {
                     "definition": str(CODEX_AGENT_DIR / "current_state_investigator.toml"),
-                    "model": "gpt-6-luna",
-                    "effort": "high",
+                    "model": "gpt-6.1-terra",
+                    "effort": "medium",
                 },
             },
         }))
@@ -925,7 +925,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
 
         normal = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Not applicable |")
         normal = normal.replace(
-            "| Role-policy baseline ID | codex-role-policy-gpt61-sol-luna-orchestrator-v20261001 |",
+            "| Role-policy baseline ID | codex-role-policy-gpt61-terra-sol-luna-v20261112 |",
             "| Role-policy baseline ID | Not applicable |",
         )
         normal = normal.replace("| Role binding manifest | role_bindings.json |", "| Role binding manifest | Not applicable |")
@@ -1042,7 +1042,7 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "Evaluation run ID must identify the evaluated run",
         )
         assert_invalid(
-            valid.replace("| Role-policy baseline ID | codex-role-policy-gpt61-sol-luna-orchestrator-v20261001 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
+            valid.replace("| Role-policy baseline ID | codex-role-policy-gpt61-terra-sol-luna-v20261112 |", "| Role-policy baseline ID | providers/codex/model_effort_policy.md |"),
             "Role-policy baseline ID must be an identifier, not a path",
         )
         assert_invalid(valid.replace("| TechOps |", "| None selected |"), "run-specific evidence")
@@ -1096,10 +1096,10 @@ Provenance: plugin ai-engineering-workflows 0.2.1; framework revision
             "| evidence-topology | Current-State Investigator / Sentry Evidence | gpt-5.6-luna / low | "
             "gpt-5.6-luna / low | Unknown |",
         )
-        assert_invalid(bound_worker, "configured model/effort received 'gpt-5.6-luna / low'; expected 'gpt-6-luna / high'")
+        assert_invalid(bound_worker, "configured model/effort received 'gpt-5.6-luna / low'; expected 'gpt-6.1-terra / medium'")
         multiple = valid.replace("| Evaluation run ID | evaluation-001 |", "| Evaluation run ID | Unknown |")
         multiple = multiple.replace(
-            "| Role-policy baseline ID | codex-role-policy-gpt61-sol-luna-orchestrator-v20261001 |",
+            "| Role-policy baseline ID | codex-role-policy-gpt61-terra-sol-luna-v20261112 |",
             "| Role-policy baseline ID | providers/codex/model_effort_policy.md |",
         )
         output = validation_output(multiple)
