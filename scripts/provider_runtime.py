@@ -116,14 +116,18 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
             if "terminal_observations" not in closure and ledger_proves_no_dispatches:
                 pass  # A zero-dispatch ledger has no worker identities for closure to report.
             elif "terminal_observations" not in closure and isinstance(bindings, dict) and isinstance(ledger, dict):
-                # A blocked closure has no terminal observations; authenticate its identities, then probe them anew.
+                # Pending and blocked receipts require authenticated identities and fresh status probes.
                 try:
                     rows = closure["runtime_closure"]
                     row = rows[0]
                     parent = bindings["parent_context"]
                     contract = bindings["runtime_evidence"]
                     source = Path(ledger["provider_session"])
-                    if (len(rows) != 1 or row["Runtime status"] != "Blocked"
+                    pending = row == {"Run or stage": "Current run", "Receipt owner": "Coordinator",
+                                      "Completed worker handles": "Unknown", "Runtime status": "Pending",
+                                      "Remaining active handles": "Unknown",
+                                      "Closure evidence or blocker": "Pending final provider observation after pre-release"}
+                    if (len(rows) != 1 or (row["Runtime status"] != "Blocked" and not pending)
                             or row["Run or stage"] != "Current run" or row["Receipt owner"] != "Coordinator"
                             or ledger["parent_thread_id"] != parent["parent_thread_id"]
                             or source.resolve() != Path(parent["provider_session"]).resolve()
@@ -133,7 +137,7 @@ def prior_run_status_thread_ids(artifact_root: Path, current_thread_id: str) -> 
                     evidence = row["Closure evidence or blocker"]
                     if (not handles or set(handles) != set(mappings) or len(set(mappings.values())) != len(mappings)
                             or not isinstance(evidence, str)
-                            or not (evidence.endswith("; dispatched handles: " + "; ".join(handles))
+                            or not (pending or evidence.endswith("; dispatched handles: " + "; ".join(handles))
                                     or (evidence.startswith("Provider closure collection failed: ")
                                         and len(evidence) > len("Provider closure collection failed: ")))):
                         raise ValueError("worker identity mismatch")

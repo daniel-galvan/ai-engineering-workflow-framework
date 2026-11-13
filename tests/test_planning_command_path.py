@@ -662,6 +662,7 @@ class PlanningCommandPath(unittest.TestCase):
                                 "--trace", root / "feature-context-trace.json")
                         self.assertEqual((root / "asset_manifest.json").read_bytes(), asset_bytes)
                 if native_continuation and index == 0:
+                    command("worker_runtime_evidence.py", *collector, "--pending-closure", root / "runtime_closure.json")
                     accepted = json.loads(packet_path.read_text())
                     earlier, parent = parent, provider / ("reopened-" + parent_id + ".jsonl")
                     append(parent, "session_meta", id=parent_id, cwd=str(repository))
@@ -669,6 +670,13 @@ class PlanningCommandPath(unittest.TestCase):
                     append(parent, "response_item", role="user", content=[{"type": "input_text", "text":
                         "Continue this run, preserving accepted findings. Do not repeat completed investigation."}])
                     previous_run = run
+                    projection = json.loads(command("prepare_run.py", "--status-projection", "--continuation",
+                        "--execution-repository", repository, "--work-item", "DEMO-1"))
+                    self.assertEqual(projection["prior_thread_ids"], [child_id])
+                    append(parent, "response_item", type="custom_tool_call", name="exec", call_id="paused-status",
+                           input=projection["projection"])
+                    append(parent, "response_item", type="custom_tool_call_output", call_id="paused-status",
+                           output=[{"type": "text", "text": json.dumps([{"id": child_id, "status": "completed"}])}])
                     run = json.loads(command("prepare_run.py", "--execution-repository", repository,
                         "--work-item", "DEMO-1", "--playbook", playbook, "--continuation",
                         "--input-manifest", run["run_input_manifest"]["path"]))

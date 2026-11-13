@@ -1284,6 +1284,33 @@ class ParentContext(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
             prior_run_status_thread_ids(artifact_root, PARENT)
 
+    def test_pending_closure_recovers_only_verified_worker_identities(self):
+        root = self.root / ".thoughts" / "ITEM-1"
+        root.mkdir(parents=True)
+        session = self.root / "provider.jsonl"
+        ledger = {"parent_thread_id": CHILD, "provider_session": str(session),
+                  "run_started_at": "2026-10-01T00:00:00Z",
+                  "events": [{"Operation": "spawn_agent", "Provider handle": "/root/worker", "Thread ID": TURN}],
+                  "thread_mappings": {"/root/worker": TURN}, "failed_dispatches": []}
+        bindings = {"parent_context": {"parent_thread_id": CHILD, "provider_session": str(session)},
+                    "runtime_evidence": {"run_started_at": ledger["run_started_at"]}}
+        closure = {"runtime_closure": [{"Run or stage": "Current run", "Receipt owner": "Coordinator",
+                    "Completed worker handles": "Unknown", "Runtime status": "Pending",
+                    "Remaining active handles": "Unknown",
+                    "Closure evidence or blocker": "Pending final provider observation after pre-release"}]}
+        for name, value in (("role_bindings.json", bindings), ("runtime_dispatches.json", ledger),
+                            ("runtime_closure.json", closure)):
+            (root / name).write_text(json.dumps(value))
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=ledger):
+            self.assertEqual(prior_run_status_thread_ids(root, CHILD), (TURN,))
+            with patch("scripts.provider_runtime.read_runtime_events", return_value={**ledger, "events": []}):
+                with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+                    prior_run_status_thread_ids(root, CHILD)
+            closure["runtime_closure"][0]["Remaining active handles"] = "0"
+            (root / "runtime_closure.json").write_text(json.dumps(closure))
+            with self.assertRaisesRegex(ValueError, "stale_run_closure_identity_invalid"):
+                prior_run_status_thread_ids(root, CHILD)
+
     def test_blocked_closure_recovers_identities_only_from_verified_dispatch_ledger(self):
         root = self.root / ".thoughts" / "ITEM-1"
         root.mkdir(parents=True)
