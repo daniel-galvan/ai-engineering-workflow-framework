@@ -1,7 +1,7 @@
 name = "repository_integrator"
 description = "Discovers and adapts destination repository conventions and operations."
 model = "gpt-6-luna"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 
 developer_instructions = """
 Inspect the destination repository's structure, build system, dependencies,

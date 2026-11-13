@@ -20,10 +20,12 @@ from scripts.worker_runtime_evidence import read_runtime_events, export_worker_t
 PARENT = "00000000-0000-0000-0000-000000000001"
 CHILD = "00000000-0000-0000-0000-000000000002"
 CASES = {
-    "sentry_issue_remediation": ("sentry_current_state_investigator", "sentry_solution_architect", "documenter"),
-    "feature_delivery": ("current_state_investigator", "dependency_analyst", "solution_architect",
-                         "implementer", "reviewer", "tester", "documenter"),
-    "techops_issue_remediation": ("current_state_investigator", "solution_architect", "documenter"),
+    "sentry_issue_remediation": ("sentry_current_state_investigator", "sentry_dependency_analyst",
+                                 "sentry_repository_integrator", "sentry_solution_architect", "documenter"),
+    "feature_delivery": ("current_state_investigator", "dependency_analyst", "repository_integrator",
+                         "solution_architect", "implementer", "reviewer", "tester", "documenter"),
+    "techops_issue_remediation": ("current_state_investigator", "dependency_analyst", "repository_integrator",
+                                  "solution_architect", "documenter"),
 }
 
 
@@ -598,6 +600,14 @@ class SharedRuntimeAcceptance(unittest.TestCase):
                                        "Evidence ID": evidence_id}]
                 result["integration_decision"] = {"decision": "not_required", "reason": "Single fixture component",
                                                   "evidence_refs": evidence_id}
+            if playbook == "techops_issue_remediation" and role == "dependency_analyst":
+                evidence_id = "E-FP-SYN001"
+                evidence_fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())["evidence"][0]
+                result["evidence"] = [{**dict.fromkeys(evidence_fields, "Synthetic fixture evidence"),
+                                       "Evidence ID": evidence_id}]
+                result["reproduction"] = {"status": "verified_by_evidence", "expected": "Expected fixture behavior",
+                    "observed": "Observed fixture behavior", "check": "Inspect fixture", "environment": "Synthetic",
+                    "revision": "Fixture baseline", "limitation": "No execution", "evidence_refs": evidence_id}
             if playbook == "techops_issue_remediation" and role == "solution_architect":
                 evidence_id = "E-FD-SYN001"
                 evidence_fields = json.loads((preparation.ROOT / "templates/finalization_packet.json").read_text())[

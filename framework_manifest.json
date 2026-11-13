@@ -5,7 +5,7 @@
   "library_release_status": "Coordinated document and plugin release; Git revisions identify snapshots.",
   "plugin_package": {
     "name": "ai-engineering-workflows",
-    "version": "0.5.35+codex.20261113065135"
+    "version": "0.5.35+codex.20261113183858"
   },
   "framework": {
     "path": "frameworks/investigation.md",
@@ -40,7 +40,7 @@
   "provider_policies": {
     "providers/codex/model_effort_policy.md": {
       "version": "0.5.35",
-      "baseline_id": "codex-role-policy-gpt61-terra-sol-luna-v20261112"
+      "baseline_id": "codex-role-policy-gpt61-terra-sol-luna-v20261113"
     }
   },
   "compatibility": {

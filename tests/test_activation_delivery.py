@@ -8,8 +8,10 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
+from datetime import datetime, timezone
 from unittest.mock import patch
 from contextlib import redirect_stdout
 
@@ -43,12 +45,18 @@ class ActivationDelivery(unittest.TestCase):
                                *map(str, args)], capture_output=True, text=True)
 
     def test_every_playbook_delivers_bounded_repository_instruction_lookup(self):
-        for index, playbook in enumerate(("feature_delivery", "techops_issue_remediation", "sentry_issue_remediation")):
+        for index, playbook in enumerate(("feature_delivery", "techops_issue_remediation", "sentry_issue_remediation", "technical_spike")):
             run = prepare.prepare_run(self.root, f"SCOPE-{index}", playbook, None, False,
-                                      input_manifest=self.root / "inputs.json")
+                                      input_manifest=self.root / "inputs.json",
+                                      primary_question="How does the fixture work?" if playbook == "technical_spike" else None,
+                                      started_at=datetime.now(timezone.utc).isoformat() if playbook == "technical_spike" else None)
             packets = json.loads(Path(run["activation_packet_bundle"]["path"]).read_text())["packets"]
             for agent, packet in packets.items():
                 with self.subTest(playbook=playbook, agent=agent):
+                    definition = tomllib.loads(Path(packet["definition"]).read_text())
+                    self.assertTrue(packet["developer_instructions"].startswith(definition["developer_instructions"].strip()))
+                    self.assertEqual(packet["model"], definition["model"])
+                    self.assertEqual(packet["effort"], definition["model_reasoning_effort"])
                     policy = packet["repository_instructions"]
                     self.assertIn(f"Keep every run-created file, including scratch drafts and temporary output, inside {run['artifact_root']}", policy)
                     self.assertIn("do not write them to a separate temporary directory", policy)

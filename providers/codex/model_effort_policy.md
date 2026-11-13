@@ -4,7 +4,7 @@ version: 0.5.35
 status: Pilot
 provider: codex
 provider_independent_profiles: true
-baseline_id: codex-role-policy-gpt61-terra-sol-luna-v20261112
+baseline_id: codex-role-policy-gpt61-terra-sol-luna-v20261113
 owner: Engineering
 last_updated: 2026-11-12
 ---
@@ -13,12 +13,12 @@ last_updated: 2026-11-12
 
 This policy maps reusable framework roles to Codex custom agents for Technical Spike, Feature Delivery, TechOps Issue
 Remediation, Vulnerability Investigation, and Sentry Issue Remediation. It is advanced provider configuration, not a
-normal run input. The role policy below is an initial hypothesis: a baseline to validate against real
-runs, not a claim of optimal model selection.
+normal run input. The role policy below is an initial hypothesis: a baseline to validate against real runs, not a claim
+of optimal model selection.
 
-The baseline is identified by `baseline_id` in front matter and shared across these playbooks. Profiles
-select which roles run; they do not change a role's model or reasoning effort. Record the baseline ID plus requested and
-resolved values in the work record, and revise it only from comparable evaluation evidence.
+The baseline is identified by `baseline_id` in front matter and shared across these playbooks. Profiles select which
+roles run; they do not change a role's model or reasoning effort. Record the baseline ID plus requested and resolved
+values in the work record, and revise it only from comparable evaluation evidence.
 
 Codex policy labels map to configuration values as follows:
 
@@ -31,19 +31,19 @@ Codex policy labels map to configuration values as follows:
 | Max          | `max`                                              |
 | Ultra        | `ultra` (Codex App/runtime-specific; not portable) |
 
-This baseline uses `gpt-6.1-terra` for evidence investigation, `gpt-6.1-sol` for failure analysis, design, and
-review, and `gpt-6-luna` for coordination and focused delivery roles. Verify exact model/effort availability for each
-run. Astra is outside this baseline; adopting it requires a separate policy revision and runtime verification.
+This baseline uses `gpt-6.1-terra` for evidence investigation, `gpt-6.1-sol` for failure analysis, design, and review,
+and `gpt-6-luna` for coordination and focused delivery roles. Verify exact model/effort availability for each run. Astra
+is outside this baseline; adopting it requires a separate policy revision and runtime verification.
 
 GPT-6.1 Sol supports `low`, `medium` (default), `high`, `xhigh`, and `max`. It does not support `none` or `minimal`.
-GPT-6.1 Terra and GPT-6 Luna also support `none`. `Ultra` remains Codex App/runtime-specific and must be verified in
-the target runtime before use.
+GPT-6.1 Terra and GPT-6 Luna also support `none`. `Ultra` remains Codex App/runtime-specific and must be verified in the
+target runtime before use.
 
 ## Evaluation guidance
 
-Preserve output contracts when changing model or effort. Compare runs against the prior baseline using comparable
-tasks and evidence; record quality, elapsed time, human effort, and exposed usage. Do not infer a quality gain from
-model selection alone.
+Preserve output contracts when changing model or effort. Compare runs against the prior baseline using comparable tasks
+and evidence; record quality, elapsed time, human effort, and exposed usage. Do not infer a quality gain from model
+selection alone.
 
 When comparing runs that use images, record the run dates and consider reevaluating results affected by the GPT-6 Sol
 and Luna image encoding fix on September 25, 2026.
@@ -56,21 +56,21 @@ verification explicit. See the
 
 ## Role Baseline
 
-| Role | Codex model | Policy effort | TOML value |
-| --- | --- | --- | --- |
-| Orchestrator | `gpt-6-luna` | Extra High | `xhigh` |
-| Current-State Investigator | `gpt-6.1-terra` | Medium | `medium` |
-| Dependency Analyst | `gpt-6.1-sol` | Medium | `medium` |
-| Repository Integrator | `gpt-6-luna` | High | `high` |
-| Solution Architect | `gpt-6.1-sol` | Medium | `medium` |
-| Reviewer | `gpt-6.1-sol` | Medium | `medium` |
-| Implementer | `gpt-6-luna` | Extra High | `xhigh` |
-| Tester | `gpt-6-luna` | Extra High | `xhigh` |
-| Documenter | `gpt-6-luna` | Light | `low` |
+| Role                       | Codex model     | Policy effort | TOML value |
+| -------------------------- | --------------- | ------------- | ---------- |
+| Orchestrator               | `gpt-6-luna`    | Extra High    | `xhigh`    |
+| Current-State Investigator | `gpt-6.1-terra` | Medium        | `medium`   |
+| Dependency Analyst         | `gpt-6.1-sol`   | Medium        | `medium`   |
+| Repository Integrator      | `gpt-6-luna`    | Extra High    | `xhigh`    |
+| Solution Architect         | `gpt-6.1-sol`   | Medium        | `medium`   |
+| Reviewer                   | `gpt-6.1-sol`   | Medium        | `medium`   |
+| Implementer                | `gpt-6-luna`    | Extra High    | `xhigh`    |
+| Tester                     | `gpt-6-luna`    | Extra High    | `xhigh`    |
+| Documenter                 | `gpt-6-luna`    | High          | `high`     |
 
-This candidate strengthens investigation, diagnosis, design, and review while retaining Luna for other roles. Compare
-it with the prior baseline on representative runs, including root-cause accuracy, corrections, elapsed time, human
-effort, and provider-reported usage. If usage is too high, evaluate retaining Luna for evidence investigation.
+This candidate strengthens investigation, diagnosis, design, and review while retaining Luna for other roles. Compare it
+with the prior baseline on representative runs, including root-cause accuracy, corrections, elapsed time, human effort,
+and provider-reported usage. If usage is too high, evaluate retaining Luna for evidence investigation.
 
 ## Agent selection
 
@@ -86,7 +86,7 @@ Only Sentry-specific investigation uses specialized `sentry_*.toml` agents.
 | --------------------------------------------------- | ------------- | ------------- |
 | Diagnosis, architecture, implementation, and review | Role-specific | Role-specific |
 | Sentry evidence and testing                         | Role-specific | Role-specific |
-| Work-record documentation                           | `gpt-6-luna`  | `low` (Light) |
+| Work-record documentation                           | `gpt-6-luna`  | `high` (High) |
 
 This profile is enforced by the named agent files when the Orchestrator uses those agents. Prompt text alone does not
 override a pinned agent model or effort.
@@ -146,5 +146,5 @@ descendants is not a successful execution of the selected profile.
 Agent configuration selects model and reasoning effort; it does not expose credit accounting. Record provider-reported
 usage when the execution surface exposes it. Never estimate credits from token counts or invent missing values.
 
-Use the [workflow evaluation](../../frameworks/deferred/workflow_evaluation.md) to compare real pilot
-runs. Do not change this policy from one run alone.
+Use the [workflow evaluation](../../frameworks/deferred/workflow_evaluation.md) to compare real pilot runs. Do not
+change this policy from one run alone.

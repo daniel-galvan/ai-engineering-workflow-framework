@@ -95,7 +95,8 @@ def validate_delivery_roles() -> None:
 def validate_documenter_role() -> None:
     documenter_role = (ROOT / "roles" / "documenter.md").read_text()
     documenter_agent = (CODEX_AGENT_DIR / "documenter.toml").read_text()
-    for phrase in ("canonical human-readable", "evaluation or benchmark run", "Provenance:"):
+    for phrase in ("canonical human-readable", "evaluation or benchmark run", "Provenance:",
+                   "review_evidence.py --plan", "--draft-plan"):
         if phrase not in documenter_role:
             fail(f"Documenter role is missing conditional handoff rule: {phrase}")
         if phrase not in documenter_agent:
@@ -312,6 +313,9 @@ def validate_sentry_roles() -> None:
 
 
 def validate_technical_roles() -> None:
+    repository_integrator_role = (ROOT / "roles/repository_integrator.md").read_text()
+    if "hypothesis," not in repository_integrator_role or "discriminating outcomes" not in repository_integrator_role:
+        fail("roles/repository_integrator.md is missing planning-test gating")
     repository_integrator_agent = (CODEX_AGENT_DIR / "repository_integrator.toml").read_text()
     for phrase in ("hypothesis, discriminating outcomes", "Check runner", "defer the command"):
         if phrase not in repository_integrator_agent:

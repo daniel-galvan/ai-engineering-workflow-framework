@@ -313,8 +313,8 @@ The Documenter is complete when:
   of repeated.
 * For bounded remediation, update the existing artifacts with a compact execution delta instead of restating planning
   evidence, targeting completion within 60 seconds.
-* For Standard Sentry planning, run after analytical fan-in and reference evidence instead of copying it into every
-  artifact. Normal runs do not record byte counts or budget exceptions.
+* For Sentry handoffs assigned to a Documenter, reference evidence instead of copying it into every artifact.
+  Normal runs do not record byte counts or budget exceptions.
 * Resolve final consistency findings returned by the Coordinator before terminal handoff; the Coordinator does not edit
   the finalized artifacts.
 * Handoff information is complete.

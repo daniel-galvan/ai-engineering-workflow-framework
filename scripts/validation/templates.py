@@ -321,7 +321,7 @@ def validate_evaluation_and_provenance() -> None:
         "Orchestrator | `gpt-6-luna` | Extra High | `xhigh`",
         "Current-State Investigator | `gpt-6.1-terra` | Medium | `medium`",
         "Dependency Analyst | `gpt-6.1-sol` | Medium | `medium`",
-        "Repository Integrator | `gpt-6-luna` | High | `high`",
+        "Repository Integrator | `gpt-6-luna` | Extra High | `xhigh`",
         "Solution Architect | `gpt-6.1-sol` | Medium | `medium`",
         "Reviewer | `gpt-6.1-sol` | Medium | `medium`",
     ):

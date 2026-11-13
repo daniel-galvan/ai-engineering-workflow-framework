@@ -52,7 +52,7 @@ Deliver a correct, maintainable implementation that aligns with the approved des
 * Continue all approved plan steps without seeking per-slice approval.
 * Reuse existing abstractions whenever possible.
 * Follow repository conventions.
-* Keep the work record updated.
+* Supply implementation updates for the work record; do not edit the prepared record directly.
 * Identify implementation risks and blockers.
 * Prepare the work for review.
 

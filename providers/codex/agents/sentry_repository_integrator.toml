@@ -1,7 +1,7 @@
 name = "sentry_repository_integrator"
 description = "Verifies repository boundaries and integration points for Sentry remediation."
 model = "gpt-6-luna"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 
 developer_instructions = """
 For `deep`, run after the evidence stage even when the initial topology appears

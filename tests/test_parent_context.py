@@ -867,6 +867,58 @@ class ParentContext(unittest.TestCase):
             self.rows.append(self.call("exec_command", cmd=command, workdir=str(self.root)))
             self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
 
+    def test_rejected_collector_session_mismatch_does_not_poison_parent_audit(self):
+        artifact_root = self.root / ".thoughts" / "ITEM-1"
+        artifact_root.mkdir(parents=True)
+        sessions = self.root / ".codex" / "sessions"
+        sessions.mkdir(parents=True)
+        self.source = sessions / f"rollout-parent-{PARENT}.jsonl"
+        other = sessions / "mistyped.jsonl"
+        runtime = {"run_started_at": "2026-10-01T00:00:00Z",
+                   "collector": str(Path(__file__).resolve().parents[1] / "scripts" / "worker_runtime_evidence.py"),
+                   "ledger": str(artifact_root / "runtime_dispatches.json")}
+        args = ["python3", runtime["collector"], "--provider-session", str(other), "--parent-thread-id", PARENT,
+                "--started-at", runtime["run_started_at"], "--ledger", runtime["ledger"],
+                "--worker-thread-id", CHILD, "--agent", "current_state_investigator",
+                "--trace", str(artifact_root / "trace.json")]
+        command = shlex.join(args)
+        message = json.dumps({"status": "blocked", "reason":
+                              "provider_current_session_mismatch: use the current native fragment"}) + "\n"
+        call = self.call("exec_command", cmd=command, workdir=str(self.root))
+        observation = self.command_execution(command, exit_code=2, output=message)
+        self.rows.extend([call, observation])
+        native = {"thread_mappings": {"/root/worker": CHILD}, "events": [
+            {"Provider handle": "/root/worker", "Thread ID": CHILD, "Last dispatch at": runtime["run_started_at"]}]}
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
+            def audit():
+                return self.audit(artifact_root=artifact_root, related_run_thread_ids=(), runtime_evidence=runtime)
+            self.assertEqual(audit()["status"], "passed")
+            other.write_text("unrelated session data")
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            other.unlink()
+            for field, value in (("aggregated_output", "other failure"), ("exit_code", 0), ("status", "completed")):
+                item = observation["payload"]["item"]; saved = item[field]; item[field] = value
+                self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+                item[field] = saved
+            shell = observation["payload"]["item"]["command"]
+            shell[0] = "/tmp/bash"
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            shell[0] = "/bin/bash"
+            fake = command.replace("python3", "/tmp/python3", 1)
+            call["payload"]["arguments"] = json.dumps({"cmd": fake, "workdir": str(self.root)})
+            shell[-1] = fake
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            shell[-1] = command
+            call["payload"]["arguments"] = json.dumps({"cmd": command + "; cat " + str(other)})
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            call["payload"]["arguments"] = json.dumps({"cmd": command, "workdir": str(self.root)})
+            self.rows.append(self.call("exec_command", cmd=command, workdir=str(self.root)))
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+            self.rows.append(self.command_execution(command, exit_code=2, output=message))
+            self.assertEqual(audit()["status"], "passed")
+            self.rows[-1]["payload"]["item"]["exit_code"] = 0
+            self.assertIn("forbidden_context_reference:session_log", audit()["errors"])
+
     def test_recovery_audit_allows_only_prior_run_workers_from_the_bound_recovery(self):
         artifact_root = self.root / ".thoughts" / "ITEM-1"
         artifact_root.mkdir(parents=True)
@@ -1519,6 +1571,22 @@ class ParentContext(unittest.TestCase):
                 "output": [{"type": "text", "text": json.dumps([{"id": CHILD, "status": "completed"}])}]}}])
         result = self.audit(artifact_root=self.root / '.thoughts' / 'ITEM-1', related_run_thread_ids=(CHILD,))
         self.assertEqual(result["status"], "passed", result)
+
+    def test_current_worker_status_projection_survives_reentry_without_runtime_ledger(self):
+        root = self.root / ".thoughts" / "ITEM-1"
+        source = related_run_status_projection_source("ITEM-1", PARENT, (CHILD,))
+        started = {"type": "event_msg", "timestamp": "2026-10-01T00:00:02Z", "payload": {
+            "item": {"type": "SubAgentActivity", "kind": "started", "agent_path": "/root/worker",
+                     "agent_thread_id": CHILD}}}
+        projection = {"type": "response_item", "timestamp": "2026-10-01T00:00:03Z", "payload": {
+            "type": "custom_tool_call", "name": "exec", "call_id": "current-status", "input": source}}
+        self.rows.extend([started, projection])
+        self.assertEqual(self.audit(artifact_root=root, related_run_thread_ids=())["status"], "passed")
+        self.rows[-2:] = [projection, started]
+        self.assertIn("parent_tool_arguments_unavailable", self.audit(artifact_root=root, related_run_thread_ids=())["errors"])
+        self.rows[-2:] = [started, projection]
+        projection["payload"]["input"] = source + "\nawait tools.exec_command({cmd:'cat /secret'});"
+        self.assertIn("parent_tool_arguments_unavailable", self.audit(artifact_root=root, related_run_thread_ids=())["errors"])
 
     def test_tool_operations_parse_only_static_string_concatenation(self):
         from scripts.runtime_checks import _tool_operations

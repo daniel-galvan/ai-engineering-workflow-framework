@@ -837,6 +837,46 @@ def _redact_unstarted_collector(command: str, observations: list[dict], source: 
         return command
 
 
+def _redact_rejected_collector_session(command: str, observations: list[dict], source: Path, thread: str,
+                                       runtime_evidence: dict | None, artifact_root: Path | None,
+                                       known_children: set[str], prior_children: set[str], script_dir: Path,
+                                       previous_collector: Path | None, prior_started_at: datetime | None) -> str:
+    """Recognize the collector's verified refusal before it reads a mismatched session."""
+    if not observations or any(char in command for char in "\n\r;&|<>$`"):
+        return command
+    try:
+        warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                   "Operation not permitted (os error 1)\n")
+        for item in observations:
+            shell = item.get("command", [])
+            output = str(item.get("aggregated_output", "")).removeprefix(warning)
+            if (len(shell) != 3 or shell[0] not in {"/bin/bash", "/bin/sh", "/bin/zsh",
+                                                       "/usr/local/bin/bash", "/opt/homebrew/bin/bash"}
+                    or shell[1] not in {"-c", "-lc"} or shell[2] != command
+                    or item.get("status") != "failed" or item.get("exit_code") != 2
+                    or strict_json_loads(output) != {"status": "blocked", "reason":
+                        "provider_current_session_mismatch: use the current native fragment"}):
+                return command
+        args = shlex.split(command)
+        if not args or (args[0] != "python3" and Path(args[0]).resolve() != Path(sys.executable).resolve()):
+            return command
+        index = args.index("--provider-session") + 1
+        rejected = Path(args[index])
+        if not rejected.is_absolute() or rejected.exists() or rejected.is_symlink() or rejected.resolve() == source.resolve():
+            return command
+        proxy = args.copy()
+        proxy[index] = str(source)
+        safe = _redact_current_runtime_collection(shlex.join(proxy), source, thread, runtime_evidence,
+            artifact_root, known_children, prior_children, script_dir, previous_collector, prior_started_at)
+        if safe == shlex.join(proxy):
+            return command
+        redacted = shlex.split(safe)
+        redacted[redacted.index("--provider-session") + 1] = "<rejected-parent-session>"
+        return shlex.join(redacted)
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
+        return command
+
+
 def _redact_workflow_failure(command: str, source: Path, thread: str, runtime_evidence: dict | None,
                              artifact_root: Path | None, script_dir: Path) -> str:
     if not runtime_evidence or artifact_root is None:
@@ -913,6 +953,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         ledger_present = (artifact_root is not None and (artifact_root / "runtime_dispatches.json").is_file()
                           if prior_dispatch_ledger_present is None else prior_dispatch_ledger_present)
         turn, operations, sequenced_operations, children, errors = None, [], [], set(known_children), []
+        observed_children: set[str] = set()
         command_observations: dict[str, list[dict]] = {}
         pending_related_run_status = {}
         related_run_probe_attempts = 0
@@ -931,6 +972,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     break
                 turn = payload.get("turn_id")
                 operations, sequenced_operations, children, errors = [], [], set(known_children), []
+                observed_children = set()
                 command_observations = {}
                 pending_related_run_status = {}
                 related_run_probe_attempts = 0
@@ -942,6 +984,9 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 item = payload.get("item", {})
                 if item.get("type") == "SubAgentActivity" and item.get("kind") == "started":
                     children.add(item.get("agent_thread_id"))
+                    child = item.get("agent_thread_id")
+                    if isinstance(child, str) and UUID.fullmatch(child):
+                        observed_children.add(child)
                 elif (payload.get("type") == "item_completed" and item.get("type") == "CommandExecution"
                       and isinstance(item.get("command"), list) and item["command"]
                       and isinstance(item["command"][-1], str)):
@@ -969,11 +1014,11 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 raw_source = payload.get("input") if payload.get("type") == "custom_tool_call" else None
                 try:
                     ids_to_check = [("prior", prior_ids)]
-                    if known_children:
+                    if known_children or observed_children:
                         # Later dispatches cannot retroactively change an earlier exact status query.
                         observed = timestamp(row["timestamp"])
                         at_call = {event["Thread ID"] for event in native_events
-                                   if timestamp(event["Last dispatch at"]) <= observed}
+                                   if timestamp(event["Last dispatch at"]) <= observed} | observed_children
                         if at_call:
                             ids_to_check.extend((("current", tuple(sorted(at_call)),),
                                                  ("combined", tuple(sorted(set(prior_ids) | at_call)),)))
@@ -1074,10 +1119,15 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
     for operation in operations:
         arguments = operation.get("arguments", {})
         command = arguments.get("cmd") if operation.get("name") == "exec_command" else None
-        if isinstance(command, str) and command_counts.get(command) == 1 and command in command_observations:
+        if (isinstance(command, str) and command in command_observations
+                and command_counts.get(command) == len(command_observations[command])):
             redacted = _redact_unstarted_collector(command, command_observations[command], source, thread,
                 runtime_evidence, artifact_root, known_children, set(prior_ids), script_dir,
                 audit_previous_collector, prior_started_at)
+            if redacted == command:
+                redacted = _redact_rejected_collector_session(command, command_observations[command], source, thread,
+                    runtime_evidence, artifact_root, known_children, set(prior_ids), script_dir,
+                    audit_previous_collector, prior_started_at)
             if redacted != command:
                 operation["arguments"] = {**arguments, "cmd": redacted}
     details = []

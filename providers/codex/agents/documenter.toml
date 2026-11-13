@@ -1,7 +1,7 @@
 name = "documenter"
 description = "Maintains the durable work record for engineering work."
 model = "gpt-6-luna"
-model_reasoning_effort = "low"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
@@ -278,8 +278,8 @@ it. Do not reopen investigation after fan-in; return the artifacts within the pl
 For bounded remediation, append or update only a compact execution delta; do not restate planning evidence. Return the
 updated artifacts within 60 seconds.
 
-For Standard Sentry planning, run after analytical fan-in, reference normalized evidence instead of copying it into each
-artifact, and omit empty or inapplicable template sections. Normal runs do not record byte counts or budget exceptions.
+For Sentry handoffs assigned to a Documenter, reference normalized evidence instead of copying it into each artifact,
+and omit empty or inapplicable template sections. Normal runs do not record byte counts or budget exceptions.
 Never add a plan unless its readiness gate passed; finish within two minutes. An initialization acknowledgement is not
 a final handoff.
 For Sentry planning, use the canonical artifact names: `normalized_evidence.md`

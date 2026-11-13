@@ -331,8 +331,8 @@ def validate_final_documenter_rules() -> None:
         (documenter_role, "roles/documenter.md"),
         (documenter_agent, "providers/codex/agents/documenter.toml"),
     ):
-        if "Standard Sentry planning" not in text or "Normal runs do not record byte counts or budget exceptions" not in text:
-            fail(f"{label} is missing Standard Sentry artifact control")
+        if "Sentry handoffs assigned to a Documenter" not in text or "Normal runs do not record byte counts or budget exceptions" not in text:
+            fail(f"{label} is missing Sentry handoff artifact control")
         if (
             "runtime-managed worktrees are not" not in text
             or "artifact roots unless" not in text

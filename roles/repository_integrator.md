@@ -57,8 +57,8 @@ preserving architectural consistency.
 
 * Understand the destination architecture.
 * Validate architectural alignment.
-* Run the smallest safe existing destination build or test baseline before
-  final design.
+* During planning, run the smallest safe destination build or test only when the assignment names the hypothesis,
+  discriminating outcomes, and disposition it can change. Check runner availability first; otherwise defer it.
 * Define integration points.
 * Adapt interfaces where necessary.
 * Identify repository conventions.
