@@ -72,11 +72,14 @@ class ParentContext(unittest.TestCase):
         command = "python3 " + str(root / "scripts/run_preflight.py")
         result = {"status": "passed", "framework_revision": "a" * 40, "framework_root": str(root),
                   "framework_status": "clean", "plugin_version": "0.5.33+fixture"}
-        for change in ("valid", "turn", "revision", "version", "root", "script", "shell", "interpreter", "failed", "output"):
+        for change in ("valid", "warning", "turn", "revision", "version", "root", "script", "shell", "interpreter", "failed", "output"):
             rows = json.loads(json.dumps(self.rows))
             item = {"type": "CommandExecution", "command": ["bash", "-lc", command],
                     "status": "completed", "exit_code": 0, "aggregated_output": json.dumps(result)}
-            if change == "turn": rows[-1]["payload"]["turn_id"] = CHILD
+            if change == "warning":
+                item["aggregated_output"] = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                    "Operation not permitted (os error 1)\n" + item["aggregated_output"])
+            elif change == "turn": rows[-1]["payload"]["turn_id"] = CHILD
             elif change in {"revision", "version", "root"}:
                 fields = {"revision": "framework_revision", "version": "plugin_version", "root": "framework_root"}
                 altered = dict(result); altered[fields[change]] = "other"
@@ -89,7 +92,8 @@ class ParentContext(unittest.TestCase):
             rows.append({"type": "event_msg", "payload": {"type": "item_completed", "item": item}})
             self.source.write_text("".join(json.dumps(row) + "\n" for row in rows))
             with self.subTest(change=change):
-                self.assertEqual(native_preflight_observed(self.source, TURN, root, "a" * 40, "0.5.33+fixture"), change == "valid")
+                self.assertEqual(native_preflight_observed(self.source, TURN, root, "a" * 40, "0.5.33+fixture"),
+                                 change in {"valid", "warning"})
 
     def test_native_finalization_requires_exact_original_command_and_report(self):
         from scripts.provider_runtime import native_finalization_observed
@@ -1474,6 +1478,25 @@ class ParentContext(unittest.TestCase):
                 self.assertIn('parent_framework_content_before_preflight',
                               self.audit(framework_root=framework, require_preflight_order=True)['errors'])
 
+    def test_preflight_allows_only_polling_its_returned_session(self):
+        framework = self.root / "framework"
+        command = f"python3 {framework}/scripts/run_preflight.py"
+        source = f'const r = await tools.exec_command({{cmd:{json.dumps(command)}}});\ntext(JSON.stringify(r));'
+        call = {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
+            "call_id": "preflight", "input": source}}
+        output = {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "preflight",
+            "output": [{"type": "input_text", "text": json.dumps({"session_id": 123, "output": ""})}]}}
+        header = self.rows[:2] + [call, output]
+        self.rows = header + [self.call("write_stdin", session_id=123, chars="")]
+        self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
+        for args in ({"session_id": 124}, {"session_id": 123, "chars": "malicious input"}):
+            self.rows = header + [self.call("write_stdin", **args)]
+            self.assertIn("parent_framework_content_before_preflight",
+                          self.audit(framework_root=framework, require_preflight_order=True)["errors"])
+        self.rows = self.rows[:2] + [self.call("command_session", cmd=command, session_id=123)]
+        self.assertIn("parent_framework_content_before_preflight",
+                      self.audit(framework_root=framework, require_preflight_order=True)["errors"])
+
     def test_preflight_order_blocks_workflow_reads_until_preflight_call(self):
         framework = self.root / "framework"
         skill = framework / "skills" / "run" / "SKILL.md"
@@ -1495,6 +1518,11 @@ class ParentContext(unittest.TestCase):
         self.rows.extend([self.call("exec_command", cmd=preflight), observed_preflight,
                           self.call("exec_command", cmd=f"sed -n '1,20p' {playbook}")])
         self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
+
+        warning = "WARNING: proceeding, even though we could not create PATH aliases: Operation not permitted (os error 1)\n"
+        observed_preflight["payload"]["item"]["aggregated_output"] = warning + json.dumps({"status": "passed"})
+        self.assertEqual(self.audit(framework_root=framework, require_preflight_order=True)["status"], "passed")
+        observed_preflight["payload"]["item"]["aggregated_output"] = json.dumps({"status": "passed"})
 
         self.rows = self.rows[:2] + [self.call("exec_command", cmd=f"cat '{skill}'"),
             self.call("exec_command", cmd=preflight), observed_preflight,

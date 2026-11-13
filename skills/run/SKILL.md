@@ -104,6 +104,9 @@ invocation: run package preflight first, then the required status projection, be
    process with exit status 0 as a passed
    preflight even when the app hides stdout; do not rerun it solely because the JSON payload is not visible. Retry only
    after a timeout, nonzero exit, or an objectively malformed result whose status cannot be determined.
+   For a `functions.exec` launch, use `const result = await tools.exec_command({...});` followed by
+   `text(JSON.stringify(result));` so the audit can bind a yielded session ID to that command. A yield is not a timeout:
+   poll that same session without input until it finishes; do not launch a second preflight while the first is running.
    Capture the current-turn start from provider metadata when available; otherwise read the clock immediately after
    this preflight. Use that timestamp only for elapsed-time reporting on an early source-access block.
 3. On a preflight block, stop this invocation immediately after capturing and reporting the exact preflight JSON. Do
@@ -742,6 +745,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    decision that bounded discovery cannot resolve. For a material user-owned decision, keep the same run at
    `awaiting_input`, ask it in the current chat with `functions.request_user_input_async` when available, and wait for
    an explicit user reply. The async tool returning accepted only acknowledges the request; it is not an answer.
+   Ask separate concise questions for independent decisions. While waiting, continue useful independent work, including
+   an explicitly Draft plan when the playbook permits; keep the decision open and reconcile any answer before accepting
+   the Draft. Do not publish a completed handoff until the decision gate permits it.
    A blocking `functions.request_user_input` response with empty or missing answers is also unanswered. Do not
    continue dependent work or finalize/publish a completed handoff while it is unanswered. Record the response in the
    current-run decision record, return it to the owning worker if the result changes, and resume the same run. If the
@@ -849,8 +855,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    invocations; `--trace` and `--transition` are mutually exclusive. Export tool activity through
    `worker_runtime_evidence.py` with its parent
    session, start and ledger flags, plus `--worker-thread-id <verified-child-thread-id> --agent <role> --trace <path>`.
-   Prefer omitting `--observation`: the exporter derives the fresh status directly from native inventory or the
-   literal targeted status projection below. Alternatively, use `--observation <collector-closure-json>` with the
+   Refresh `list_agents` after the worker finishes; if it omits the terminal status, run the literal targeted status
+   projection below before collecting, using the verified child UUID. Prefer omitting `--observation`: the
+   exporter derives the fresh status directly from native inventory or the literal targeted status projection below.
+   Alternatively, use `--observation <collector-closure-json>` with the
    prepared collector's receipt. If collection returns `status_projections`, execute each complete source through
    `functions.exec` without modification, then rerun the same collector; do not reformat the returned status metadata.
    Do not construct or normalize an observation with a custom script, computed tool

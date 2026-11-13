@@ -110,6 +110,9 @@ class ActivationDelivery(unittest.TestCase):
         self.assertIn("review_evidence.py --plan", message)
         self.assertIn("append your own populated `handoff` row to both", message)
         self.assertIn("selected playbook, closest alternative, and rationale", message)
+        self.assertIn("check the packet's recovered work-item title", message)
+        self.assertIn("register it in", message)
+        self.assertIn("link it in the final handoff", message)
         techops = prepare.prepare_run(self.root, "TECHOPS-1", "techops_issue_remediation", None, False,
                                      input_manifest=self.root / "inputs.json")
         packet = json.loads(Path(techops["activation_packet_bundle"]["path"]).read_text())["packets"]["documenter"]

@@ -848,9 +848,11 @@ proceed.
 ## Interactive Decision Gate
 
 After bounded discovery, a material user-owned question that changes whether or how the workflow can proceed is an
-active gate. The Coordinator must ask the smallest answerable question in the same user-facing run session and wait for
-the user's response. `awaiting_input` is a paused, nonterminal state while that answer is pending; a Clarification Brief
-alone does not satisfy the gate. Do not continue dependent work or finalize/publish a completed handoff while waiting.
+active gate. The Coordinator must ask separate, concise questions for independent choices in the same user-facing run
+session and wait for the user's response. `awaiting_input` is a paused, nonterminal state while that answer is pending;
+a Clarification Brief alone does not satisfy the gate. Continue useful independent work, including an explicitly Draft
+plan when the selected playbook permits it, while preserving unresolved decisions. Do not continue dependent work or
+finalize/publish a completed handoff while waiting. Reconcile a response with any in-progress Draft before accepting it.
 
 Before Documenter activation or terminal finalization, reconcile unanswered user questions from the originating request
 and current-run intake with accepted evidence and explicit user decisions. A fresh-run launcher MUST carry each explicit

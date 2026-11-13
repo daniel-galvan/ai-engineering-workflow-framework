@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+PATH_ALIAS_WARNING = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                      "Operation not permitted (os error 1)\n")
 
 DELIVERY_WORKERS = {"implement": "implementer", "review": "reviewer", "validate": "tester", "handoff": "documenter"}
 RELATED_RUN_STATUS_FIELDS = {"id", "status", "hostId", "kind", "updatedAt"}
@@ -845,11 +847,9 @@ def _redact_rejected_collector_session(command: str, observations: list[dict], s
     if not observations or any(char in command for char in "\n\r;&|<>$`"):
         return command
     try:
-        warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
-                   "Operation not permitted (os error 1)\n")
         for item in observations:
             shell = item.get("command", [])
-            output = str(item.get("aggregated_output", "")).removeprefix(warning)
+            output = str(item.get("aggregated_output", "")).removeprefix(PATH_ALIAS_WARNING)
             if (len(shell) != 3 or shell[0] not in {"/bin/bash", "/bin/sh", "/bin/zsh",
                                                        "/usr/local/bin/bash", "/opt/homebrew/bin/bash"}
                     or shell[1] not in {"-c", "-lc"} or shell[2] != command
@@ -955,6 +955,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         turn, operations, sequenced_operations, children, errors = None, [], [], set(known_children), []
         observed_children: set[str] = set()
         command_observations: dict[str, list[dict]] = {}
+        pending_command_outputs: dict[str, str] = {}
         pending_related_run_status = {}
         related_run_probe_attempts = 0
         verified_related_run_status_probes = 0
@@ -974,6 +975,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 operations, sequenced_operations, children, errors = [], [], set(known_children), []
                 observed_children = set()
                 command_observations = {}
+                pending_command_outputs = {}
                 pending_related_run_status = {}
                 related_run_probe_attempts = 0
                 verified_related_run_status_probes = 0
@@ -996,6 +998,18 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                   and row.get("type") == "response_item" and payload.get("type") in {
                       "function_call_output", "custom_tool_call_output"}):
                 call_id = payload.get("call_id")
+                if call_id in pending_command_outputs:
+                    command = pending_command_outputs.pop(call_id)
+                    try:
+                        blocks = payload.get("output", [])
+                        results = [json.loads(block["text"]) for block in blocks
+                                   if isinstance(block, dict) and block.get("text", "").startswith('{"')]
+                        if (not payload.get("isError") and payload.get("status") not in {"failed", "error"}
+                                and len(results) == 1 and type(results[0].get("session_id")) is int):
+                            sequenced_operations.append({"command_session": {
+                                "cmd": command, "session_id": results[0]["session_id"]}})
+                    except (ValueError, TypeError, KeyError, AttributeError):
+                        pass
                 if call_id in pending_related_run_status:
                     expected_ids = pending_related_run_status.pop(call_id)
                     if payload.get("isError") or payload.get("status") in {"failed", "error"}:
@@ -1059,6 +1073,11 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                              or _incomplete_literal_command(raw_source, _tool_operations) or [])
                 if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(raw_source or ""):
                     errors.append("parent_tool_arguments_unavailable")
+                if (len(calls) == 1 and calls[0][0] == "exec_command" and isinstance(raw_source, str)
+                        and re.fullmatch(r'\s*const\s+(\w+)\s*=\s*await\s+tools\.exec_command\(\s*\{[^{}]*\}'
+                                         r'\s*\)\s*;\s*text\(JSON\.stringify\(\1\)\)\s*;?\s*', raw_source)
+                        and isinstance(payload.get("call_id"), str)):
+                    pending_command_outputs[payload["call_id"]] = calls[0][1].get("cmd")
                 for name, arguments in calls:
                     sequenced_operations.append({"name": name, "arguments": arguments})
                     if name == "exec_command":
@@ -1156,7 +1175,19 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
     preflight_path = (framework_root.expanduser().resolve() / "scripts" / "run_preflight.py").resolve()
     skill_path = (framework_root.expanduser().resolve() / "skills" / "run" / "SKILL.md").resolve()
     completed_preflight = False
+    preflight_commands = set()
+    preflight_sessions = set()
     for operation in operations:
+        if "command_session" in operation:
+            args = operation["command_session"]
+            if args.get("cmd") in preflight_commands:
+                preflight_sessions.add(args.get("session_id"))
+            continue
+        if operation.get("name") == "write_stdin" and not completed_preflight:
+            args = operation.get("arguments", {})
+            if (type(args.get("session_id")) is int and args["session_id"] in preflight_sessions
+                    and args.get("chars", "") == ""):
+                continue
         if operation.get("name") != "exec_command":
             if not completed_preflight:
                 return ["parent_framework_content_before_preflight"]
@@ -1193,11 +1224,12 @@ def _preflight_order_errors(operations: list[dict], framework_root: Path,
         if not completed_preflight and not bootstrap and not is_preflight:
             return ["parent_framework_content_before_preflight"]
         if is_preflight:
+            preflight_commands.add(command)
             observations = command_observations.get(command, [])
             if len(observations) == 1:
                 observed = observations[0]
                 try:
-                    output = json.loads(str(observed.get("aggregated_output", "")))
+                    output = json.loads(str(observed.get("aggregated_output", "")).removeprefix(PATH_ALIAS_WARNING))
                 except json.JSONDecodeError:
                     output = None
                 completed_preflight = (
@@ -1401,7 +1433,7 @@ def _native_preflight_rows(stream, turn_id: str, root: Path, revision: str, plug
                     or Path(args[1]).resolve() != root / "scripts/run_preflight.py"):
                 continue
             try:
-                result = json.loads(item.get("aggregated_output", ""))
+                result = json.loads(item.get("aggregated_output", "").removeprefix(PATH_ALIAS_WARNING))
             except (ValueError, TypeError):
                 continue
             if (isinstance(result, dict) and result.get("status") == "passed"

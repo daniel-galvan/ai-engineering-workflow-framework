@@ -329,6 +329,9 @@ reserve `unknown` for an unestablished problem or scope.
 Before returning, provide one structured packet for `scripts/finalize_work_record.py` and no Markdown record edits. A
 nonzero renderer or validator result is a correction loop sent to this same Documenter; correct the packet and do not
 report finalization as passed until it succeeds.
+For Feature Delivery or TechOps planning, before returning check the packet's recovered work-item title and every
+required handoff artifact. For an awaiting-input Draft, create the separate `clarification_brief.md`, register it in
+Durable Artifacts, and link it in the final handoff. Report missing inputs rather than claiming the handoff is complete.
 
 For Feature Delivery remediation, require validation_report.md coverage and candidate verification before handoff.
 Preserve actual failed/blocked checks, owners and next actions. Close passed automated checks and list only concrete

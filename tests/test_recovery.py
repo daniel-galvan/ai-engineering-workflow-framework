@@ -473,7 +473,7 @@ class V6Recovery(unittest.TestCase):
             stream.write(json.dumps({"timestamp": dispatch, "type": "response_item", "payload": {
                 "type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
                 "arguments": json.dumps({"task_name": "evidence_retry", "message": json.loads(guarded.stdout)["activation_message"],
-                    "fork_turns": "none", "model": "gpt-6-luna", "reasoning_effort": "high"})}}) + "\n")
+                    "fork_turns": "none", "model": envelope["model"], "reasoning_effort": envelope["effort"]})}}) + "\n")
             stream.write(json.dumps({"timestamp": dispatch, "type": "event_msg", "payload": {"item": {
                 "type": "SubAgentActivity", "kind": "started", "agent_path": fresh_handle,
                 "agent_thread_id": fresh_child}}}) + "\n")
@@ -493,7 +493,7 @@ class V6Recovery(unittest.TestCase):
             {"timestamp": "2026-10-09T20:03:31Z", "type": "response_item", "payload": {
                 "type": "custom_tool_call_output", "call_id": "contract", "output": contract_path.read_text()}},
             {"timestamp": "2026-10-09T20:03:32Z", "type": "turn_context", "payload": {
-                "turn_id": "00000000-0000-0000-0000-000000000005", "model": "gpt-6-luna", "effort": "high"}},
+                "turn_id": "00000000-0000-0000-0000-000000000005", "model": envelope["model"], "effort": envelope["effort"]}},
             {"timestamp": "2026-10-09T20:03:33Z", "type": "response_item", "payload": {
                 "type": "message", "role": "assistant", "phase": "final_answer",
                 "content": [{"type": "output_text", "text": json.dumps({

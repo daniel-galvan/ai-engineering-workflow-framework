@@ -468,24 +468,26 @@ class TechOpsCorrections(unittest.TestCase):
                 "Source or path": "User", "Authority": "User", "Status": "Verified"}]}))
             run = prepare.prepare_run(root, "HASH-METADATA", "techops_issue_remediation", None, False,
                                       input_manifest=inputs)
+            binding = run["bindings"]["current_state_investigator"]
+            observed = f"{binding['model']} / {binding['effort']}"
             packet_path = Path(run["finalization_packet"])
             packet = json.loads(packet_path.read_text())
             template = json.loads((prepare.ROOT / "templates/finalization_packet.json").read_text())
             result = {"run_id": packet["identity"]["Run ID"], "worker_result": {
                 **dict.fromkeys(template["worker_results"][0], "Current evidence"),
                 "Worker": "issue-evidence", "Outcome": "complete",
-                "Actual model/effort": "gpt-6-luna / high"}, "evidence": [
+                "Actual model/effort": observed}, "evidence": [
                     {**dict.fromkeys(template["evidence"][0], "Observed"), "Evidence ID": "E-ISS-1"}],
                 "integration_decision": {"decision": "not_required", "reason": "One component", "evidence_refs": "E-ISS-1"}}
             trace_path, trace = stage_worker_response(run, "current_state_investigator", result,
                                                       include_runtime_configuration=False)
             self.assertIsNone(trace["runtime_configurations"][0]["model"])
             self.assertIsNone(trace["runtime_configurations"][0]["effort"])
-            self.assertEqual(trace["activation_metadata"], {"model": "gpt-6-luna", "effort": "high"})
+            self.assertEqual(trace["activation_metadata"], {"model": binding["model"], "effort": binding["effort"]})
             merge_result(packet_path, "current_state_investigator", trace=trace_path)
             packet = json.loads(packet_path.read_text())
             worker = next(row for row in packet["workers"] if row["Worker"] == "issue-evidence")
-            self.assertEqual(worker["Provider-observed model/effort"], "gpt-6-luna / high")
+            self.assertEqual(worker["Provider-observed model/effort"], observed)
 
     def test_techops_pre_release_rejects_nonterminal_planning_identity(self):
         packet = {"identity": {"Playbook / version": "playbooks/techops_issue_remediation.md / 0.5.33",

@@ -99,6 +99,8 @@ maintenance.
   For an `awaiting_input` partial Draft, use `--draft-plan <plan-path>` instead; unverified applicability remains
   explicit. Correct errors in the current turn and report unresolved errors to the Coordinator. Finalization still
   checks the complete packet and artifact set.
+* Before returning a Feature Delivery or TechOps planning handoff, verify the recovered work-item title and required
+  artifacts; register and link the separate `clarification_brief.md` for an awaiting-input Draft.
 * For Technical Spike, publish `spike_report.md` from its validated candidate after analytical fan-in and do not create
   `implementation_plan.md`.
 * Record findings from every role.
