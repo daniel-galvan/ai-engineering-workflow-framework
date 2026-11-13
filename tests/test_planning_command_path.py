@@ -20,6 +20,7 @@ from scripts.review_evidence import (
     DESIGN_COLUMNS, SOLUTION_COLUMNS, VALIDATION_COLUMNS, candidate_fingerprint,
 )
 from scripts import finalize_work_record as finalizer
+from scripts.provider_runtime import related_run_status_projection_source
 from tests import test_packaged_lifecycle as packaging
 
 
@@ -691,6 +692,13 @@ class PlanningCommandPath(unittest.TestCase):
                                  "--ledger", run["runtime_evidence"]["ledger"])
                     append(parent, "response_item", type="function_call", name="mcp__codex_app__read_thread",
                            call_id="continued-worker-status", arguments=json.dumps({"threadId": child_id}))
+                if index == 1:
+                    selected = next(iter(completed.values()))
+                    projection = related_run_status_projection_source("DEMO-1", parent_id, (selected,))
+                    append(parent, "response_item", type="custom_tool_call", name="exec",
+                           call_id="partial-current-status", input=projection)
+                    append(parent, "response_item", type="custom_tool_call_output", call_id="partial-current-status",
+                           output=[{"type": "text", "text": json.dumps([{"id": selected, "status": "completed"}])}])
             if playbook == "feature_delivery":
                 followup_guard = ("--activation-packet-bundle", run["activation_packet_bundle"]["path"],
                                   "--expected-agent", "documenter", "--expected-bundle-sha256",

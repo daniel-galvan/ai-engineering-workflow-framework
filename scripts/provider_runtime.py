@@ -977,6 +977,12 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                         if at_call:
                             ids_to_check.extend((("current", tuple(sorted(at_call)),),
                                                  ("combined", tuple(sorted(set(prior_ids) | at_call)),)))
+                            header = re.match(r"^const priorIds = (\[[^\n]*\]);\n", raw_source or "")
+                            if header:
+                                selected = strict_json_loads(header[1])
+                                if (isinstance(selected, list) and selected and all(isinstance(x, str) for x in selected)
+                                        and len(selected) == len(set(selected)) and set(selected) <= at_call):
+                                    ids_to_check.append(("current", tuple(selected)))
                     matched_projection_scope, matched_projection_ids = next(((scope, ids) for scope, ids in ids_to_check
                         if artifact_root is not None and isinstance(raw_source, str)
                         and raw_source.strip() == related_run_status_projection_source(

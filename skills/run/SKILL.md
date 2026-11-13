@@ -595,6 +595,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    and require an allowed result immediately before that worker's spawn call. Do not batch guards after dispatching
    workers. For a fresh Codex spawn, copy the allowed response's `launch_arguments` into `spawn_agent` alongside
    the task name and emitted activation message; do not rely on inherited model or effort defaults.
+   An allowed guard prepares an activation; it does not start a worker. Wait for or report a worker as active only
+   after a successful spawn or follow-up dispatch, using its returned handle. If new input arrives between the guard
+   and dispatch, reconcile the assignment and run the guard again before dispatch; do not wait for an unstarted worker.
    A guard run after its worker started does not satisfy the activation barrier: stop further dispatch, record
    `activation_sequence_nonconformant`, set `profile_status: blocked` and `Workflow outcome: blocked`, and reconcile
    already-started workers without claiming the check passed. Preserve a ready plan as `Engineering outcome: plan_only`.

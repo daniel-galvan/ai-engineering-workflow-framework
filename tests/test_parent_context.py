@@ -1122,6 +1122,34 @@ class ParentContext(unittest.TestCase):
             with patch("scripts.provider_runtime.current_parent_session", return_value=self.source):
                 self.assertEqual(status_projection(self.root, "ECHO-2806", self.source, continuation=True)["prior_thread_ids"], [])
 
+    def test_current_worker_status_projection_accepts_verified_subset_only(self):
+        root = self.root / ".thoughts" / "ITEM-1"
+        root.mkdir(parents=True)
+        other = "00000000-0000-0000-0000-000000000004"
+        native = {"thread_mappings": {"/root/a": CHILD, "/root/b": other}, "events": [
+            {"Provider handle": "/root/a", "Thread ID": CHILD, "Last dispatch at": "2026-10-01T00:00:01Z"},
+            {"Provider handle": "/root/b", "Thread ID": other, "Last dispatch at": "2026-10-01T00:00:01Z"}]}
+        projection = related_run_status_projection_source(root.name, PARENT, (CHILD,))
+        self.rows.append({"type": "response_item", "timestamp": "2026-10-01T00:00:02Z", "payload": {
+            "type": "custom_tool_call", "name": "exec", "call_id": "status", "input": projection}})
+        with patch("scripts.provider_runtime.read_runtime_events", return_value=native):
+            result = self.audit(artifact_root=root, runtime_evidence={"run_started_at": "2026-10-01T00:00:00Z"},
+                                related_run_thread_ids=())
+            self.assertEqual(result["status"], "passed", result)
+            self.assertEqual(result["verified_related_run_status_probes"], 0)
+            future = {**native, "events": [dict(native["events"][0])]}
+            future["events"][0]["Last dispatch at"] = "2026-10-01T00:00:03Z"
+            future["events"].append(native["events"][1])
+            with patch("scripts.provider_runtime.read_runtime_events", return_value=future):
+                self.assertIn("parent_tool_arguments_unavailable", self.audit(artifact_root=root,
+                    runtime_evidence={"run_started_at": "2026-10-01T00:00:00Z"}, related_run_thread_ids=())["errors"])
+            for invalid in (projection + '\nawait tools.exec_command({cmd:"cat /secret"});',
+                            related_run_status_projection_source(root.name, PARENT, (TURN,)),
+                            related_run_status_projection_source(root.name, PARENT, (CHILD, CHILD))):
+                self.rows[-1]["payload"]["input"] = invalid
+                self.assertIn("parent_tool_arguments_unavailable", self.audit(artifact_root=root,
+                    runtime_evidence={"run_started_at": "2026-10-01T00:00:00Z"}, related_run_thread_ids=())["errors"])
+
     def test_related_status_probe_requires_correlated_minimal_output(self):
         artifact_root = self.root / ".thoughts" / "ECHO-2806"
         artifact_root.mkdir(parents=True)
