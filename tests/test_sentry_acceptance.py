@@ -32,7 +32,7 @@ class V7SentryAcceptance(unittest.TestCase):
 
     def test_native_wrong_launch_and_inherited_context_are_rejected(self):
         for index, changes in enumerate(({"fork_turns": "all", "model": None, "reasoning_effort": None},
-                                          {"model": "wrong-model"}, {"reasoning_effort": "medium"})):
+                                          {"model": "wrong-model"}, {"reasoning_effort": "low"})):
             with self.subTest(changes=changes):
                 fixture = self.fixture(str(index))
                 arguments = json.loads(fixture[5][1]["payload"]["arguments"])
@@ -54,11 +54,12 @@ class V7SentryAcceptance(unittest.TestCase):
 
     def test_matching_native_configuration_is_preserved(self):
         fixture = self.fixture()
-        fixture[6].insert(1, fixture[4](2, "turn_context", model="gpt-6.1-sol", effort="low"))
+        binding = fixture[0]["bindings"][fixture[2]]
+        fixture[6].insert(1, fixture[4](2, "turn_context", model=binding["model"], effort=binding["effort"]))
         trace, ledger = self.builder.export(fixture)
         self.assertEqual(trace["audit"]["status"], "passed")
         self.assertEqual(trace["launch"]["fork_turns"], "none")
-        self.assertEqual(trace["runtime_configurations"][0]["model"], "gpt-6.1-sol")
+        self.assertEqual(trace["runtime_configurations"][0]["model"], binding["model"])
         self.assertEqual(launch_binding_errors(trace, fixture[1], fixture[2], ledger), [])
 
     def test_native_inventory_builds_exact_closure_and_rejects_running_or_stale(self):

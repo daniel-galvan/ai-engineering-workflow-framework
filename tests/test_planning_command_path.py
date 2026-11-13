@@ -238,6 +238,14 @@ class PlanningCommandPath(unittest.TestCase):
                     self.assertFalse(any(row.get("Evidence ID") == "E-FC-001" for row in recovered["evidence"]))
                     self.assertTrue(any(row.get("Claim ID") == "CL-IA-001" for row in recovered["claims"]))
                     self.assertTrue(any(row.get("Evidence ID") == "E-IA-001" for row in recovered["evidence"]))
+            # Record a batched assignment write in the parent trace for both fresh and recovered runs.
+            assignment_body = json.dumps({"objective": "Keep artifacts under " + str(root) + ".",
+                                          "input_paths": [str(source)]})
+            batched = "\n".join("cat > " + shlex.quote(str(root / (name + ".json"))) +
+                                " <<'ASSIGNMENT'\n" + assignment_body + "\nASSIGNMENT"
+                                for name in ("first-assignment", "second-assignment"))
+            append(parent, "response_item", type="function_call", name="exec_command",
+                   arguments=json.dumps({"cmd": batched, "workdir": str(repository)}))
             guide_row = next(row for row in json.loads((root / "run_inputs.json").read_text())["inputs"]
                              if row["Input ID"] == "IN-003")
             guide_snapshot = Path(guide_row["path"])

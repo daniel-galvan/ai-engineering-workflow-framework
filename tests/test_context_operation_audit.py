@@ -347,6 +347,30 @@ class ContextOperationAudit(unittest.TestCase):
         self.assertIn('forbidden_context_reference:archived_artifact',
                       audit({'objective': objective, 'input_paths': []}, '\ncat ' + str(self.root) + '.'))
 
+    def test_batched_quoted_assignments_preserve_archive_checks(self):
+        objective = 'Keep artifacts under ' + str(self.root) + '. Continue.'
+        archive = str(self.root / 'runs' / 'previous' / 'result.json')
+
+        def assignment(name, body):
+            return ('cat > ' + shlex.quote(str(self.root / name)) + " <<'EOF'\n"
+                    + json.dumps(body) + '\nEOF')
+
+        def audit(command):
+            row = {'type': 'function_call', 'name': 'exec_command', 'arguments': {'cmd': command}}
+            return runtime.context_trace_errors({'tool_trace': [row]}, artifact_root=self.root)
+
+        first = assignment('first.json', {'objective': objective, 'input_paths': []})
+        second = assignment('second.json', {'objective': objective, 'input_paths': []})
+        command = first + '\n' + second
+        self.assertEqual(audit(command), [])
+        wrapped = {'type': 'custom_tool_call', 'name': 'exec', 'input':
+                   'await tools.exec_command(' + json.dumps({'cmd': command}) + ')'}
+        self.assertEqual(runtime.context_trace_errors({'tool_trace': [wrapped]}, artifact_root=self.root), [])
+        invalid = assignment('invalid.json', {'objective': objective, 'input_paths': [archive]})
+        for command in (first + '\n' + invalid, invalid + '\n' + second,
+                        first + '\ncat ' + archive + '\n' + second):
+            self.assertIn('forbidden_context_reference:archived_artifact', audit(command))
+
     def test_quoted_assignment_text_is_data_but_its_paths_and_operations_are_audited(self):
         assignment = self.root / 'assignment.json'
         archive = str(self.root / 'runs' / 'previous' / 'result.json')

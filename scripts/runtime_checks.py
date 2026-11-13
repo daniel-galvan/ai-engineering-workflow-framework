@@ -2556,9 +2556,10 @@ def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
                         break
         except (OSError, ValueError, KeyError, TypeError):
             pass
-        heredoc = re.search(r"(?m)^cat > (?P<path>[^\s]+) <<'(?P<end>[A-Za-z_][A-Za-z0-9_]*)'\n"
-                            r"(?P<body>.*?)\n(?P=end)(?=\n|$)", command, re.S)
-        if heredoc:
+        heredocs = list(re.finditer(r"(?m)^cat > (?P<path>[^\s]+) <<'(?P<end>[A-Za-z_][A-Za-z0-9_]*)'\n"
+                                   r"(?P<body>.*?)\n(?P=end)(?=\n|$)", command, re.S))
+        replacement = command
+        for heredoc in reversed(heredocs):
             try:
                 target = Path(shlex.split(heredoc['path'])[0]).resolve()
                 body = heredoc['body']
@@ -2571,15 +2572,15 @@ def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
                         and isinstance(assignment.get('objective'), str)
                         and json.loads(fields[0][1]) == assignment['objective']):
                     field = fields[0]
-                    normalized = json.dumps('[assignment text]')
-                    replacement = (command[:heredoc.start('body') + field.start(1)] + normalized
-                                   + command[heredoc.start('body') + field.end(1):])
-                    text = text.replace(command, replacement)
-                    for ascii_only in (False, True):
-                        text = text.replace(json.dumps(command, ensure_ascii=ascii_only)[1:-1],
-                                            json.dumps(replacement, ensure_ascii=ascii_only)[1:-1])
+                    replacement = (replacement[:heredoc.start('body') + field.start(1)] + json.dumps('[assignment text]')
+                                   + replacement[heredoc.start('body') + field.end(1):])
             except (OSError, ValueError, TypeError, IndexError, AttributeError):
                 pass
+        if replacement != command:
+            text = text.replace(command, replacement)
+            for ascii_only in (False, True):
+                text = text.replace(json.dumps(command, ensure_ascii=ascii_only)[1:-1],
+                                    json.dumps(replacement, ensure_ascii=ascii_only)[1:-1])
         match = re.fullmatch(r"python3 - <<['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?\n(.*?)\n\1\s*",
                              command or "", re.S)
         if not match or (not re.match(r"python3 - <<['\"]", command)
