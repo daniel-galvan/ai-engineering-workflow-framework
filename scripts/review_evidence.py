@@ -487,6 +487,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--plan", type=Path)
+    group.add_argument("--draft-plan", type=Path)
     group.add_argument("--review", type=Path)
     group.add_argument("--self-test", action="store_true")
     group.add_argument("--validation", type=Path)
@@ -514,10 +515,13 @@ if __name__ == "__main__":
                                                   require_solved=args.require_solved,
                                                   expected_repository=args.repository)
             else:
-                value = (args.plan or args.review).read_text()
-                errors = applicability_errors(value) if args.plan else review_report_errors(
-                    value, require_accepted=args.require_accepted,
-                )
+                value = (args.plan or args.draft_plan or args.review).read_text()
+                if args.draft_plan:
+                    errors = draft_plan_errors(value)
+                elif args.plan:
+                    errors = applicability_errors(value)
+                else:
+                    errors = review_report_errors(value, require_accepted=args.require_accepted)
         except OSError as error:
             errors = [str(error)]
         print(json.dumps({"status": "failed" if errors else "passed", "errors": errors}))

@@ -507,7 +507,8 @@ When created, the plan must include:
 8. the asset baseline: `asset_manifest.json`, source inventory status, review method/status, material-asset
    observations, and acceptance/validation consequences; and
 9. Behavior Applicability: authority/condition, actual applicability evidence, counterexample check/result, disposition,
-   and planned action or exclusion for every material behavior. Run `scripts/review_evidence.py --plan <plan-path>`.
+   and planned action or exclusion for every material behavior. Run `scripts/review_evidence.py --plan <plan-path>`;
+   for an `awaiting_input` partial Draft use `--draft-plan <plan-path>` instead.
 
 ## Gates
 

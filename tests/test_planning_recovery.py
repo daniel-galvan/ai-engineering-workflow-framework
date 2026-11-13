@@ -545,6 +545,20 @@ class PlanningRecovery(unittest.TestCase):
         self.assertTrue(draft_plan_errors(DRAFT.replace("| Issue owner |", "| |")))
         self.assertTrue(draft_plan_errors(DRAFT + "\n# Metadata\n| Plan status | Approved |\n"))
 
+    def test_draft_plan_cli_uses_partial_readiness_contract(self):
+        plan = self.artifacts / "implementation_plan.md"
+        draft = DRAFT.replace("| required |", "| unverified |", 1)
+        self.assertNotEqual(draft, DRAFT)
+        plan.write_text(draft)
+        cli = Path(__file__).resolve().parents[1] / "scripts" / "review_evidence.py"
+        def check(option):
+            return subprocess.run([sys.executable, str(cli), option, str(plan)], capture_output=True, text=True)
+        self.assertEqual(check("--draft-plan").returncode, 0)
+        self.assertNotEqual(check("--plan").returncode, 0)
+        plan.write_text(draft.replace("# Behavior Applicability", "# Applicability", 1))
+        self.assertIn("requires exactly one # Behavior Applicability", check("--draft-plan").stdout)
+        self.assertNotEqual(check("--draft-plan").returncode, 0)
+
     def test_planning_documenter_gate_rejects_missing_upstream_and_audits(self):
         self.packet["identity"].update({"Requested profile": "standard", "Activated profile": "standard",
                                        "Executed profile": "standard", "Profile status": "executed"})

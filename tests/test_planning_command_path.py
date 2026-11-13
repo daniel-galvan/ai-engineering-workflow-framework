@@ -721,7 +721,7 @@ class PlanningCommandPath(unittest.TestCase):
             finalize = ("--packet", packet_path, "--closure", pending_closure, "--record", root / "work_record.md",
                         "--coordinator-model-effort", "Not exposed / Not exposed", "--framework-revision",
                         preflight["framework_revision"], "--framework-status", "clean")
-            if playbook == "feature_delivery" and plan_action == "create":
+            if playbook == "feature_delivery" and plan_action in {"create", "create_draft"}:
                 candidate = json.loads(packet_path.read_text())
                 candidate["playbook_selection"]["Primary goal"] = "Create an implementation plan"
                 packet_path.write_text(json.dumps(candidate))
@@ -733,14 +733,28 @@ class PlanningCommandPath(unittest.TestCase):
                 invalid = command("finalize_work_record.py", *finalize, "--check-packet", expected=2)
                 self.assertIn("Primary goal does not match the prepared workflow objective", invalid)
                 self.assertIn("invalid disposition", invalid)
-                correction = "Correct the plan disposition and restore the prepared primary goal."
+                plan.write_text(original_plan.replace("# Behavior Applicability", "# Applicability", 1))
+                invalid = command("finalize_work_record.py", *finalize, "--check-packet", expected=2)
+                self.assertIn("requires exactly one # Behavior Applicability", invalid)
+                correction = "Restore the required plan section and the prepared primary goal."
+                correction_assignment = root / "handoff-correction.json"
+                correction_assignment.write_text(json.dumps({"objective": correction,
+                    "input_paths": [str(packet_path), str(source), str(plan)]}))
+                correction_activation = root / "handoff-correction-activation.txt"
+                guarded_correction = json.loads(command("validate_worker_runtime.py", *followup_guard,
+                    "--assignment", correction_assignment, "--dispatch-file", correction_activation))
                 append(parent, "response_item", type="function_call", namespace="collaboration", name="followup_task",
-                       call_id="correct-handoff", arguments=json.dumps({"target": handle, "message": correction}))
+                       call_id="correct-handoff", arguments=json.dumps({"target": handle,
+                           "message": guarded_correction["activation_message"]}))
                 append(parent, "response_item", type="function_call_output", call_id="correct-handoff", output="{}")
                 append(child, "turn_context", turn_id=str(UUID(int=700)),
                        model=run["bindings"]["documenter"]["model"], effort=run["bindings"]["documenter"]["effort"])
                 append(child, "response_item", type="message", role="user",
-                       content=[{"type": "input_text", "text": correction}])
+                       content=[{"type": "input_text", "text": guarded_correction["activation_message"]}])
+                append(child, "response_item", type="function_call", name="exec_command", call_id="correction-bootstrap",
+                       arguments=json.dumps({"cmd": "cat " + str(correction_activation), "workdir": str(repository)}))
+                append(child, "response_item", type="function_call_output", call_id="correction-bootstrap",
+                       output=correction_activation.read_text())
                 plan.write_text(original_plan)
                 candidate["playbook_selection"]["Primary goal"] = "Implementation planning"
                 packet_path.write_text(json.dumps(candidate))

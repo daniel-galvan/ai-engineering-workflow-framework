@@ -611,6 +611,12 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    if a rejected downstream worker is verified terminal, the activation guard may allow an upstream correction while
    keeping that rejection pending. Resolve it through its own guarded recovery before accepting that worker or handoff.
    A parent context failure, exhausted correction, or another terminal control failure still requires the failure path.
+   This rejected-trace route is only for a provider trace actually rejected by the exporter. A passed trace followed
+   by a failed artifact or packet check is correction feedback, not a rejected trace. For Documenter-owned errors,
+   use the ordinary activation guard with the corrected assignment and new dispatch file, without `--rejected-trace`.
+   Retain the original assigned inputs alongside the correction inputs so the full worker trace remains auditable;
+   follow up on the same worker, then collect and validate its latest trace and repeat the failed check. Keep the
+   applicable check and pre-release correction limits; never fabricate a rejection receipt.
    Refresh native worker status, then include `--rejected-trace` with the ordinary activation bundle, corrected
    assignment and a new dispatch file. The guard resolves the handle, dispatch and status from current-run evidence;
    it blocks if that evidence is absent or stale. This checks the one recovery allowance

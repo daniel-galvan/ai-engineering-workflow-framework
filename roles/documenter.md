@@ -95,6 +95,10 @@ maintenance.
   release blocker.
 * Create or maintain `implementation_plan.md` only after required planning fan-in passes and the selected playbook
   reaches its planning-completion gate.
+* Before returning a Feature Delivery or TechOps plan, run the packaged `review_evidence.py --plan <plan-path>`.
+  For an `awaiting_input` partial Draft, use `--draft-plan <plan-path>` instead; unverified applicability remains
+  explicit. Correct errors in the current turn and report unresolved errors to the Coordinator. Finalization still
+  checks the complete packet and artifact set.
 * For Technical Spike, publish `spike_report.md` from its validated candidate after analytical fan-in and do not create
   `implementation_plan.md`.
 * Record findings from every role.
