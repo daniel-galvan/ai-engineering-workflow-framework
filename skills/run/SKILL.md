@@ -713,6 +713,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    If integration needs the completed failure trace, record that dependency and wait; never invent a seam or start an
    unnecessary worker. Fix Design still waits for both required accepted results before its own activation.
    For an idle or completed Codex worker, use `followup_task` to start a correction turn on its existing handle.
+   If the completed worker only acknowledged a verified instruction read and produced no assigned result, retry once
+   on that same handle using the ordinary guard with the identical assignment and dispatch file. Its unchanged binding
+   may reuse the complete earlier read still in context; otherwise the worker must read it again. Collect and validate
+   the latest trace and required result normally. A new or changed assignment requires a new complete binding read.
    `send_message` only delivers a message; it does not start an idle worker. Use it for steering an active turn,
    then verify consumption. After an idle-worker correction, verify a new turn actually started before waiting
    for its result; keep the guarded activation message and refresh the dispatch ledger.

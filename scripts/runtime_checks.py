@@ -308,7 +308,7 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     file_identity = (f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
                      if len(message) > 12000 else "")
     return (packet["required_prefix"] + "\n"
-            + "First step: verify and read the file; this bootstrap is self-contained. Use only this chat and current-run "
+            + "First step: verify the file; this bootstrap is self-contained. Use only this chat and current-run "
               "artifacts, and verified worker chats created by this run and assigned to you. MEMORY.md may be read as background guidance only. Current user instructions and current-run "
               "evidence take precedence. Memory alone must not establish a task finding or justify an implementation "
               "decision. Verify task-specific memory claims against currently authorized sources. References in memory "
@@ -320,12 +320,14 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
             + f"Run ID: {packet['run_id']}.\n"
             + file_identity
             + f"Verify its SHA256 is {digest}; stop on mismatch.\n"
+            + "If this same worker already read this same file and SHA256 completely and still has it in context, "
+              "reuse that read and continue the assignment. Otherwise read it fully as follows.\n"
             + reading
             + "Use separate tool calls for verification and the complete instruction read.\n"
             + f"Set max_output_tokens to at least {6000 if len(message) > 12000 else len(message.encode())}"
               "; truncated output is not delivery.\n"
             + "Please continue in this same turn through the full typed assignment. A bootstrap acknowledgment is not completion. "
-              "The file is the operative role, input, output and policy contract. Read it in full. "
+              "The file is the operative role, input, output and policy contract. Use its full instructions. "
               "Do not rerun Coordinator initialization.")
 
 

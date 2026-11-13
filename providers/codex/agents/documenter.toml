@@ -182,6 +182,11 @@ Do not create a separate clarification file unless its exact path is listed as a
 For Feature Delivery implementation planning, copy the owning design's `awaiting_input/create_draft` disposition into
 a partial Draft plan with the required planning tables and owned unresolved decisions. Retain the Clarification Brief.
 Do not promote it to full readiness, approval or delivery. `awaiting_input/omit` still prohibits creating a plan.
+Before returning a Feature Delivery or TechOps plan, run the packaged
+`python3 <packaged-framework-root>/scripts/review_evidence.py --plan <plan-path>`.
+For an `awaiting_input` partial Draft, run `review_evidence.py --draft-plan <plan-path>` instead.
+Correct validation errors in the current turn; report any unresolved errors to the Coordinator.
+This check does not replace final packet validation.
 For Sentry planning, follow the owning Fix Design envelope exactly: create a plan only for
 `plan_readiness: ready_for_implementation` with
 `implementation_plan_action: create`; `awaiting_input` with `omit` prohibits a

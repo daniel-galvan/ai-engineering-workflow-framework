@@ -98,8 +98,16 @@ class ActivationDelivery(unittest.TestCase):
         message = runtime.activation_message(packet, {"objective": "Write the assigned planning artifacts"})
         self.assertIn("For planning artifact writes, use apply_patch only", message)
         self.assertIn("Do not use embedded Python or shell file writes", message)
+        self.assertIn("review_evidence.py --draft-plan", message)
+        self.assertIn("review_evidence.py --plan", message)
         self.assertIn("append your own populated `handoff` row to both", message)
         self.assertIn("selected playbook, closest alternative, and rationale", message)
+        techops = prepare.prepare_run(self.root, "TECHOPS-1", "techops_issue_remediation", None, False,
+                                     input_manifest=self.root / "inputs.json")
+        packet = json.loads(Path(techops["activation_packet_bundle"]["path"]).read_text())["packets"]["documenter"]
+        message = runtime.activation_message(packet, {"objective": "Write the assigned planning artifacts"})
+        self.assertIn("review_evidence.py --plan", message)
+        self.assertIn("review_evidence.py --draft-plan", message)
 
     def test_missing_instruction_input_is_rejected_before_dispatch(self):
         instructions = self.root / "AGENTS.md"
@@ -223,6 +231,24 @@ class ActivationDelivery(unittest.TestCase):
         source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
         return export_worker_trace(ledger, source, "current_state_investigator", observation,
                                    run_id=packet["run_id"], artifact_root=self.artifacts)
+
+    def test_acknowledgment_continuation_reuses_only_the_same_verified_binding(self):
+        trace = self.instruction_trace()
+        dispatch = Path(trace["spawn"]["dispatch_file"])
+        bindings = json.loads((self.artifacts / "role_bindings.json").read_text())
+        args = ("--activation-packet-bundle", self.bundle["path"], "--expected-agent", "current_state_investigator",
+                "--expected-bundle-sha256", bindings["activation_packet_bundle"]["sha256"],
+                "--assignment", self.root / "assignment.json", "--dispatch-file", dispatch)
+        retry = self.command(*args)
+        self.assertEqual(retry.returncode, 0, retry.stdout + retry.stderr)
+        self.assertIn("same file and SHA256", json.loads(retry.stdout)["activation_message"])
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], str(dispatch))
+        trace["tool_trace"] = []
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts), {})
+        changed = json.loads((self.root / "assignment.json").read_text())
+        changed["objective"] = "A different assignment"
+        (self.root / "assignment.json").write_text(json.dumps(changed))
+        self.assertIn("activation_dispatch_receipt_conflict", self.command(*args).stdout)
 
     def test_bootstrap_prescribes_a_separate_literal_instruction_read(self):
         path = self.artifacts / "activation instructions.txt"

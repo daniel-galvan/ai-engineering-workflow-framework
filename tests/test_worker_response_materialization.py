@@ -276,7 +276,7 @@ class WorkerResponseMaterialization(unittest.TestCase):
                     "agent_path": HANDLE}}),
                 event(8.5, "response_item", {"type": "function_call", "namespace": "collaboration",
                     "name": "followup_task", "call_id": "correction",
-                    "arguments": json.dumps({"target": HANDLE, "message": "Repair the response envelope"})}),
+                    "arguments": json.dumps({"target": HANDLE, "message": complete_message})}),
                 event(8.75, "response_item", {"type": "function_call_output", "call_id": "correction",
                     "output": "Correction delivered"}),
                 event(11, "event_msg", {"item": {"type": "SubAgentActivity", "kind": "completed",
@@ -350,6 +350,8 @@ class WorkerResponseMaterialization(unittest.TestCase):
             ])
             parent.write_text("\n".join(json.dumps(row) for row in parent_rows) + "\n")
             ledger = read_runtime_events(parent, PARENT, run["runtime_evidence"]["run_started_at"])
+            followup = next(row for row in ledger["events"] if row.get("Operation") == "followup_task")
+            self.assertEqual(Path(followup["Dispatch file"]), dispatch_file)
             trace = export_worker_trace(ledger, child, role, run_id=run["run_id"], artifact_root=root)
             self.assertEqual(trace["audit"]["status"], "passed", trace["audit"]["errors"])
             self.assertNotIn("forbidden_context_reference:session_log", trace["audit"]["errors"])
