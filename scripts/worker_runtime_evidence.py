@@ -226,6 +226,10 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
                 or args[6] != "--response-stdin"):
             raise ValueError
         output = item.get("aggregated_output")
+        if isinstance(output, str):
+            warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                       "Operation not permitted (os error 1)\n")
+            output = output.removeprefix(warning)
         if (not isinstance(output, str) or "Warning: truncated output" in output
                 or strict_json_loads(match[3] if match else direct[3]) != strict_json_loads(output)):
             raise ValueError

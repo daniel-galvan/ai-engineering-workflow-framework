@@ -135,6 +135,14 @@ class WorkerResponseMaterialization(unittest.TestCase):
                                              turn_id=TURN, packet_path=packet_path,
                                              agent='current_state_investigator', builder=Path(command[1]))
             self.assertEqual(json.loads(submitted(rows)), response)
+            warned = json.loads(json.dumps(rows))
+            warning = ("WARNING: proceeding, even though we could not create PATH aliases: "
+                       "Operation not permitted (os error 1)\n")
+            warned[2]['payload']['item']['aggregated_output'] = warning + checked.stdout
+            self.assertEqual(json.loads(submitted(warned)), response)
+            warned[2]['payload']['item']['aggregated_output'] = "unexpected warning\n" + checked.stdout
+            with self.assertRaisesRegex(ValueError, 'submission_invalid'):
+                submitted(warned)
             presented = json.loads(json.dumps(rows))
             presented[-1]['payload']['content'][0]['text'] = '  ' + WORKER_RESPONSE_SUBMITTED + '.\n'
             self.assertEqual(json.loads(submitted(presented)), response)
@@ -312,7 +320,9 @@ class WorkerResponseMaterialization(unittest.TestCase):
             shell = ' '.join(builder_command) + " <<'RESPONSE'\n" + response + "\nRESPONSE"
             child_rows.insert(-1, event(9.5, "event_msg", {"type": "item_completed", "item": {
                 "type": "CommandExecution", "command": ["/bin/bash", "-lc", shell],
-                "status": "completed", "exit_code": 0, "aggregated_output": preview.stdout}}))
+                "status": "completed", "exit_code": 0, "aggregated_output": (
+                    "WARNING: proceeding, even though we could not create PATH aliases: "
+                    "Operation not permitted (os error 1)\n" + preview.stdout)}}))
             child_rows[-1]["payload"]["content"][0]["text"] = WORKER_RESPONSE_SUBMITTED
             child.write_text("\n".join(json.dumps(row) for row in child_rows) + "\n")
 
