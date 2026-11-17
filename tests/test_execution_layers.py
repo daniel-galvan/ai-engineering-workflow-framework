@@ -135,6 +135,9 @@ class ExecutionLayers(unittest.TestCase):
         self.assertIn("Unanswered material user decisions carried from the current request", template)
         orchestrator = " ".join((ROOT / "providers/codex/agents/orchestrator.toml").read_text().split())
         self.assertIn("Do not treat a Coordinator-owned `planning interpretation`", orchestrator)
+        self.assertIn("keep the run paused at the decision gate", orchestrator)
+        self.assertIn("Do not publish a completed handoff while the question is unanswered", orchestrator)
+        self.assertIn("reconcile the reply before accepting the Draft", orchestrator)
 
     def test_techops_launch_prompt_is_minimal_and_uses_playbook_defaults(self):
         template = (ROOT / "templates/techops_issue_run_prompt.md").read_text()

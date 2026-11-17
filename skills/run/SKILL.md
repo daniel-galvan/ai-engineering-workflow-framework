@@ -757,6 +757,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    leave the run open for
    the user's reply; do not route the
    question through another thread. Missing access or external evidence follows the blocked path.
+   For every work-item investigation, apply the shared related-work rule before assigning scope: inspect the identified
+   parent when accessible, search plausible related work when it can change the outcome, and record coverage
+   limitations.
+   Require a complete roster only when the question or playbook needs one; apply the same validity rules on recovery.
    For Feature Delivery implementation planning, deliver each prepared analytical `worker_contract`, including the
    context worker's `asset_inventory`, exact result fields and ID namespace. Use the prepared result merger after
    guarded fan-in; preserve returned evidence IDs instead of retyping the narrative into the packet. Record the
@@ -1112,7 +1116,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
    use `Runtime status: Released` only after all run workers are released and no active handles remain.
    For Codex collaboration runtimes without a close operation, collect fresh status reads after pre-release and the last
-   correction/follow-up. Use `Runtime status: Terminal` only when these reads account for every activated worker,
+   correction/follow-up. Before collecting closure, refresh the inventory and obtain targeted status reads for every
+   omitted or stale worker using its verified UUID; do not rely on a pre-release observation. Use `Runtime status:
+   Terminal` only when these reads account for every activated worker,
    including Documenter. For targeted status reads, use one separate tool call per literal verified child UUID.
    Do not use Promise.all, map, loops, or computed argument objects, even when several workers need status checks.
    The snapshot may combine live inventory and targeted reads; one inventory call need not retain

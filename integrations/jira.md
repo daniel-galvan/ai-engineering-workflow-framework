@@ -116,12 +116,19 @@ their own source-access rules; do not probe optional sources.
 
 Start with `item`: read the exact issue's summary, current description, acceptance criteria, status, type, and
 explicit constraints. The selected playbook states what evidence its question requires. Add a scope only for that
-requirement or a recorded unresolved question; do not request `hierarchy`, `selected_links`, and `history` by default.
+requirement or a recorded unresolved question; do not request `hierarchy`, `selected_links`, and `history` together by
+default. For any playbook, read the identified parent when accessible and check related-issue references for relevant
+scope or dependencies. When a
+related-work question could change the answer, search the parent's children using relevant terms or known links, and
+read current details for plausible matches. Record filters and coverage: no matches in a filtered search does not
+prove that the parent has no other children. Do not impose a fixed sibling count as proof of absence. Expand to the
+complete paginated roster when the question or playbook requires complete collection coverage, or a targeted search
+cannot reliably resolve a material question. Do not silently treat a partial or inaccessible search as complete.
 
 | Tier | Escalation trigger | Minimum Jira evidence |
 | --- | --- | --- |
 | Required | Jira is the work-item source | Exact issue by key or URL; current scope, criteria, status, type, and constraints |
-| Parent / hierarchy | Scope is thin, inherited context is referenced, or the question concerns cross-issue coverage | Relevant parent/ancestors; direct-child inventory only when the question requires collection coverage |
+| Parent / hierarchy | Parent is identified, or the question concerns inherited context or cross-issue coverage | Read the identified parent; select further ancestors and direct children only as needed |
 | Linked issues | A reference, dependency, precedent, or conflicting requirement could change the answer | Selected issue or document with a recorded selection reason |
 | History | Current fields cannot resolve a reported symptom, prior decision, or status/delivery conflict | Relevant comments or change history for selected issues |
 | Attachments / remote links | Supplied or referenced assets, unresolved evidence, or a playbook asset gate requires them | Attachment/remote-link inventory and selected contents for in-scope issues |

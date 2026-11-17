@@ -114,9 +114,9 @@ def self_test() -> None:
         assert first["playbook"] == "sentry_issue_remediation"
         for agent, model in (
             ("sentry_current_state_investigator", "gpt-6.1-terra"),
-            ("sentry_dependency_analyst", "gpt-6.1-sol"),
-            ("sentry_solution_architect", "gpt-6.1-sol"),
-            ("reviewer", "gpt-6.1-sol"),
+            ("sentry_dependency_analyst", "gpt-6.2-sol"),
+            ("sentry_solution_architect", "gpt-6.2-sol"),
+            ("reviewer", "gpt-6.2-sol"),
         ):
             assert first["bindings"][agent]["model"] == model
             assert first["bindings"][agent]["effort"] == "medium"

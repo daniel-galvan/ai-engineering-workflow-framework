@@ -320,10 +320,10 @@ def validate_evaluation_and_provenance() -> None:
         "initial hypothesis: a baseline",
         "Orchestrator | `gpt-6-luna` | Extra High | `xhigh`",
         "Current-State Investigator | `gpt-6.1-terra` | Medium | `medium`",
-        "Dependency Analyst | `gpt-6.1-sol` | Medium | `medium`",
+        "Dependency Analyst | `gpt-6.2-sol` | Medium | `medium`",
         "Repository Integrator | `gpt-6-luna` | Extra High | `xhigh`",
-        "Solution Architect | `gpt-6.1-sol` | Medium | `medium`",
-        "Reviewer | `gpt-6.1-sol` | Medium | `medium`",
+        "Solution Architect | `gpt-6.2-sol` | Medium | `medium`",
+        "Reviewer | `gpt-6.2-sol` | Medium | `medium`",
     ):
         if phrase not in " ".join(policy_text.split()):
             fail(f"{CODEX_POLICY.relative_to(ROOT)} is missing role baseline: {phrase}")

@@ -57,6 +57,9 @@ class ActivationDelivery(unittest.TestCase):
                     self.assertTrue(packet["developer_instructions"].startswith(definition["developer_instructions"].strip()))
                     self.assertEqual(packet["model"], definition["model"])
                     self.assertEqual(packet["effort"], definition["model_reasoning_effort"])
+                    if agent in {"current_state_investigator", "sentry_current_state_investigator"}:
+                        self.assertIn("related-work", packet["developer_instructions"])
+                        self.assertIn("relevance, completeness and freshness", packet["developer_instructions"])
                     policy = packet["repository_instructions"]
                     self.assertIn(f"Keep every run-created file, including scratch drafts and temporary output, inside {run['artifact_root']}", policy)
                     self.assertIn("do not write them to a separate temporary directory", policy)

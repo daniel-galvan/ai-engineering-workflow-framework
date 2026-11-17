@@ -70,13 +70,13 @@ and records recovered sources, conflicts, inferences, and unknowns in the work
 record. The integration owns Jira retrieval policy; this playbook owns worker
 order, gates, and feature-specific clarification behavior.
 
-Start with the exact issue and its current acceptance criteria. Recover parent/hierarchy only when needed to interpret
-scope or assess cross-issue coverage; select links and history for named dependencies, decisions, or conflicts. For an
-Epic specification assessment, the evidence question is whether the resulting Stories cover the Epic outcome: require
-the complete direct-child inventory, select the Spike and material Stories, and preserve their exact criteria.
-Other runs do not require a sibling roster merely because the issue has a parent. Record scope reasons and stop once
-the feature question is answered. The asset gate below explicitly requires attachment and remote-link inventory for
-the target and selected related issues, plus supplied sources.
+Start with the exact issue and its current acceptance criteria. Apply the shared related-work rule to parent and sibling
+scope, dependencies, and ownership; read current details of plausible matches before assigning overlapping work. Record
+the search scope and limitations without inferring that unqueried work does not exist. For an Epic specification
+assessment, require the complete direct-child inventory, select the Spike and material Stories, and preserve their exact
+criteria. Select links and history for named dependencies, decisions, or conflicts; do not recursively expand unrelated
+work. The asset gate requires attachment and remote-link inventory for the target and selected related issues, plus
+supplied sources. Recovery rechecks reused context against the same relevance, completeness, and freshness rules.
 
 The worker classifies context as `sufficient_for_planning`, `partially_recovered`, or `clarification_required`. A
 clarification-required run may complete discovery and hand off focused questions, but it must not create

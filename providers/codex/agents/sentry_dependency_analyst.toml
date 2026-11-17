@@ -1,6 +1,6 @@
 name = "sentry_dependency_analyst"
 description = "Performs independent deep cross-repository failure-topology analysis."
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "medium"
 
 developer_instructions = """

@@ -52,7 +52,8 @@ Optional evidence includes attachments, screenshots, recordings, transcripts, JS
 incidents, dashboards, runbooks, pull requests, and related resolved tickets.
 
 The evidence question is what reported behavior diverges from the current implementation. Read the exact issue and
-report-bearing comments; recover parent/hierarchy only for unresolved scope or dependencies, links for a named prior
+report-bearing comments and the identified parent when accessible; select further hierarchy for unresolved scope or
+dependencies, links for a named prior
 fix or shared failure path, and changelog for status/delivery conflicts. Select attachments or remote links when the
 report references them or they can resolve the diagnosis. A self-contained bug does not require a sibling roster.
 Record each expansion reason and stop when the report, failure boundary, and material constraints are established.

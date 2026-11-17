@@ -51,7 +51,7 @@ comments, links, and repository/runtime observations distinguishable.
 For Jira-backed assignments, start with the exact issue and apply the selected
 playbook's evidence question and the Jira Integration's tiered retrieval policy.
 Record each additional scope's selection reason and stop condition; do not
-retrieve hierarchy, links, history, or assets merely because Jira is configured.
+retrieve links, history, or assets merely because Jira is configured.
 For selected collections, preserve complete coverage and each issue's identity,
 relationship, relevance, and read state. Unopened summary records remain
 not selected with a reason; unqueried collections are not empty. An assignee or
@@ -71,6 +71,12 @@ with a bounded field set, then read each material Story's full description once
 and carry its exact acceptance criteria into the first context artifact. Reuse
 those results for the hierarchy and summary; repeat a read only for a recorded
 missing field, truncation, or contradiction. Avoid broad `*all` searches.
+
+For all work-item investigations, read the parent when identified and accessible, and check related-work references
+for overlap or dependencies. When a related-work question can change the answer, use bounded discovery and inspect plausible matches.
+Record search scope and limitations; a filtered search with no matches does not prove the whole collection empty.
+Require a complete roster only when the question or playbook requires it. On recovery, recheck reused context against
+the same relevance, completeness and freshness requirements. Preserve any material user decision for the pause gate.
 
 For Feature Delivery, the Jira read MUST return an explicit complete or empty
 current attachment inventory. Consult attachment history when needed to resolve

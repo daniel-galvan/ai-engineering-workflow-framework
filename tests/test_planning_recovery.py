@@ -75,6 +75,8 @@ class PlanningRecovery(unittest.TestCase):
             preparation.prepare_run(self.root, 'ITEM-NEW', 'feature_delivery', None, False)
 
     def test_feature_planning_recovery_reuses_recorded_inputs(self):
+        fresh_contract = self.prepared['worker_contracts']['current_state_investigator']['instructions']
+        fresh_packets = json.loads(Path(self.prepared['activation_packet_bundle']['path']).read_text())['packets']
         decision = {'Input ID': 'DECISION-1', 'Input or artifact': 'Include both supported entry points',
                     'Source or path': 'Current chat', 'Authority': 'User', 'Status': 'Confirmed',
                     'Classification': 'decision continuity'}
@@ -87,6 +89,16 @@ class PlanningRecovery(unittest.TestCase):
         result = preparation.prepare_run(self.root, 'ITEM-1', 'feature_delivery', None, True,
                                          planning_recovery=True, approval_reference='Continue this run')
         self.assertNotEqual(result['run_id'], self.prepared['run_id'])
+        recovered_contract = result['worker_contracts']['current_state_investigator']['instructions']
+        recovered_packets = json.loads(Path(result['activation_packet_bundle']['path']).read_text())['packets']
+        for contract in (fresh_contract, recovered_contract):
+            self.assertIn('exact declared work-item input path or Source or path', contract)
+        for packets in (fresh_packets, recovered_packets):
+            self.assertIn('selected related-work evidence', packets['solution_architect']['developer_instructions'])
+            instructions = packets['current_state_investigator']['developer_instructions']
+            self.assertIn('use bounded discovery and inspect plausible matches', instructions)
+            self.assertIn('same relevance, completeness and freshness requirements', instructions)
+            self.assertIn('filtered search with no matches does not prove the whole collection empty', instructions)
         after = json.loads((self.artifacts / 'run_inputs.json').read_text())
         self.assertEqual({row['Input ID']: row for row in after['inputs']},
                          {row['Input ID']: row for row in before['inputs']})

@@ -1,6 +1,6 @@
 name = "dependency_analyst"
 description = "Maps callers, dependencies, ownership, coupling, and change impact."
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "medium"
 
 developer_instructions = """

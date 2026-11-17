@@ -43,6 +43,10 @@ This skill owns normalized context outputs and context sufficiency; the
 integration owns source-specific retrieval, freshness, evidence states, and
 write rules. Preserve the normalized request/result pair in the context artifact
 before downstream workers consume it.
+Read the parent when identified and accessible, and check related-work references for overlap or dependencies before
+assigning scope. Search and read
+plausible matches when the answer could change; record the search scope and limitations. Follow the shared contract for
+complete inventories, user decisions, and the validity of reused or recovered results.
 For Jira, record the playbook's evidence question, selected scopes, selection reasons, and stop condition. Start with
 the exact issue; expand according to the integration only when the question or a playbook gate requires it. Preserve
 coverage for selected scopes in the context artifact. A complete primary issue read does not make an unqueried child,

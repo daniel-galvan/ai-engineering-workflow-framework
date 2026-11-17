@@ -76,7 +76,7 @@ STALE_FINALIZER_REFERENCE = (
 )
 
 
-MODEL_BASELINE_ID = "codex-role-policy-gpt61-terra-sol-luna-v20261113"
+MODEL_BASELINE_ID = "codex-role-policy-gpt61-terra-gpt62-sol-luna-v20261117"
 
 POLICY_EFFORTS = {
     "Light": "low",

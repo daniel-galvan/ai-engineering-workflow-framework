@@ -34,12 +34,17 @@ class TieredJiraRetrieval(unittest.TestCase):
     def test_required_playbook_gates_and_scope_limits_remain(self):
         feature = " ".join((ROOT / "playbooks/feature_delivery.md").read_text().split())
         self.assertIn("require the complete direct-child inventory", feature)
+        self.assertIn("shared related-work rule", feature)
+        self.assertIn("without inferring that unqueried work does not exist", feature)
         self.assertIn("Every Feature Delivery run MUST create `asset_manifest.json`", feature)
         self.assertIn("supplied issue and selected related issues", feature)
         jira = " ".join((ROOT / "integrations/jira.md").read_text().split())
         self.assertIn("Empty collections require a successful query", jira)
         self.assertIn("unselected optional scope does not block a bounded conclusion", jira)
         self.assertIn("not as a result state", jira)
+        self.assertIn("no matches in a filtered search does not prove", jira)
+        self.assertIn("Do not impose a fixed sibling count as proof of absence", jira)
+        self.assertIn("complete paginated roster when the question or playbook requires", jira)
         for name in ("technical_spike", "feature_delivery", "techops_issue_remediation", "vulnerability_investigation"):
             text = (ROOT / f"playbooks/{name}.md").read_text()
             self.assertIn("exact", text)

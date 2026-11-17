@@ -533,6 +533,16 @@ read-only preparation scope and is valid only for an explicitly approved
 external action. Source-specific integrations define how their provider maps
 onto this contract; they do not change the shared worker or workflow states.
 
+Before assigning scope or ownership, read the parent when one is identified and accessible, and check available
+related-work references for overlap or dependencies. When a related-work question can change the outcome, use bounded
+discovery and inspect current details of plausible matches. Record search scope, selected sources and limitations;
+no matches in a filtered search does not establish that the whole collection is empty. When a sufficient scoped search
+finds no relevant matches, continue without inventing a dependency. If missing coverage could change the outcome,
+preserve the uncertainty rather than claim absence. A complete related-item inventory is required only when the question
+or selected playbook requires complete coverage. Do not use an arbitrary item-count cutoff as proof of absence.
+Reused or recovered results must meet the same relevance, completeness and freshness requirements.
+If a material user-owned decision remains, ask and pause under the Interactive Decision Gate.
+
 Apply the selected source integration's retrieval and coverage policy. For Jira, use the
 [Jira read path](../integrations/jira.md#read-path) and [context recovery
 order](../integrations/jira.md#context-recovery-order).
@@ -877,6 +887,9 @@ follow the existing `blocked` path; do not ask the user to decide in place of mi
 Apply this rule during investigation, Spike execution or assessment, specification assessment, planning, implementation,
 and review. Inventory and consume required sources completely; use their implications to answer the requested outcome.
 Discovering an adjacent problem does not automatically add it to the current delivery.
+When a parent-level requirement overlaps related work, compare the current items' acceptance and responsibilities
+before assigning that work. An issue or assignee does not by itself prove a committed delivery; preserve an unresolved
+ownership or scope decision instead of silently duplicating the work or assuming it is covered elsewhere.
 Requests for deep, exhaustive, or adversarial work increase evidence rigor within that outcome and scope. They do not
 turn every technically possible failure into required hardening.
 
@@ -1887,7 +1900,7 @@ A pilot run MUST NOT be called contract-compliant unless its work record can ans
 - What was each worker's unique result, outcome, and limitation?
 - Did every required fan-in barrier pass before completion?
 - What evidence supports the current understanding?
-- For Jira-backed work, were all direct child/linked issues and their attachments inventoried, reviewed, and reconciled?
+- Was selected related-work and asset coverage reconciled, including any required complete inventory and limitations?
 - Does every action, decision, claim, and evidence reference resolve to a source-backed chain without orphans?
 - Which gates passed or failed?
 - What errors, blockers, and unknowns occurred?

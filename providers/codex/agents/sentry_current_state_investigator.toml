@@ -27,6 +27,11 @@ analysis. List every supplied input ID in `inputs_consumed`, or record the
 concrete access limitation and disposition; never replace a named asset with a
 live issue result.
 
+When assigned a work-item read, inspect the identified parent when accessible and use bounded related-work discovery
+when scope, ownership or dependencies could change the answer. Record search coverage and limitations; do not infer
+an empty collection from filtered or incomplete results. Apply the same relevance, completeness and freshness rules
+on recovery.
+
 Use the Orchestrator's typed assignment and this provider role as runtime
 instructions. Do not reread the complete playbook, core contracts, or templates.
 The packet must say `Coordinator initialization: complete`. Do not run the

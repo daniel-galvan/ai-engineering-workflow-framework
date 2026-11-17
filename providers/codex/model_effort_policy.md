@@ -4,7 +4,7 @@ version: 0.5.35
 status: Pilot
 provider: codex
 provider_independent_profiles: true
-baseline_id: codex-role-policy-gpt61-terra-sol-luna-v20261113
+baseline_id: codex-role-policy-gpt61-terra-gpt62-sol-luna-v20261117
 owner: Engineering
 last_updated: 2026-11-12
 ---
@@ -31,11 +31,11 @@ Codex policy labels map to configuration values as follows:
 | Max          | `max`                                              |
 | Ultra        | `ultra` (Codex App/runtime-specific; not portable) |
 
-This baseline uses `gpt-6.1-terra` for evidence investigation, `gpt-6.1-sol` for failure analysis, design, and review,
+This baseline uses `gpt-6.1-terra` for evidence investigation, `gpt-6.2-sol` for failure analysis, design, and review,
 and `gpt-6-luna` for coordination and focused delivery roles. Verify exact model/effort availability for each run. Astra
 is outside this baseline; adopting it requires a separate policy revision and runtime verification.
 
-GPT-6.1 Sol supports `low`, `medium` (default), `high`, `xhigh`, and `max`. It does not support `none` or `minimal`.
+GPT-6.2 Sol supports `low`, `medium` (default), `high`, `xhigh`, and `max`. It does not support `none` or `minimal`.
 GPT-6.1 Terra and GPT-6 Luna also support `none`. `Ultra` remains Codex App/runtime-specific and must be verified in the
 target runtime before use.
 
@@ -60,10 +60,10 @@ verification explicit. See the
 | -------------------------- | --------------- | ------------- | ---------- |
 | Orchestrator               | `gpt-6-luna`    | Extra High    | `xhigh`    |
 | Current-State Investigator | `gpt-6.1-terra` | Medium        | `medium`   |
-| Dependency Analyst         | `gpt-6.1-sol`   | Medium        | `medium`   |
+| Dependency Analyst         | `gpt-6.2-sol`   | Medium        | `medium`   |
 | Repository Integrator      | `gpt-6-luna`    | Extra High    | `xhigh`    |
-| Solution Architect         | `gpt-6.1-sol`   | Medium        | `medium`   |
-| Reviewer                   | `gpt-6.1-sol`   | Medium        | `medium`   |
+| Solution Architect         | `gpt-6.2-sol`   | Medium        | `medium`   |
+| Reviewer                   | `gpt-6.2-sol`   | Medium        | `medium`   |
 | Implementer                | `gpt-6-luna`    | Extra High    | `xhigh`    |
 | Tester                     | `gpt-6-luna`    | Extra High    | `xhigh`    |
 | Documenter                 | `gpt-6-luna`    | High          | `high`     |
