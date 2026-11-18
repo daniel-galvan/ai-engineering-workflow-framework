@@ -716,6 +716,11 @@ def main() -> int:
                         if assignment != {"objective": OBJECTIVE, "input_paths": [refresh["output"], refresh["result"]]}:
                             raise ValueError("accepted_refresh_assignment_mismatch")
                     message = activation_message(packet, assignment)
+                    if args.rejected_trace:
+                        repository = Path(packet["finalization_packet"]).parents[2]
+                        if any((repository / path).resolve() == args.rejected_trace.resolve()
+                               for path in assignment.get("input_paths", [])):
+                            raise ValueError("rejected_trace_is_guard_input_only")
                     expected = dispatch_notice(packet, message, args.dispatch_file) if args.dispatch_file else message
                     if args.activation_message and args.activation_message.read_text() != expected:
                         raise ValueError("activation_message_mismatch")

@@ -647,8 +647,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    from the prepared contract. Pass `--assignment <path>` to the activation guard and use its returned
    `activation_message` string directly as the spawn message. For ordinary Codex dispatch, also pass
    `--dispatch-file <artifact-root>/activation_<role>_<attempt>.txt`. This saves the complete guarded instructions and
-   returns a compact canonical launch message with its file path and SHA256. Send that returned message verbatim;
-   the worker verifies the hash and reads the entire file before analytical work. Use a new file for a changed
+   returns a compact canonical launch message with its file path and SHA256. Send that returned message verbatim.
+   The worker verifies the hash and runs the supplied read calls before analytical work. Use a new file for a changed
    assignment; do not overwrite an existing dispatch file. Never reconstruct or summarize either delivery form.
    The guard serializes the complete envelope and assignment once and returns their SHA-256. When validating a saved
    outbound message, also pass `--activation-message <path>`; any difference is `activation_message_mismatch`.
@@ -861,9 +861,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    invocations; `--trace` and `--transition` are mutually exclusive. Export tool activity through
    `worker_runtime_evidence.py` with its parent
    session, start and ledger flags, plus `--worker-thread-id <verified-child-thread-id> --agent <role> --trace <path>`.
-   Refresh `list_agents` after the worker finishes; if it omits the terminal status, run the literal targeted status
-   projection below before collecting, using the verified child UUID. Prefer omitting `--observation`: the
-   exporter derives the fresh status directly from native inventory or the literal targeted status projection below.
+   Collect and validate each finished worker while independent workers continue. Start a dependent stage only after
+   all its required results are accepted. Refresh `list_agents` after the worker finishes. If it omits the terminal
+   status, run the literal targeted status projection below using the verified child UUID. Prefer omitting
+   `--observation` so the exporter derives the fresh status directly from native inventory or that projection.
    Alternatively, use `--observation <collector-closure-json>` with the
    prepared collector's receipt. If collection returns `status_projections`, execute each complete source through
    `functions.exec` without modification, then rerun the same collector; do not reformat the returned status metadata.
@@ -907,8 +908,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Leave rejected narrative and result files in place until the corrected-activation guard validates their audit.
    The guard then moves both prepared outputs to `<stem>.rejected.<extension>` in the active root, leaving their
    assigned paths absent. Do not rename or edit these files before the guard; that changes the audited bytes.
-   Preserve the rejected trace under its original path for the guard. Audit traces can contain session references and
-   are not worker inputs: do not include them in correction assignments or ask workers to read them. Give the worker
+   Preserve the rejected trace under its original path for the guard. The guard rejects it as an assignment input.
+   Audit traces can contain session references. Do not ask workers to read them. Give the worker
    only the relevant error and required correction. A replacement must never read a rejected output left at its
    assigned path.
    Export the worker's complete current-run activity to a new trace path using its fresh dispatch observation.

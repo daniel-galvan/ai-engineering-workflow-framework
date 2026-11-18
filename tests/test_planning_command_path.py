@@ -383,9 +383,21 @@ class PlanningCommandPath(unittest.TestCase):
                 append(child, "session_meta", id=child_id, cwd=str(repository))
                 append(child, "turn_context", turn_id=str(UUID(int=index + 200)),
                        model=guarded["launch_arguments"]["model"], effort=guarded["launch_arguments"]["reasoning_effort"])
-                append(child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
-                       arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
-                append(child, "response_item", type="function_call_output", call_id="bootstrap", output=activation.read_text())
+                if parallel_integration and role == "dependency_analyst":
+                    content = activation.read_text()
+                    ranges = [[start, min(start + 6000, len(content))] for start in range(0, len(content), 6000)]
+                    reader = (f"for (const [a,b] of {json.dumps(ranges)}) "
+                              'text((await tools.exec_command({cmd:`python3 -c '
+                              f"'print(open({json.dumps(str(activation))}).read()[${{a}}:${{b}}],end=\"\")'"
+                              '`,max_output_tokens:6000})).output);')
+                    append(child, "response_item", type="custom_tool_call", name="exec", call_id="bootstrap", input=reader)
+                    append(child, "response_item", type="custom_tool_call_output", call_id="bootstrap",
+                           output=[{"type": "input_text", "text": content[start:end]} for start, end in ranges])
+                else:
+                    append(child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
+                           arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
+                    append(child, "response_item", type="function_call_output", call_id="bootstrap",
+                           output=activation.read_text())
                 append(child, "response_item", type="function_call", name="exec_command", call_id="source",
                        arguments=json.dumps({"cmd": "cat " + str(source), "workdir": str(repository)}))
                 append(child, "response_item", type="function_call_output", call_id="source", output=source.read_text())

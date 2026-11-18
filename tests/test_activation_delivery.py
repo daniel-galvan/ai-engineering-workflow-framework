@@ -267,6 +267,26 @@ class ActivationDelivery(unittest.TestCase):
         (self.root / "assignment.json").write_text(json.dumps(changed))
         self.assertIn("activation_dispatch_receipt_conflict", self.command(*args).stdout)
 
+    def test_corrected_trace_requires_the_authorized_dispatch_read(self):
+        original = self.instruction_trace()
+        corrected = self.instruction_trace(objective="Correct the earlier finding")
+        role = "current_state_investigator"
+        packet_path = self.artifacts / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["activation_repairs"] = {role: {
+            "Last dispatch at": "2026-10-12T19:59:00Z",
+            "Corrected dispatch SHA256": corrected["spawn"]["dispatch_file_sha256"],
+        }}
+        packet_path.write_text(json.dumps(packet))
+        self.assertEqual(runtime.observed_dispatch_binding(original, self.artifacts), {})
+        self.assertIn("provider_binding_not_delivered", runtime.trace_errors(original, require_freshness=True))
+        self.assertEqual(runtime.observed_dispatch_binding(corrected, self.artifacts)["dispatch_file"],
+                         corrected["spawn"]["dispatch_file"])
+        self.assertEqual(runtime.trace_errors(corrected, require_freshness=True), [])
+        original["last_dispatch_at"] = packet["activation_repairs"][role]["Last dispatch at"]
+        self.assertEqual(runtime.observed_dispatch_binding(original, self.artifacts)["dispatch_file"],
+                         original["spawn"]["dispatch_file"])
+
     def test_bootstrap_prescribes_a_separate_literal_instruction_read(self):
         path = self.artifacts / "activation instructions.txt"
         notice = runtime.dispatch_notice({"required_prefix": "Coordinator initialization: complete",
@@ -282,7 +302,14 @@ class ActivationDelivery(unittest.TestCase):
         large = runtime.dispatch_notice({"required_prefix": "Coordinator initialization: complete",
             "agent": "current_state_investigator", "model": "model", "effort": "high", "run_id": "ITEM-1"},
             "x" * 13001, path)
-        commands = large.split("do not omit or change any part:\n", 1)[1].split("\nUse separate tool calls", 1)[0].splitlines()
+        lines = large.split("separate functions.exec call:\n", 1)[1].split("\nUse separate tool calls", 1)[0].splitlines()
+        commands = []
+        for line in lines:
+            [(tool, arguments)] = runtime_checks._tool_operations({"type": "custom_tool_call", "name": "exec",
+                                                                   "input": line})
+            self.assertEqual(tool, "exec_command")
+            self.assertEqual(arguments["max_output_tokens"], 6000)
+            commands.append(arguments["cmd"])
         self.assertEqual([runtime_checks._dispatch_segment(command)[1:] for command in commands],
                          [(0, 6000), (6000, 12000), (12000, 13001)])
         self.assertTrue(all(runtime_checks._read_targets(command) == [str(path.resolve())] for command in commands))
@@ -502,6 +529,50 @@ class ActivationDelivery(unittest.TestCase):
             elif change == 'nonliteral': changed['tool_trace'][0]['input'] = source.replace('${s}', '${s + ""}')
             with self.subTest(change=change):
                 self.assertEqual(runtime.observed_dispatch_binding(changed, self.artifacts), {})
+
+    def test_sequential_slice_pairs_verify_in_fresh_trace_and_recovered_history(self):
+        trace = self.instruction_trace()
+        path = trace["spawn"]["dispatch_file"]
+        content = Path(path).read_text()
+        ranges = [[start, min(start + 900, len(content))] for start in range(0, len(content), 900)]
+        source = (f"for (const [a,b] of {json.dumps(ranges)}) "
+                  'text((await tools.exec_command({cmd:`python3 -c '
+                  f"'print(open({json.dumps(path)}).read()[${{a}}:${{b}}],end=\"\")'"
+                  '`,max_output_tokens:6000})).output);')
+        trace["tool_trace"] = [
+            {"type": "custom_tool_call", "name": "exec", "call_id": "read", "input": source},
+            {"type": "custom_tool_call_output", "call_id": "read", "output": [
+                {"type": "input_text", "text": content[start:end]} for start, end in ranges]}]
+        sessions = self.root / "provider" / "sessions"
+        sessions.mkdir(parents=True)
+        history = sessions / f"rollout-{CHILD}.jsonl"
+        event = {"Thread ID": CHILD, "Last dispatch at": DISPATCH}
+        for case in ("complete", "missing", "reordered", "truncated", "wrong_call", "computed_range", "extra_command"):
+            with self.subTest(case=case), patch.dict(os.environ, {"CODEX_HOME": str(sessions.parent)}):
+                candidate = json.loads(json.dumps(trace))
+                call, result = candidate["tool_trace"]
+                if case == "missing":
+                    result["output"].pop()
+                elif case == "reordered":
+                    result["output"].reverse()
+                elif case == "truncated":
+                    result["output"][0]["text"] = "Warning: truncated output"
+                elif case == "wrong_call":
+                    result["call_id"] = "other"
+                elif case == "computed_range":
+                    call["input"] = source.replace("${a}", "${a + 1}")
+                elif case == "extra_command":
+                    call["input"] += 'await tools.exec_command({cmd:"pwd"});'
+                history.write_text("\n".join(json.dumps(row) for row in [
+                    {"timestamp": DISPATCH, "type": "session_meta", "payload": {"id": CHILD}},
+                    *({"timestamp": "2026-10-12T20:01:00Z", "type": "response_item", "payload": row}
+                      for row in candidate["tool_trace"]),
+                ]) + "\n")
+                fresh = runtime.observed_dispatch_binding(candidate, self.artifacts)
+                recovered = runtime_checks.live_dispatch_binding(event, "current_state_investigator",
+                    self.artifacts, trace["run_id"], "2026-10-12T20:02:00Z")
+                self.assertEqual(fresh, recovered)
+                self.assertEqual(fresh.get("dispatch_file"), path if case == "complete" else None)
 
     def test_parallel_literal_command_batch_requires_complete_ordered_output(self):
         trace = self.instruction_trace()
@@ -985,6 +1056,12 @@ class ActivationDelivery(unittest.TestCase):
         rejected = self.command(*activation)
         self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
         self.assertIn("assigned_instruction_file_missing", rejected.stdout)
+        self.assertEqual(Path(self.run["finalization_packet"]).read_bytes(), before)
+        self.assertFalse((self.artifacts / "retry.txt").exists())
+        assignment.write_text(json.dumps({"objective": "Correct the finding", "input_paths": [str(path)]}))
+        rejected = self.command(*activation)
+        self.assertEqual(rejected.returncode, 2, rejected.stdout + rejected.stderr)
+        self.assertIn("rejected_trace_is_guard_input_only", rejected.stdout)
         self.assertEqual(Path(self.run["finalization_packet"]).read_bytes(), before)
         self.assertFalse((self.artifacts / "retry.txt").exists())
         assignment.write_text(json.dumps({"objective": "Read complete guarded instructions"}))

@@ -296,15 +296,17 @@ def dispatch_message(packet: dict, message: str, path: Path) -> str:
 def dispatch_notice(packet: dict, message: str, path: Path) -> str:
     digest = hashlib.sha256(message.encode()).hexdigest()
     if len(message) > 12000:
-        commands = []
+        reads = []
+        literal_path = json.dumps(str(path.resolve()), ensure_ascii=False)
         for start in range(0, len(message), 6000):
-            literal_path = json.dumps(str(path.resolve()), ensure_ascii=False)
             code = f'print(open({literal_path}).read()[{start}:{min(start + 6000, len(message))}],end="")'
-            commands.append(shlex.join([sys.executable, "-c", code]))
-        reading = ("Read the complete file in order with each separate literal command below; "
-                   "do not omit or change any part:\n" + "\n".join(commands) + "\n")
+            arguments = json.dumps({"cmd": shlex.join([sys.executable, "-c", code]), "max_output_tokens": 6000})
+            reads.append(f"text((await tools.exec_command({arguments})).output);")
+        reading = ("Read the complete file in order. Run each line verbatim as a separate functions.exec call:\n"
+                   + "\n".join(reads) + "\n")
     else:
-        reading = f"Read it with this separate literal command: {shlex.join(['cat', str(path.resolve())])}\n"
+        reading = (f"Read it with this separate literal command: {shlex.join(['cat', str(path.resolve())])}\n"
+                   f"Set max_output_tokens to at least {len(message.encode())}; truncated output is not delivery.\n")
     file_identity = (f"Read the complete activation instructions and typed assignment at {path.resolve()}.\n"
                      if len(message) > 12000 else "")
     return (packet["required_prefix"] + "\n"
@@ -323,9 +325,8 @@ def dispatch_notice(packet: dict, message: str, path: Path) -> str:
             + "If this same worker already read this same file and SHA256 completely and still has it in context, "
               "reuse that read and continue the assignment. Otherwise read it fully as follows.\n"
             + reading
-            + "Use separate tool calls for verification and the complete instruction read.\n"
-            + f"Set max_output_tokens to at least {6000 if len(message) > 12000 else len(message.encode())}"
-              "; truncated output is not delivery.\n"
+            + "Use separate tool calls for verification and the complete instruction read. "
+              "Retry a truncated read before starting the assignment.\n"
             + "Please continue in this same turn through the full typed assignment. A bootstrap acknowledgment is not completion. "
               "The file is the operative role, input, output and policy contract. Use its full instructions. "
               "Do not rerun Coordinator initialization.")
@@ -1218,28 +1219,45 @@ def _literal_slice_loop(source: str) -> list[tuple[str, dict]] | None:
         r'\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+tools\.exec_command\('
         r'(?P<arguments>\{\s*cmd\s*:\s*`(?P<command>[^`]*)`[^{}]*\})\)\s*;'
         r'\s*text\((?P=result)\.output\)\s*;?\s*\}\s*;?\s*', source, re.S)
-    if not match:
+    if match:
+        names = (match["ranges"], match["part"], match["result"])
+        parameters = (match["part"],)
+    else:
+        match = re.fullmatch(
+            r'\s*for\s*\(\s*const\s+\[\s*(?P<start>[A-Za-z_]\w*)\s*,\s*(?P<end>[A-Za-z_]\w*)\s*\]'
+            r'\s+of\s+(?P<values>\[(?:\s*\[\s*\d+\s*,\s*\d+\s*\]\s*,?)+\])\s*\)'
+            r'\s*text\(\s*\(\s*await\s+tools\.exec_command\('
+            r'(?P<arguments>\{\s*cmd\s*:\s*`(?P<command>[^`]*)`[^{}]*\})\)\s*\)\.output\s*\)\s*;?\s*',
+            source, re.S)
+        if not match:
+            return None
+        names = parameters = (match["start"], match["end"])
+    if len(set((*names, "tools", "text"))) != len(names) + 2:
         return None
-    if len({match['ranges'], match['part'], match['result'], 'tools', 'text'}) != 5:
-        return None
-    placeholder = '${' + match['part'] + '}'
-    command = match['command']
-    if command.count(placeholder) != 1 or command.count('${') != 1:
+    placeholders = ["${" + parameter + "}" for parameter in parameters]
+    command = match["command"]
+    if command.count("${") != len(parameters) or any(command.count(part) != 1 for part in placeholders):
         return None
     try:
-        values = _literal_argument(ast.parse(match['values'], mode='eval').body)
-        if not isinstance(values, list) or not values or not all(
-                isinstance(value, str) and re.fullmatch(r'\d+:\d+', value) for value in values):
+        values = _literal_argument(ast.parse(match["values"], mode="eval").body)
+        if not isinstance(values, list) or not values:
             return None
+        template = ast.parse(_literal_templates(match["arguments"]), mode="eval").body
         operations = []
         for value in values:
-            arguments = _literal_templates(match['arguments'].replace(placeholder, value))
-            arguments = _literal_argument(ast.parse(arguments, mode='eval').body)
-            if not isinstance(arguments, dict) or not _dispatch_segment(arguments.get('cmd', '')):
+            if len(parameters) == 1 and isinstance(value, str) and re.fullmatch(r"\d+:\d+", value):
+                bindings = {parameters[0]: value}
+            elif (len(parameters) == 2 and isinstance(value, list) and len(value) == 2
+                  and all(type(bound) is int for bound in value)):
+                bindings = dict(zip(parameters, map(str, value)))
+            else:
                 return None
-            operations.append(('exec_command', arguments))
+            arguments = _literal_argument(template, bindings)
+            if not isinstance(arguments, dict) or not _dispatch_segment(arguments.get("cmd", "")):
+                return None
+            operations.append(("exec_command", arguments))
         return operations
-    except (ValueError, SyntaxError, TypeError):
+    except (ValueError, SyntaxError, TypeError, tokenize.TokenError):
         return None
 
 
@@ -2166,6 +2184,11 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
 def observed_dispatch_binding(trace: dict, root: Path) -> dict:
     bindings = json.loads((root / "role_bindings.json").read_text())
     role = worker_binding(bindings, trace["spawn"]["agent"])
+    packet = json.loads((root / "finalization_packet.json").read_text())
+    repair = packet.get("activation_repairs", {}).get(role)
+    corrected_hash = None
+    if repair and timestamp(trace["last_dispatch_at"]) > timestamp(repair["Last dispatch at"]):
+        corrected_hash = repair["Corrected dispatch SHA256"]
     for row in reversed(trace.get("tool_trace", [])):
         for name, arguments in _tool_operations(row):
             if name != "exec_command":
@@ -2180,11 +2203,13 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
                     continue
                 proof = {"dispatch_file": str(path), "dispatch_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                          "binding_agent": role, "dispatch_proof_source": "provider_instruction_read"}
+                if corrected_hash is not None and proof["dispatch_file_sha256"] != corrected_hash:
+                    continue
                 candidate = {**trace, "spawn": {**trace["spawn"], **proof}}
                 content = _verified_dispatch_content(candidate)
                 if content and _verified_dispatch_segments(trace, path, content, cwd):
                     return proof
-                if content and row.get("call_id"):
+                if content and row.get("call_id") and not _dispatch_segment(arguments.get("cmd", "")):
                     for output in trace.get("tool_trace", []):
                         if (output.get("type") in {"function_call_output", "custom_tool_call_output"}
                                 and output.get("call_id") == row["call_id"]
@@ -2214,7 +2239,7 @@ def live_dispatch_binding(event: dict, role: str, root: Path, run_id: str, obser
                 matching.append(source)
         if len(matching) != 1:
             return {}
-        trace = {"run_id": run_id, "spawn": {"agent": role}, "tool_trace": []}
+        trace = {"run_id": run_id, "last_dispatch_at": event["Last dispatch at"], "spawn": {"agent": role}, "tool_trace": []}
         with matching[0].open() as stream:
             next(stream)
             for line in stream:
@@ -2285,6 +2310,8 @@ def _instruction_contents(trace: dict, root: Path | None, assigned: list[str]) -
                     if tool != "exec_command":
                         continue
                     command = arguments.get("cmd", "")
+                    if _dispatch_segment(command):
+                        continue
                     targets = _read_targets(command)
                     chunk = _chunked_dispatch_read(command)
                     if chunk:
