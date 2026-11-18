@@ -1243,6 +1243,44 @@ def _literal_slice_loop(source: str) -> list[tuple[str, dict]] | None:
         return None
 
 
+def _parallel_slice_reads(source: str) -> list[tuple[str, dict]] | None:
+    """Recognize a literal parallel slice batch without evaluating provider code."""
+    match = re.fullmatch(
+        r'\s*const\s+(?P<file>[A-Za-z_]\w*)\s*=\s*(?P<path>"[^"\\]*"|\'[^\'\\]*\')\s*;'
+        r'\s*const\s+(?P<results>[A-Za-z_]\w*)\s*=\s*await\s+Promise\.allSettled\('
+        r'(?P<ranges>\[(?:\s*\[\s*\d+\s*,\s*\d+\s*\]\s*,?)+\])\.map\('
+        r'\(\[\s*(?P<start>[A-Za-z_]\w*)\s*,\s*(?P<end>[A-Za-z_]\w*)\s*\]\)\s*=>\s*'
+        r'tools\.exec_command\((?P<args>\{\s*cmd\s*:\s*`(?P<command>[^`]*)`[^{}]*\})\)\)\)\s*;'
+        r'\s*for\s*\(\s*const\s+(?P<result>[A-Za-z_]\w*)\s+of\s+(?P=results)\s*\)'
+        r'\s*text\((?P=result)\)\s*;?\s*', source, re.S)
+    if not match:
+        return None
+    names = [match[key] for key in ('file', 'results', 'start', 'end', 'result')]
+    if len(set(names + ['Promise', 'tools', 'text'])) != 8:
+        return None
+    command = match['command']
+    placeholders = ['${' + match[key] + '}' for key in ('file', 'start', 'end')]
+    if command.count('${') != 3 or any(command.count(value) != 1 for value in placeholders):
+        return None
+    try:
+        path = ast.literal_eval(match['path'])
+        ranges = ast.literal_eval(match['ranges'])
+        operations = []
+        for pair in ranges:
+            if not isinstance(pair, list) or len(pair) != 2 or any(type(n) is not int for n in pair):
+                return None
+            args = match['args']
+            for placeholder, value in zip(placeholders, (path, *pair)):
+                args = args.replace(placeholder, str(value))
+            value = _literal_argument(ast.parse(_literal_templates(args), mode='eval').body)
+            if not isinstance(value, dict) or not _dispatch_segment(value.get('cmd', '')):
+                return None
+            operations.append(('exec_command', value))
+        return operations or None
+    except (ValueError, SyntaxError, TypeError):
+        return None
+
+
 def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     """Read literal provider arguments; never evaluate orchestration source."""
     if row.get("type") == "function_call" or row.get("tool") == "exec_command":
@@ -1261,6 +1299,9 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     if loop is not None:
         return loop
     loop = _literal_slice_loop(source)
+    if loop is not None:
+        return loop
+    loop = _parallel_slice_reads(source)
     if loop is not None:
         return loop
     try:
@@ -1442,6 +1483,8 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
     cursor, verified, owners = 0, {}, {}
     rows = trace.get("tool_trace", [])
     for index, row in enumerate(rows):
+        if cursor == len(content):
+            break
         if not isinstance(row, dict) or row.get("type") not in {"function_call", "custom_tool_call"}:
             continue
         for name, arguments in _tool_operations(row):
@@ -1467,6 +1510,20 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
                   and item.get("call_id") == call_id]
         if len(paired) != 1:
             return {}
+        if _parallel_slice_reads(rows[owners[call_id]].get('input', '')) is not None:
+            results = []
+            for item in paired[0].get('output', []):
+                try:
+                    result = json.loads(item.get('text', ''))
+                except (AttributeError, ValueError, TypeError):
+                    continue
+                if isinstance(result, dict) and 'status' in result:
+                    results.append(result)
+            if (len(results) != len(segments) or any(
+                    result.get('status') != 'fulfilled' or not isinstance(result.get('value'), dict)
+                    or result['value'].get('exit_code') != 0 or result['value'].get('output') != segment
+                    for result, segment in zip(results, segments))):
+                return {}
         delivered = "\0".join(value for _, value in _trace_strings({"tool_trace": paired}))
         if "Warning: truncated output" in delivered:
             return {}

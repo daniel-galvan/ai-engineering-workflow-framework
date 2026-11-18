@@ -383,6 +383,9 @@ class ActivationDelivery(unittest.TestCase):
             proof = runtime_checks.live_dispatch_binding({"Thread ID": CHILD, "Last dispatch at": DISPATCH},
                 "current_state_investigator", self.artifacts, trace["run_id"], "2026-10-12T20:02:00Z")
             self.assertEqual(proof.get("dispatch_file"), path)
+        repeated = json.loads(json.dumps(trace))
+        repeated['tool_trace'].extend([{**rows[-2], 'call_id': 'reread'}, {**rows[-1], 'call_id': 'reread'}])
+        self.assertEqual(runtime.observed_dispatch_binding(repeated, self.artifacts)['dispatch_file'], path)
         for mutate in ("missing", "reordered", "truncated", "wrong_pair", "duplicate_id"):
             invalid = json.loads(json.dumps(trace))
             if mutate == "missing": invalid["tool_trace"] = invalid["tool_trace"][:-2]
@@ -393,6 +396,50 @@ class ActivationDelivery(unittest.TestCase):
             self.assertEqual(runtime.observed_dispatch_binding(invalid, self.artifacts), {}, mutate)
         trace["tool_trace"][1]["output"][0]["text"] += "\n" + ARCHIVE
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_parallel_slice_reads_require_successful_complete_ordered_results(self):
+        trace = self.instruction_trace()
+        path = trace['spawn']['dispatch_file']
+        content = Path(path).read_text()
+        ranges = [[start, min(start + 900, len(content))] for start in range(0, len(content), 900)]
+        source = (f'const f={json.dumps(path)}; const results=await Promise.allSettled('
+                  f'{json.dumps(ranges)}.map(([a,b])=>tools.exec_command('
+                  '{cmd:`python3 -c \'print(open("${f}").read()[${a}:${b}],end="")\'`,'
+                  'max_output_tokens:6000})));for(const r of results)text(r)')
+        output = [{'type': 'input_text', 'text': json.dumps({'status': 'fulfilled',
+                   'value': {'exit_code': 0, 'output': content[start:end]}})} for start, end in ranges]
+        trace['tool_trace'] = [
+            {'type': 'custom_tool_call', 'name': 'exec', 'call_id': 'batch', 'input': source},
+            {'type': 'custom_tool_call_output', 'call_id': 'batch', 'output': output}]
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)['dispatch_file'], path)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        sessions = self.root / 'parallel-recovery' / 'sessions'
+        sessions.mkdir(parents=True)
+        native_rows = [{'timestamp': DISPATCH, 'type': 'session_meta', 'payload': {'id': CHILD}}]
+        native_rows.extend({'timestamp': '2026-10-12T20:01:00Z', 'type': 'response_item', 'payload': row}
+                           for row in trace['tool_trace'])
+        (sessions / ('rollout-' + CHILD + '.jsonl')).write_text(
+            '\n'.join(json.dumps(row) for row in native_rows) + '\n')
+        with patch.dict(os.environ, {'CODEX_HOME': str(sessions.parent)}):
+            recovered = runtime_checks.live_dispatch_binding({'Thread ID': CHILD, 'Last dispatch at': DISPATCH},
+                'current_state_investigator', self.artifacts, trace['run_id'], '2026-10-12T20:02:00Z')
+            self.assertEqual(recovered['dispatch_file'], path)
+        for change in ('missing', 'reordered', 'rejected', 'failed', 'truncated', 'wrong_pair', 'mutable', 'extra'):
+            changed = json.loads(json.dumps(trace))
+            rows = changed['tool_trace']
+            if change == 'missing': rows[1]['output'].pop()
+            elif change == 'reordered': rows[1]['output'][:2] = output[1::-1]
+            elif change == 'wrong_pair': rows[1]['call_id'] = 'other'
+            elif change == 'mutable': rows[0]['input'] = source.replace('const f=', 'let f=')
+            elif change == 'extra': rows[0]['input'] += '; await tools.exec_command({cmd:"pwd"})'
+            else:
+                result = json.loads(rows[1]['output'][0]['text'])
+                if change == 'rejected': result['status'] = 'rejected'
+                elif change == 'failed': result['value']['exit_code'] = 1
+                else: result['value']['output'] = 'Warning: truncated output'
+                rows[1]['output'][0]['text'] = json.dumps(result)
+            with self.subTest(change=change):
+                self.assertEqual(runtime.observed_dispatch_binding(changed, self.artifacts), {})
 
     def test_literal_command_loop_requires_complete_ordered_instruction_delivery(self):
         trace = self.instruction_trace()

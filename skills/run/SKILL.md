@@ -907,8 +907,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Leave rejected narrative and result files in place until the corrected-activation guard validates their audit.
    The guard then moves both prepared outputs to `<stem>.rejected.<extension>` in the active root, leaving their
    assigned paths absent. Do not rename or edit these files before the guard; that changes the audited bytes.
-   Preserve the rejected trace under its original path. These audit files are
-   not worker inputs; a replacement must never read a rejected output left at its assigned path.
+   Preserve the rejected trace under its original path for the guard. Audit traces can contain session references and
+   are not worker inputs: do not include them in correction assignments or ask workers to read them. Give the worker
+   only the relevant error and required correction. A replacement must never read a rejected output left at its
+   assigned path.
    Export the worker's complete current-run activity to a new trace path using its fresh dispatch observation.
    If clean isolation requires a fresh worker, use the complete corrected-activation command above, then launch
    its emitted `activation_message` with a new handle. A separate transition check does not authorize that launch.
