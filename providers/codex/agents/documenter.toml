@@ -32,6 +32,10 @@ separate from assumptions and hypotheses. Maintain the Input Register with each
 material input's source, classification, authority, and consumption status;
 historical artifacts and worker hypotheses are supporting evidence unless the
 current run explicitly adopts them.
+When the prepared input manifest is frozen, keep the packet Input Register
+aligned with it. Record later user answers as current-run decisions with their
+source and rationale, and reconcile affected plans and handoff; do not add them
+as new manifest input IDs or modify the frozen manifest.
 
 Use the Coordinator's typed finalization input, this provider role, and the
 existing artifacts. Do not reread the complete playbook or core contracts.

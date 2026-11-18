@@ -1210,6 +1210,39 @@ def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
         return None
 
 
+def _literal_slice_loop(source: str) -> list[tuple[str, dict]] | None:
+    """Resolve a finite list of literal dispatch slices without executing JavaScript."""
+    match = re.fullmatch(
+        r'\s*const\s+(?P<ranges>[A-Za-z_]\w*)\s*=\s*(?P<values>\[[^\]]*\])\s*;'
+        r'\s*for\s*\(\s*const\s+(?P<part>[A-Za-z_]\w*)\s+of\s+(?P=ranges)\s*\)\s*\{'
+        r'\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+tools\.exec_command\('
+        r'(?P<arguments>\{\s*cmd\s*:\s*`(?P<command>[^`]*)`[^{}]*\})\)\s*;'
+        r'\s*text\((?P=result)\.output\)\s*;?\s*\}\s*;?\s*', source, re.S)
+    if not match:
+        return None
+    if len({match['ranges'], match['part'], match['result'], 'tools', 'text'}) != 5:
+        return None
+    placeholder = '${' + match['part'] + '}'
+    command = match['command']
+    if command.count(placeholder) != 1 or command.count('${') != 1:
+        return None
+    try:
+        values = _literal_argument(ast.parse(match['values'], mode='eval').body)
+        if not isinstance(values, list) or not values or not all(
+                isinstance(value, str) and re.fullmatch(r'\d+:\d+', value) for value in values):
+            return None
+        operations = []
+        for value in values:
+            arguments = _literal_templates(match['arguments'].replace(placeholder, value))
+            arguments = _literal_argument(ast.parse(arguments, mode='eval').body)
+            if not isinstance(arguments, dict) or not _dispatch_segment(arguments.get('cmd', '')):
+                return None
+            operations.append(('exec_command', arguments))
+        return operations
+    except (ValueError, SyntaxError, TypeError):
+        return None
+
+
 def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     """Read literal provider arguments; never evaluate orchestration source."""
     if row.get("type") == "function_call" or row.get("tool") == "exec_command":
@@ -1225,6 +1258,9 @@ def _tool_operations(row: dict) -> list[tuple[str, dict]]:
     if row.get("name", "").rsplit(".", 1)[-1] == "apply_patch":
         return [("apply_patch", {"patch": source})]
     loop = _literal_command_loop(source)
+    if loop is not None:
+        return loop
+    loop = _literal_slice_loop(source)
     if loop is not None:
         return loop
     try:

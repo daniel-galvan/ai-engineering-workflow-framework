@@ -60,6 +60,9 @@ class ActivationDelivery(unittest.TestCase):
                     if agent in {"current_state_investigator", "sentry_current_state_investigator"}:
                         self.assertIn("related-work", packet["developer_instructions"])
                         self.assertIn("relevance, completeness and freshness", packet["developer_instructions"])
+                    if agent == "documenter":
+                        self.assertIn("Record later user answers as current-run decisions", packet["developer_instructions"])
+                        self.assertIn("do not add them\nas new manifest input IDs", packet["developer_instructions"])
                     policy = packet["repository_instructions"]
                     self.assertIn(f"Keep every run-created file, including scratch drafts and temporary output, inside {run['artifact_root']}", policy)
                     self.assertIn("do not write them to a separate temporary directory", policy)
@@ -425,6 +428,33 @@ class ActivationDelivery(unittest.TestCase):
                 self.assertEqual(runtime.observed_dispatch_binding(changed, self.artifacts), {})
         trace["tool_trace"][1]["output"].append({"type": "input_text", "text": ARCHIVE})
         self.assertIn("forbidden_context_reference:archived_artifact", runtime.context_trace_errors(trace))
+
+    def test_literal_slice_loop_requires_complete_ordered_instruction_delivery(self):
+        trace = self.instruction_trace()
+        path = trace['spawn']['dispatch_file']
+        content = Path(path).read_text()
+        ranges = [f'{start}:{min(start + 900, len(content))}' for start in range(0, len(content), 900)]
+        source = (f'const chunks={json.dumps(ranges)}; for(const s of chunks){{'
+                  f'const r=await tools.exec_command({{cmd:`python3 -c \'print(open("{path}").read()[${{s}}],end="")\'`,'
+                  'max_output_tokens:6000});text(r.output)}')
+        output = [{'type': 'input_text', 'text': content[int(a):int(b)]}
+                  for a, b in (part.split(':') for part in ranges)]
+        trace['tool_trace'] = [
+            {'type': 'custom_tool_call', 'name': 'exec', 'call_id': 'loop', 'input': source},
+            {'type': 'custom_tool_call_output', 'call_id': 'loop', 'output': output}]
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)['dispatch_file'], path)
+        self.assertEqual(runtime.context_trace_errors(trace), [])
+        for change in ('missing', 'reordered', 'truncated', 'wrong_pair', 'mutable', 'extra', 'nonliteral'):
+            changed = json.loads(json.dumps(trace))
+            if change == 'missing': changed['tool_trace'][1]['output'].pop()
+            elif change == 'reordered': changed['tool_trace'][1]['output'][:2] = output[1::-1]
+            elif change == 'truncated': changed['tool_trace'][1]['output'][0]['text'] = 'Warning: truncated output'
+            elif change == 'wrong_pair': changed['tool_trace'][1]['call_id'] = 'other'
+            elif change == 'mutable': changed['tool_trace'][0]['input'] = source.replace('const chunks', 'let chunks')
+            elif change == 'extra': changed['tool_trace'][0]['input'] = source + '; await tools.exec_command({cmd:"pwd"})'
+            elif change == 'nonliteral': changed['tool_trace'][0]['input'] = source.replace('${s}', '${s + ""}')
+            with self.subTest(change=change):
+                self.assertEqual(runtime.observed_dispatch_binding(changed, self.artifacts), {})
 
     def test_parallel_literal_command_batch_requires_complete_ordered_output(self):
         trace = self.instruction_trace()

@@ -54,6 +54,8 @@ maintenance.
 * Maintain `work_record.md`.
 * Maintain the Input Register with stable Input IDs and each material input's source, classification, authority,
   assignment, and consumption status.
+* When the prepared input manifest is frozen, keep its Input Register aligned; record later user answers as sourced
+  current-run decisions and reconcile affected plans and handoff without adding manifest input IDs.
 * Cite provider worker/result handles for worker outputs and Coordinator/provider observations for preflight evidence;
   reserve `Current user` for inputs supplied by the user.
 * Record run ID, framework commit, prompt and playbook versions, provider, relevant repository revisions, each worker's

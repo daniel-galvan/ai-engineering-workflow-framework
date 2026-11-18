@@ -750,8 +750,10 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    the Draft. Do not publish a completed handoff until the decision gate permits it.
    A blocking `functions.request_user_input` response with empty or missing answers is also unanswered. Do not
    continue dependent work or finalize/publish a completed handoff while it is unanswered. Record the response in the
-   current-run decision record, return it to the owning worker if the result changes, and resume the same run. If the
-   reply starts a new native parent turn, first follow the existing status-projection and
+   current-run decision record with its source, return it to the owning worker if the result changes, and resume the
+   same run. When the prepared input manifest is frozen, keep its input IDs unchanged and tell the Documenter to record
+   the answer as a decision rather than a new manifest input. If the reply starts a new native parent turn, first follow
+   the existing status-projection and
    `prepare_run.py --continuation` steps to bind it before the next guarded action. A reply in the already bound turn
    does not require a new preparation. If interactive input tools are unavailable or return no answer, ask visibly and
    leave the run open for
