@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -93,7 +94,17 @@ class PlanningRecovery(unittest.TestCase):
         recovered_packets = json.loads(Path(result['activation_packet_bundle']['path']).read_text())['packets']
         for contract in (fresh_contract, recovered_contract):
             self.assertIn('exact declared work-item input path or Source or path', contract)
+            self.assertIn('Finish reachable checks owned by context before returning', contract)
         for packets in (fresh_packets, recovered_packets):
+            context = packets['current_state_investigator']
+            self.assertIn('Source checkout row', context['repository_instructions'])
+            self.assertIn('source_read_only_baseline is a source-tree fingerprint', context['repository_instructions'])
+            self.assertIn('plus asset_manifest (inventory object)', context['worker_contract']['result_instructions'])
+            impact = packets['dependency_analyst']['worker_contract']
+            self.assertIn('primary code scope', impact['instructions'])
+            self.assertNotIn('plus asset_manifest', impact['result_instructions'])
+            self.assertIn('trace the assigned repository', packets['repository_integrator']['worker_contract']['instructions'])
+            self.assertIn('Preserve exact required headings', packets['documenter']['developer_instructions'])
             self.assertIn('selected related-work evidence', packets['solution_architect']['developer_instructions'])
             instructions = packets['current_state_investigator']['developer_instructions']
             self.assertIn('use bounded discovery and inspect plausible matches', instructions)
@@ -156,12 +167,31 @@ class PlanningRecovery(unittest.TestCase):
         evidence.write_text("First evidence\n")
         manifest = self.artifacts / "manifest.json"
         manifest.write_text("First manifest\n")
-        plan.write_text("[Evidence](docs/evidence%20one.md) and [manifest][m]\n\n[m]: <manifest.json>\n")
+        record = self.artifacts / "work_record.md"
+        record.write_text("Provisional record\n")
+        plan.write_text("[Evidence](docs/evidence%20one.md), [manifest][m], and [record](work_record.md)\n"
+                        "\n[m]: <manifest.json>\n")
+        self.packet["handoff"]["artifacts"] = ["[Evidence](<docs/evidence one.md>)", str(manifest), str(record)]
+        self.packet["runtime_closure"] = []
         finalizer._snapshot_published_plan(self.packet, self.artifacts)
         first = finalizer.published_plan_path(self.packet)
         self.assertEqual((first.parent / "docs" / "evidence one.md").read_text(), "First evidence\n")
         self.assertEqual((first.parent / "manifest.json").read_text(), "First manifest\n")
         old_packet = json.loads(json.dumps(self.packet))
+        report = finalizer.render_handoff(old_packet)
+        self.assertIn(f"[Evidence](<{first.parent / 'docs' / 'evidence one.md'}>)", report)
+        self.assertIn(f"[manifest.json]({first.parent / 'manifest.json'})", report)
+        self.assertIn(f"[work_record.md]({record})", report)
+
+        bundle_manifest = first.parent / ".published_plan_manifest.json"
+        metadata = json.loads(bundle_manifest.read_bytes())
+        del metadata["handoff_companions"]
+        legacy_bytes = json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
+        legacy = {**old_packet, "published_plan_bundle_sha256": hashlib.sha256(legacy_bytes).hexdigest()}
+        directory = first.parent.parent / legacy["published_plan_bundle_sha256"]
+        shutil.copytree(first.parent, directory)
+        (directory / bundle_manifest.name).write_bytes(legacy_bytes)
+        self.assertIn(f"[manifest.json]({manifest})", finalizer.render_handoff(legacy))
         evidence.write_text("Later evidence\n")
         finalizer._snapshot_published_plan(self.packet, self.artifacts)
         second = finalizer.published_plan_path(self.packet)
@@ -169,7 +199,11 @@ class PlanningRecovery(unittest.TestCase):
         self.assertEqual((first.parent / "docs" / "evidence one.md").read_text(), "First evidence\n")
         self.assertEqual((second.parent / "docs" / "evidence one.md").read_text(), "Later evidence\n")
         preparation._archive_existing_run(self.artifacts, False, fresh_start=True)
+        replacement = self.artifacts / "replacement.json"
+        replacement.write_text("Active replacement\n")
+        manifest.symlink_to(replacement)
         self.assertEqual(finalizer.published_plan_path(old_packet), first)
+        self.assertEqual(finalizer.render_handoff(old_packet), report)
         (first.parent / "manifest.json").write_text("Tampered\n")
         with self.assertRaisesRegex(ValueError, "published_plan_snapshot_invalid"):
             finalizer.published_plan_path(old_packet)

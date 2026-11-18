@@ -1324,8 +1324,8 @@ def _store_published_plan(root: Path, content: bytes, *, source_root: Path | Non
             continue
         if path.is_file():
             files[relative.as_posix()] = path.read_bytes()
-    manifest = {"plan_sha256": digest, "files": {name: hashlib.sha256(data).hexdigest()
-                                                  for name, data in sorted(files.items())}}
+    manifest = {"plan_sha256": digest, "handoff_companions": True,
+                "files": {name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())}}
     manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
     bundle = hashlib.sha256(manifest_bytes).hexdigest() if files else None
     directory = root / "runs" / "_published_plans" / (bundle or digest)

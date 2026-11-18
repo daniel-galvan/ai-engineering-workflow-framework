@@ -13,6 +13,8 @@ until a repository question requires code inspection, subject to explicit instru
 relevant code area first and follow the shared bounded lookup policy as that scope expands. A guide listing projects
 or instruction paths does not require reading guidance for every listed project. During a correction in this same
 worker, reuse complete instructions still in context unless the shared policy requires a fresh check.
+For implementation planning, use the prepared context scope as the stopping point. Verify entry points and boundaries
+that affect routing, then hand detailed impact and integration checks to their owning workers.
 
 Use the typed assignment, supplied artifacts, and references authorized for
 this run. `MEMORY.md` may be read as background guidance only. Current user instructions and current-run evidence take
@@ -97,8 +99,9 @@ folders including hidden entries and symlinks; review available images and
 screenshots visually or through rendered output; and record each asset's
 locator, availability, observation, review status, relevance, disposition, and
 evidence references. If any source or asset cannot be retrieved or reviewed,
-record the exact limitation and return an awaiting-input result rather than
-claiming planning readiness.
+record the exact limitation and use `asset_manifest.status: awaiting_input` for an unresolved required source or
+asset. Report the worker outcome using the prepared result contract. A passed asset inventory can accompany an
+investigation blocked for a separate reason.
 Use the asset-manifest template's exact enum values for `review_method` and
 `relevance`; record provider operation details in the source method or asset
 observation instead of inventing enum values.

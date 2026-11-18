@@ -58,24 +58,25 @@ def _explanation_text(item: object) -> str:
     return f"{explanation} ({suffix})" if suffix else explanation
 
 
-def _artifact_link(item: object, artifact_root: object) -> str:
+def _artifact_link(item: object, artifact_root: object, companions: dict[Path, Path] | None = None) -> str:
     value = str(item).strip()
     if value.startswith("[") and "](" in value and value.endswith(")"):
         label, target = value.split("](", 1)
         target = target[:-1]
         if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", target):
             return value
-        target = target.strip("<>")
-        path = Path(target)
-        if not path.is_absolute():
-            path = Path(str(artifact_root)) / path
-        destination = str(path.resolve())
-        return f"{label}](<{destination}>)" if " " in destination else f"{label}]({destination})"
-    path = Path(value)
+        path = Path(target.strip("<>"))
+    else:
+        path = Path(value)
+        label = None
     if not path.is_absolute():
         path = Path(str(artifact_root)) / path
-    destination = str(path.resolve())
-    return f"[{path.name}](<{destination}>)" if " " in destination else f"[{path.name}]({destination})"
+    # Use the recorded logical path before following any later run's symlinks.
+    companion = companions.get(path) if companions else None
+    destination = str(companion or path.resolve())
+    if label is None:
+        label = f"[{path.name}"
+    return f"{label}](<{destination}>)" if " " in destination else f"{label}]({destination})"
 
 
 def _relative_artifact_path(value: object, artifact_root: object) -> str:
@@ -262,11 +263,11 @@ def render_compact(packet: dict[str, object]) -> str:
     return "\n\n".join(result) + "\n"
 
 
-def published_plan_path(packet: dict[str, object]) -> Path | None:
-    """Resolve a verified immutable plan snapshot recorded in the terminal packet."""
+def published_plan_artifacts(packet: dict[str, object]) -> tuple[Path | None, dict[Path, Path]]:
+    """Return the verified plan and active-to-published handoff paths for its companions."""
     digest = packet.get("published_plan_sha256")
     if digest is None:
-        return None
+        return None, {}
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
         raise ValueError("published_plan_digest_invalid")
     root = Path(str(packet["finalization"]["Durable artifact root"])).resolve()
@@ -280,12 +281,17 @@ def published_plan_path(packet: dict[str, object]) -> Path | None:
     if (target.is_symlink() or not target.is_file()
             or hashlib.sha256(target.read_bytes()).hexdigest() != digest):
         raise ValueError("published_plan_snapshot_invalid")
+    companions = {}
     if bundle:
         manifest = directory / ".published_plan_manifest.json"
-        if manifest.is_symlink() or not manifest.is_file() or hashlib.sha256(manifest.read_bytes()).hexdigest() != bundle:
+        if manifest.is_symlink() or not manifest.is_file():
             raise ValueError("published_plan_snapshot_invalid")
-        metadata = json.loads(manifest.read_text())
-        if metadata.get("plan_sha256") != digest or not isinstance(metadata.get("files"), dict):
+        content = manifest.read_bytes()
+        if hashlib.sha256(content).hexdigest() != bundle:
+            raise ValueError("published_plan_snapshot_invalid")
+        metadata = json.loads(content)
+        if (not isinstance(metadata, dict) or metadata.get("plan_sha256") != digest
+                or not isinstance(metadata.get("files"), dict)):
             raise ValueError("published_plan_snapshot_invalid")
         for name, expected in metadata["files"].items():
             relative = Path(name)
@@ -294,13 +300,21 @@ def published_plan_path(packet: dict[str, object]) -> Path | None:
                     or any((directory / Path(*relative.parts[:i])).is_symlink() for i in range(1, len(relative.parts) + 1))
                     or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected):
                 raise ValueError("published_plan_snapshot_invalid")
-    return target
+            # Preserve old handoff bytes and links to outputs written after the bundle is built.
+            if (metadata.get("handoff_companions") is True
+                    and name not in {"work_record.md", "handoff_response.md", "handoff_delivery.json"}):
+                companions[root / relative] = path
+    return target, companions
+
+
+def published_plan_path(packet: dict[str, object]) -> Path | None:
+    return published_plan_artifacts(packet)[0]
 
 
 def render_handoff(packet: dict[str, object]) -> str:
     handoff = packet["handoff"]
     root = Path(str(packet["finalization"]["Durable artifact root"])).resolve()
-    published = published_plan_path(packet)
+    published, companions = published_plan_artifacts(packet)
     plan = str(handoff["implementation_plan"])
     reference = re.fullmatch(r"((?:/.*?/)?implementation_plan\.md)(\s.*)?", plan)
     if reference:
@@ -341,7 +355,7 @@ def render_handoff(packet: dict[str, object]) -> str:
         if packet["identity"]["Workflow outcome"] == "blocked" else "No additional risk recorded in this handoff.")
     artifact_links = {}
     for item in handoff["artifacts"]:
-        link = _artifact_link(item, packet["finalization"]["Durable artifact root"])
+        link = _artifact_link(item, root, companions)
         destination = link.rsplit("](", 1)[1][:-1].strip("<>")
         if published and Path(destination) == root / "implementation_plan.md":
             link = _artifact_link(str(published), root)
@@ -463,11 +477,15 @@ def render(packet: dict[str, object]) -> str:
 
 def expand_work_record(text: str, root: Path) -> str:
     """Verify a compact projection, then feed its complete packet to legacy checks."""
+    return expand_work_record_with_snapshot(text, root)[0]
+
+
+def expand_work_record_with_snapshot(text: str, root: Path) -> tuple[str, dict | None]:
     match = re.search(r"<!-- workflow-state: (finalization_snapshot\.([0-9a-f]{64})\.json) -->", text)
     if not match:
         if "workflow-state:" in text or re.search(r"finalization_snapshot\.[0-9a-f]{64}\.json", text):
             raise ValueError("compact work record requires a valid workflow-state snapshot reference")
-        return text
+        return text, None
     path = root / match.group(1)
     if path.is_symlink():
         raise ValueError("workflow-state snapshot must be a local regular file")
@@ -486,4 +504,4 @@ def expand_work_record(text: str, root: Path) -> str:
         raise ValueError("workflow-state snapshot conflicts with its runtime closure receipt")
     if text != render_compact(packet):
         raise ValueError("work record does not match its workflow-state snapshot; rerun the finalizer")
-    return render(packet)
+    return render(packet), packet

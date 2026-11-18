@@ -20,7 +20,7 @@ from scripts.review_evidence import (
     DESIGN_COLUMNS, SOLUTION_COLUMNS, VALIDATION_COLUMNS, candidate_fingerprint,
 )
 from scripts import finalize_work_record as finalizer
-from scripts.provider_runtime import related_run_status_projection_source
+from scripts.provider_runtime import related_run_status_projection_source, targeted_wait_projection_source
 from tests import test_packaged_lifecycle as packaging
 
 
@@ -621,7 +621,7 @@ class PlanningCommandPath(unittest.TestCase):
                     if playbook == "feature_delivery":
                         assets = root / "asset_manifest.json"
                         plan.write_text(plan.read_text() + "\n## Asset Baseline\n\n"
-                            + f"[Asset inventory]({assets}): the supplied Jira fixture has one reviewed attachment.\n\n"
+                            + f"[Asset inventory]({assets.name}): the supplied Jira fixture has one reviewed attachment.\n\n"
                             "| Asset ID | Evidence refs | Observation | Planning consequence |\n"
                             "| --- | --- | --- | --- |\n"
                             "| ASSET-001 | E-FC-001 | Counter must increment | Correct the existing numeric operator |\n")
@@ -641,7 +641,8 @@ class PlanningCommandPath(unittest.TestCase):
                             packet["handoff"]["next_action"] = {"owner": "Product owner",
                                 "action": "Resolve the counter boundary-input policy", "complete_when": "The owned decision is recorded"}
                             if plan_action == "create_draft":
-                                plan.write_text(plan.read_text() + "\n# Open Questions and Decisions\n" + render_table(
+                                plan.write_text(plan.read_text() + "\n# Open Questions and Decisions\n\n"
+                                    f"See the [Clarification Brief]({brief.name}).\n\n" + render_table(
                                     ("Question or decision", "Why it matters", "Owner", "Status", "Evidence refs"), question))
                             else:
                                 plan.unlink()
@@ -780,7 +781,8 @@ class PlanningCommandPath(unittest.TestCase):
                 command("worker_runtime_evidence.py", *collector, "--pending-closure", pending_closure)
             command("finalize_work_record.py", *finalize, "--check-packet")
             command("finalize_work_record.py", *finalize, "--pre-release")
-            if playbook == "feature_delivery":
+            targeted_planning_closure = playbook == "feature_delivery" and plan_action == "create_draft"
+            if playbook == "feature_delivery" and not targeted_planning_closure:
                 saved_closure = closure.read_bytes()
                 stale = json.loads(command("worker_runtime_evidence.py", *collector, "--closure", closure, expected=2))
                 self.assertIn("terminal_observation_predates_pre_release:", stale["reason"])
@@ -790,7 +792,22 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(closure.read_bytes(), blocked)
                 snapshot = root / ("runtime_closure.blocked." + hashlib.sha256(blocked).hexdigest() + ".json")
                 snapshot.write_bytes(blocked)
-            inventory(omit_handles={failed_handle} if recover_failed_worker else ())
+            omitted = {failed_handle} if recover_failed_worker else set()
+            if targeted_planning_closure:
+                omitted.add("/root/handoff")
+            inventory(omit_handles=omitted)
+            if targeted_planning_closure:
+                child = completed["/root/handoff"]
+                status = {"wake": {"reason": "inactiveStatus", "threadId": child}, "polls": [{
+                    "thread": {"id": child, "status": {"type": "notLoaded"}},
+                    "latestTurn": {"id": str(UUID(int=802)), "status": "completed",
+                        "startedAt": json.loads(trace.read_text())["last_dispatch_at"],
+                        "completedAt": datetime.now(timezone.utc).isoformat()}}]}
+                append(parent, "response_item", type="custom_tool_call", name="exec", call_id="handoff-status",
+                       input=targeted_wait_projection_source(child))
+                append(parent, "response_item", type="custom_tool_call_output", call_id="handoff-status",
+                       output=[{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                               {"type": "input_text", "text": json.dumps(status)}])
             if recover_failed_worker:
                 dispatch_time = datetime.fromisoformat(dispatch_at.replace("Z", "+00:00"))
                 status = {"thread": {"id": failed_id, "status": {"type": "notLoaded"}},
@@ -805,6 +822,9 @@ class PlanningCommandPath(unittest.TestCase):
             receipt = json.loads(closure.read_text())
             planning_receipt = receipt
             self.assertEqual({row["Provider handle"] for row in receipt["terminal_observations"]}, set(completed))
+            if targeted_planning_closure:
+                self.assertIn(("/root/handoff", "wait_threads"),
+                              {(row["Provider handle"], row["Status source"]) for row in receipt["terminal_observations"]})
             if pending_closure != closure:
                 self.assertEqual(snapshot.read_bytes(), blocked)
                 finalize = ("--packet", packet_path, "--closure", closure, *finalize[4:])
@@ -823,6 +843,14 @@ class PlanningCommandPath(unittest.TestCase):
                 self.assertEqual(saved.read_bytes(), original)
                 self.assertEqual((saved.parent / "run_inputs.json").read_bytes(), (root / "run_inputs.json").read_bytes())
                 self.assertIn(str(saved), emitted)
+                if playbook == "feature_delivery":
+                    companions = ["asset_manifest.json"]
+                    if plan_action == "create_draft":
+                        companions.append("clarification_brief.md")
+                    for name in companions:
+                        self.assertEqual((saved.parent / name).read_bytes(), (root / name).read_bytes())
+                        self.assertIn(f"]({saved.parent / name})", emitted)
+                        self.assertNotIn(f"]({root / name})", emitted)
                 raw_packet = json.loads(packet_path.read_text())
                 finalizer.verify_recovery_record(packet_path, root / "work_record.md", raw_packet, receipt, package)
                 plan.write_bytes(b"A later run's plan\n")

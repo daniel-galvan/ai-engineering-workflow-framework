@@ -590,7 +590,9 @@ def _write_activation_packets(
                 "do not write them to a separate temporary directory. "
                 "The execution_repository in coordinator_execution is the durable-records repository and may "
                 "be a different checkout or branch; do not use it as the source checkout when paths differ. "
-                "Before source work, verify the source checkout's branch and revision against the prepared run. "
+                "Before source work, verify the branch and Git HEAD against Branch / detached and Full revision "
+                "in the Source checkout row of the prepared finalization packet's repositories. "
+                "If present, source_read_only_baseline is a source-tree fingerprint used to detect changes. "
                 "Follow applicable instructions already delivered in this worker's current context and honor explicit "
                 "instruction-read requirements. Before inspecting, planning or changing code, obtain missing local "
                 "AGENTS.md guidance only in the source target directory and its ancestors up to the source checkout root. "
@@ -3584,6 +3586,25 @@ def prepare_run(
         fields = {name: list(rows[0]) for name, rows in json.loads(
             (ROOT / "templates/finalization_packet.json").read_text()).items()
             if name in {"evidence", "claims", "decisions", "actions", "worker_results"}}
+        scope = {
+            "current_state_investigator": (
+                "Recover exact target criteria, current details of selected related work, and the asset inventory. "
+                "Verify the primary entry points and identify any boundary that changes downstream routing. Verify "
+                "engineering guidance claims needed for those findings and pass remaining reference questions to the "
+                "downstream owner. Finish reachable checks owned by context before returning. Hand off detailed "
+                "impact and cross-repository tracing as downstream questions; these do not block complete context. "
+            ),
+            "dependency_analyst": (
+                "Use the accepted context and asset inventory to trace primary code scope behavior, dependencies, "
+                "affected consumers, and regression coverage. When Repository Integration is activated, hand off "
+                "the detailed external contract trace to that worker. "
+            ),
+            "repository_integrator": (
+                "Use accepted context to trace the assigned repository, service, or operational boundary end to end. "
+                "Verify the relevant reference claims and record the contract, ownership, observed limitations, and "
+                "design constraints. Reuse the established work-item and primary entry-point evidence. "
+            ),
+        }
         for agent, (worker, namespace) in FEATURE_WORKERS.items():
             manifest["worker_contracts"][agent] = {
                 "worker": worker, "id_namespace": namespace,
@@ -3592,10 +3613,9 @@ def prepare_run(
                 "result_hash_required": True,
                 "result_response": "strict_json_final_answer",
                 "result_fields": fields,
-                "instructions": (
-                    "Return exactly one strict JSON object with keys "
-                    "output (narrative string) and result (JSON with current run_id, worker_result, "
-                    "evidence/claims/decisions/actions using result_fields). The Coordinator captures this answer into "
+                "instructions": scope.get(agent, "") + (
+                    "Inside result, put the current run_id, worker_result and evidence/claims/decisions/actions "
+                    "using result_fields. The Coordinator captures this answer into "
                     "immutable current-dispatch artifacts; the merger publishes accepted files. worker_result is one object using the exact "
                     "worker_results fields (including capitalization), not an array or lowercase summary. "
                     "Every field value in worker_result and in evidence/claims/decisions/actions rows must be a string, "
@@ -3625,13 +3645,14 @@ def prepare_run(
         manifest["worker_contracts"]["current_state_investigator"]["asset_inventory"] = (
             manifest["worker_contracts"]["feature_asset_inventory"])
         manifest["worker_contracts"]["current_state_investigator"]["instructions"] += (
-            " Include asset_manifest as a third key in the final JSON object using the prepared asset_inventory "
-            "contract. The Coordinator validates the staged inventory before publishing it; do not write the file yourself. "
+            " Use the prepared asset_inventory contract. The Coordinator validates the staged inventory before "
+            "publishing it; do not write the file yourself. "
             "Use exactly one jira_issue_attachments source tied to the supplied work-item input, aggregating "
             "the selected issues' attachment and remote-link inventories there. "
             "Set its locator to the exact declared work-item input path or Source or path, not a description; "
             "record selected related issues in the discovery method. "
-            "Before downstream design/review consumption, keep all_material_assets_linked false for material assets. "
+            "Before design or review consumes assets, set all_material_assets_linked to false if any material asset "
+            "exists, and true when there are no material assets. "
             "When missing asset evidence becomes available before result acceptance, update the full response "
             "and remove any conclusions that are no longer true. Preserve the original response as run history. "
             "After a complete result is accepted, change only the manifest if its findings remain valid.")
@@ -3645,6 +3666,13 @@ def prepare_run(
         if contract.get("result_response") != "strict_json_final_answer":
             continue
         contract["response_builder"] = str(ROOT / "scripts" / "prepare_worker_response.py")
+        response_shape = "output (nonempty narrative string) and result (object containing run_id and the prepared result fields)"
+        if contract.get("asset_inventory"):
+            response_shape += (
+                ", plus asset_manifest (inventory object). Asset status is passed when inventory and review pass, even "
+                "if worker_result.Outcome is blocked for a separate reason. Use awaiting_input for an unresolved "
+                "required source or asset"
+            )
         contract["result_instructions"] = (
             f"Create needed supporting artifacts inside {artifact_root} using appropriate tools. "
             "During planning, change source only when needed for the task and document the files changed and why. "
@@ -3653,6 +3681,7 @@ def prepare_run(
             "The output/result paths are Coordinator publication destinations, not worker write permissions. "
             "Do not write those files; provide their contents in the JSON response. "
             "Do not create unassigned draft files. Use stdin for the read-only response preview. "
+            f"Submit one JSON object with exactly {response_shape}. "
             f"Before your final answer, run python3 {shlex.quote(contract['response_builder'])} --packet "
             f"{shlex.quote(str(artifact_root / 'finalization_packet.json'))} --agent {shlex.quote(agent)} --response-stdin <<'RESPONSE', "
             "followed by the complete JSON envelope on the next line and RESPONSE on a line by itself. "

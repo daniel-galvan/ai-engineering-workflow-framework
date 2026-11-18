@@ -212,8 +212,9 @@ Review findings return to the Implementer for correction and another review befo
 Record unresolved questions, decisions required before implementation, and any plan revision history.
 
 For an `awaiting_input` planning handoff, a partial plan may be retained only with frontmatter `status: Draft`, the
-complete applicability/design/dependency tables, and an unresolved decision table below. Link the accompanying
-`clarification_brief.md` in the terminal handoff. This draft neither establishes full readiness nor grants approval.
+complete applicability/design/dependency tables, and an unresolved decision table below. Link to
+`clarification_brief.md` with a relative Markdown link from this plan and register the brief in the terminal handoff.
+This draft neither establishes full readiness nor grants approval.
 
 | Question or decision | Why it matters | Owner | Status | Evidence refs |
 | --- | --- | --- | --- | --- |

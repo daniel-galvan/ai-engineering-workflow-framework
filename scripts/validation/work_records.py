@@ -144,8 +144,17 @@ def _plan_handoff_linked(plan: Path, handoff_targets: set[Path], root: Path) -> 
                for candidate in handoff_targets)
 
 
+def _artifact_handoff_linked(artifact: Path, handoff_targets: set[Path], companions: dict[Path, Path]) -> bool:
+    if artifact in handoff_targets:
+        return True
+    snapshot = companions.get(artifact)
+    return (snapshot is not None and snapshot in handoff_targets and artifact.is_file()
+            and snapshot.read_bytes() == artifact.read_bytes())
+
+
 def feature_asset_record_errors(
     text: str, path: Path, identity: dict[str, str], finalization: dict[str, str],
+    companions: dict[Path, Path],
 ) -> list[str]:
     playbook_name = Path(identity.get("Playbook / version", "").split(" / ", 1)[0]).stem
     if (
@@ -205,7 +214,7 @@ def feature_asset_record_errors(
         if line.startswith("- ")
         and (target := _artifact_path(line[2:], path)) is not None
     }
-    if manifest_path.resolve() not in handoff_targets:
+    if not _artifact_handoff_linked(manifest_path.resolve(), handoff_targets, companions):
         errors.append("Feature Delivery Final Handoff must link asset_manifest.json")
     selection = markdown_table(text, "# Playbook Selection")
     assessment = bool(selection) and selection[0].get("Primary goal", "").strip().lower() == "specification assessment"
@@ -247,7 +256,7 @@ def feature_asset_record_errors(
             for name in ("implementation_plan.md", "clarification_brief.md"):
                 target = (root / name).resolve()
                 linked = (_plan_handoff_linked(target, handoff_targets, root) if name == "implementation_plan.md"
-                          else target in handoff_targets)
+                          else _artifact_handoff_linked(target, handoff_targets, companions))
                 if target not in durable_targets or not linked:
                     errors.append(f"Partial planning handoff must register and link {name}")
             if not (root / "clarification_brief.md").is_file():
@@ -286,11 +295,12 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
         )
     text = path.read_text()
     try:
-        from work_record_format import expand_work_record
+        from work_record_format import expand_work_record_with_snapshot, published_plan_artifacts
     except ModuleNotFoundError:
-        from scripts.work_record_format import expand_work_record
+        from scripts.work_record_format import expand_work_record_with_snapshot, published_plan_artifacts
     try:
-        text = expand_work_record(text, path.parent)
+        text, snapshot = expand_work_record_with_snapshot(text, path.parent)
+        companions = published_plan_artifacts(snapshot)[1] if snapshot else {}
     except (OSError, ValueError, KeyError, TypeError) as error:
         fail(f"{path}: invalid workflow-state snapshot: {error}")
         return ""
@@ -475,7 +485,7 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
                 f"{path}: Active related run None requires a timestamped provider-task and sibling-root check; "
                 "otherwise record Unknown; detection unavailable"
             )
-    for error in feature_asset_record_errors(text, path, identity, finalization):
+    for error in feature_asset_record_errors(text, path, identity, finalization, companions):
         fail(error)
     review_root = Path(finalization.get("Durable artifact root") or path.parent).resolve()
     registered_review_paths = {
@@ -1050,7 +1060,8 @@ def _validate_work_record(path: Path, require_terminal: bool = False, *, allow_u
             if target not in durable_targets:
                 fail(f"{path}: Feature Delivery {identity['State']} must register {required_artifact}")
             linked = (_plan_handoff_linked(target, handoff_artifacts, path.parent)
-                      if required_artifact == "implementation_plan.md" else target in handoff_artifacts)
+                      if required_artifact == "implementation_plan.md"
+                      else _artifact_handoff_linked(target, handoff_artifacts, companions))
             if not linked:
                 fail(f"{path}: Feature Delivery {identity['State']} must link {required_artifact} in Final Handoff")
     if playbook_name == "technical_spike":

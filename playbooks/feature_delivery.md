@@ -79,8 +79,8 @@ work. The asset gate requires attachment and remote-link inventory for the targe
 supplied sources. Recovery rechecks reused context against the same relevance, completeness, and freshness rules.
 
 The worker classifies context as `sufficient_for_planning`, `partially_recovered`, or `clarification_required`. A
-clarification-required run may complete discovery and hand off focused questions, but it must not create
-`implementation_plan.md` or claim implementation readiness.
+clarification-required context carries its questions into downstream discovery. Feature Design determines whether
+confirmed independent work supports a partial Draft under Stage 3.
 
 ## Asset Inventory and Review Gate
 
@@ -123,11 +123,11 @@ planning consequence. For a complete design, its validated merger records `used_
 that evidence; the Coordinator does not edit those fields manually. Terminal
 finalization then requires the material asset's design/review link and a claim backed by its evidence. Never relabel a
 material asset `non_material` merely to pass the early gate.
-Before merging feature-context, validate the staged asset manifest identified in its worker trace. If evidence can be
-obtained to resolve a blocked inventory, keep the original response as history and ask the owner to update the full
-response, including findings that changed. Merge the corrected response and require a complete context outcome before
-starting dependent workers. If context or its inventory remains blocked, merge the blocked response for an honest
-handoff and do not start dependent workers.
+Before merging feature-context, validate the staged asset manifest identified in its worker trace. When a blocked
+inventory or a missing context-owned check can be resolved, keep the original response as history and ask the owner
+to update the full response, including findings that changed. Merge the corrected response and require a complete
+context outcome before starting dependent workers. If context or its inventory remains blocked, merge the blocked
+response for handoff and do not start dependent workers.
 After a complete result is accepted, an asset-only correction may preserve its result unchanged only when its findings
 remain valid; otherwise revalidate the affected context and dependent findings through supported recovery.
 For an implementation plan, give each material asset its own Asset Baseline row with evidence, observation, and an
@@ -230,18 +230,21 @@ and trace. Do not hand-edit these rows or ask Documenter to recreate them.
 
 ## Worker Outputs and Non-duplication
 
-- `feature-context` owns normalized work-item context and initial repository-context recovery. The configured
-  integration owns source-specific retrieval and evidence semantics. Downstream workers consume its context artifact.
-- `impact-analysis` owns dependency, data-flow, contract, and regression-scope analysis.
-- `repository-integration` owns cross-repository, ownership, deployment, and operational reconciliation when activated.
+- `feature-context` owns current work-item criteria, selected related work, asset review, and enough source evidence to
+  locate the primary entry points and identify boundaries that affect routing. The configured integration owns
+  source-specific retrieval. Complete reachable context checks before returning and pass deeper questions to Stage 2.
+- `impact-analysis` traces behavior, dependencies, affected consumers, and regression scope in the primary code scope.
+- `repository-integration` traces the assigned cross-repository, ownership, deployment, or operational boundary when
+  activated. It verifies relevant reference claims and records integration constraints for design.
 - `feature-design` owns the smallest implementation design and acceptance criteria traceability.
 - `planning-review` independently challenges scope, assumptions, rollout, and validation only for `deep`.
 - `handoff` records all results, synchronization, model/effort, usage, credits, and next action in the durable work
   record.
 
-For `deep`, start `impact-analysis` and `repository-integration` in parallel only after `feature-context` and the
-packaged `scripts/asset_manifest.py --validate` gate succeed. Each consumes the context and asset-manifest artifacts
-and repeats upstream discovery only for a recorded discrepancy.
+When both analysis workers are required and independent, start them in parallel after `feature-context` and the
+packaged `scripts/asset_manifest.py --validate` gate succeed. Give them distinct questions and the accepted context
+and asset artifacts. Repeat an accepted check only for a recorded discrepancy or material change. Scope a correction
+to missing checks owned by the receiving worker.
 For `specification_assessment`, bound repository analysis to facts that could change Story coverage or readiness; do
 not inventory implementation seams again after the two analysts have answered that question. Use the packet created by
 `prepare_run.py` as the finalization source, not a second work-record draft. Keep the pre-fan-out manifest gate, then
@@ -305,16 +308,15 @@ If context is `clarification_required`, produce a focused clarification packet: 
 implementation readiness, the evidence already recovered, and the smallest question for the owner. Before the packet is
 handed off, continue bounded impact, integration, and design discovery where repository evidence can reduce the unknown
 or frame feasible solutions. Record options, tradeoffs, recommendation, and the decision owner in the work record's
-Clarification Brief. Use `awaiting_input` with reason `clarification_required`; do not call this a blocker unless an
-external dependency prevents the bounded research.
+Clarification Brief. If the decision still needs an answer at handoff, use `awaiting_input` with reason
+`clarification_required`. Use a blocked context outcome when an indispensable input prevents the bounded research.
 
-Before setting `clarification_required`, consume every supplied artifact and
-material user context and apply the shared
-[Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate).
+Before setting `clarification_required`, consume the material assets and user context required by this stage and apply
+the shared [Evidence-to-Hypothesis Gate](../contracts/workflow_execution.md#evidence-to-hypothesis-gate).
 The context result must state the strongest supported interpretation of the
 feature, the executed check and result in `checks_performed`, any unavailable
 checks in `checks_remaining`, and the plain-language decision or action that
-remains. Do not defer a runnable source or test check to the user.
+remains. Route runnable checks to the owning stage and honor execution authorization.
 
 The Asset Inventory and Review Gate is part of context recovery, not optional supporting work. Do not activate
 downstream design workers until the Jira attachment inventory and all declared asset sources have a current manifest.

@@ -307,12 +307,11 @@ Use those UUIDs for targeted
 `read_thread`/`wait_threads` calls when live inventory omits a child. A metadata mapping proves identity, not current
 completion. Sync after every dispatch and fresh inventory read; copy `Last dispatch at` from the latest matching
 event, never from an earlier clock sample. Use the canonical binding key as the collector's `--agent` value, such as
-`sentry_current_state_investigator`; do not substitute a stage label. After completion, call `list_agents`, then export
-with `--worker-session`, `--agent`, and `--trace`, omitting `--observation`. The collector derives the selected worker's
-receipt and observation time from the latest native inventory, even when other workers are still active. It rejects a
-missing, active, or stale selected worker; it never falls back to an older inventory. When the worker is omitted, use
-`--observation` with a fresh targeted read, including `Observed at` from that actual read and the required thread/turn
-fields. Do not use turn completion time as observation time or fabricate binding flags.
+`sentry_current_state_investigator`; use the role key from the binding. After completion, call `list_agents`. When the
+worker is omitted or has no fresh terminal observation, run the run skill's single-target `wait_threads` projection
+before exporting. Export with `--worker-session` or `--worker-thread-id`, plus `--agent` and `--trace`. Omit
+`--observation` so the collector derives the receipt from the native inventory or targeted read. It rejects missing,
+active, or stale status. Use the provider observation time and actual binding evidence.
 `--worker-session` is the absolute native worker JSONL path, not the child UUID or collaboration handle. Locate
 only filenames matching the verified `thread_mappings` UUID under `$CODEX_HOME/sessions` (default
 `~/.codex/sessions`); select the record for the dispatched turn, not an older fragment. Do not read unrelated records

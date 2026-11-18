@@ -862,15 +862,14 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    `worker_runtime_evidence.py` with its parent
    session, start and ledger flags, plus `--worker-thread-id <verified-child-thread-id> --agent <role> --trace <path>`.
    Collect and validate each finished worker while independent workers continue. Start a dependent stage only after
-   all its required results are accepted. Refresh `list_agents` after the worker finishes. If it omits the terminal
-   status, run the literal targeted status projection below using the verified child UUID. Prefer omitting
-   `--observation` so the exporter derives the fresh status directly from native inventory or that projection.
-   Alternatively, use `--observation <collector-closure-json>` with the
-   prepared collector's receipt. If collection returns `status_projections`, execute each complete source through
+   all its required results are accepted. Refresh `list_agents` after the worker finishes. If it omits the worker or
+   lacks a fresh terminal observation, use the single-target `wait_threads` projection below with the verified child
+   UUID before exporting the trace. Run the exporter without `--observation` so it derives the status from the native
+   inventory or targeted read. It also accepts `--observation <collector-closure-json>` for a prepared collector
+   receipt. If collection returns `status_projections`, execute each complete source through
    `functions.exec` without modification, then rerun the same collector; do not reformat the returned status metadata.
-   Do not construct or normalize an observation with a custom script, computed tool
-   arguments, or hand-written timestamps. Follow the literal status projections below if the latest inventory omits
-   the worker. The collector and exporter must establish the last dispatch and fresh terminal status themselves.
+   Do not construct or normalize an observation with a custom script, computed tool arguments, or hand-written
+   timestamps. The collector and exporter establish the last dispatch and fresh terminal status from provider evidence.
    Optional `Binding evidence` must be a JSON object containing provider-observed role or path metadata.
    Prepared runs require the authenticated activation instruction read and its paired provider output;
    a delivery flag or prepared bundle alone does not prove delivery.
@@ -1121,16 +1120,15 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    For a provider with an explicit close/release operation, preserve its exact returned handle and release confirmation;
    use `Runtime status: Released` only after all run workers are released and no active handles remain.
    For Codex collaboration runtimes without a close operation, collect fresh status reads after pre-release and the last
-   correction/follow-up. Before collecting closure, refresh the inventory and obtain targeted status reads for every
-   omitted or stale worker using its verified UUID; do not rely on a pre-release observation. Use `Runtime status:
-   Terminal` only when these reads account for every activated worker,
-   including Documenter. For targeted status reads, use one separate tool call per literal verified child UUID.
+   correction/follow-up. Refresh the inventory, then run the single-target `wait_threads` projection for each omitted
+   worker or worker without a fresh terminal observation. After those reads, run the collector with `--closure` once
+   for the run. A pre-release observation cannot satisfy this check. Use `Runtime status: Terminal` only when the
+   receipt accounts for every activated worker, including Documenter. Use one tool call per verified child UUID.
    Do not use Promise.all, map, loops, or computed argument objects, even when several workers need status checks.
    The snapshot may combine live inventory and targeted reads; one inventory call need not retain
-   every completed worker. When `list_agents` omits a worker, try `read_thread` or `wait_threads` using its
-   provider-observed thread ID. Preserve the mapping to the exact spawn identifier from provider metadata; never guess
-   an ID. Never send a worker a message, status ping, or no-op follow-up to refresh its status or closure: that is a
-   new dispatch, and an idle worker does not consume `send_message`. Use only the status-only reads below.
+   every completed worker. `read_thread` is also supported for targeted status. Use the exact spawn identifier and
+   child UUID mapping from provider metadata. Refresh status only with the reads below. A message, status ping, or
+   no-op follow-up starts a new dispatch, and an idle worker does not consume `send_message`.
    Use the prepared runtime-evidence collector to recover a verified mapping from this run's provider events
    before declaring child identity unavailable. Sync its ledger after dispatches and status reads, following
    `providers/codex.md#worker-identity-and-correction-observations`; derive audit times from actual events.
@@ -1152,10 +1150,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    const t = d.turns?.[0];
    text(JSON.stringify({thread: {id: d.thread?.id, status: d.thread?.status}, turns: t ? [{id: t.id, status: t.status, startedAt: t.startedAt, completedAt: t.completedAt}] : []}));
    ```
-   A direct untruncated `read_thread` response remains supported. Rerun the prepared collector with `--closure`;
-   it maps the response to the exact provider handle and emits only
-   status metadata. If the targeted read cannot certify a `notLoaded` worker, use this exact single-target
-   status-only wait projection, replacing only the UUID, then rerun the collector:
+   A direct untruncated `read_thread` response remains supported. The collector maps the response to the exact
+   provider handle. If the inventory is missing or stale, or `read_thread` cannot certify a `notLoaded` worker, use
+   this exact single-target status-only wait projection, replacing only the UUID:
    ```javascript
    const r = await tools.mcp__codex_app__wait_threads({targets: [{threadId: "00000000-0000-0000-0000-000000000002"}], timeoutMs: 0});
    if (r.isError || !Array.isArray(r.content) || r.content.length !== 1) throw new Error('status unavailable');

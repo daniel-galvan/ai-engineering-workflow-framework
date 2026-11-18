@@ -186,7 +186,11 @@ Do not create a separate clarification file unless its exact path is listed as a
 For Feature Delivery implementation planning, copy the owning design's `awaiting_input/create_draft` disposition into
 a partial Draft plan with the required planning tables and owned unresolved decisions. Retain the Clarification Brief.
 Do not promote it to full readiness, approval or delivery. `awaiting_input/omit` still prohibits creating a plan.
-Before returning a Feature Delivery or TechOps plan, run the packaged
+For a Feature Delivery or TechOps plan, copy the packaged `templates/implementation_plan.md` to the assigned plan path
+and fill in that copy.
+Preserve exact required headings and table columns, including `Behavior Applicability`, `Design Justification`, and
+`Complete Solution`. Use the template's exact status values. Link same-run plan companions with relative paths.
+Before returning the plan, run the packaged
 `python3 <packaged-framework-root>/scripts/review_evidence.py --plan <plan-path>`.
 For an `awaiting_input` partial Draft, run `review_evidence.py --draft-plan <plan-path>` instead.
 Correct validation errors in the current turn; report any unresolved errors to the Coordinator.
