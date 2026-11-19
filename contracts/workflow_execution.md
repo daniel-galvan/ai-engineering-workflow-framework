@@ -1599,6 +1599,11 @@ no stale `pending`, `active`, `in_progress`, or
 terminal result, and repeat the comparison before release. A final answer that
 contradicts the durable record is a handoff conformance failure even when the worker graph itself completed.
 
+When new evidence or a decision changes an accepted finding, decision or action, return it to the owning worker to
+update its status in a revised result and record the resolution with evidence. Preserve the original wording and any
+remaining work as separate actions. Before handoff, reconcile those statuses with the plan and final response; apply
+the same check to fresh and recovered runs.
+
 Before the first final Documenter activation on a Documenter-owned path, the Coordinator MUST pass one finalized packet
 containing worker outcomes, workflow and engineering outcomes, displayed hypotheses, artifact paths, next-action owner,
 action, completion condition, plugin package/version, framework Git revision/status, and playbook name/version. The

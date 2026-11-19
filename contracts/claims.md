@@ -59,7 +59,10 @@ the complete declared draft envelope before returning it, including additional f
 Draft validation does not accept a result or consume a provider-dispatch correction. At completed planning synthesis
 and every subsequent completed analytical update, preview and acceptance MUST check the entire merged graph using
 the same reasoning validator as pre-handoff. Newly added correction rows are subject to the full chain, not only the
-IDs named in an earlier error. Accepted upstream content remains immutable. If truthful completion is impossible,
+IDs named in an earlier error. Accepted upstream content remains immutable. The owning worker may update the status
+of its own evidence, claim, decision or action when later evidence or an authorized decision changes its disposition;
+preserve the original wording and ID, and link the resolution in a new record. Keep still-needed follow-up work
+explicit. The same rule applies to fresh and recovered runs. If truthful completion is impossible,
 return a valid blocked result with the limitation; do not invent reasoning or actions to satisfy a graph check.
 
 `Evidence refs` is a typed field: every reference must be an exact ID present in

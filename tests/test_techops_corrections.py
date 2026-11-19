@@ -302,6 +302,14 @@ class TechOpsCorrections(unittest.TestCase):
                 second = {**result[table][0], key: result[table][0][key].replace("-1", "-2")}
                 result[table].append(second)
             packet = validated_result(packet, result, bindings, "current_state_investigator")
+            revised_result = copy.deepcopy(result)
+            for table in ("evidence", "claims", "decisions", "actions"):
+                revised_result[table][0]["Status"] = "superseded"
+            revised = validated_result(packet, revised_result, bindings, "current_state_investigator")
+            for table in ("evidence", "claims", "decisions", "actions"):
+                self.assertEqual(revised[table][0]["Status"], "superseded")
+                self.assertEqual({k: v for k, v in revised[table][0].items() if k != "Status"},
+                                 {k: v for k, v in packet[table][0].items() if k != "Status"})
             for table, field, key in (("claims", "Evidence refs", "Claim ID"),
                                       ("decisions", "Claim refs", "Decision ID"),
                                       ("actions", "Decision ref", "Action ID")):

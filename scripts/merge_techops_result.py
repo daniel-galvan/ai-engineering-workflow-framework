@@ -143,12 +143,12 @@ def validated_result(packet: dict, result: dict, bindings: dict, agent: str) -> 
             errors.append(f"worker_result_existing_ids_duplicate:{table}")
         for row in incoming:
             if row[key] in existing and existing[row[key]] != row:
-                # The owning worker may repair links without rewriting accepted findings.
+                # The owner can update links and status without rewriting findings.
                 reference_field = {"claims": "Evidence refs", "decisions": "Claim refs",
                                    "actions": "Decision ref"}.get(table)
-                if (reference_field is None or
-                        {k: v for k, v in existing[row[key]].items() if k != reference_field} !=
-                        {k: v for k, v in row.items() if k != reference_field}):
+                mutable = {reference_field, "Status"}
+                if ({k: v for k, v in existing[row[key]].items() if k not in mutable} !=
+                        {k: v for k, v in row.items() if k not in mutable}):
                     errors.append(f"worker_result_row_conflict:{row[key]}")
             existing[row[key]] = row
         packet[table] = list(existing.values())
