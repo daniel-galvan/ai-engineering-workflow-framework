@@ -1,9 +1,9 @@
 ---
 title: Contributing to the AI-assisted Software Engineering Workflow Framework
-version: 0.5.35
+version: 0.5.36
 status: Pilot
 owner: Engineering
-last_updated: 2026-11-12
+last_updated: 2026-11-19
 ---
 
 # Contributing

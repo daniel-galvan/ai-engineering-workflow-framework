@@ -1,12 +1,12 @@
 ---
 
 title: Orchestrator Role
-version: 0.5.35
+version: 0.5.36
 status: Pilot
 category: Coordination
 produces_decisions: true
 owner: Engineering
-last_updated: 2026-11-12
+last_updated: 2026-11-19
 required_documents:
 
   - ../frameworks/investigation.md
