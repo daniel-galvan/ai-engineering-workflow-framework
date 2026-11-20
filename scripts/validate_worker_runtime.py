@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import tempfile
 from datetime import UTC, datetime
@@ -118,6 +119,36 @@ def _pending_rejections(root: Path) -> dict:
                 or hashlib.sha256(path.read_bytes()).hexdigest() != receipt["sha256"]):
             raise ValueError("worker_rejection_receipt_invalid")
     return pending
+
+
+def _documenter_recovery_snapshot(root: Path, trace_path: Path) -> Path | None:
+    """Find the packet bound to the rejected Documenter's guarded dispatch."""
+    trace = json.loads(trace_path.read_text())
+    spawn = trace["spawn"]
+    dispatch = Path(spawn["dispatch_file"])
+    receipts = json.loads((root / "activation_receipts.json").read_text())
+    receipt = receipts[dispatch.name]
+    if (dispatch.resolve().parent != root.resolve() or dispatch.is_symlink()
+            or receipt.get("agent") != "documenter" or receipt.get("run_id") != trace.get("run_id")
+            or receipt.get("sha256") != spawn.get("dispatch_file_sha256")
+            or hashlib.sha256(dispatch.read_bytes()).hexdigest() != receipt["sha256"]):
+        raise ValueError("documenter_packet_snapshot_dispatch_mismatch")
+    digest = receipt.get("packet_snapshot_sha256")
+    header = re.search(r"\nCoordinator handoff packet SHA256: ([0-9a-f]{64})\nTyped assignment:\n",
+                       dispatch.read_text())
+    if digest is None:
+        if header:
+            raise ValueError("documenter_packet_snapshot_receipt_missing")
+        return None  # Older runs did not capture a packet at activation.
+    if (not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            or not header or header.group(1) != digest):
+        raise ValueError("documenter_packet_snapshot_invalid")
+    snapshot = root / ("documenter_packet." + digest + ".json")
+    if snapshot.is_symlink() or hashlib.sha256(snapshot.read_bytes()).hexdigest() != digest:
+        raise ValueError("documenter_packet_snapshot_invalid")
+    if json.loads(snapshot.read_text()).get("identity", {}).get("Run ID") != trace.get("run_id"):
+        raise ValueError("documenter_packet_snapshot_run_mismatch")
+    return snapshot
 
 
 def _defer_downstream_rejection(root: Path, agent: str, role: str, receipt: dict) -> bool:
@@ -285,6 +316,7 @@ def delivery_dependency_errors(root: Path, agent: str, bindings: dict) -> list[s
 
 def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: str,
                              *, rejected_trace_sha256: str | None = None,
+                             recovery_packet_path: Path | None = None,
                              recovery_required: dict | None = None,
                              accepted_refresh_handle: str | None = None,
                              accepted_refresh_status: str | None = None) -> list[str]:
@@ -477,6 +509,7 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         except (OSError, ValueError, TypeError, AttributeError):
             errors.append("techops_design_gate_invalid")
     if expected_agent == "documenter" and bindings_path.is_file():
+        handoff_packet_path = recovery_packet_path or path.parent / "finalization_packet.json"
         try:
             bindings = json.loads(bindings_path.read_text())
         except (OSError, json.JSONDecodeError):
@@ -484,7 +517,7 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
         else:
             if isinstance(bindings, dict) and bindings.get("playbook") == "feature_delivery":
                 try:
-                    current = json.loads((path.parent / "finalization_packet.json").read_text())
+                    current = json.loads(handoff_packet_path.read_text())
                     if bindings.get("lifecycle") and current.get("identity", {}).get("Lifecycle") != bindings["lifecycle"]:
                         errors.append("feature_delivery_packet_lifecycle_mismatch")
                 except (OSError, ValueError, TypeError, AttributeError):
@@ -493,9 +526,9 @@ def activation_packet_errors(path: Path, expected_agent: str, expected_sha256: s
                     from planning_contracts import feature_delivery_pre_handoff_errors
                 except ModuleNotFoundError:  # Imported as scripts.validate_worker_runtime from the repository root.
                     from scripts.planning_contracts import feature_delivery_pre_handoff_errors
-                errors.extend(feature_delivery_pre_handoff_errors(path.parent / "finalization_packet.json"))
+                errors.extend(feature_delivery_pre_handoff_errors(handoff_packet_path))
             elif isinstance(bindings, dict) and bindings.get("playbook") == "techops_issue_remediation":
-                packet_path = path.parent / "finalization_packet.json"
+                packet_path = handoff_packet_path
                 try:
                     planning = json.loads(packet_path.read_text())
                     if planning.get("identity", {}).get("Lifecycle") == "planning":
@@ -681,6 +714,7 @@ def main() -> int:
             )
         errors = []
         rejection_hash = None
+        recovery_packet_path = None
         if args.rejected_trace:
             if args.rejected_trace.resolve().parent != args.activation_packet_bundle.resolve().parent:
                 errors.append("rejected_result_current_run_required")
@@ -689,10 +723,17 @@ def main() -> int:
                                                args.last_dispatch_at, args.provider_status))
                 if not errors:
                     rejection_hash = hashlib.sha256(args.rejected_trace.read_bytes()).hexdigest()
+                    if args.expected_agent == "documenter":
+                        try:
+                            recovery_packet_path = _documenter_recovery_snapshot(
+                                args.activation_packet_bundle.resolve().parent, args.rejected_trace)
+                        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                            errors.append("documenter_packet_snapshot_unverified:" + str(error))
         if not errors:
             recovery_required = {}
             errors = activation_packet_errors(args.activation_packet_bundle.resolve(), args.expected_agent,
                 args.expected_bundle_sha256, rejected_trace_sha256=rejection_hash, recovery_required=recovery_required,
+                recovery_packet_path=recovery_packet_path,
                 accepted_refresh_handle=args.accepted_refresh_handle, accepted_refresh_status=args.provider_status)
             if recovery_required:
                 result["recovery_required"] = recovery_required
@@ -715,7 +756,10 @@ def main() -> int:
                                             args.accepted_refresh_handle, args.provider_status)
                         if assignment != {"objective": OBJECTIVE, "input_paths": [refresh["output"], refresh["result"]]}:
                             raise ValueError("accepted_refresh_assignment_mismatch")
-                    message = activation_message(packet, assignment)
+                    packet_snapshot_hash = None
+                    if args.dispatch_file and args.expected_agent == "documenter" and not rejection_hash and not refresh:
+                        packet_snapshot_hash = hashlib.sha256(Path(packet["finalization_packet"]).read_bytes()).hexdigest()
+                    message = activation_message(packet, assignment, packet_snapshot_hash=packet_snapshot_hash)
                     if args.rejected_trace:
                         repository = Path(packet["finalization_packet"]).parents[2]
                         if any((repository / path).resolve() == args.rejected_trace.resolve()
@@ -725,7 +769,8 @@ def main() -> int:
                     if args.activation_message and args.activation_message.read_text() != expected:
                         raise ValueError("activation_message_mismatch")
                     if args.dispatch_file:
-                        message = dispatch_message(packet, message, args.dispatch_file)
+                        message = dispatch_message(packet, message, args.dispatch_file,
+                                                   packet_snapshot_hash=packet_snapshot_hash)
                         if refresh:
                             current_path = args.activation_packet_bundle.parent / "finalization_packet.json"
                             current = json.loads(current_path.read_text())
@@ -762,7 +807,7 @@ def main() -> int:
                                         raise ValueError("recovery_rejected_output_conflict")
                                     quarantine.append((target, rejected))
                             current_path = args.activation_packet_bundle.parent / "finalization_packet.json"
-                            current = json.loads(current_path.read_text())
+                            current = json.loads((recovery_packet_path or current_path).read_text())
                             for target, rejected in quarantine:
                                 if target.resolve() == current_path.resolve():
                                     rejected.write_bytes(target.read_bytes())

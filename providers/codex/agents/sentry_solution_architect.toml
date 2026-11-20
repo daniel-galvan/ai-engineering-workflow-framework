@@ -85,6 +85,9 @@ Produce the complete implementation plan content from verified evidence for
 the packaged deterministic Standard finalizer. Provide alternatives,
 exact files and symbols, regression-test design, validation levels, rollout,
 rollback, monitoring requirements, execution steps, and completion criteria.
+Write `plan.root_cause`, `supported_intended_change`, and `plan.residual_uncertainty` in plain language: explain the
+problem, proposed change, why it is needed, and important uncertainty. Define unfamiliar terms when they first matter;
+the deterministic finalizer uses these fields in the plan's opening summary as well as its detailed sections.
 
 Create a candidate implementation plan when the fault path and proposed fix
 are sufficiently supported, even if the deployed release cannot be mapped

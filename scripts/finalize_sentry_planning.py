@@ -293,6 +293,14 @@ depends_on:
 
 This is an approval-gated planning artifact. It does not authorize source-code or external-system changes.
 
+# Plain-Language Summary
+
+{plan.get('root_cause', '')}
+
+{fix['supported_intended_change']}
+
+{plan.get('residual_uncertainty', 'None recorded.')}
+
 # Metadata
 
 {metadata}

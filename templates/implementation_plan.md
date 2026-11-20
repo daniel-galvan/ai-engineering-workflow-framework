@@ -40,6 +40,11 @@ environment, or the user explicitly requests a self-contained transfer file. For
 handoff `Not required`. The handoff is self-contained, uses repository identities and revisions instead of
 source-environment paths, and remains non-executable until its approval status is explicit.
 
+# Plain-Language Summary
+
+Briefly explain the problem, the proposed change, why it is needed, and any important uncertainty or decision. Use
+common words and define unfamiliar terms when they first matter. Keep the technical details and evidence below.
+
 # Metadata
 
 | Field | Value |

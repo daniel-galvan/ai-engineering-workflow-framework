@@ -1772,6 +1772,48 @@ class ParentContext(unittest.TestCase):
                         source.replace('cat /repo/one', '${secret}')):
             self.assertIsNone(_literal_command_batch(changed))
 
+    def test_literal_parallel_commands_with_indexed_output_are_audited(self):
+        from scripts.runtime_checks import _tool_operations
+        source = ('const results=await Promise.all([tools.exec_command({cmd:"cat /repo/one"}),'
+                  'tools.exec_command({cmd:"cat /repo/two"})]); '
+                  'for(let i=0;i<results.length;i++) text(`---${i+1}---\\n${results[i].output}`);')
+        row = {"type": "custom_tool_call", "name": "exec", "input": source}
+        self.assertEqual([args["cmd"] for _, args in _tool_operations(row)], ["cat /repo/one", "cat /repo/two"])
+        self.rows.append({"type": "response_item", "payload": row})
+        self.assertNotIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+        row["input"] = source.replace("/repo/two", "/Users/example/.codex/sessions/old.jsonl")
+        self.assertIn("forbidden_context_reference:session_log", self.audit()["errors"])
+        row["input"] = source.replace("results[i].output", "tools.exec_command({cmd:'cat /secret'})")
+        self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
+    def test_literal_current_worker_status_batches_are_bounded(self):
+        self.rows.append({"type": "event_msg", "payload": {"item": {
+            "type": "SubAgentActivity", "kind": "started", "agent_path": "/root/current", "agent_thread_id": CHILD}}})
+        prefix = 'const ids=' + json.dumps([CHILD]) + ';'
+        sources = (
+            prefix + 'const results=await Promise.all(ids.map(threadId=>tools.mcp__codex_app__read_thread('
+            '{threadId,includeOutputs:false,turnLimit:1,maxOutputCharsPerItem:100})));'
+            'for(let i=0;i<results.length;i++){text(JSON.stringify({threadId:ids[i]}));}',
+            prefix + 'for(const threadId of ids){const r=await tools.mcp__codex_app__wait_threads('
+            '{targets:[{threadId}],timeoutMs:0}); text(JSON.stringify({wake:r.wake}));}',
+        )
+        payload = {"type": "custom_tool_call", "name": "exec", "input": ""}
+        self.rows.append({"type": "response_item", "payload": payload})
+        for source in sources:
+            with self.subTest(source=source):
+                payload["input"] = source
+                self.assertEqual(self.audit()["status"], "passed")
+                payload["input"] = source.replace(CHILD, TURN)
+                self.assertIn("parent_unassigned_thread_read:" + TURN, self.audit()["errors"])
+                payload["input"] = source.replace("text(JSON.stringify", "ids.push('other'); text(JSON.stringify")
+                self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+                payload["input"] = source + ' await tools.exec_command({cmd:"cat /secret"});'
+                self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+                for extra in ('text(load("private"));', 'text["con"+"structor"]("return 1")();',
+                              'const f=load; f("private");'):
+                    payload["input"] = source.replace('text(JSON.stringify', extra + ' text(JSON.stringify')
+                    self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
+
     def test_literal_assigned_thread_batch_is_audited_without_executing_the_loop(self):
         child_two = "00000000-0000-0000-0000-000000000004"
         for child, handle in ((CHILD, "/root/first"), (child_two, "/root/second")):

@@ -382,6 +382,11 @@ One command validates eligibility and emits the corrected launch;
 it records the single recovery authorization against that dispatch hash. A separate replacement-transition check
 is read-only eligibility validation; it does not consume the attempt or authorize ordinary activation. An activation
 blocked by missing recovery options remains eligible for the complete corrected-activation command.
+Before each guarded Documenter dispatch, preserve the current packet in a content-addressed snapshot whose hash is
+bound to the dispatched instructions and receipt. For a rejected Documenter result, validate the snapshot and recheck
+the normal pre-handoff gates against it; preserve the rejected packet and restore the snapshot before the replacement.
+Never treat rejected Documenter edits as accepted. Older dispatches without a snapshot remain subject to the existing
+recovery checks.
 Preserve the rejected
 evidence and run identity, and activate a fresh handle with the same guarded envelope and typed inputs. Completion
 alone never permits replacement; active tasks remain protected. Correction and replacement share one recovery

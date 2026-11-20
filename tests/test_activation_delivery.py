@@ -186,6 +186,36 @@ class ActivationDelivery(unittest.TestCase):
             runtime.dispatch_message(packet, "Full instructions", self.root / "outside.txt")
         self.assertFalse((self.root / "outside.txt").exists())
 
+    def test_documenter_recovery_snapshot_is_bound_to_guarded_dispatch(self):
+        packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["documenter"]
+        dispatch = self.artifacts / "handoff.txt"
+        original = Path(packet["finalization_packet"]).read_bytes()
+        digest = hashlib.sha256(original).hexdigest()
+        message = runtime.activation_message(packet, {"objective": "Prepare handoff"}, packet_snapshot_hash=digest)
+        runtime.dispatch_message(packet, message, dispatch, packet_snapshot_hash=digest)
+        trace = self.artifacts / "handoff_trace.json"
+        trace.write_text(json.dumps({"run_id": packet["run_id"], "spawn": {
+            "dispatch_file": str(dispatch), "dispatch_file_sha256": hashlib.sha256(dispatch.read_bytes()).hexdigest()}}))
+        snapshot = runtime._documenter_recovery_snapshot(self.artifacts, trace)
+        self.assertEqual(snapshot.read_bytes(), original)
+        Path(packet["finalization_packet"]).write_text('{"untrusted": true}')
+        self.assertEqual(snapshot.read_bytes(), original)
+        snapshot.write_text('{"changed": true}')
+        with self.assertRaisesRegex(ValueError, "snapshot_invalid"):
+            runtime._documenter_recovery_snapshot(self.artifacts, trace)
+        snapshot.write_bytes(original)
+        receipts_path = self.artifacts / "activation_receipts.json"
+        receipts = json.loads(receipts_path.read_text())
+        receipts[dispatch.name]["packet_snapshot_sha256"] = "0" * 64
+        receipts_path.write_text(json.dumps(receipts))
+        with self.assertRaisesRegex(ValueError, "snapshot_invalid"):
+            runtime._documenter_recovery_snapshot(self.artifacts, trace)
+        receipts[dispatch.name]["packet_snapshot_sha256"] = digest
+        receipts_path.write_text(json.dumps(receipts))
+        dispatch.write_text("different instructions")
+        with self.assertRaisesRegex(ValueError, "dispatch_mismatch"):
+            runtime._documenter_recovery_snapshot(self.artifacts, trace)
+
     def instruction_trace(self, locator=ARCHIVE, authorization=None, objective="Verify current source findings"):
         bundle_path = Path(self.bundle["path"])
         bundle = json.loads(bundle_path.read_text())
@@ -988,6 +1018,7 @@ class ActivationDelivery(unittest.TestCase):
         output = io.StringIO()
         # Upstream fan-in is covered separately; exercise the real rejected-result and dispatch branches here.
         with patch.object(sys, 'argv', args), patch.object(runtime, 'activation_packet_errors', return_value=[]), \
+             patch.object(runtime, '_documenter_recovery_snapshot', return_value=None), \
              redirect_stdout(output):
             self.assertEqual(runtime.main(), 0, output.getvalue())
         self.assertEqual(packet_path.with_name('finalization_packet.rejected.json').read_bytes(), saved)

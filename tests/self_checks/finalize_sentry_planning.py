@@ -182,6 +182,10 @@ def self_test() -> None:
         plan_text = (artifact_root / "implementation_plan.md").read_text()
         assert '\nstatus: Draft\n' in plan_text
         assert '| Plan status | Draft;' in plan_text
+        summary = plan_text.split('# Plain-Language Summary\n', 1)[1].split('# Metadata\n', 1)[0]
+        assert fixture_fix['plan']['root_cause'] in summary
+        assert fixture_fix['supported_intended_change'] in summary
+        assert fixture_fix['plan']['residual_uncertainty'] in summary
         recorded = json.loads((artifact_root / "finalization_packet.json").read_text())
         assert len(recorded["repositories"]) == 2
         assert recorded["repositories"][1]["Full revision"] == _git(receiver, "rev-parse", "HEAD")

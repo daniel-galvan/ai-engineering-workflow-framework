@@ -781,6 +781,58 @@ class ContextOperationAudit(unittest.TestCase):
         trace = self.instruction_read_trace()
         self.assertEqual(runtime.trace_errors(trace), [])
 
+    def test_followup_after_repair_requires_prior_corrected_dispatch_for_same_worker(self):
+        trace = self.instruction_read_trace()
+        trace["spawn"]["provider_handle"] = "/root/worker"
+        trace["last_dispatch_at"] = "2026-11-20T10:02:00Z"
+        packet_path = self.root / "finalization_packet.json"
+        packet = json.loads(packet_path.read_text())
+        packet["activation_repairs"] = {"current_state_investigator": {
+            "Last dispatch at": "2026-11-20T10:00:00Z", "Corrected dispatch SHA256": "a" * 64}}
+        packet_path.write_text(json.dumps(packet))
+        ledger_path = self.root / "runtime_dispatches.json"
+        event = {"Provider handle": "/root/other", "Binding agent": "current_state_investigator",
+                 "Dispatch SHA256": "a" * 64, "Last dispatch at": "2026-11-20T10:01:00Z"}
+        ledger_path.write_text(json.dumps({"events": [event]}))
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.root), {})
+        event["Provider handle"] = "/root/worker"
+        ledger_path.write_text(json.dumps({"events": [event]}))
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.root)["dispatch_file"],
+                         trace["spawn"]["dispatch_file"])
+        event["Last dispatch at"] = "2026-11-20T10:03:00Z"
+        ledger_path.write_text(json.dumps({"events": [event]}))
+        self.assertEqual(runtime.observed_dispatch_binding(trace, self.root), {})
+
+    def test_parallel_current_metadata_reads_do_not_authorize_session_reads(self):
+        bindings_path = self.root / "role_bindings.json"
+        bindings = json.loads(bindings_path.read_text())
+        session = "/Users/example/.codex/sessions/current.jsonl"
+        bindings["parent_context"] = {"provider_session": session}
+        bindings_path.write_text(json.dumps(bindings))
+        other = self.root / "run_inputs.json"
+        trace = self.instruction_read_trace((str(bindings_path), str(other)))
+        paths = [str(bindings_path), str(other)]
+        source = ('const paths = ' + json.dumps(paths) + ';'
+                  'const results = await Promise.allSettled(paths.map(path => '
+                  'tools.exec_command({cmd:"cat " + path, max_output_tokens:6000})));'
+                  'for (let i=0;i<results.length;i++){ text("=== "+paths[i]+" ==="); '
+                  'const r=results[i]; text(r.status==="fulfilled"?r.value.output:String(r.reason));}')
+        output = [{"type": "input_text", "text": json.dumps(bindings)},
+                  {"type": "input_text", "text": other.read_text()}]
+        batch = self.paired(source, output)
+        batch[0]["call_id"] = batch[1]["call_id"] = "batch"
+        trace["tool_trace"].extend(batch)
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace["tool_trace"][-2]["input"] = source.replace('"=== "', '"Reading: "').replace('" ==="', '"."')
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace["tool_trace"][-2]["input"] = source.replace(str(other), session)
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
+        trace["tool_trace"][-2]["input"] = source + ' await tools.exec_command({cmd:"cat ' + session + '"});'
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
+        trace["tool_trace"][-2]["input"] = source
+        trace["tool_trace"][-1]["output"][1]["text"] += '/Users/example/.codex/sessions/foreign.jsonl'
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
+
     def test_labeled_current_packet_projection_does_not_exempt_archive_reads(self):
         trace = self.instruction_read_trace()
         packet_path = self.root / "finalization_packet.json"
@@ -1232,6 +1284,26 @@ class ContextOperationAudit(unittest.TestCase):
                 invocation + '\ncat /Users/example/.codex/sessions/foreign.jsonl'))
             self.assertIn('forbidden_context_reference:session_log', errors(invocation.replace(
                 repr(str(path)), repr('/Users/example/.codex/sessions/foreign.jsonl'))))
+        redaction = ('from pathlib import Path; p=Path(' + repr(str(path)) + '); '
+                     'print(p.read_text().replace("/.codex/sessions", "[redacted]"))')
+        invocation = shlex.join(['python3', '-c', redaction])
+        self.assertEqual(errors(invocation), [])
+        self.assertIn('forbidden_context_reference:session_log', errors(
+            invocation.replace(repr(str(path)), repr('/Users/example/.codex/sessions/foreign.jsonl'))))
+        edit = ('from pathlib import Path; p=Path(' + repr(str(path)) + '); s=p.read_text(); '
+                's=s.replace("/.codex/sessions", "[redacted]"); p.write_text(s)')
+        edit_command = shlex.join(['python3', '-c', edit])
+        self.assertEqual(errors(edit_command), [])
+        self.assertIn('forbidden_context_reference:session_log', errors(
+            edit_command.replace(repr(str(path)), repr('/Users/example/.codex/sessions/foreign.jsonl'))))
+        self.assertIn('forbidden_context_reference:session_log', errors(
+            shlex.join(['python3', '-c', edit + '; open("/Users/example/.codex/sessions/foreign.jsonl")'])))
+        move = ('from pathlib import Path; p=Path(' + repr(str(path)) + '); '
+                'p.replace("/Users/example/.codex/sessions/foreign.jsonl")')
+        self.assertIn('forbidden_context_reference:session_log', errors(shlex.join(['python3', '-c', move])))
+        unsafe_replace = ('from pathlib import Path; p=Path(' + repr(str(path)) + '); '
+                          'open(p.read_text().replace("/.codex/sessions", "x"))')
+        self.assertIn('forbidden_context_reference:session_log', errors(shlex.join(['python3', '-c', unsafe_replace])))
         for unsafe in (command + '; cat /Users/example/.codex/sessions/foreign.jsonl',
                        'python3 -c "import json; d=json.load(open(\'' + str(path)
                            + '\')); print(\'$(cat /Users/example/.codex/sessions/foreign.jsonl)\' == \'\')"',

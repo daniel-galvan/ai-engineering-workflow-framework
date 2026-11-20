@@ -91,7 +91,8 @@ def prepared_package_errors(root: Path, *, check_parent_context: bool = True,
         return ["prepared_framework_package_invalid"]
 
 
-def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thread: str | None = None) -> list[str]:
+def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thread: str | None = None,
+                          *, validation_packet: dict | None = None) -> list[str]:
     """Bind a prepared trace to the result slot being accepted."""
     if not (root / "role_bindings.json").is_file():
         return []  # Legacy records do not carry prepared worker identities.
@@ -99,7 +100,7 @@ def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thr
         bindings = json.loads((root / "role_bindings.json").read_text())
         if not bindings.get("runtime_evidence"):
             return []  # Legacy records retain their original acceptance contract.
-        current = json.loads((root / "finalization_packet.json").read_text())
+        current = validation_packet if validation_packet is not None else json.loads((root / "finalization_packet.json").read_text())
         spawn = trace["spawn"]
         errors = []
         if trace.get("run_id") != current["identity"]["Run ID"]:
@@ -125,13 +126,15 @@ def trace_identity_errors(trace: dict, root: Path, worker: str, handle: str, thr
                 errors.append("worker_dispatch_consumption_origin_mismatch:" + worker)
         errors.extend(terminal_observation_errors([observation], [handle]))
         errors.extend(launch_binding_errors(trace, root, worker_binding(bindings, worker)))
-        errors.extend(result_artifact_errors(trace, bindings, root, worker_binding(bindings, worker)))
+        errors.extend(result_artifact_errors(trace, bindings, root, worker_binding(bindings, worker),
+                                             validation_packet=validation_packet))
         return errors
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         return ["worker_trace_identity_invalid:" + worker + ":" + str(error)]
 
 
-def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -> list[str]:
+def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str,
+                           *, validation_packet: dict | None = None) -> list[str]:
     """Require the staged response to match the latest completed worker answer."""
     contract = bindings.get("worker_contracts", {}).get(role, {})
     if not contract.get("result_hash_required"):
@@ -184,7 +187,8 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
             from merge_techops_result import validated_result
         except ModuleNotFoundError:
             from scripts.merge_techops_result import validated_result
-        validated_result(json.loads((root / "finalization_packet.json").read_text()),
+        current = validation_packet if validation_packet is not None else json.loads((root / "finalization_packet.json").read_text())
+        validated_result(current,
                          envelope["result"], bindings, role)
         if (role == "reviewer" and bindings.get("lifecycle") == "remediation"
                 and bindings.get("playbook") in {"techops_issue_remediation", "feature_delivery"}
@@ -203,7 +207,7 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str) -
     return []
 
 
-def activation_message(packet: dict, assignment: dict) -> str:
+def activation_message(packet: dict, assignment: dict, *, packet_snapshot_hash: str | None = None) -> str:
     """Serialize the binding once; assignments cannot override prepared outputs or policy."""
     if (not isinstance(assignment, dict) or not isinstance(assignment.get("objective"), str)
             or not assignment["objective"].strip()
@@ -253,11 +257,15 @@ def activation_message(packet: dict, assignment: dict) -> str:
             path = path if path.is_absolute() else Path(packet["finalization_packet"]).parents[2] / path
             if not path.is_file():
                 raise ValueError("assigned_instruction_file_missing: omit absent optional guidance: " + source)
-    return (packet["required_prefix"] + "\n" + json.dumps(packet, sort_keys=True)
+    if packet_snapshot_hash is not None and (packet.get("agent") != "documenter"
+            or not re.fullmatch(r"[0-9a-f]{64}", packet_snapshot_hash)):
+        raise ValueError("documenter_packet_snapshot_hash_invalid")
+    snapshot = ("\nCoordinator handoff packet SHA256: " + packet_snapshot_hash) if packet_snapshot_hash else ""
+    return (packet["required_prefix"] + "\n" + json.dumps(packet, sort_keys=True) + snapshot
             + "\nTyped assignment:\n" + json.dumps(assignment, sort_keys=True))
 
 
-def dispatch_message(packet: dict, message: str, path: Path) -> str:
+def dispatch_message(packet: dict, message: str, path: Path, *, packet_snapshot_hash: str | None = None) -> str:
     """Keep the complete guarded instructions in an immutable current-run file."""
     root = Path(packet["finalization_packet"]).resolve().parent
     if path.resolve().parent != root or path.name in {"finalization_packet.json", "work_record.md"}:
@@ -281,6 +289,19 @@ def dispatch_message(packet: dict, message: str, path: Path) -> str:
         with path.open("x") as stream:
             stream.write(message)
     if receipts is not None and path.name not in receipts:
+        if packet_snapshot_hash is not None:
+            content = Path(packet["finalization_packet"]).read_bytes()
+            packet_hash = hashlib.sha256(content).hexdigest()
+            if (packet["agent"] != "documenter" or packet_hash != packet_snapshot_hash
+                    or "\nCoordinator handoff packet SHA256: " + packet_hash + "\nTyped assignment:\n" not in message):
+                raise ValueError("documenter_packet_snapshot_changed")
+            snapshot = root / ("documenter_packet." + packet_hash + ".json")
+            if snapshot.is_symlink() or snapshot.exists() and snapshot.read_bytes() != content:
+                raise ValueError("documenter_packet_snapshot_conflict")
+            if not snapshot.exists():
+                with snapshot.open("xb") as stream:
+                    stream.write(content)
+            receipt["packet_snapshot_sha256"] = packet_hash
         receipts[path.name] = receipt
         with tempfile.NamedTemporaryFile("w", dir=root, delete=False) as stream:
             temporary = Path(stream.name)
@@ -933,8 +954,11 @@ def _verified_dispatch_content(trace: dict) -> str | None:
                 or packet["run_id"] != current["identity"]["Run ID"]
                 or packet["agent"] != role):
             return None
-        assignment = json.loads(content.split("\nTyped assignment:\n", 1)[1])
-        return content if activation_message(packet, assignment) == content else None
+        header, assignment_text = content.split("\nTyped assignment:\n", 1)
+        snapshot = re.search(r"\nCoordinator handoff packet SHA256: ([0-9a-f]{64})$", header)
+        assignment = json.loads(assignment_text)
+        expected = activation_message(packet, assignment, packet_snapshot_hash=snapshot.group(1) if snapshot else None)
+        return content if expected == content else None
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
         return None
 
@@ -1151,6 +1175,7 @@ def _literal_templates(source: str) -> str:
                     r"[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*"
                     r"\s*===\s*(?:true|false)", match[1]) or re.fullmatch(
                     r"[A-Za-z_][A-Za-z0-9_]*\s*\+\s*1", match[1]) or re.fullmatch(
+                    r'[A-Za-z_][A-Za-z0-9_]*\[[A-Za-z_][A-Za-z0-9_]*\]\.output', match[1]) or re.fullmatch(
                     r'(?P<results>[A-Za-z_][A-Za-z0-9_]*)\[(?P<index>[A-Za-z_][A-Za-z0-9_]*)\]'
                     r'\.status\s*===\s*"fulfilled"\s*\?\s*(?P=results)\[(?P=index)\]'
                     r'\.value\.output\s*:\s*String\((?P=results)\[(?P=index)\]\.reason\)', match[1]))
@@ -1185,12 +1210,29 @@ def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
             r"(?P=result)\.length\s*;\s*(?P=index)\+\+\s*\)\s*\{\s*text\("
             r"`COMMAND \$\{(?P=index)\s*\+\s*1\}\\n\$\{(?P=result)\[(?P=index)\]\.output\}`"
             r"\)\s*;\s*\}\s*;?\s*", source, re.S)
+    mapped = False
+    if not match:
+        match = re.fullmatch(
+            r'\s*const\s+(?P<commands>[A-Za-z_]\w*)\s*=\s*(?P<values>\[[^\]]*\])\s*;'
+            r'\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+Promise\.allSettled\('
+            r'(?P=commands)\.map\(\s*(?P<command>[A-Za-z_]\w*)\s*=>\s*tools\.exec_command'
+            r'\((?P<arguments>\{[^{}]*\})\)\)\)\s*;'
+            r'\s*for\s*\(\s*let\s+(?P<index>[A-Za-z_]\w*)\s*=\s*0\s*;\s*(?P=index)\s*<\s*'
+            r'(?P=result)\.length\s*;\s*(?P=index)\+\+\s*\)\s*\{\s*text\('
+            r'(?:"[^"\\]*"|\'[^\'\\]*\')\s*\+\s*(?P=commands)\[(?P=index)\]\s*\+\s*'
+            r'(?:"[^"\\]*"|\'[^\'\\]*\')\)\s*;\s*const\s+(?P<item>[A-Za-z_]\w*)'
+            r'\s*=\s*(?P=result)\[(?P=index)\]\s*;\s*text\((?P=item)\.status\s*===\s*["\']fulfilled["\']'
+            r'\s*\?\s*(?P=item)\.value\.output\s*:\s*String\((?P=item)\.reason\)\)\s*;\s*\}\s*;?\s*',
+            source, re.S)
+        mapped = bool(match)
     if not match:
         return None
     names = [match[key] for key in ("commands", "command", "result")]
     if "index" in match.groupdict():
         names.append(match["index"])
-    if len(set(names)) != len(names) or set(names) & {"tools", "text", "Promise"}:
+    if mapped:
+        names.append(match["item"])
+    if len(set(names)) != len(names) or set(names) & {"tools", "text", "Promise", "String"}:
         return None
     try:
         commands = _literal_argument(ast.parse(match["values"], mode="eval").body)
@@ -1203,7 +1245,8 @@ def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
         operations = []
         for command in commands:
             value = _literal_argument(tree, {match["command"]: command})
-            if not isinstance(value, dict) or value.get("cmd") != command:
+            if (not isinstance(value, dict) or not isinstance(value.get("cmd"), str)
+                    or not mapped and value["cmd"] != command):
                 return None
             operations.append(("exec_command", value))
         return operations
@@ -1554,7 +1597,8 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
     return verified
 
 
-def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, ...] = ()) -> list[str]:
+def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, ...] = (),
+                         diagnostic_write_root: Path | None = None) -> list[str]:
     """Resolve read-only inspection paths from literals and fixed file lists without executing Python."""
     tree = ast.parse(source)
     targets, constants = [], {}
@@ -1639,7 +1683,15 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                         len(node.args) != (2 if node.func.id == "isinstance" else 1)):
                     return []
         elif isinstance(node.func, ast.Attribute):
-            if not pretty and node.func.attr == "is_file":
+            if not pretty and node.func.attr == "write_text" and diagnostic_write_root is not None:
+                paths = literal_paths(node.func.value)
+                if (len(paths) != 1 or len(node.args) != 1 or node.keywords or not Path(paths[0]).is_absolute()
+                        or Path(paths[0]).is_symlink()
+                        or Path(paths[0]).resolve().parent != diagnostic_write_root.resolve()):
+                    return []
+                targets.extend(paths)
+                continue
+            if not pretty and node.func.attr in {"is_file", "exists"}:
                 paths = literal_paths(node.func.value)
                 if node.args or node.keywords or not paths:
                     return []
@@ -1651,6 +1703,9 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                     return []
                 targets.extend(paths)
                 continue
+            # Path.replace moves a file; only string replacement is diagnostic data.
+            if not pretty and node.func.attr == "replace" and literal_paths(node.func.value):
+                return []
             json_load = (isinstance(node.func.value, ast.Name) and node.func.value.id == "json"
                          and node.func.attr in {"load", "loads", "dumps"})
             pretty_print = (pretty and isinstance(node.func.value, ast.Name) and node.func.value.id == "pprint"
@@ -1667,7 +1722,8 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                     or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords)):
                 return []
             if not json_load and not pretty_print and not hashing and not formatting and node.func.attr not in (
-                    {"keys", "items", "values", "get", "lower"} if pretty else {"keys", "items", "values", "get", "find"}):
+                    {"keys", "items", "values", "get", "lower"} if pretty else
+                    {"keys", "items", "values", "get", "find", "replace", "splitlines"}):
                 return []
         else:
             return []
@@ -2181,10 +2237,10 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
     return outputs, metadata_references
 
 
-def observed_dispatch_binding(trace: dict, root: Path) -> dict:
+def observed_dispatch_binding(trace: dict, root: Path, *, validation_packet: dict | None = None) -> dict:
     bindings = json.loads((root / "role_bindings.json").read_text())
     role = worker_binding(bindings, trace["spawn"]["agent"])
-    packet = json.loads((root / "finalization_packet.json").read_text())
+    packet = validation_packet if validation_packet is not None else json.loads((root / "finalization_packet.json").read_text())
     repair = packet.get("activation_repairs", {}).get(role)
     corrected_hash = None
     if repair and timestamp(trace["last_dispatch_at"]) > timestamp(repair["Last dispatch at"]):
@@ -2204,7 +2260,19 @@ def observed_dispatch_binding(trace: dict, root: Path) -> dict:
                 proof = {"dispatch_file": str(path), "dispatch_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                          "binding_agent": role, "dispatch_proof_source": "provider_instruction_read"}
                 if corrected_hash is not None and proof["dispatch_file_sha256"] != corrected_hash:
-                    continue
+                    try:
+                        ledger = json.loads((root / "runtime_dispatches.json").read_text())
+                        repaired = any(
+                            event.get("Provider handle") == trace["spawn"].get("provider_handle")
+                            and event.get("Binding agent") == role
+                            and event.get("Dispatch SHA256") == corrected_hash
+                            and timestamp(repair["Last dispatch at"]) < timestamp(event["Last dispatch at"])
+                            <= timestamp(trace["last_dispatch_at"])
+                            for event in ledger.get("events", []))
+                    except (OSError, ValueError, TypeError, KeyError):
+                        repaired = False
+                    if not repaired:
+                        continue
                 candidate = {**trace, "spawn": {**trace["spawn"], **proof}}
                 content = _verified_dispatch_content(candidate)
                 if content and _verified_dispatch_segments(trace, path, content, cwd):
@@ -2814,7 +2882,7 @@ def _verified_trace_retrieval_path(trace: dict[str, object]) -> Path | None:
     return path
 
 
-def _without_comparison_literals(text: str, row: dict) -> str:
+def _without_comparison_literals(text: str, row: dict, root: Path) -> str:
     """Literal comparisons and string searches are data; file arguments remain audited."""
     for name, arguments in _tool_operations(row):
         command = arguments.get("cmd") if name == "exec_command" else None
@@ -2826,13 +2894,13 @@ def _without_comparison_literals(text: str, row: dict) -> str:
             if (len(tokens) < 3 or tokens[1] != "-c" or (tokens[0] != "python3"
                     and Path(tokens[0]).resolve() != Path(sys.executable).resolve())):
                 continue
-            if not _python_read_targets(tokens[2], argv=("-c", *tokens[3:])):
+            if not _python_read_targets(tokens[2], argv=("-c", *tokens[3:]), diagnostic_write_root=root):
                 continue
             tree, changed = ast.parse(tokens[2]), False
             for node in ast.walk(tree):
                 values = ([node.left, *node.comparators] if isinstance(node, ast.Compare) else
                           node.args[:1] if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                          and node.func.attr == "find" else [])
+                          and node.func.attr in {"find", "replace"} else [])
                 for value in values:
                     if (isinstance(value, ast.Constant) and isinstance(value.value, str)
                             and any(pattern.search(value.value) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)):
@@ -2985,7 +3053,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         metadata_only = candidate != before_metadata
         operational = _without_approval_justification(candidate, row, path) if not output else candidate
         if root and not output:
-            operational = _without_comparison_literals(operational, row)
+            operational = _without_comparison_literals(operational, row, root)
         metadata_only = metadata_only or operational != candidate
         candidate = operational
         background = _background_memory_paths(row) or (background_reads.get(row.get("call_id"), set()) if output else set())
@@ -3350,7 +3418,7 @@ def planning_permission_errors(trace: dict) -> list[str]:
 
 
 def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
-                 context_details: list[dict] | None = None) -> list[str]:
+                 context_details: list[dict] | None = None, validation_packet: dict | None = None) -> list[str]:
     if not isinstance(trace, dict):
         return ["tool_trace_invalid"]
     retrieval = trace.get("trace_retrieval")
@@ -3421,7 +3489,7 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
         delivered = False
         try:
             path = Path(spawn["dispatch_file"]).resolve()
-            proof = observed_dispatch_binding(trace, path.parent)
+            proof = observed_dispatch_binding(trace, path.parent, validation_packet=validation_packet)
             delivered = (proof.get("dispatch_file") == str(path)
                          and proof.get("dispatch_file_sha256") == spawn.get("dispatch_file_sha256"))
             if observed_role and observed_role != spawn.get("binding_agent", spawn.get("agent")):
@@ -3439,7 +3507,8 @@ def trace_errors(trace: dict[str, object], *, require_freshness: bool = False,
             root = Path(spawn["dispatch_file"]).resolve().parent
             bindings = json.loads((root / "role_bindings.json").read_text())
             errors.extend(result_artifact_errors(trace, bindings, root,
-                                                worker_binding(bindings, spawn["agent"])))
+                                                worker_binding(bindings, spawn["agent"]),
+                                                validation_packet=validation_packet))
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             errors.append("worker_result_artifact_invalid:" + str(error))
     for event in trace.get("events", []):

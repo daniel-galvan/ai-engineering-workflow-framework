@@ -41,6 +41,14 @@ class PlanningCommandPath(unittest.TestCase):
         self.assertTrue(any("--planning-recovery" in arguments for _, arguments in commands))
         self.assertEqual(self.planning_outcome, fresh)
 
+    def test_rejected_documenter_packet_recovers_for_fresh_and_recovered_planning(self):
+        for playbook in ("feature_delivery", "techops_issue_remediation"):
+            with self.subTest(playbook=playbook):
+                self.planning_path(playbook, rejected_handoff=True)
+                fresh = self.planning_outcome
+                self.planning_path(playbook, rejected_handoff=True, planning_recovery=True)
+                self.assertEqual(self.planning_outcome, fresh)
+
     def test_feature_remediation_through_actual_shipped_commands(self):
         self.planning_path("feature_delivery", continue_to_remediation=True)
 
@@ -108,7 +116,8 @@ class PlanningCommandPath(unittest.TestCase):
                       blocked_runtime_snapshot=False, targeted_runtime_observation=False,
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
                       recover_context_block=False, missing_mapping=False, start_next_run=False,
-                      parallel_integration=False, planning_recovery=False, plan_action="create", invalid_parent_batch=False):
+                      parallel_integration=False, planning_recovery=False, plan_action="create", invalid_parent_batch=False,
+                      rejected_handoff=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -285,7 +294,9 @@ class PlanningCommandPath(unittest.TestCase):
 
             def prepare_assignment(worker, role):
                 assignment = root / (worker + "-assignment.json")
-                assignment.write_text(json.dumps({"objective": "Complete the current counter planning stage: " + worker,
+                decision = (" The current user selected addition for the counter." if rejected_handoff
+                            and role == "solution_architect" else "")
+                assignment.write_text(json.dumps({"objective": "Complete the current counter planning stage: " + worker + decision,
                     "input_paths": [str(packet_path), str(source)]
                     + ([str(guide_snapshot)] if role == "solution_architect" else [])}))
                 activation = root / (worker + "-activation.txt")
@@ -336,8 +347,62 @@ class PlanningCommandPath(unittest.TestCase):
                         "Prompt template / revision / conformance")}
                     self.assertEqual({row["Worker"] for row in packet["workers"]}, set(summaries))
                     self.assertEqual(packet["synchronization"][-1]["Barrier status"].split(";")[0], "Passed")
+                if rejected_handoff and role == "solution_architect":
+                    append(parent, "response_item", type="message", role="user",
+                           content=[{"type": "input_text", "text": "Use addition for the counter."}])
                 assignment, activation, guarded = (prestarted[role][:3] if role in prestarted
                                                    else prepare_assignment(worker, role))
+                if rejected_handoff and worker == "handoff":
+                    old_handle, old_id = "/root/rejected_handoff", str(UUID(int=901))
+                    append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
+                           call_id="spawn-rejected-handoff", arguments=json.dumps({"task_name": "rejected_handoff",
+                           "message": guarded["activation_message"], **guarded["launch_arguments"]}))
+                    append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
+                           "agent_path": old_handle, "agent_thread_id": old_id})
+                    old_child = provider / ("rollout-" + old_id + ".jsonl")
+                    append(old_child, "session_meta", id=old_id, cwd=str(repository))
+                    append(old_child, "turn_context", turn_id=str(UUID(int=902)),
+                           model=guarded["launch_arguments"]["model"], effort=guarded["launch_arguments"]["reasoning_effort"])
+                    append(old_child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
+                           arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
+                    append(old_child, "response_item", type="function_call_output", call_id="bootstrap", output=activation.read_text())
+                    append(old_child, "response_item", type="function_call", name="exec_command", call_id="forbidden",
+                           arguments=json.dumps({"cmd": "cat /Users/example/.codex/sessions/old.jsonl"}))
+                    append(old_child, "response_item", type="message", role="assistant", phase="final_answer",
+                           content=[{"type": "output_text", "text": "Rejected handoff"}])
+                    tainted = json.loads(packet_path.read_text())
+                    tainted["inputs"].append({"Input ID": "LATE-ANSWER", "Input or artifact": "Untrusted extra"})
+                    tainted["claims"][0]["Claim"] = "Untrusted replacement of an accepted finding"
+                    packet_path.write_text(json.dumps(tainted))
+                    append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "completed",
+                           "agent_path": old_handle, "agent_thread_id": old_id})
+                    completed[old_handle], statuses[old_handle] = old_id, "completed"
+                    inventory()
+                    rejected = root / "rejected-handoff-trace.json"
+                    command("worker_runtime_evidence.py", *collector, "--worker-session", old_child,
+                            "--agent", role, "--trace", rejected, expected=2)
+                    rejected_traces[rejected] = rejected.read_bytes()
+                    self.assertEqual(json.loads(rejected.read_text())["audit"]["status"], "rejected")
+                    receipt = json.loads((root / "activation_receipts.json").read_text())[activation.name]
+                    snapshot = root / ("documenter_packet." + receipt["packet_snapshot_sha256"] + ".json")
+                    original_snapshot = snapshot.read_bytes()
+                    replacement = root / "handoff-replacement.txt"
+                    recovery_args = ("--activation-packet-bundle",
+                        run["activation_packet_bundle"]["path"], "--expected-agent", role, "--expected-bundle-sha256",
+                        run["activation_packet_bundle"]["sha256"], "--assignment", assignment,
+                        "--dispatch-file", replacement, "--rejected-trace", rejected)
+                    snapshot.write_text("{}")
+                    self.assertIn("documenter_packet_snapshot_unverified", command(
+                        "validate_worker_runtime.py", *recovery_args, expected=2))
+                    self.assertFalse(replacement.exists())
+                    snapshot.write_bytes(original_snapshot)
+                    activation = replacement
+                    guarded = json.loads(command("validate_worker_runtime.py", *recovery_args))
+                    restored = json.loads(packet_path.read_text())
+                    self.assertNotIn("LATE-ANSWER", [row.get("Input ID") for row in restored["inputs"]])
+                    self.assertTrue(any(row.get("Decision ID") == "DE-FD-002" and row.get("Owner") == "Current user"
+                                        for row in restored["decisions"]))
+                    self.assertIn("LATE-ANSWER", (root / "finalization_packet.rejected.json").read_text())
                 if recover_failed_worker and index == 0:
                     failed_handle, failed_id = "/root/failed_original", str(UUID(int=900))
                     append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
@@ -478,6 +543,17 @@ class PlanningCommandPath(unittest.TestCase):
                             + (", CL-RI-001" if parallel_integration else ""), "Owner": "Implementer", "Status": "Proposed"}]
                         result["actions"] = [{"Action ID": "A-FD-001", "Action": "After approval, correct the operator and extend the regression fixture.",
                             "Decision ref": "DE-FD-001", "Owner": "Implementer", "Status": "Proposed"}]
+                        if rejected_handoff:
+                            result["evidence"].append({"Evidence ID": "E-FD-002", "Source": "Current user response",
+                                "Summary": "The user selected addition for the counter.", "Confidence": "High",
+                                "Uncertainty": "None", "Status": "Observed"})
+                            result["claims"].append({"Claim ID": "CL-FD-002", "Claim": "The user selected addition.",
+                                "Evidence refs": "E-FD-002", "Confidence": "High", "Uncertainty": "None",
+                                "Status": "Supported"})
+                            result["decisions"].append({"Decision ID": "DE-FD-002", "Decision": "Use addition.",
+                                "Claim refs": "CL-FD-002", "Owner": "Current user", "Status": "Confirmed"})
+                            result["actions"].append({"Action ID": "A-FD-002", "Action": "Preserve the user selection.",
+                                "Decision ref": "DE-FD-002", "Owner": "Implementer", "Status": "Planned"})
                         if playbook == "feature_delivery":
                             result.update(plan_readiness="ready_for_implementation" if plan_action == "create" else "awaiting_input",
                                           implementation_plan_action=plan_action)
@@ -864,6 +940,9 @@ class PlanningCommandPath(unittest.TestCase):
                 snapshot_name = re.search(r"<!-- workflow-state: (finalization_snapshot\.[0-9a-f]{64}\.json) -->", record_text)[1]
                 published = json.loads((root / snapshot_name).read_text())
                 self.assertEqual(published["identity"]["State"], "ready_for_implementation")
+            if rejected_handoff:
+                self.assertTrue(any(row.get("Decision ID") == "DE-FD-002" and row.get("Owner") == "Current user"
+                                    for row in published["decisions"]))
             self.planning_outcome = {
                 "state": published["identity"]["State"], "outcome": published["identity"]["Workflow outcome"],
                 "plan": ((root / "implementation_plan.md").read_text().replace(str(repository), "<repository>")

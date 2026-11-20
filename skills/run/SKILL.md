@@ -916,6 +916,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    its emitted `activation_message` with a new handle. A separate transition check does not authorize that launch.
    Inspect `audit.context_violations` for the exact offending operation and path before attributing a context failure;
    a repository instruction file or a product directory containing the word archive is not historical evidence.
+   Describe restricted sources by their audit label and current-run provenance in repair instructions; do not copy a
+   private session or memory locator into an assignment or diagnostic command. A locator in framework metadata is not
+   proof that its target was opened; verify the paired operation before deciding whether isolation is required.
    Before assigning an instruction file during recovery, verify it exists. Preserve optional lookup semantics;
    do not fabricate a required input to silence an audit error.
    The trace must prove rejection of that handle's latest completed result. Completion alone does not authorize

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import io
 import json
@@ -544,6 +545,54 @@ text(JSON.stringify({
 
 def _literal_parent_thread_read_batch(source: str) -> list[tuple[str, dict]] | None:
     """Expand only the literal assigned-thread status loop used by coordinator closure."""
+    batch = re.fullmatch(
+        r'\s*const\s+ids\s*=\s*(?P<ids>\[[^\]]*\])\s*;\s*'
+        r'(?:(?:const\s+\w+\s*=\s*await\s+Promise\.all\(ids\.map\(threadId\s*=>\s*'
+        r'tools\.(?P<read>mcp__codex_app__read_thread)\((?P<read_args>\{[^{}]*\})\)\)\)\s*;'
+        r'(?P<read_body>[\s\S]*))|(?:for\s*\(const\s+threadId\s+of\s+ids\)\s*\{\s*'
+        r'const\s+\w+\s*=\s*await\s+tools\.(?P<wait>mcp__codex_app__wait_threads)'
+        r'\((?P<wait_args>\{[\s\S]*?\})\)\s*;(?P<wait_body>[\s\S]*)\}))\s*', source)
+    if batch:
+        try:
+            identities = json.loads(batch["ids"])
+            body = batch["read_body"] if batch["read"] else batch["wait_body"]
+            # Only simple status formatting is accepted; opaque calls remain unauditable.
+            bare_calls = re.findall(r'(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(', body)
+            member_calls = re.findall(r'\.\s*([A-Za-z_$][\w$]*)\s*\(', body)
+            if (re.search(r'[\\`]|\[\s*[\"\']|[\]\)]\s*\(|\?\.\s*\(', body)
+                    or any(call not in {"for", "if", "catch", "text", "String", "Error"} for call in bare_calls)
+                    or any(call not in {"find", "parse", "stringify", "isArray", "slice"} for call in member_calls)
+                    or not isinstance(identities, list) or not 1 <= len(identities) <= 8
+                    or len(set(identities)) != len(identities)
+                    or any(not isinstance(value, str) or not UUID.fullmatch(value) for value in identities)
+                    or re.search(r'\b(?:tools|eval|Function|globalThis|constructor|this|Reflect|Proxy|'
+                                 r'fetch|process|require|import|await|load|store|notify|image|audio|generatedImage|exit|'
+                                 r'yield_control|setTimeout|clearTimeout|Object|Symbol|WebAssembly)\b', body)
+                    or re.search(r'\bids\b', re.sub(r'\bids\s*\[\s*\w+\s*\]', '', body))
+                    or re.search(r'\bids\s*\[[^]]+\]\s*(?:=|\+\+|--|\+=|-=)', body)):
+                return None
+            try:
+                from runtime_checks import _literal_argument
+            except ModuleNotFoundError:
+                from scripts.runtime_checks import _literal_argument
+            arguments = batch["read_args"] if batch["read"] else batch["wait_args"]
+            arguments = re.sub(r'(?<=[{,])\s*threadId\s*(?=[,}])', 'threadId:threadId', arguments)
+            tree = ast.parse(arguments, mode="eval").body
+            operations = []
+            for identity in identities:
+                value = _literal_argument(tree, {"threadId": identity})
+                if batch["read"]:
+                    if (set(value) - {"threadId", "includeOutputs", "turnLimit", "maxOutputCharsPerItem"}
+                            or value.get("threadId") != identity or value.get("includeOutputs") is not False
+                            or value.get("turnLimit") != 1
+                            or "maxOutputCharsPerItem" in value and type(value["maxOutputCharsPerItem"]) is not int):
+                        return None
+                elif value != {"targets": [{"threadId": identity}], "timeoutMs": 0}:
+                    return None
+                operations.append((batch["read"] or batch["wait"], value))
+            return operations
+        except (ValueError, SyntaxError, TypeError, KeyError):
+            return None
     wait_batch = re.fullmatch(r'\s*const ids\s*=\s*(\[[\s\S]*?\]);\s*(?P<body>[\s\S]*)', source)
     wait_body = ('const rs=await Promise.allSettled(ids.map(threadId=>tools.mcp__codex_app__wait_threads({targets:[{threadId,hostId:"local"}],timeoutMs:0})));\n'
                  'for(let i=0;i<rs.length;i++){\n'

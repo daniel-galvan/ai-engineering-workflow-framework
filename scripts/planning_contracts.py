@@ -1377,9 +1377,11 @@ def _worker_runtime_audit_errors(
                 raise ValueError("trace must be an object")
             if not isinstance(trace.get("tool_trace"), list):
                 errors.append(f"worker_tool_trace_required:{worker}")
-            errors.extend(trace_errors(trace, require_freshness=True))
+            snapshot = packet if packet_path.name.startswith("documenter_packet.") else None
+            errors.extend(trace_errors(trace, require_freshness=True, validation_packet=snapshot))
             errors.extend(trace_identity_errors(trace, packet_path.parent, worker,
-                                                row.get("Provider handle"), row.get("Thread ID")))
+                                                row.get("Provider handle"), row.get("Thread ID"),
+                                                validation_packet=snapshot))
             if trace.get("last_dispatch_at") != row.get("Last dispatch at"):
                 errors.append(f"worker_trace_stale:{worker}")
             if not any(event.get("action") == "fan_in" and event.get("provider_status") == "completed"
