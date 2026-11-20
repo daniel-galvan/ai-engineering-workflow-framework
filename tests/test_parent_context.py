@@ -1680,6 +1680,25 @@ class ParentContext(unittest.TestCase):
         )
         self.assertIn("parent_tool_arguments_unavailable", self.audit()["errors"])
 
+    def test_corrected_assignment_draft_cannot_cross_a_worker_dispatch(self):
+        root = self.root / ".thoughts" / "ITEM-1"
+        root.mkdir(parents=True)
+        target = root / "assignment.json"
+        archive = str(self.root / ".thoughts" / "OTHER" / "runs" / "old.md")
+        bad = json.dumps({"objective": "Inspect", "input_paths": [archive]})
+        good = json.dumps({"objective": "Inspect", "input_paths": []})
+        target.write_text(good)
+        def write(body):
+            return "cat > " + str(target) + " <<'EOF'\n" + body + "\nEOF"
+        self.rows.extend([self.call("exec_command", cmd=write(bad)),
+                          self.call("exec_command", cmd="cat " + str(target) + "\n" + write(good))])
+        self.assertEqual(self.audit(artifact_root=root, related_run_thread_ids=())["status"], "passed")
+        spawn = self.call("spawn_agent", task_name="worker", message="Start")
+        spawn["payload"]["namespace"] = "collaboration"
+        self.rows.insert(-1, spawn)
+        self.assertIn("forbidden_context_reference:archived_artifact",
+                      self.audit(artifact_root=root, related_run_thread_ids=())["errors"])
+
     def test_incomplete_literal_command_is_still_audited(self):
         payload = {"type": "custom_tool_call", "name": "exec",
                    "input": 'const r = await tools.exec_command({cmd:"cat /repo/file"}\n'}

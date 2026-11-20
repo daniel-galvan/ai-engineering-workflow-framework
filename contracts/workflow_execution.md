@@ -367,6 +367,9 @@ current-run evidence and work record, referencing the original Input IDs.
 Supporting inputs may be unused only when the worker records why they were irrelevant to its declared responsibility.
 The gate checks information flow; it does not require every worker to consume every run input.
 
+A mistaken quoted assignment draft may be corrected before activation. Treat its superseded path as draft data only
+when the correction and absence of intervening operations are verifiable; actual reads, writes, and active assignments
+remain subject to the context boundary.
 The Coordinator MUST also reconcile the worker's activity with its assigned context. Unassigned memory or historical
 material that appears in an artifact, citation, claim, hypothesis, decision, or result envelope fails
 `context_conformance`; that result MUST NOT enter fan-in. Automatically injected or otherwise required memory is not

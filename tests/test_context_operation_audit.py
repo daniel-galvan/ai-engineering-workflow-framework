@@ -371,6 +371,34 @@ class ContextOperationAudit(unittest.TestCase):
                         first + '\ncat ' + archive + '\n' + second):
             self.assertIn('forbidden_context_reference:archived_artifact', audit(command))
 
+    def test_superseded_assignment_draft_does_not_authorize_earlier_access(self):
+        target = self.root / "assignment.json"
+        archive = str(self.root.parent / "OTHER" / "runs" / "old.md")
+        draft = json.dumps({"objective": "Inspect inputs", "input_paths": [archive]})
+        fixed = json.dumps({"objective": "Inspect inputs", "input_paths": [str(self.root / "current.md")]})
+        def write(body):
+            return 'cat > ' + str(target) + " <<'EOF'\n" + body + "\nEOF"
+        def row(command):
+            return {"type": "function_call", "name": "exec_command", "arguments": {"cmd": command}}
+        def audit(rows):
+            return runtime.context_trace_errors({"tool_trace": rows}, artifact_root=self.root)
+        target.write_text(fixed)
+        previous, correction = write(draft), 'cat ' + str(target) + "\n" + write(fixed)
+        self.assertEqual(audit([row(previous), row(correction)]), [])
+        self.assertIn("forbidden_context_reference:archived_artifact", audit([row(previous)]))
+        for before in (previous + "\ncat " + archive,
+                       previous + "\npython3 -c " + shlex.quote('import json; d=json.load(open(' + repr(str(target))
+                           + ')); open(d["input_paths"][0]).read()')):
+            self.assertIn("forbidden_context_reference:archived_artifact", audit([row(before), row(correction)]))
+        self.assertIn("forbidden_context_reference:archived_artifact", audit(
+            [row(previous), {"type": "function_call", "name": "spawn_agent", "arguments": {}}, row(correction)]))
+        self.assertIn("forbidden_context_reference:archived_artifact", audit(
+            [row(previous), row(correction + "\ncat " + archive)]))
+        target.write_text(draft)
+        self.assertIn("forbidden_context_reference:archived_artifact", audit([row(previous), row(correction)]))
+        self.assertIn("forbidden_context_reference:archived_artifact", audit(
+            [row(previous), row('cat ' + str(target) + "\n" + write(draft))]))
+
     def test_quoted_assignment_text_is_data_but_its_paths_and_operations_are_audited(self):
         assignment = self.root / 'assignment.json'
         archive = str(self.root / 'runs' / 'previous' / 'result.json')

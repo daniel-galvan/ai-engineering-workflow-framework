@@ -1171,6 +1171,8 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     elif name.rsplit("__", 1)[-1] in {"list_threads", "list_archived_threads"}:
                         errors.append("parent_unassigned_thread_discovery")
                         operations.append({"type": "function_call", "name": name, "arguments": arguments})
+                    else:
+                        operations.append({"type": "operation_boundary"})
         if pending_related_run_status:
             errors.append("parent_related_run_status_output_missing")
         if not isinstance(turn, str) or not UUID.fullmatch(turn):

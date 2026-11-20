@@ -260,11 +260,16 @@ class PlanningCommandPath(unittest.TestCase):
             # Record a batched assignment write in the parent trace for both fresh and recovered runs.
             assignment_body = json.dumps({"objective": "Keep artifacts under " + str(root) + ".",
                                           "input_paths": [str(source)]})
-            batched = "\n".join("cat > " + shlex.quote(str(root / (name + ".json"))) +
-                                " <<'ASSIGNMENT'\n" + assignment_body + "\nASSIGNMENT"
-                                for name in ("first-assignment", "second-assignment"))
+            draft = json.dumps({"objective": "Inspect supplied input",
+                                "input_paths": [str(root.parent / "OTHER" / "runs" / "prior.md")]})
+            first = "cat > " + shlex.quote(str(root / "first-assignment.json")) + " <<'ASSIGNMENT'\n"
+            second = "cat > " + shlex.quote(str(root / "second-assignment.json")) + " <<'ASSIGNMENT'\n"
+            batched = first + draft + "\nASSIGNMENT\n" + second + assignment_body + "\nASSIGNMENT"
             append(parent, "response_item", type="function_call", name="exec_command",
                    arguments=json.dumps({"cmd": batched, "workdir": str(repository)}))
+            append(parent, "response_item", type="function_call", name="exec_command",
+                   arguments=json.dumps({"cmd": first + assignment_body + "\nASSIGNMENT", "workdir": str(repository)}))
+            (root / "first-assignment.json").write_text(assignment_body)
             guide_row = next(row for row in json.loads((root / "run_inputs.json").read_text())["inputs"]
                              if row["Input ID"] == "IN-003")
             guide_snapshot = Path(guide_row["path"])

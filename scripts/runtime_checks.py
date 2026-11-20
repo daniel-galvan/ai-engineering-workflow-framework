@@ -2820,7 +2820,64 @@ def _without_approval_justification(text: str, row: dict, field_path: tuple[str,
     return text
 
 
-def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
+def _superseded_assignment_drafts(trace: dict, root: Path | None) -> dict[int, set[Path]]:
+    """Recognize a quoted draft immediately replaced before any intervening operation."""
+    if root is None:
+        return {}
+    pattern = re.compile(r"(?m)^cat > (?P<path>[^\s]+) <<'(?P<end>[A-Za-z_][A-Za-z0-9_]*)'\n"
+                         r"(?P<body>.*?)\n(?P=end)(?=\n|$)", re.S)
+    rows = trace.get("tool_trace", [])
+    operations = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or row.get("type") in {"function_call_output", "custom_tool_call_output"}:
+            continue
+        calls = _tool_operations(row)
+        if len(calls) == 1 and calls[0][0] == "exec_command" and isinstance(calls[0][1].get("cmd"), str):
+            operations.append((index, calls[0][1]["cmd"]))
+        else:
+            operations.append((index, ""))
+    result = {}
+    for (index, previous), (_, current) in zip(operations, operations[1:]):
+        if pattern.sub("", previous).strip():
+            continue
+        updates = list(pattern.finditer(current))
+        if len(updates) != 1:
+            continue
+        update = updates[0]
+        try:
+            if any(char in update["path"] for char in "$`\\*?[]{}~"):
+                continue
+            target = Path(shlex.split(update["path"])[0])
+            if (not target.is_absolute() or target.is_symlink() or target.resolve().parent != root.resolve()
+                    or target.suffix != ".json"):
+                continue
+            before = current[:update.start()].strip()
+            if before and shlex.split(before) != ["cat", str(target)]:
+                continue
+            if current[update.end():].strip():
+                continue
+            corrected = json.loads(update["body"])
+            if (not isinstance(corrected, dict) or set(corrected) != {"objective", "input_paths"}
+                    or not isinstance(corrected["objective"], str) or not isinstance(corrected["input_paths"], list)
+                    or not all(isinstance(item, str) for item in corrected["input_paths"])
+                    or json.loads(target.read_text()) != corrected):
+                continue
+            for old in pattern.finditer(previous):
+                if any(char in old["path"] for char in "$`\\*?[]{}~"):
+                    continue
+                old_target = Path(shlex.split(old["path"])[0])
+                draft = json.loads(old["body"])
+                if (not old_target.is_symlink() and old_target.resolve() == target.resolve()
+                        and isinstance(draft, dict) and set(draft) == {"objective", "input_paths"}
+                        and isinstance(draft["objective"], str) and isinstance(draft["input_paths"], list)
+                        and all(isinstance(item, str) for item in draft["input_paths"])):
+                    result.setdefault(index, set()).add(target.resolve())
+        except (OSError, ValueError, TypeError, IndexError, AttributeError):
+            continue
+    return result
+
+
+def _without_prose_root_punctuation(text: str, row: dict, root: Path, superseded: set[Path] | None = None) -> str:
     """Distinguish serialized assignment text and failure metadata from executed operations."""
     if (str(root) + "." not in text and ".thoughts/" not in text
             and not any(pattern.search(text) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)):
@@ -2868,9 +2925,13 @@ def _without_prose_root_punctuation(text: str, row: dict, root: Path) -> str:
                         and all(isinstance(path, str) for path in assignment['input_paths'])
                         and isinstance(assignment.get('objective'), str)
                         and json.loads(fields[0][1]) == assignment['objective']):
-                    field = fields[0]
-                    replacement = (replacement[:heredoc.start('body') + field.start(1)] + json.dumps('[assignment text]')
-                                   + replacement[heredoc.start('body') + field.end(1):])
+                    if superseded and target in superseded:
+                        sanitized = json.dumps({"objective": "[assignment text]", "input_paths": []})
+                        replacement = replacement[:heredoc.start('body')] + sanitized + replacement[heredoc.end('body'):]
+                    else:
+                        field = fields[0]
+                        replacement = (replacement[:heredoc.start('body') + field.start(1)] + json.dumps('[assignment text]')
+                                       + replacement[heredoc.start('body') + field.end(1):])
             except (OSError, ValueError, TypeError, IndexError, AttributeError):
                 pass
         if replacement != command:
@@ -3131,6 +3192,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
                          and row.get("type") in {"function_call", "custom_tool_call"}}
     background_reads = {row["call_id"]: paths for row in trace.get("tool_trace", [])
                         if isinstance(row, dict) and row.get("call_id") and (paths := _background_memory_paths(row))}
+    superseded_drafts = _superseded_assignment_drafts(trace, root)
     for path, value in _trace_strings(trace):
         if (path[:1] == ("delivery_ledger",) and value in verified_delivery_paths
                 and (path == ("delivery_ledger", "provider_session")
@@ -3182,7 +3244,10 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         for spelling in sorted(spellings, key=len, reverse=True):
             candidate = candidate.replace(spelling, "[background guidance]")
         if root and not output:
-            normalized = _without_prose_root_punctuation(candidate, row, root)
+            normalized = _without_prose_root_punctuation(candidate, row, root,
+                                                         superseded_drafts.get(int(path[1]), set())
+                                                         if len(path) > 1 and path[:1] == ("tool_trace",)
+                                                         and path[1].isdigit() else set())
             metadata_only = metadata_only or normalized != candidate
             candidate = normalized
         call_contents = instruction_contents.get(row.get("call_id"), {})
