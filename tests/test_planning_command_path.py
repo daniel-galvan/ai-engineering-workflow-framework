@@ -310,13 +310,21 @@ class PlanningCommandPath(unittest.TestCase):
                 assignment = root / (worker + "-assignment.json")
                 decision = (" The current user selected addition for the counter." if rejected_handoff
                             and role == "solution_architect" else "")
-                assignment.write_text(json.dumps({"objective": "Complete the current counter planning stage: " + worker + decision,
+                payload = {"objective": "Complete the current counter planning stage: " + worker + decision,
                     "input_paths": [str(packet_path), str(source)]
-                    + ([str(guide_snapshot)] if role == "solution_architect" else [])}))
+                    + ([str(guide_snapshot)] if role == "solution_architect" else [])}
                 activation = root / (worker + "-activation.txt")
-                guarded = json.loads(command("validate_worker_runtime.py", "--activation-packet-bundle",
+                args = ("--activation-packet-bundle",
                     run["activation_packet_bundle"]["path"], "--expected-agent", role, "--expected-bundle-sha256",
-                    run["activation_packet_bundle"]["sha256"], "--assignment", assignment, "--dispatch-file", activation))
+                    run["activation_packet_bundle"]["sha256"], "--assignment", assignment, "--dispatch-file", activation)
+                if role == "documenter":
+                    audit_path = json.loads(packet_path.read_text())["runtime_audits"][0]["Trace path"]
+                    assignment.write_text(json.dumps({**payload, "input_paths": [*payload["input_paths"], audit_path]}))
+                    self.assertIn("documenter_audit_trace_is_coordinator_input_only",
+                                  command("validate_worker_runtime.py", *args, expected=2))
+                    self.assertFalse(activation.exists())
+                assignment.write_text(json.dumps(payload))
+                guarded = json.loads(command("validate_worker_runtime.py", *args))
                 self.assertIn(str(guide_snapshot), activation.read_text())
                 self.assertNotIn("UNNEEDED_GUIDE_SECTION", activation.read_text())
                 return assignment, activation, guarded
@@ -417,6 +425,14 @@ class PlanningCommandPath(unittest.TestCase):
                         "validate_worker_runtime.py", *recovery_args, expected=2))
                     self.assertFalse(replacement.exists())
                     snapshot.write_bytes(original_snapshot)
+                    clean_assignment = assignment.read_text()
+                    with_trace = json.loads(clean_assignment)
+                    with_trace["input_paths"].append(json.loads(original_snapshot)["runtime_audits"][0]["Trace path"])
+                    assignment.write_text(json.dumps(with_trace))
+                    self.assertIn("documenter_audit_trace_is_coordinator_input_only", command(
+                        "validate_worker_runtime.py", *recovery_args, expected=2))
+                    self.assertFalse(replacement.exists())
+                    assignment.write_text(clean_assignment)
                     activation = replacement
                     guarded = json.loads(command("validate_worker_runtime.py", *recovery_args))
                     restored = json.loads(packet_path.read_text())

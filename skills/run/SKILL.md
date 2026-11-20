@@ -598,6 +598,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    and require an allowed result immediately before that worker's spawn call. Do not batch guards after dispatching
    workers. For a fresh Codex spawn, copy the allowed response's `launch_arguments` into `spawn_agent` alongside
    the task name and emitted activation message; do not rely on inherited model or effort defaults.
+   Give Documenter the staged packet and accepted worker outputs. Raw accepted or rejected audit traces are
+   Coordinator inputs. Give Documenter the needed facts from verified evidence and use the packet's audit rows
+   for the handoff. This also applies to a corrected or recovered assignment.
    An allowed guard prepares an activation; it does not start a worker. Wait for or report a worker as active only
    after a successful spawn or follow-up dispatch, using its returned handle. If new input arrives between the guard
    and dispatch, reconcile the assignment and run the guard again before dispatch; do not wait for an unstarted worker.

@@ -811,6 +811,14 @@ def main() -> int:
                     if args.dispatch_file and args.expected_agent == "documenter" and not rejection_hash and not refresh:
                         packet_snapshot_hash = hashlib.sha256(Path(packet["finalization_packet"]).read_bytes()).hexdigest()
                     message = activation_message(packet, assignment, packet_snapshot_hash=packet_snapshot_hash)
+                    if args.expected_agent == "documenter":
+                        current_path = Path(packet["finalization_packet"])
+                        current = json.loads((recovery_packet_path or current_path).read_text())
+                        audit_paths = {(current_path.parent / row["Trace path"]).resolve()
+                                       for row in current.get("runtime_audits", []) if row.get("Trace path")}
+                        if any((current_path.parents[2] / path).resolve() in audit_paths
+                               for path in assignment.get("input_paths", [])):
+                            raise ValueError("documenter_audit_trace_is_coordinator_input_only: use packet audit rows")
                     if args.rejected_trace:
                         repository = Path(packet["finalization_packet"]).parents[2]
                         if any((repository / path).resolve() == args.rejected_trace.resolve()
