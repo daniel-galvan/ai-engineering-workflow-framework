@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import subprocess
 import tempfile
 from datetime import UTC, datetime
@@ -36,6 +37,7 @@ try:
         _tool_operations as _tool_operations,
         _python_read_targets as _python_read_targets,
         _read_targets as _read_targets,
+        _dispatch_segment as _dispatch_segment,
         _read_output_prefixes as _read_output_prefixes,
         observed_dispatch_binding as observed_dispatch_binding,
         _instruction_contents as _instruction_contents,
@@ -65,6 +67,7 @@ except ModuleNotFoundError:
         _tool_operations as _tool_operations,
         _python_read_targets as _python_read_targets,
         _read_targets as _read_targets,
+        _dispatch_segment as _dispatch_segment,
         _read_output_prefixes as _read_output_prefixes,
         observed_dispatch_binding as observed_dispatch_binding,
         _instruction_contents as _instruction_contents,
@@ -125,9 +128,57 @@ def _documenter_recovery_snapshot(root: Path, trace_path: Path) -> Path | None:
     """Find the packet bound to the rejected Documenter's guarded dispatch."""
     trace = json.loads(trace_path.read_text())
     spawn = trace["spawn"]
-    dispatch = Path(spawn["dispatch_file"])
     receipts = json.loads((root / "activation_receipts.json").read_text())
-    receipt = receipts[dispatch.name]
+    if not spawn.get("dispatch_file"):
+        # A rejected worker may have attempted a guarded read without proving complete delivery.
+        bindings = json.loads((root / "role_bindings.json").read_text())
+        candidates = set()
+        for row in trace.get("tool_trace", []):
+            for name, arguments in _tool_operations(row):
+                if name != "exec_command":
+                    continue
+                command = arguments.get("cmd", "")
+                segment = _dispatch_segment(command)
+                try:
+                    tokens = shlex.split(command)
+                except (TypeError, ValueError):
+                    continue
+                if not segment and (len(tokens) != 2 or tokens[0] != "cat"):
+                    continue
+                call_id = row.get("call_id")
+                paired = [item for item in trace.get("tool_trace", []) if isinstance(item, dict)
+                          and item.get("type") in {"function_call_output", "custom_tool_call_output"}
+                          and call_id and item.get("call_id") == call_id]
+                if len(paired) != 1:
+                    continue
+                cwd = Path(arguments.get("workdir") or bindings["execution_repository"])
+                for target in _read_targets(command):
+                    path = Path(target) if Path(target).is_absolute() else cwd / target
+                    receipt = receipts.get(path.name, {})
+                    candidate = {**trace, "spawn": {**spawn, "dispatch_file": str(path),
+                        "dispatch_file_sha256": receipt.get("sha256"), "binding_agent": "documenter"}}
+                    content = _verified_dispatch_content(candidate)
+                    if (path.is_symlink() or path.resolve().parent != root.resolve()
+                            or receipt.get("agent") != "documenter" or receipt.get("run_id") != trace.get("run_id")
+                            or not content):
+                        continue
+                    start = segment[1] if segment else 0
+                    end = min(segment[2] if segment and segment[2] is not None else len(content), start + 256)
+                    if (start < end and any(content[start:end] in value
+                            for _, value in _trace_strings({"tool_trace": paired}))):
+                        candidates.add(path.resolve())
+        snapshots = {receipt.get("packet_snapshot_sha256") for receipt in receipts.values()
+                     if isinstance(receipt, dict) and receipt.get("agent") == "documenter"
+                     and receipt.get("run_id") == trace.get("run_id")}
+        if len(candidates) != 1 or len(snapshots) != 1 or not all(
+                isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) for value in snapshots):
+            raise ValueError("documenter_packet_snapshot_dispatch_unresolved")
+        dispatch = candidates.pop()
+        receipt = receipts[dispatch.name]
+        spawn = {**spawn, "dispatch_file_sha256": receipt["sha256"]}
+    else:
+        dispatch = Path(spawn["dispatch_file"])
+        receipt = receipts[dispatch.name]
     if (dispatch.resolve().parent != root.resolve() or dispatch.is_symlink()
             or receipt.get("agent") != "documenter" or receipt.get("run_id") != trace.get("run_id")
             or receipt.get("sha256") != spawn.get("dispatch_file_sha256")

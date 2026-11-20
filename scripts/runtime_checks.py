@@ -1211,6 +1211,16 @@ def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
             r"`COMMAND \$\{(?P=index)\s*\+\s*1\}\\n\$\{(?P=result)\[(?P=index)\]\.output\}`"
             r"\)\s*;\s*\}\s*;?\s*", source, re.S)
     if not match:
+        match = re.fullmatch(
+            r'\s*const\s+(?P<commands>[A-Za-z_]\w*)\s*=\s*(?P<values>\[[\s\S]*?\])\s*;'
+            r'\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+Promise\.all\('
+            r'(?P=commands)\.map\(\s*(?P<command>[A-Za-z_]\w*)\s*=>\s*tools\.exec_command'
+            r'\((?P<arguments>\{[^{}]*\})\)\)\)\s*;'
+            r'\s*for\s*\(\s*let\s+(?P<index>[A-Za-z_]\w*)\s*=\s*0\s*;\s*(?P=index)\s*<\s*'
+            r'(?P=result)\.length\s*;\s*(?P=index)\+\+\s*\)\s*text\('
+            r'`---\$\{(?P=index)\} exit \$\{(?P=result)\[(?P=index)\]\.exit_code\}---\\n'
+            r'\$\{(?P=result)\[(?P=index)\]\.output\}`\)\s*;?\s*', source, re.S)
+    if not match:
         # Expand a bounded batch with one literal JSON-quoted path per command.
         batch = re.fullmatch(
             r'\s*const\s+(?P<paths>[A-Za-z_]\w*)\s*=\s*(?P<values>\[[^\]]*\])\s*;'
@@ -1239,7 +1249,7 @@ def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
     mapped = False
     if not match:
         match = re.fullmatch(
-            r'\s*const\s+(?P<commands>[A-Za-z_]\w*)\s*=\s*(?P<values>\[[^\]]*\])\s*;'
+            r'\s*const\s+(?P<commands>[A-Za-z_]\w*)\s*=\s*(?P<values>\[[\s\S]*?\])\s*;'
             r'\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+Promise\.allSettled\('
             r'(?P=commands)\.map\(\s*(?P<command>[A-Za-z_]\w*)\s*=>\s*tools\.exec_command'
             r'\((?P<arguments>\{[^{}]*\})\)\)\)\s*;'
@@ -1542,7 +1552,7 @@ def _dispatch_read_output(command: str, content: str) -> str:
     return content
 
 
-def _dispatch_segment(command: str) -> tuple[str, int, int] | None:
+def _dispatch_segment(command: str) -> tuple[str, int, int | None] | None:
     """Recognize only an exact literal slice read, without evaluating provider code."""
     try:
         tokens = shlex.split(command)
@@ -1551,6 +1561,16 @@ def _dispatch_segment(command: str) -> tuple[str, int, int] | None:
                  or Path(tokens[0]).resolve() != Path(sys.executable).resolve()))):
             return None
         tree = ast.parse(tokens[2])
+        if len(tree.body) == 3:
+            assignment, output = tree.body[1:]
+            target = assignment.value.func.value.args[0].value
+            name = assignment.targets[0].id
+            start = output.value.args[0].slice.lower.value
+            if not isinstance(target, str) or type(start) is not int or start < 0:
+                return None
+            expected = f"from pathlib import Path; {name}=Path({target!r}).read_text(); print({name}[{start}:])"
+            if ast.dump(tree) == ast.dump(ast.parse(expected)):
+                return target, start, None
         part = tree.body[0].value.args[0]
         target = part.value.func.value.args[0].value
         start, end = part.slice.lower.value, part.slice.upper.value
@@ -1579,6 +1599,9 @@ def _verified_dispatch_segments(trace: dict, path: Path, content: str, cwd: Path
             if not segment:
                 continue
             target, start, end = segment
+            end = len(content) if end is None else end
+            if not 0 < end - start <= 6000:
+                return {}
             target_path = Path(target) if Path(target).is_absolute() else Path(arguments.get("workdir") or cwd) / target
             if target_path.resolve() != path.resolve():
                 continue
@@ -2264,6 +2287,61 @@ def _read_output_prefixes(trace: dict, assigned: list[str], root: Path | None) -
                         or result in exact_reentry_outputs.get(row.get("call_id"), [])):
                     outputs.add(("tool_trace", str(index), "output", str(item_index), "text"))
     return outputs, metadata_references
+
+
+def _metadata_batch_references(trace: dict, root: Path | None) -> dict[tuple[str, int], list[str]]:
+    """Bind a labeled metadata result to its exact operation in a mixed batch."""
+    if root is None:
+        return {}
+    rows = trace.get("tool_trace", [])
+    result = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("type") != "custom_tool_call" or not row.get("call_id"):
+            continue
+        source = row.get("input", "")
+        if not isinstance(source, str) or ".exit_code}---" not in source:
+            continue
+        operations = _literal_command_loop(source)
+        if not operations:
+            continue
+        paired = [item for item in rows if isinstance(item, dict) and item.get("type") == "custom_tool_call_output"
+                  and item.get("call_id") == row["call_id"]]
+        if len(paired) != 1 or not isinstance(paired[0].get("output"), list):
+            continue
+        blocks = paired[0]["output"]
+        if (len(blocks) != len(operations) + 1 or not isinstance(blocks[0], dict)
+                or not re.fullmatch(r"Script completed\nWall time [^\n]+\nOutput:\n", blocks[0].get("text", ""))):
+            continue
+        for index, (name, arguments) in enumerate(operations):
+            try:
+                block = blocks[index + 1]
+                command = arguments.get("cmd", "")
+                tokens = shlex.split(command)
+                cwd = Path(arguments.get("workdir") or root.parent.parent)
+                target = Path(tokens[1]) if len(tokens) == 2 else Path("")
+                target = target if target.is_absolute() else cwd / target
+                if (name != "exec_command" or len(tokens) != 2 or tokens[0] != "cat"
+                        or target.is_symlink() or target.resolve().parent != root.resolve()
+                        or target.name not in {"role_bindings.json", "finalization_packet.json"}
+                        or not isinstance(block, dict)
+                        or not str(block.get("text", "")).startswith(f"---{index} exit 0---\n")):
+                    continue
+                content = target.read_text()
+                printed = block["text"].split("\n", 1)[1]
+                printed = re.sub(r"^Warning: truncated output \(original token count: \d+\)\n"
+                                 r"Total output lines: \d+\n\n", "", printed, count=1)
+                truncated = re.fullmatch(r"([\s\S]*)…\d+ tokens truncated…([\s\S]*)", printed)
+                if (truncated and not (content.startswith(truncated[1]) and content.endswith(truncated[2]))
+                        or not truncated and printed != content):
+                    continue
+                values = [value for _, value in _trace_strings(json.loads(content))
+                          if value.startswith(("/", ".thoughts/"))
+                          and (any(pattern.search(value) for _, pattern in FORBIDDEN_CONTEXT_PATTERNS)
+                               or any("/runs/" in ref for ref in THOUGHT_PATH.findall(value)))]
+                result[(row["call_id"], index + 1)] = values
+            except (OSError, ValueError, TypeError, IndexError):
+                continue
+    return result
 
 
 def observed_dispatch_binding(trace: dict, root: Path, *, validation_packet: dict | None = None) -> dict:
@@ -3037,6 +3115,7 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
     listings = _listing_outputs(trace, read_prefixes=listing_reads, cwd=root.parent.parent if root else None)
     source_outputs, metadata_references = (_read_output_prefixes(trace, assigned + snapshots, root)
                                            if dispatch_content else (set(), {}))
+    metadata_blocks = _metadata_batch_references(trace, root) if dispatch_content else {}
     labeled_outputs = _labeled_packet_outputs(trace, root) if dispatch_content else {}
     pretty_outputs = _pretty_packet_reads(trace, root)
     instruction_contents = _instruction_contents(trace, root, assigned) if root else {}
@@ -3073,12 +3152,17 @@ def context_trace_errors(trace: dict[str, object], *, details: list[dict] | None
         before_metadata = candidate
         if output:
             references = metadata_references.get(row.get("call_id"), [])
+            if len(path) >= 5 and path[2] == "output" and path[3].isdigit():
+                references = references + metadata_blocks.get((row.get("call_id"), int(path[3])), [])
             for reference in references[:]:
                 candidate, replaced = re.subn(r"(?<![\w./\\-])" + re.escape(reference)
                                               + r"(?![\w./-]|\\(?![\"\\]))",
                                               "[current metadata]", candidate, count=1)
                 if replaced:
                     references.remove(reference)
+                    global_references = metadata_references.get(row.get("call_id"), [])
+                    if reference in global_references:
+                        global_references.remove(reference)
         metadata_only = candidate != before_metadata
         operational = _without_approval_justification(candidate, row, path) if not output else candidate
         if root and not output:

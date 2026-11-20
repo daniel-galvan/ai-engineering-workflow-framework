@@ -907,6 +907,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Leave rejected narrative and result files in place until the corrected-activation guard validates their audit.
    The guard then moves both prepared outputs to `<stem>.rejected.<extension>` in the active root, leaving their
    assigned paths absent. Do not rename or edit these files before the guard; that changes the audited bytes.
+   If the user answered during a rejected handoff, retain the answer and recover the handoff first to clear the pending
+   rejection. Then return the answer to the owning analyst and refresh the handoff; the restored packet predates it.
    Preserve the rejected trace under its original path for the guard. The guard rejects it as an assignment input.
    Audit traces can contain session references. Do not ask workers to read them. Give the worker
    only the relevant error and required correction. A replacement must never read a rejected output left at its

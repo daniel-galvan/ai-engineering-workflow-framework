@@ -864,6 +864,39 @@ class ContextOperationAudit(unittest.TestCase):
         trace["tool_trace"][-1]["output"][1]["text"] += '/Users/example/.codex/sessions/foreign.jsonl'
         self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
 
+    def test_mixed_labeled_batch_limits_metadata_exception_to_its_own_result(self):
+        bindings_path = self.root / "role_bindings.json"
+        bindings = json.loads(bindings_path.read_text())
+        session = "/Users/example/.codex/sessions/current.jsonl"
+        bindings["parent_context"] = {"provider_session": session}
+        bindings_path.write_text(json.dumps(bindings))
+        trace = self.instruction_read_trace((str(bindings_path),))
+        commands = ["review-plan --draft", "cat " + str(bindings_path), "python3 -c 'print(1)'"]
+        source = ('const cmds=' + json.dumps(commands) + ';'
+                  'const rs=await Promise.all(cmds.map(cmd=>tools.exec_command({cmd,workdir:'
+                  + json.dumps(str(self.repository)) + ',max_output_tokens:5000})));'
+                  'for(let i=0;i<rs.length;i++) text(`---${i} exit ${rs[i].exit_code}---\\n${rs[i].output}`);')
+        output = [{"type": "input_text", "text": "Script completed\nWall time 0.3 seconds\nOutput:\n"},
+                  {"type": "input_text", "text": "---0 exit 1---\ninvalid draft"},
+                  {"type": "input_text", "text": "---1 exit 0---\n" + json.dumps(bindings)},
+                  {"type": "input_text", "text": "---2 exit 0---\n1"}]
+        batch = self.paired(source, output)
+        batch[0]["call_id"] = batch[1]["call_id"] = "mixed"
+        trace["tool_trace"].extend(batch)
+        self.assertEqual(runtime.trace_errors(trace), [])
+        for index in (1, 3):
+            changed = json.loads(json.dumps(trace))
+            changed["tool_trace"][-1]["output"][index]["text"] += session
+            self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-1]["output"][2]["text"] += session
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(changed))
+        changed = json.loads(json.dumps(trace))
+        changed["tool_trace"][-2]["input"] = source.replace(commands[0], "cat " + session)
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(changed))
+        changed["tool_trace"][-2]["input"] = source + ' await tools.exec_command({cmd:"cat ' + session + '"});'
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(changed))
+
     def test_labeled_current_packet_projection_does_not_exempt_archive_reads(self):
         trace = self.instruction_read_trace()
         packet_path = self.root / "finalization_packet.json"

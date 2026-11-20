@@ -385,8 +385,10 @@ blocked by missing recovery options remains eligible for the complete corrected-
 Before each guarded Documenter dispatch, preserve the current packet in a content-addressed snapshot whose hash is
 bound to the dispatched instructions and receipt. For a rejected Documenter result, validate the snapshot and recheck
 the normal pre-handoff gates against it; preserve the rejected packet and restore the snapshot before the replacement.
-Never treat rejected Documenter edits as accepted. Older dispatches without a snapshot remain subject to the existing
-recovery checks.
+Never treat rejected Documenter edits as accepted. If complete instruction delivery could not be established, the
+recovery guard may identify the snapshot from one uniquely matched guarded dispatch and its paired partial read; this
+does not establish delivery or accept the result. Missing, ambiguous, altered, or unpaired evidence remains blocked.
+Older dispatches without a snapshot remain subject to the existing recovery checks.
 Preserve the rejected
 evidence and run identity, and activate a fresh handle with the same guarded envelope and typed inputs. Completion
 alone never permits replacement; active tasks remain protected. Correction and replacement share one recovery

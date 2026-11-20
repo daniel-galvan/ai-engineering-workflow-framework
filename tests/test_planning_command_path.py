@@ -49,6 +49,15 @@ class PlanningCommandPath(unittest.TestCase):
                 self.planning_path(playbook, rejected_handoff=True, planning_recovery=True)
                 self.assertEqual(self.planning_outcome, fresh)
 
+    def test_rejected_unverified_handoff_can_recover_from_guarded_snapshot(self):
+        for playbook in ("feature_delivery", "techops_issue_remediation"):
+            with self.subTest(playbook=playbook):
+                self.planning_path(playbook, rejected_handoff=True, unverified_handoff_dispatch=True)
+                fresh = self.planning_outcome
+                self.planning_path(playbook, rejected_handoff=True, unverified_handoff_dispatch=True,
+                                   planning_recovery=True)
+                self.assertEqual(self.planning_outcome, fresh)
+
     def test_feature_remediation_through_actual_shipped_commands(self):
         self.planning_path("feature_delivery", continue_to_remediation=True)
 
@@ -117,7 +126,7 @@ class PlanningCommandPath(unittest.TestCase):
                       recover_unactivated_remediation=False, opaque_delivery=False, recover_interrupted_delivery=False,
                       recover_context_block=False, missing_mapping=False, start_next_run=False,
                       parallel_integration=False, planning_recovery=False, plan_action="create", invalid_parent_batch=False,
-                      rejected_handoff=False):
+                      rejected_handoff=False, unverified_handoff_dispatch=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as environment:
             package = packaging.PackagedLifecycle().package(directory)
             repository = Path(directory) / "repository"
@@ -356,7 +365,8 @@ class PlanningCommandPath(unittest.TestCase):
                     old_handle, old_id = "/root/rejected_handoff", str(UUID(int=901))
                     append(parent, "response_item", type="function_call", namespace="collaboration", name="spawn_agent",
                            call_id="spawn-rejected-handoff", arguments=json.dumps({"task_name": "rejected_handoff",
-                           "message": guarded["activation_message"], **guarded["launch_arguments"]}))
+                           "message": "opaque" if unverified_handoff_dispatch else guarded["activation_message"],
+                           **guarded["launch_arguments"]}))
                     append(parent, "event_msg", item={"type": "SubAgentActivity", "kind": "started",
                            "agent_path": old_handle, "agent_thread_id": old_id})
                     old_child = provider / ("rollout-" + old_id + ".jsonl")
@@ -365,7 +375,9 @@ class PlanningCommandPath(unittest.TestCase):
                            model=guarded["launch_arguments"]["model"], effort=guarded["launch_arguments"]["reasoning_effort"])
                     append(old_child, "response_item", type="function_call", name="exec_command", call_id="bootstrap",
                            arguments=json.dumps({"cmd": "cat " + str(activation), "workdir": str(repository)}))
-                    append(old_child, "response_item", type="function_call_output", call_id="bootstrap", output=activation.read_text())
+                    delivered = activation.read_text()
+                    append(old_child, "response_item", type="function_call_output", call_id="bootstrap",
+                           output=delivered[:500] if unverified_handoff_dispatch else delivered)
                     append(old_child, "response_item", type="function_call", name="exec_command", call_id="forbidden",
                            arguments=json.dumps({"cmd": "cat /Users/example/.codex/sessions/old.jsonl"}))
                     append(old_child, "response_item", type="message", role="assistant", phase="final_answer",
@@ -382,7 +394,11 @@ class PlanningCommandPath(unittest.TestCase):
                     command("worker_runtime_evidence.py", *collector, "--worker-session", old_child,
                             "--agent", role, "--trace", rejected, expected=2)
                     rejected_traces[rejected] = rejected.read_bytes()
-                    self.assertEqual(json.loads(rejected.read_text())["audit"]["status"], "rejected")
+                    recorded = json.loads(rejected.read_text())
+                    self.assertEqual(recorded["audit"]["status"], "rejected")
+                    if unverified_handoff_dispatch:
+                        self.assertNotIn("dispatch_file", recorded["spawn"])
+                        self.assertIn("provider_binding_not_delivered", recorded["audit"]["errors"])
                     receipt = json.loads((root / "activation_receipts.json").read_text())[activation.name]
                     snapshot = root / ("documenter_packet." + receipt["packet_snapshot_sha256"] + ".json")
                     original_snapshot = snapshot.read_bytes()

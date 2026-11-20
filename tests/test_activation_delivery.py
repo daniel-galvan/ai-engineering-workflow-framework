@@ -216,6 +216,52 @@ class ActivationDelivery(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "dispatch_mismatch"):
             runtime._documenter_recovery_snapshot(self.artifacts, trace)
 
+    def test_documenter_snapshot_recovery_requires_unique_attempted_guarded_dispatch(self):
+        packet = json.loads(Path(self.bundle["path"]).read_text())["packets"]["documenter"]
+        dispatch = self.artifacts / "handoff_attempt.txt"
+        original = Path(packet["finalization_packet"]).read_bytes()
+        digest = hashlib.sha256(original).hexdigest()
+        message = runtime.activation_message(packet, {"objective": "Prepare handoff"}, packet_snapshot_hash=digest)
+        runtime.dispatch_message(packet, message, dispatch, packet_snapshot_hash=digest)
+        trace = self.artifacts / "handoff_attempt_trace.json"
+        row = {"type": "function_call", "name": "exec_command", "call_id": "first",
+               "arguments": {"cmd": "cat " + str(dispatch)}}
+        output = {"type": "function_call_output", "call_id": "first", "output": message[:300]}
+        data = {"run_id": packet["run_id"], "spawn": {"agent": "documenter"}, "tool_trace": [row, output]}
+        trace.write_text(json.dumps(data))
+        self.assertEqual(runtime._documenter_recovery_snapshot(self.artifacts, trace).read_bytes(), original)
+        for invalid in ([row], [row, {**output, "output": "unrelated"}],
+                        [row, {**output, "call_id": "other"}]):
+            data["tool_trace"] = invalid
+            trace.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "dispatch_unresolved"):
+                runtime._documenter_recovery_snapshot(self.artifacts, trace)
+        data["tool_trace"] = []
+        trace.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "dispatch_unresolved"):
+            runtime._documenter_recovery_snapshot(self.artifacts, trace)
+        second = self.artifacts / "handoff_other.txt"
+        runtime.dispatch_message(packet, message, second, packet_snapshot_hash=digest)
+        data["tool_trace"] = [row, output, {"type": "function_call", "name": "exec_command", "call_id": "second",
+                                    "arguments": {"cmd": "cat " + str(second)}},
+                              {"type": "function_call_output", "call_id": "second", "output": message[:300]}]
+        trace.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "dispatch_unresolved"):
+            runtime._documenter_recovery_snapshot(self.artifacts, trace)
+        data["tool_trace"] = [row, output]
+        trace.write_text(json.dumps(data))
+        receipts_path = self.artifacts / "activation_receipts.json"
+        receipts = json.loads(receipts_path.read_text())
+        receipts[second.name]["packet_snapshot_sha256"] = "0" * 64
+        receipts_path.write_text(json.dumps(receipts))
+        with self.assertRaisesRegex(ValueError, "dispatch_unresolved"):
+            runtime._documenter_recovery_snapshot(self.artifacts, trace)
+        receipts[second.name]["packet_snapshot_sha256"] = digest
+        receipts_path.write_text(json.dumps(receipts))
+        dispatch.write_text("tampered")
+        with self.assertRaisesRegex(ValueError, "dispatch_unresolved"):
+            runtime._documenter_recovery_snapshot(self.artifacts, trace)
+
     def instruction_trace(self, locator=ARCHIVE, authorization=None, objective="Verify current source findings"):
         bundle_path = Path(self.bundle["path"])
         bundle = json.loads(bundle_path.read_text())
@@ -427,6 +473,11 @@ class ActivationDelivery(unittest.TestCase):
                           "input": 'text(await tools.exec_command(' + json.dumps({"cmd": command}) + '));'},
                          {"type": "custom_tool_call_output", "call_id": call,
                           "output": [{"type": "input_text", "text": content[start:end]}]}])
+        last = len(rows) // 2 - 1
+        start = last * 900
+        code = f"from pathlib import Path; s=Path({path!r}).read_text(); print(s[{start}:])"
+        rows[-2]["input"] = 'text(await tools.exec_command(' + json.dumps({"cmd": shlex.join(["python3", "-c", code])}) + '));'
+        rows[-1]["output"][0]["text"] += "\n"
         trace["tool_trace"] = rows
         self.assertEqual(runtime.observed_dispatch_binding(trace, self.artifacts)["dispatch_file"], path)
         self.assertEqual(runtime.context_trace_errors(trace), [])
