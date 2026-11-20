@@ -3685,6 +3685,8 @@ def prepare_run(
             f"Before your final answer, run python3 {shlex.quote(contract['response_builder'])} --packet "
             f"{shlex.quote(str(artifact_root / 'finalization_packet.json'))} --agent {shlex.quote(agent)} --response-stdin <<'RESPONSE', "
             "followed by the complete JSON envelope on the next line and RESPONSE on a line by itself. "
+            "Alternatively pipe a Python script with a quoted heredoc into that command; keep its output complete. "
+            "For correction of an accepted result, preserve existing rows and add new IDs for changed findings. "
             "Correct reported draft errors and rerun this read-only preview before ending. After a successful preview, "
             f"return only {WORKER_RESPONSE_SUBMITTED} as your final answer. The collector verifies and uses the "
             "preview output directly. If a truthful repair is unavailable, submit a valid blocked result. "

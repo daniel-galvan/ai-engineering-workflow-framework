@@ -673,8 +673,21 @@ class PlanningCommandPath(unittest.TestCase):
                                    f"{sys.executable} {package}/scripts/review_evidence.py --plan /dev/stdin <<'PLAN'\n"
                                    "Future validation:\nbazel test //product:focused\nPLAN"}))
                         append(child, "response_item", type="function_call_output", call_id="plan-preview", output="{}")
+                    if role == "current_state_investigator":
+                        invocation = shlex.join([sys.executable, str(package / "scripts/prepare_worker_response.py"),
+                                                 "--packet", str(packet_path), "--agent", role, "--response-stdin"])
+                        shell = ("python3 - <<'PY' | " + invocation + "\nimport json\nprint(json.dumps("
+                                 + repr(response) + "))\nPY")
+                        preview = subprocess.run(["/bin/bash", "-lc", shell], capture_output=True, text=True)
+                        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+                        append(child, "event_msg", type="item_completed", item={"type": "CommandExecution",
+                               "command": ["/bin/bash", "-lc", shell], "status": "completed", "exit_code": 0,
+                               "aggregated_output": preview.stdout})
+                        final = "WORKER_RESPONSE_SUBMITTED"
+                    else:
+                        final = json.dumps(response)
                     append(child, "response_item", type="message", role="assistant", phase="final_answer",
-                           content=[{"type": "output_text", "text": json.dumps(response)}])
+                           content=[{"type": "output_text", "text": final}])
                 else:
                     # Simulated Documenter output preserves accepted tables and generated Coordinator audits.
                     packet = json.loads(packet_path.read_text())

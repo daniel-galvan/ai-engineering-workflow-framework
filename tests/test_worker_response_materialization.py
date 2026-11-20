@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -150,6 +151,52 @@ class WorkerResponseMaterialization(unittest.TestCase):
             direct[2]['payload']['item']['command'][-1] = (' '.join(command) + " <<'RESPONSE'\n"
                                                           + json.dumps(response) + '\nRESPONSE')
             self.assertEqual(json.loads(submitted(direct)), response)
+            generated_shell = ("python3 - <<'PY' | " + shlex.join(command) + "\n"
+                               "import json\nprint(json.dumps(" + repr(response) + "))\nPY")
+            generated = subprocess.run(["/bin/bash", "-lc", generated_shell], text=True, capture_output=True)
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+            generated_rows = json.loads(json.dumps(rows))
+            generated_rows[2]['payload']['item']['command'][-1] = generated_shell
+            generated_rows[2]['payload']['item']['aggregated_output'] = generated.stdout
+            self.assertEqual(json.loads(submitted(generated_rows)), response)
+            for unsafe in (generated_shell.replace("python3 - <<'PY'", "sh - <<'PY'"),
+                           generated_shell + "\ncat /secret",
+                           generated_shell.replace("import json\n", "PY\nprintf injected\nimport json\n"),
+                           generated_shell.replace("--agent current_state_investigator", "--agent reviewer")):
+                changed = json.loads(json.dumps(generated_rows))
+                changed[2]['payload']['item']['command'][-1] = unsafe
+                with self.subTest(command=unsafe[:40]), self.assertRaisesRegex(ValueError, 'submission_invalid'):
+                    submitted(changed)
+            changed = json.loads(json.dumps(generated_rows))
+            changed[2]['payload']['item']['aggregated_output'] = 'Warning: truncated output\n' + generated.stdout
+            with self.assertRaisesRegex(ValueError, 'submission_invalid'):
+                submitted(changed)
+            # A corrected result must validate against the already accepted blocked contribution.
+            from scripts.merge_techops_result import validated_result
+            bindings = json.loads((packet_path.parent / "role_bindings.json").read_text())
+            blocked = json.loads(json.dumps(result))
+            blocked["worker_result"]["Outcome"] = "blocked"
+            packet = validated_result(json.loads(original_packet), blocked, bindings, "current_state_investigator")
+            packet_path.write_text(json.dumps(packet))
+            corrected = json.loads(json.dumps(response))
+            corrected["output"] += "Detailed evidence. " * 1500
+            corrected["result"]["evidence"][0]["Evidence ID"] = "E-ISS-002"
+            corrected["result"]["integration_decision"]["evidence_refs"] = "E-ISS-002"
+            correction_shell = ("python3 - <<'PY' | " + shlex.join(command) + "\n"
+                                "import json\nprint(json.dumps(" + repr(corrected) + "))\nPY")
+            checked_correction = subprocess.run(["/bin/bash", "-lc", correction_shell], capture_output=True, text=True)
+            self.assertEqual(checked_correction.returncode, 0, checked_correction.stdout + checked_correction.stderr)
+            correction_rows = json.loads(json.dumps(generated_rows))
+            correction_rows[2]['payload']['item']['command'][-1] = correction_shell
+            correction_rows[2]['payload']['item']['aggregated_output'] = checked_correction.stdout
+            self.assertEqual(json.loads(submitted(correction_rows)), corrected)
+            changed = json.loads(json.dumps(corrected))
+            changed["result"]["evidence"][0]["Evidence ID"] = "E-ISS-001"
+            changed["result"]["evidence"][0]["Summary"] = "Rewritten accepted finding"
+            rejected = subprocess.run(command, input=json.dumps(changed), capture_output=True, text=True)
+            self.assertEqual(rejected.returncode, 2)
+            self.assertIn("worker_result_row_conflict", rejected.stdout)
+            packet_path.write_bytes(original_packet)
             for argument, value in (("--agent current_state_investigator", "--agent reviewer"),
                                     (str(packet_path), str(repository / "other.json"))):
                 changed = json.loads(json.dumps(rows))

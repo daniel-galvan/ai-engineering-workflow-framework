@@ -154,6 +154,7 @@ def result_artifact_errors(trace: dict, bindings: dict, root: Path, role: str,
                                          trace["status_observation"].get("Latest turn started at"),
                                          turn_id=trace["status_observation"].get("Latest turn ID"),
                                          packet_path=root / "finalization_packet.json", agent=role,
+                                         validation_packet=validation_packet,
                                          builder=Path(contract["response_builder"]) if contract.get("response_builder") else None)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         if str(error).startswith("worker_final_response"):

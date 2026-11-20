@@ -884,6 +884,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Every prepared strict JSON worker receives `response_builder`; require its read-only draft preview before the
    worker ends. The worker submits the successful preview with its exact prepared marker; the collector authenticates
    the builder command and uses its output directly. It preserves declared extra fields such as `asset_manifest`.
+   Before merging a blocked analytical result, return a resolvable gap to its owner for one bounded correction; merge
+   the blocked result for handoff only if the gap remains. Preserve accepted rows and use new IDs for changed
+   findings.
    Completed planning synthesis and later
    analytical updates must pass the full merged reasoning graph, including new rows introduced during a correction.
    Draft errors are repaired in the worker's current turn and do not consume a provider-dispatch correction. Keep

@@ -17,9 +17,10 @@ except ModuleNotFoundError:
     from scripts.review_evidence import plan_review_coverage_errors, review_report_errors, review_candidate_metadata_errors
 
 
-def validate_response(packet_path: Path, agent: str, response: dict) -> str:
+def validate_response(packet_path: Path, agent: str, response: dict, *, packet: dict | None = None) -> str:
     packet_path = packet_path.resolve()
-    packet = json.loads(packet_path.read_text())
+    if packet is None:
+        packet = json.loads(packet_path.read_text())
     bindings = json.loads((packet_path.parent / "role_bindings.json").read_text())
     if bindings.get("run_id") != packet.get("identity", {}).get("Run ID"):
         raise ValueError("worker_response_binding_run_mismatch")

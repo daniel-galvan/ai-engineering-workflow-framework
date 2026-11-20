@@ -146,7 +146,7 @@ def worker_response_value(response: str, session: Path) -> dict:
 def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
                           turn_started_at: str | None = None, *, turn_id: str | None = None,
                           packet_path: Path | None = None, agent: str | None = None,
-                          builder: Path | None = None) -> str:
+                          builder: Path | None = None, validation_packet: dict | None = None) -> str:
     """Read the latest assistant final answer from the dispatched worker turn."""
     with source.open() as stream:
         rows = [json.loads(line) for line in stream if line.strip()]
@@ -213,13 +213,21 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
     command = item["command"][-1]
     match = re.fullmatch(r"cat\s*<<'([A-Za-z_][A-Za-z0-9_]*)'\s*\|\s*(.*?)\n(.*?)\n\1\s*", command, re.S)
     direct = re.fullmatch(r"([^\n]*?)\s*<<'([A-Za-z_][A-Za-z0-9_]*)'\s*\n(.*?)\n\2\s*", command, re.S)
+    generated = re.fullmatch(r"(\S+)\s+-\s*<<'([A-Za-z_][A-Za-z0-9_]*)'\s*\|\s*([^\n]+)\n(.*?)\n\2\s*", command, re.S)
+    if not (match or direct or generated):
+        raise ValueError("worker_final_response_submission_invalid:unsupported_preview_command")
     try:
         shell = item["command"]
         if (len(shell) != 3 or Path(shell[0]).name not in {"bash", "sh", "zsh"}
-                or shell[1] not in {"-c", "-lc"} or not (match or direct)
+                or shell[1] not in {"-c", "-lc"}
                 or item.get("status") != "completed" or item.get("exit_code") != 0):
             raise ValueError
-        args = shlex.split(match[2] if match else direct[1])
+        if generated:
+            producer, delimiter, invocation, body = generated.groups()
+            if (not (producer == "python3" or Path(producer).resolve() == Path(sys.executable).resolve())
+                    or re.search(r"(?m)^" + re.escape(delimiter) + r"$", body)):
+                raise ValueError
+        args = shlex.split(match[2] if match else direct[1] if direct else generated[3])
         if (len(args) != 7 or not (args[0] == "python3" or Path(args[0]).resolve() == Path(sys.executable).resolve())
                 or Path(args[1]).resolve() != builder.resolve() or args[2] != "--packet"
                 or Path(args[3]).resolve() != packet_path.resolve() or args[4:6] != ["--agent", agent]
@@ -231,13 +239,13 @@ def worker_final_response(source: Path, dispatch_at: str, observed_at: str,
                        "Operation not permitted (os error 1)\n")
             output = output.removeprefix(warning)
         if (not isinstance(output, str) or "Warning: truncated output" in output
-                or strict_json_loads(match[3] if match else direct[3]) != strict_json_loads(output)):
+                or not generated and strict_json_loads(match[3] if match else direct[3]) != strict_json_loads(output)):
             raise ValueError
         try:
             from prepare_worker_response import validate_response
         except ModuleNotFoundError:
             from scripts.prepare_worker_response import validate_response
-        if validate_response(packet_path, agent, strict_json_loads(output)) != output.rstrip("\n"):
+        if validate_response(packet_path, agent, strict_json_loads(output), packet=validation_packet) != output.rstrip("\n"):
             raise ValueError
         return output.rstrip("\n")
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
