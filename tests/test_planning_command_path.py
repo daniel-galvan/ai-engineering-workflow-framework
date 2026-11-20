@@ -484,6 +484,15 @@ class PlanningCommandPath(unittest.TestCase):
                     append(child, "response_item", type="function_call_output", call_id="current-packet",
                            output="## main\nrevision\n" + packet_path.read_text())
                 if role == "repository_integrator":
+                    paths = [root / "run_inputs.json", root / "role_bindings.json", packet_path]
+                    reader = ('const paths=' + json.dumps([str(path) for path in paths]) + ';'
+                              'const rs=await Promise.all(paths.map(async p=>{'
+                              'const r=await tools.exec_command({cmd:`python3 -c \'from pathlib import Path; '
+                              'p=Path(${JSON.stringify(p)}); print(p.read_text(),end="")\'`, max_output_tokens:8000});'
+                              'return `=== ${p} ===\\n${r.output}`;}));for(const r of rs) text(r);')
+                    append(child, "response_item", type="custom_tool_call", name="exec", call_id="metadata-batch", input=reader)
+                    append(child, "response_item", type="custom_tool_call_output", call_id="metadata-batch",
+                           output=[{"type": "input_text", "text": path.read_text()} for path in paths])
                     caller = source.parent / "caller.py"
                     append(child, "response_item", type="function_call", name="exec_command", call_id="caller",
                            arguments=json.dumps({"cmd": "cat " + str(caller), "workdir": str(repository)}))

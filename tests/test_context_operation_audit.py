@@ -833,6 +833,37 @@ class ContextOperationAudit(unittest.TestCase):
         trace["tool_trace"][-1]["output"][1]["text"] += '/Users/example/.codex/sessions/foreign.jsonl'
         self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
 
+    def test_parallel_json_quoted_file_reads_keep_context_boundaries(self):
+        bindings_path = self.root / "role_bindings.json"
+        bindings = json.loads(bindings_path.read_text())
+        session = "/Users/example/.codex/sessions/current.jsonl"
+        bindings["parent_context"] = {"provider_session": session}
+        bindings_path.write_text(json.dumps(bindings))
+        other = self.root / "run_inputs.json"
+        trace = self.instruction_read_trace((str(bindings_path), str(other)))
+        source = ('const paths=' + json.dumps([str(other), str(bindings_path)]) + ';'
+                  'const rs=await Promise.all(paths.map(async p=>{'
+                  'const r=await tools.exec_command({cmd:`python3 -c \'from pathlib import Path; '
+                  'p=Path(${JSON.stringify(p)}); print(p.read_text(),end="")\'`, max_output_tokens:8000});'
+                  'return `=== ${p} ===\\n${r.output}`;}));for(const r of rs) text(r);')
+        output = [{"type": "input_text", "text": other.read_text()},
+                  {"type": "input_text", "text": json.dumps(bindings)}]
+        batch = self.paired(source, output)
+        batch[0]["call_id"] = batch[1]["call_id"] = "batch"
+        trace["tool_trace"].extend(batch)
+        self.assertEqual(runtime.trace_errors(trace), [])
+        trace["tool_trace"][-2]["input"] = source.replace('=== ${p} ===', 'Reading ${p}:')
+        self.assertEqual(runtime.trace_errors(trace), [])
+        for unsafe in (source.replace(str(other), session),
+                       source.replace('print(p.read_text(),end="")',
+                                      'print(p.read_text()); open("' + session + '").read()'),
+                       source + ' await tools.exec_command({cmd:"cat ' + session + '"});'):
+            trace["tool_trace"][-2]["input"] = unsafe
+            self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
+        trace["tool_trace"][-2]["input"] = source
+        trace["tool_trace"][-1]["output"][1]["text"] += '/Users/example/.codex/sessions/foreign.jsonl'
+        self.assertIn("forbidden_context_reference:session_log", runtime.trace_errors(trace))
+
     def test_labeled_current_packet_projection_does_not_exempt_archive_reads(self):
         trace = self.instruction_read_trace()
         packet_path = self.root / "finalization_packet.json"
@@ -1284,6 +1315,11 @@ class ContextOperationAudit(unittest.TestCase):
                 invocation + '\ncat /Users/example/.codex/sessions/foreign.jsonl'))
             self.assertIn('forbidden_context_reference:session_log', errors(invocation.replace(
                 repr(str(path)), repr('/Users/example/.codex/sessions/foreign.jsonl'))))
+        inspection = ('import json,re; d=json.load(open(' + repr(str(path)) + ')); '
+                      'print(json.dumps(d,default=str).replace("/.codex/sessions", "[redacted]"))')
+        self.assertEqual(errors(shlex.join(['python3', '-c', inspection])), [])
+        self.assertIn('forbidden_context_reference:session_log', errors(shlex.join(
+            ['python3', '-c', inspection + '; open("/Users/example/.codex/sessions/foreign.jsonl")'])))
         redaction = ('from pathlib import Path; p=Path(' + repr(str(path)) + '); '
                      'print(p.read_text().replace("/.codex/sessions", "[redacted]"))')
         invocation = shlex.join(['python3', '-c', redaction])

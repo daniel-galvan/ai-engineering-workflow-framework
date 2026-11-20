@@ -1210,6 +1210,32 @@ def _literal_command_loop(source: str) -> list[tuple[str, dict]] | None:
             r"(?P=result)\.length\s*;\s*(?P=index)\+\+\s*\)\s*\{\s*text\("
             r"`COMMAND \$\{(?P=index)\s*\+\s*1\}\\n\$\{(?P=result)\[(?P=index)\]\.output\}`"
             r"\)\s*;\s*\}\s*;?\s*", source, re.S)
+    if not match:
+        # Expand a bounded batch with one literal JSON-quoted path per command.
+        batch = re.fullmatch(
+            r'\s*const\s+(?P<paths>[A-Za-z_]\w*)\s*=\s*(?P<values>\[[^\]]*\])\s*;'
+            r'\s*const\s+(?P<results>[A-Za-z_]\w*)\s*=\s*await\s+Promise\.all\('
+            r'(?P=paths)\.map\(async\s+(?P<path>[A-Za-z_]\w*)\s*=>\s*\{'
+            r'\s*const\s+(?P<result>[A-Za-z_]\w*)\s*=\s*await\s+tools\.exec_command\('
+            r'\{cmd:\s*`(?P<before>[^`$\\]*)\$\{JSON\.stringify\((?P=path)\)\}'
+            r'(?P<after>[^`$\\]*)`\s*,\s*max_output_tokens:\s*(?P<limit>\d+)\}\)\s*;'
+            r'\s*return\s+`(?:[^`$\\]|\\n)*\${(?P=path)}(?:[^`$\\]|\\n)*'
+            r'\${(?P=result)\.output}(?:[^`$\\]|\\n)*`\s*;\s*\}\)\)\s*;'
+            r'\s*for\s*\(const\s+(?P<item>[A-Za-z_]\w*)\s+of\s+(?P=results)\)\s*text\((?P=item)\)\s*;?\s*', source)
+        if batch:
+            try:
+                paths = json.loads(batch["values"])
+                names = [batch[key] for key in ("paths", "results", "path", "result")]
+                if (not isinstance(paths, list) or not paths or len(paths) > 32 or len(set(names)) != len(names)
+                        or set(names + [batch["item"]]) & {"tools", "text", "Promise", "JSON"}
+                        or batch["item"] in {batch["paths"], batch["results"]}
+                        or any(not isinstance(path, str) or not re.fullmatch(r"[\w /.:+@-]+", path)
+                               for path in paths)):
+                    return None
+                return [("exec_command", {"cmd": batch["before"] + json.dumps(path, ensure_ascii=False)
+                         + batch["after"], "max_output_tokens": int(batch["limit"])}) for path in paths]
+            except (ValueError, TypeError):
+                return None
     mapped = False
     if not match:
         match = re.fullmatch(
@@ -1604,7 +1630,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
     targets, constants = [], {}
     stores = [node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)]
     builtins = {"print", "len", "isinstance", "str", "list", "type", "sorted", "range", "min", "max"}
-    protected = builtins | {"open", "json", "pprint", "sys", "Path", "hashlib"}
+    protected = builtins | {"open", "json", "pprint", "sys", "Path", "hashlib", "re"}
     def literal_paths(node):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return [node.value]
@@ -1641,7 +1667,7 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
         if isinstance(node, (ast.For, ast.comprehension)) and (
                 not isinstance(node.target, ast.Name) or node.target.id in protected):
             return []
-        if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json", "sys", "hashlib"})
+        if isinstance(node, ast.Import) and any(item.name not in ({"json", "pprint"} if pretty else {"json", "sys", "hashlib", "re"})
                                                 or item.asname for item in node.names):
             return []
         if isinstance(node, ast.ImportFrom) and (pretty or node.module != "pathlib" or node.level
@@ -1714,8 +1740,11 @@ def _python_read_targets(source: str, *, pretty: bool = False, argv: tuple[str, 
                        and node.func.attr == "sha256" and len(node.args) == 1 and not node.keywords)
             formatting = (not pretty and node.func.attr in {"decode", "hexdigest"}
                           and not node.args and not node.keywords)
-            if json_load and any(keyword.arg not in {"indent", "sort_keys", "ensure_ascii"}
-                                 or not isinstance(keyword.value, ast.Constant) for keyword in node.keywords):
+            if json_load and any(not (keyword.arg in {"indent", "sort_keys", "ensure_ascii"}
+                                      and isinstance(keyword.value, ast.Constant)
+                                      or node.func.attr == "dumps" and keyword.arg == "default"
+                                      and isinstance(keyword.value, ast.Name) and keyword.value.id == "str")
+                                 for keyword in node.keywords):
                 return []
             if pretty_print and (len(node.args) != 1 or any(
                     keyword.arg not in {"indent", "width", "depth", "compact", "sort_dicts"}
