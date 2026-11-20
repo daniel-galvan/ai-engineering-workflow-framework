@@ -1354,8 +1354,10 @@ def finalize(
     coordinator_model_effort: str | None = None,
     framework_revision: str | None = None,
     framework_status: str | None = None,
+    context_details: list[dict] | None = None,
 ) -> None:
-    package_errors = prepared_package_errors(packet_path.parent) if (packet_path.parent / "role_bindings.json").is_file() else []
+    package_errors = (prepared_package_errors(packet_path.parent, context_details=context_details)
+                      if (packet_path.parent / "role_bindings.json").is_file() else [])
     if package_errors:
         raise ValueError(";".join(package_errors))
     status_path, previous_status = _finalization_status(packet_path)
@@ -2585,6 +2587,7 @@ def main() -> int:
         return 0
     if not args.packet or not args.closure or not args.record:
         parser.error("--packet, --closure, and --record are required")
+    context_details = []
     try:
         if args.analytical_failure:
             if not all((args.analytical_failure_stage, args.coordinator_model_effort,
@@ -2612,9 +2615,13 @@ def main() -> int:
                 coordinator_model_effort=args.coordinator_model_effort,
                 framework_revision=args.framework_revision,
                 framework_status=args.framework_status,
+                context_details=context_details,
             )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, subprocess.CalledProcessError) as error:
-        print(json.dumps({"status": "blocked", "reason": str(error)}, sort_keys=True))
+        diagnostic = {"status": "blocked", "reason": str(error)}
+        if context_details:
+            diagnostic["context_violations"] = context_details
+        print(json.dumps(diagnostic, sort_keys=True), flush=True)
         if not args.pre_release and not args.check_packet and _finalization_status(args.packet.resolve())[1].get("status") != "failed":
             # Preparation failed before validation; use the existing control-failure receipt and preserved packet.
             return subprocess.run([sys.executable, __file__, "--packet", str(args.packet.resolve()),

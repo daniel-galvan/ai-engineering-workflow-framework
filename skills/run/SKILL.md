@@ -421,6 +421,8 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    every call site. Do not build path arrays, use `.map`, loops, helper functions, or computed/interpolated tool
    arguments; the parent audit statically checks each literal call and blocks dynamic arguments with
    `parent_tool_arguments_unavailable`.
+   Use chat commentary for progress. Do not discover or invoke a progress or summary tool from inside
+   `functions.exec`, and never select a tool by a computed name. Keep operational calls explicit.
    Missing or ambiguous native records block preparation. `--provider-session <path>` asserts the resolved path;
    an older fragment cannot override it. Preparation repeats the parent audit before changing artifacts.
    Same-chat continuation retains current-run control metadata automatically, without analytical imports.
@@ -1220,8 +1222,9 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Successful pre-release writes `pre_release_check.json` with the packet hash and validation time. Packet changes
    invalidate it for TechOps planning; revalidate before collecting closure status. Its Terminal observations must
    postdate this receipt. The compact Sentry publisher retains its existing owned precheck.
-   After the pre-release check passes, release the Documenter, replace the pending probe with exact provider
-   observations as `runtime_closure.json` with `Receipt owner: Coordinator`, then run
+   After the pre-release check passes, release the Documenter. Use the documented provider status calls and closure
+   collector to replace the pending probe with `runtime_closure.json` with `Receipt owner: Coordinator`. Run the
+   finalizer directly after the collector confirms closure:
    `python3 <packaged-framework-root>/scripts/finalize_work_record.py --packet`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/finalization_packet.json --closure`
    `<execution-repository>/.thoughts/<WORK-ITEM-ID>/runtime_closure.json --record`
@@ -1277,6 +1280,7 @@ to report-bearing comments; collect those under the TechOps playbook's evidence 
    Fix Design worker before resuming the Documenter; never patch Markdown or technical fields by hand.
    Treat finalizer errors as self-contained received/expected corrections. Do not read or search validator source unless
    an error lacks an expected value or contradicts the documented packet contract.
+   For an unverified Coordinator tool call, use the reported call ID and timestamp to locate the operation.
    For Technical Spike, the emitted canonical handoff already contains the disposition, strongest evidence, unresolved
    decisions, measured budget, next workflow, and artifact links. After successful finalization, send only that block;
    do not add a second summary. If finalization fails, link `finalization_failure.json`; do not claim validation passed.

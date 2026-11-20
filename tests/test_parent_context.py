@@ -1930,6 +1930,22 @@ class ParentContext(unittest.TestCase):
         self.assertIsNone(_literal_parent_thread_read_batch(source.replace(CHILD, "not-a-uuid")))
         self.assertIsNone(_literal_parent_thread_read_batch(source.replace('timeoutMs:0', 'timeoutMs:0, extra:true')))
 
+    def test_opaque_parent_tool_call_reports_native_location(self):
+        direct_read = 'text((await tools.exec_command({cmd:"cat runtime_closure.json"})).output);'
+        timestamp = "2026-10-01T00:00:02Z"
+        payload = {"type": "custom_tool_call", "name": "exec", "call_id": "closure-check", "input": direct_read}
+        self.rows.append({"type": "response_item", "timestamp": timestamp, "payload": payload})
+        self.assertEqual(self.audit()["status"], "passed")
+
+        computed_call = 'const tool = tools[ALL_TOOLS[0].name]; await tool({message:"Closing"});'
+        for extra in (direct_read, ""):
+            with self.subTest(mixed=bool(extra)):
+                payload["input"] = computed_call + extra
+                result = self.audit()
+                self.assertEqual(result["errors"], ["parent_tool_arguments_unavailable"])
+                self.assertEqual(result["context_violations"], [{"error": "parent_tool_arguments_unavailable",
+                    "call_id": "closure-check", "timestamp": timestamp}])
+
     def test_literal_const_tool_arguments_are_audited_but_dynamic_values_fail_closed(self):
         patch = ("*** Begin Patch\n*** Add File: " + str(self.root / ".thoughts" / "ITEM-1" / "runs" /
                  "current" / "receipt.json") + "\n+{}\n*** End Patch")

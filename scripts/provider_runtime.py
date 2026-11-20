@@ -1002,6 +1002,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
         ledger_present = (artifact_root is not None and (artifact_root / "runtime_dispatches.json").is_file()
                           if prior_dispatch_ledger_present is None else prior_dispatch_ledger_present)
         turn, operations, sequenced_operations, children, errors = None, [], [], set(known_children), []
+        details = []
         observed_children: set[str] = set()
         command_observations: dict[str, list[dict]] = {}
         pending_command_outputs: dict[str, str] = {}
@@ -1022,6 +1023,7 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     break
                 turn = payload.get("turn_id")
                 operations, sequenced_operations, children, errors = [], [], set(known_children), []
+                details = []
                 observed_children = set()
                 command_observations = {}
                 pending_command_outputs = {}
@@ -1120,8 +1122,10 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                 if not calls and payload.get("type") == "custom_tool_call":
                     calls = (_literal_worker_status_observation(raw_source) or _literal_parent_thread_read_batch(raw_source) or _literal_command_batch(raw_source)
                              or _incomplete_literal_command(raw_source, _tool_operations) or [])
-                if not calls and payload.get("type") == "custom_tool_call" and "tools." in str(raw_source or ""):
+                if not calls and isinstance(raw_source, str) and re.search(r"\btools\s*(?:\.|\[)", raw_source):
                     errors.append("parent_tool_arguments_unavailable")
+                    details.append({"error": errors[-1], "call_id": payload.get("call_id"),
+                                    "timestamp": row.get("timestamp")})
                 if (len(calls) == 1 and calls[0][0] == "exec_command" and isinstance(raw_source, str)
                         and re.fullmatch(r'\s*const\s+(\w+)\s*=\s*await\s+tools\.exec_command\(\s*\{[^{}]*\}'
                                          r'\s*\)\s*;\s*text\(JSON\.stringify\(\1\)\)\s*;?\s*', raw_source)
@@ -1200,7 +1204,6 @@ def parent_context_audit(source: Path, *, artifact_root: Path | None = None,
                     audit_previous_collector, prior_started_at)
             if redacted != command:
                 operation["arguments"] = {**arguments, "cmd": redacted}
-    details = []
     errors.extend(context_trace_errors({"tool_trace": operations}, details=details,
                                       input_paths=input_paths, artifact_root=artifact_root))
     return {"status": "rejected" if errors else "passed", "provider_session": str(source.resolve()),
